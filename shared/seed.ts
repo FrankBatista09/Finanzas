@@ -4,9 +4,12 @@
 // Los ids son deterministas para que las pruebas sean estables.
 
 import { DEFAULT_GOALS, DEFAULT_RATE } from './constants';
+import { budgetsFromLog } from './calc';
+import { firstDay } from './month';
 import type {
   Account,
   AppState,
+  BudgetEntry,
   Contribution,
   Currency,
   FixedExpense,
@@ -32,6 +35,7 @@ export const SEED_PLANNED_GOAL: Goal = {
   monthly: 3000,
   start: '2026-08',
   end: '2027-10',
+  approxCur: null,
   sort: 2,
 };
 
@@ -101,14 +105,43 @@ function tr(k: MonthKey, rows: TrRow[]): Transfer[] {
   }));
 }
 
+type LogRow = [day: number, amount: number, kind: BudgetEntry['kind'], note?: string];
+
+/** El presupuesto del diseño (70,000 DOP) sale entero de la DR account. */
+const FLAT_BUDGET: LogRow[] = [[1, 70000, 'initial']];
+
 function month(
   key: MonthKey,
   closed: boolean,
   rates: MonthRate[],
   rest: Pick<Month, 'fixed' | 'transfers' | 'tx'>,
+  budget: LogRow[] = FLAT_BUDGET,
 ): Month {
-  // El presupuesto del diseño (70,000 DOP) sale entero de la DR account.
-  return { key, closed, closedAt: null, budgets: { dr: 70000 }, rates, ...rest };
+  const budgetLog: BudgetEntry[] = budget.map(([n, amount, kind, note], i) => ({
+    id: `seed-bg-${key}-${i + 1}`,
+    date: n === 1 ? firstDay(key) : d(key, n),
+    accountId: 'dr',
+    amount,
+    kind,
+    note: note ?? '',
+  }));
+  return { key, closed, closedAt: null, budgetLog, budgets: budgetsFromLog(budgetLog), rates, ...rest };
+}
+
+/**
+ * Deja el presupuesto de un mes en esas partes (cuenta → monto), como un movimiento 'initial' por cuenta con
+ * fecha del primer día. Sustituye su registro. Para armar estados de prueba sin escribir el registro a mano.
+ */
+export function setBudgets(month: Month, budgets: Record<string, number>): void {
+  month.budgetLog = Object.entries(budgets).map(([accountId, amount]) => ({
+    id: `bg-${month.key}-${accountId}`,
+    date: firstDay(month.key),
+    accountId,
+    amount,
+    kind: 'initial',
+    note: '',
+  }));
+  month.budgets = budgetsFromLog(month.budgetLog);
 }
 
 export function seedState(): AppState {
@@ -132,6 +165,7 @@ export function seedState(): AppState {
     accountId: 'us',
     amount: 5800,
     cur: 'USD',
+    budget: false,
   }));
 
   return {
@@ -154,16 +188,16 @@ export function seedState(): AppState {
           [18, 'PayPal', 300, 57.1],
         ]),
         tx: tx('2026-08', [
-          [2, 'Weekly groceries', 'Supermercado Nacional', 'Groceries', 'Card', 5230],
-          [4, 'Uber', 'Uber', 'Transport', 'Card', 410],
-          [6, 'Lunch', 'Adrian Tropical', 'Food', 'Card', 1280],
-          [9, 'Gas', 'Texaco Churchill', 'Transport', 'Card', 2200],
+          [2, 'Weekly groceries', 'Supermercado Nacional', 'Groceries', 'Debit card', 5230],
+          [4, 'Uber', 'Uber', 'Transport', 'Debit card', 410],
+          [6, 'Lunch', 'Adrian Tropical', 'Food', 'Debit card', 1280],
+          [9, 'Gas', 'Texaco Churchill', 'Transport', 'Debit card', 2200],
           [12, 'Concert', 'Teatro Nacional', 'Entertainment', 'Bank app', 2500],
-          [15, 'Weekly groceries', 'Jumbo', 'Groceries', 'Card', 4680],
-          [18, 'Shirts', 'Zara Blue Mall', 'Clothing', 'Card', 3900],
+          [15, 'Weekly groceries', 'Jumbo', 'Groceries', 'Debit card', 4680],
+          [18, 'Shirts', 'Zara Blue Mall', 'Clothing', 'Debit card', 3900],
           [21, 'Doctor visit', 'Centro Médico', 'Health', 'Transfer', 2500, 'Insurance copay'],
-          [24, 'Dinner', 'Lulú Tasting Bar', 'Food', 'Card', 3150],
-          [29, 'Gas', 'Shell', 'Transport', 'Card', 2000],
+          [24, 'Dinner', 'Lulú Tasting Bar', 'Food', 'Debit card', 3150],
+          [29, 'Gas', 'Shell', 'Transport', 'Debit card', 2000],
         ]),
       }),
       '2026-09': month('2026-09', true, [], {
@@ -173,32 +207,47 @@ export function seedState(): AppState {
           [17, 'Remitly', 800, 58.62],
         ]),
         tx: tx('2026-09', [
-          [1, 'Weekly groceries', 'Supermercado Bravo', 'Groceries', 'Card', 4975],
-          [3, 'Accounting book', 'Librería Cuesta', 'Education', 'Card', 1850],
-          [5, 'Uber', 'Uber', 'Transport', 'Card', 360],
-          [8, 'Lunch', 'El Conuco', 'Food', 'Card', 1420],
-          [11, 'Gas', 'Texaco', 'Transport', 'Card', 2100],
+          [1, 'Weekly groceries', 'Supermercado Bravo', 'Groceries', 'Debit card', 4975],
+          [3, 'Accounting book', 'Librería Cuesta', 'Education', 'Debit card', 1850],
+          [5, 'Uber', 'Uber', 'Transport', 'Debit card', 360],
+          [8, 'Lunch', 'El Conuco', 'Food', 'Debit card', 1420],
+          [11, 'Gas', 'Texaco', 'Transport', 'Debit card', 2100],
           [14, 'Movies', 'Caribbean Cinemas', 'Entertainment', 'Bank app', 850],
-          [16, 'Weekly groceries', 'Jumbo', 'Groceries', 'Card', 5320],
-          [19, 'Pharmacy', 'Farmacia Carol', 'Health', 'Card', 980],
-          [23, 'Istanbul hotel booking', 'Booking', 'Travel', 'Card', 4800, 'Deposit'],
-          [28, 'Gas', 'Shell', 'Transport', 'Card', 1900],
+          [16, 'Weekly groceries', 'Jumbo', 'Groceries', 'Debit card', 5320],
+          [19, 'Pharmacy', 'Farmacia Carol', 'Health', 'Debit card', 980],
+          [23, 'Istanbul hotel booking', 'Booking', 'Travel', 'Debit card', 4800, 'Deposit'],
+          [28, 'Gas', 'Shell', 'Transport', 'Debit card', 1900],
         ]),
       }),
-      // Octubre tiene la tasa del mes escrita a mano.
-      '2026-10': month('2026-10', false, [{ from: 'USD', to: 'DOP', rate: 58.76 }], {
+      // Octubre tiene la tasa escrita a mano dos veces: el día 1 y, vuelta a confirmar, el día 6. Las dos valen
+      // 58.76 a propósito: el libro de Excel solo conoce una tasa por mes y los datos de ejemplo tienen que dar
+      // en él las mismas cifras que en la app (shared/excel/export-libreoffice.test.ts).
+      '2026-10': month(
+        '2026-10',
+        false,
+        [
+          { from: 'USD', to: 'DOP', rate: 58.76, date: '2026-10-01' },
+          { from: 'USD', to: 'DOP', rate: 58.76, date: '2026-10-06' },
+        ],
+        {
         fixed: fixed('2026-10', ['Electricity', 'Internet', 'Health insurance', 'Fridge payment', 'Claude', 'Unicaribe']),
         transfers: tr('2026-10', [[2, 'Remitly', 1500, 58.76]]),
         tx: tx('2026-10', [
-          [1, 'Weekly groceries', 'Supermercado Nacional', 'Groceries', 'Card', 4850],
-          [2, 'Uber to work', 'Uber', 'Transport', 'Card', 320],
-          [3, 'Lunch', 'Adrian Tropical', 'Food', 'Card', 1150],
+          [1, 'Weekly groceries', 'Supermercado Nacional', 'Groceries', 'Debit card', 4850],
+          [2, 'Uber to work', 'Uber', 'Transport', 'Debit card', 320],
+          [3, 'Lunch', 'Adrian Tropical', 'Food', 'Debit card', 1150],
           [4, 'Movies', 'Caribbean Cinemas', 'Entertainment', 'Bank app', 900],
-          [5, 'Pharmacy', 'Farmacia Carol', 'Health', 'Card', 1240],
-          [6, 'Gas', 'Texaco', 'Transport', 'Card', 2000],
-          [7, 'Coffee', 'Starbucks Ágora', 'Food', 'Card', 385],
+          [5, 'Pharmacy', 'Farmacia Carol', 'Health', 'Debit card', 1240],
+          [6, 'Gas', 'Texaco', 'Transport', 'Debit card', 2000],
+          [7, 'Coffee', 'Starbucks Ágora', 'Food', 'Debit card', 385],
         ]),
-      }),
+        },
+        // El mes arrancó con 65,000 y el día 5 se subió 5,000: los mismos 70,000 del diseño, con su historia.
+        [
+          [1, 65000, 'initial'],
+          [5, 5000, 'adjust', 'Car repair'],
+        ],
+      ),
     },
   };
 }

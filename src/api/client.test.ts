@@ -50,7 +50,7 @@ describe('cliente HTTP', () => {
     await api.deleteTransfer('t1');
     await api.closeMonth('2026-10');
     await api.patchSettings({ language: 'tr' });
-    await api.createGoal({ id: 'g1', name: 'Car', cur: 'TRY', monthly: 500, start: '2026-10', end: '2027-09' });
+    await api.createGoal({ id: 'g1', name: 'Car', cur: 'TRY', monthly: 500, start: '2026-10', end: '2027-09', approxCur: 'USD' });
     await api.patchGoal('g1', { name: 'New car' });
     await api.deleteGoal('g1');
 
@@ -68,7 +68,7 @@ describe('cliente HTTP', () => {
     expect(header(seen[0]!.init, 'Content-Type')).toBe('application/json');
     expect(header(seen[2]!.init, 'Content-Type')).toBeNull();
     expect(seen[4]!.init.body).toBe('{"language":"tr"}');
-    expect(JSON.parse(seen[5]!.init.body as string)).toEqual({ id: 'g1', name: 'Car', cur: 'TRY', monthly: 500, start: '2026-10', end: '2027-09' });
+    expect(JSON.parse(seen[5]!.init.body as string)).toEqual({ id: 'g1', name: 'Car', cur: 'TRY', monthly: 500, start: '2026-10', end: '2027-09', approxCur: 'USD' });
   });
 
   it('cuentas, tasas del mes, ingresos y borrar un mes: cada ruta del contrato con su método y su cuerpo', async () => {
@@ -78,11 +78,11 @@ describe('cliente HTTP', () => {
     await api.patchAccount('a/1', { hidden: true });
     await api.deleteAccount('tr');
     await api.patchMonth('2026-10', { budgets: { dr: 60000, us: 200 } });
-    await api.putMonthRate('2026-10', { from: 'USD', to: 'DOP', rate: 59.1 });
-    await api.deleteMonthRate('2026-10', 'USD', 'TRY');
+    await api.putMonthRate('2026-10', { from: 'USD', to: 'DOP', rate: 59.1, date: '2026-10-07' });
+    await api.deleteMonthRate('2026-10', 'USD', 'TRY', '2026-10-07');
     await api.deleteMonth('2026-09');
     await api.listIncomes();
-    await api.createIncome({ id: 'i1', date: '2026-10-01', desc: 'Salary', accountId: 'us', amount: 5800, cur: 'USD' });
+    await api.createIncome({ id: 'i1', date: '2026-10-01', desc: 'Salary', accountId: 'us', amount: 5800, cur: 'USD', budget: true });
     await api.patchIncome('i1', { amount: 6000 });
     await api.deleteIncome('i1');
     await api.createTransfer({ id: 't1', monthKey: '2026-10', date: '2026-10-02', via: 'Remitly', fromAccountId: 'us', toAccountId: 'dr', amount: 1500 });
@@ -96,7 +96,8 @@ describe('cliente HTTP', () => {
       'DELETE /api/accounts/tr',
       'PATCH /api/months/2026-10',
       'PUT /api/months/2026-10/rates',
-      'DELETE /api/months/2026-10/rates/USD/TRY',
+      // La fecha de la tasa va en la consulta: así la pide la ruta.
+      'DELETE /api/months/2026-10/rates/USD/TRY?date=2026-10-07',
       'DELETE /api/months/2026-09',
       'GET /api/incomes',
       'POST /api/incomes',
@@ -110,12 +111,66 @@ describe('cliente HTTP', () => {
     expect(body(1)).toEqual({ id: 'tr', name: 'TR account', currency: 'TRY', opening: 1500 });
     expect(body(2)).toEqual({ hidden: true });
     expect(body(4)).toEqual({ budgets: { dr: 60000, us: 200 } });
-    expect(body(5)).toEqual({ from: 'USD', to: 'DOP', rate: 59.1 });
-    expect(body(9)).toEqual({ id: 'i1', date: '2026-10-01', desc: 'Salary', accountId: 'us', amount: 5800, cur: 'USD' });
+    expect(body(5)).toEqual({ from: 'USD', to: 'DOP', rate: 59.1, date: '2026-10-07' });
+    expect(body(9)).toEqual({ id: 'i1', date: '2026-10-01', desc: 'Salary', accountId: 'us', amount: 5800, cur: 'USD', budget: true });
     // Sin tasa: la pone el servidor (la del mes para ese par).
     expect(body(12)).toEqual({ id: 't1', monthKey: '2026-10', date: '2026-10-02', via: 'Remitly', fromAccountId: 'us', toAccountId: 'dr', amount: 1500 });
     // Los borrados no llevan cuerpo.
     for (const i of [3, 6, 7, 11]) expect(seen[i]!.init.body, String(i)).toBeUndefined();
+  });
+
+  it('registro del presupuesto y sobrante: añadir y quitar un movimiento, y sumar lo que sobró del mes anterior', async () => {
+    const { api, seen } = clientWith(() => json(201, {}));
+    const entry = { id: 'b1', date: '2026-10-09', accountId: 'dr', amount: -2500, kind: 'adjust', note: 'Less eating out' } as const;
+    await api.addBudgetEntry('2026-10', entry);
+    await api.deleteBudgetEntry('2026-10', 'b/1 x');
+    await api.addLeftover('2026-10');
+
+    expect(seen.map((s) => `${s.init.method} ${s.url}`)).toEqual([
+      'POST /api/months/2026-10/budget-log',
+      'DELETE /api/months/2026-10/budget-log/b%2F1%20x',
+      'POST /api/months/2026-10/leftover',
+    ]);
+    expect(JSON.parse(seen[0]!.init.body as string)).toEqual(entry);
+    expect(header(seen[0]!.init, 'Content-Type')).toBe('application/json');
+    // Ni el borrado ni el sobrante llevan cuerpo: la cifra del sobrante la calcula el servidor.
+    for (const i of [1, 2]) {
+      expect(seen[i]!.init.body, String(i)).toBeUndefined();
+      expect(header(seen[i]!.init, 'Content-Type'), String(i)).toBeNull();
+    }
+  });
+
+  it('cerrar un mes: sin petición no hay cuerpo; con ella viaja como JSON', async () => {
+    const { api, seen } = clientWith(() => json(200, {}));
+    const controller = new AbortController();
+    await api.closeMonth('2026-10');
+    await api.closeMonth('2026-10', { budgets: { dr: 65000, us: 0 }, addLeftover: true });
+    await api.closeMonth('2026-10', {});
+    // Las opciones de la petición van detrás: sin cuerpo no se confunden con él.
+    await api.closeMonth('2026-10', undefined, { signal: controller.signal });
+
+    for (const s of seen) expect(`${s.init.method} ${s.url}`).toBe('POST /api/months/2026-10/close');
+    expect(seen[0]!.init.body).toBeUndefined();
+    expect(header(seen[0]!.init, 'Content-Type')).toBeNull();
+    expect(JSON.parse(seen[1]!.init.body as string)).toEqual({ budgets: { dr: 65000, us: 0 }, addLeftover: true });
+    expect(header(seen[1]!.init, 'Content-Type')).toBe('application/json');
+    expect(seen[2]!.init.body).toBe('{}');
+    expect(seen[3]!.init.body).toBeUndefined();
+    expect(seen[3]!.init.signal).toBe(controller.signal);
+  });
+
+  it('la fecha de la tasa que se quita va codificada en la consulta, y las opciones detrás', async () => {
+    const { api, seen } = clientWith(() => json(200, {}));
+    const controller = new AbortController();
+    await api.deleteMonthRate('2026-10', 'DOP', 'USD', '2026-10-01', { signal: controller.signal, keepalive: true });
+    expect(seen[0]!.url).toBe('/api/months/2026-10/rates/DOP/USD?date=2026-10-01');
+    expect(seen[0]!.init.method).toBe('DELETE');
+    expect(seen[0]!.init.body).toBeUndefined();
+    expect(seen[0]!.init.signal).toBe(controller.signal);
+    expect(seen[0]!.init.keepalive).toBe(true);
+    // Lo que no sea una fecha no rompe la ruta.
+    await api.deleteMonthRate('2026-10', 'DOP', 'USD', '2026-10-01&x=1');
+    expect(seen[1]!.url).toBe('/api/months/2026-10/rates/DOP/USD?date=2026-10-01%26x%3D1');
   });
 
   it('pasa signal y keepalive', async () => {
@@ -218,8 +273,11 @@ describe('cabecera X-User', () => {
     listMonths: (api) => api.listMonths(),
     getMonth: (api) => api.getMonth('2026-10'),
     patchMonth: (api) => api.patchMonth('2026-10', { budgets: { dr: 1 } }),
-    putMonthRate: (api) => api.putMonthRate('2026-10', { from: 'USD', to: 'DOP', rate: 59 }),
-    deleteMonthRate: (api) => api.deleteMonthRate('2026-10', 'USD', 'DOP'),
+    addBudgetEntry: (api) => api.addBudgetEntry('2026-10', { accountId: 'dr', amount: 500 }),
+    deleteBudgetEntry: (api) => api.deleteBudgetEntry('2026-10', 'x'),
+    addLeftover: (api) => api.addLeftover('2026-10'),
+    putMonthRate: (api) => api.putMonthRate('2026-10', { from: 'USD', to: 'DOP', rate: 59, date: '2026-10-07' }),
+    deleteMonthRate: (api) => api.deleteMonthRate('2026-10', 'USD', 'DOP', '2026-10-07'),
     closeMonth: (api) => api.closeMonth('2026-10'),
     reopenMonth: (api) => api.reopenMonth('2026-10'),
     deleteMonth: (api) => api.deleteMonth('2026-10'),

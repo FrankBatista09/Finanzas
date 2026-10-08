@@ -30,6 +30,7 @@ export const AHORROS = defineStrings({
     newGoal: 'New goal',
     editGoal: 'Edit goal',
     name: 'Name',
+    approxCurrency: 'Show equivalent in',
     hasTarget: 'This goal has a target',
     targetAmount: 'Target amount ({currency})',
     startMonth: 'Start month',
@@ -51,6 +52,8 @@ export const AHORROS = defineStrings({
     incomeDate: 'Income date',
     incomeDescPlaceholder: 'Salary, payment…',
     deleteIncome: 'Delete income of {date}: {amount} {cur}',
+    incomeBudgetOf: 'Adds to budget: income of {date}, {amount} {cur}',
+    newIncomeBudget: 'The new income adds to the budget',
 
     // ── Aportes ──────────────────────────────────────────────────────────────
     contribsTitle: 'Contributions',
@@ -83,6 +86,7 @@ export const AHORROS = defineStrings({
     newGoal: 'Nueva meta',
     editGoal: 'Editar meta',
     name: 'Nombre',
+    approxCurrency: 'Mostrar equivalente en',
     hasTarget: 'Esta meta tiene un objetivo',
     targetAmount: 'Monto objetivo ({currency})',
     startMonth: 'Mes de inicio',
@@ -102,6 +106,8 @@ export const AHORROS = defineStrings({
     incomeDate: 'Fecha del ingreso',
     incomeDescPlaceholder: 'Sueldo, pago…',
     deleteIncome: 'Eliminar ingreso del {date}: {amount} {cur}',
+    incomeBudgetOf: 'Suma al presupuesto: ingreso del {date}, {amount} {cur}',
+    newIncomeBudget: 'El ingreso nuevo suma al presupuesto',
 
     contribsTitle: 'Aportes',
     inGoal: 'En la meta',
@@ -133,6 +139,7 @@ export const AHORROS = defineStrings({
     newGoal: 'Yeni hedef',
     editGoal: 'Hedefi düzenle',
     name: 'Ad',
+    approxCurrency: 'Karşılığını göster',
     hasTarget: 'Bu hedefin belirli bir tutarı ve tarihi var',
     targetAmount: 'Hedef tutar ({currency})',
     startMonth: 'Başlangıç ayı',
@@ -152,6 +159,8 @@ export const AHORROS = defineStrings({
     incomeDate: 'Gelir tarihi',
     incomeDescPlaceholder: 'Maaş, ödeme…',
     deleteIncome: '{date} tarihli geliri sil: {amount} {cur}',
+    incomeBudgetOf: 'Bütçeye eklenir: {date} geliri, {amount} {cur}',
+    newIncomeBudget: 'Yeni gelir bütçeye eklenir',
 
     contribsTitle: 'Katkılar',
     inGoal: 'Hedefte',

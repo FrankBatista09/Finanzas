@@ -7,8 +7,9 @@
 
 import { CATS, METHODS, VIAS } from '../../../shared/constants';
 import { fRate } from '../../../shared/format';
-import type { Account, Currency, ISODate } from '../../../shared/types';
+import type { Account, Currency, ISODate, MonthKey } from '../../../shared/types';
 import type { FixedInput, PairRate, TransferInput, TxInput } from '../../store';
+import { newRateDate } from './rows';
 
 // ── Cuenta y moneda de un gasto ──────────────────────────────────────────────
 
@@ -120,7 +121,7 @@ export interface TransferDraft {
 export interface TransferContext extends Pick<DraftContext, 'accounts' | 'defaultAccount'> {
   /** Las cuentas que se ofrecen, en su orden. */
   visible: readonly Account[];
-  /** La tasa del mes seleccionado para ese par (useFinanzas().rateOf(from, to).rate). */
+  /** La tasa del mes seleccionado para ese par, vigente en la fecha del borrador (useFinanzas().rateOf(from, to, undefined, date).rate). */
   rateOf(from: Currency, to: Currency): number;
 }
 
@@ -252,9 +253,11 @@ export interface RateDraft {
   /** null = sin tocar: el primer par de la tarjeta que aún no tiene tasa escrita. */
   pair: Pair | null;
   rate: number;
+  /** null = sin tocar: la fecha que toque para el par (rows.ts newRateDate). */
+  date: ISODate | null;
 }
 
-export const EMPTY_RATE: RateDraft = { pair: null, rate: 0 };
+export const EMPTY_RATE: RateDraft = { pair: null, rate: 0, date: null };
 
 /**
  * El par que propone la fila de agregar: el elegido o, sin tocar, el primero de los que se ven cuya tasa no está
@@ -276,4 +279,12 @@ export function pickRateCurrency(pair: Pair, side: 'from' | 'to', cur: Currency)
 /** Una tasa mayor que 0. */
 export function canAddRate(draft: RateDraft): boolean {
   return draft.rate > 0;
+}
+
+/**
+ * La fecha desde la que valdrá la tasa nueva: la elegida o, sin tocar, la que toque para el par (newRateDate):
+ * cambia sola con el par mientras el usuario no elija una.
+ */
+export function rateDate(draft: RateDraft, pair: Pair, rates: readonly PairRate[], monthKey: MonthKey, draftDate: ISODate): ISODate {
+  return draft.date ?? newRateDate(pair[0], pair[1], rates, monthKey, draftDate);
 }

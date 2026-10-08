@@ -9,7 +9,7 @@ import type {
   SettingsResponse,
   StateResponse,
 } from '../shared/api';
-import { balances, monthCalc } from '../shared/calc';
+import { balances, monthCalc, rateFor } from '../shared/calc';
 import { DEFAULT_ACCOUNTS, DEFAULT_GOALS, DEFAULT_RATE } from '../shared/constants';
 import { IMPORTED_INCOME } from '../shared/excel/data';
 import { currentMonthKey } from '../shared/month';
@@ -53,7 +53,7 @@ afterEach(async () => {
   if (watched) expect(await loadState(watched.db, E)).toEqual(watched.before);
 });
 
-const emptyMonth = (key: string): Month => ({ key, closed: false, closedAt: null, budgets: {}, rates: [], fixed: [], transfers: [], tx: [] });
+const emptyMonth = (key: string): Month => ({ key, closed: false, closedAt: null, budgetLog: [], budgets: {}, rates: [], fixed: [], transfers: [], tx: [] });
 
 /** Un usuario recién llegado: sus cuentas y metas iniciales y el mes actual, vacío. */
 const arrivedState = (language: AppState['language'] = 'en'): AppState => ({
@@ -144,15 +144,15 @@ describe('cabecera X-User', () => {
     ['get', '/api/months'],
     ['get', '/api/months/2026-10'],
     ['patch', '/api/months/2026-10', { budgets: { dr: 1 } }],
-    ['put', '/api/months/2026-10/rates', { from: 'USD', to: 'DOP', rate: 60 }],
-    ['del', '/api/months/2026-10/rates/USD/DOP'],
+    ['put', '/api/months/2026-10/rates', { from: 'USD', to: 'DOP', rate: 60, date: '2026-10-06' }],
+    ['del', '/api/months/2026-10/rates/USD/DOP?date=2026-10-06'],
     ['post', '/api/months/2026-10/close'],
     ['post', '/api/months/2026-08/reopen'],
     ['del', '/api/months/2026-10'],
     ['post', '/api/fixed', { monthKey: '2026-10', name: 'Agua', amount: 500, cur: 'DOP' }],
     ['patch', '/api/fixed/seed-fx-2026-10-1', { paid: false }],
     ['del', '/api/fixed/seed-fx-2026-10-1'],
-    ['post', '/api/transactions', { monthKey: '2026-10', date: '2026-10-07', desc: 'x', cat: 'Food', method: 'Card', amount: 1, cur: 'DOP' }],
+    ['post', '/api/transactions', { monthKey: '2026-10', date: '2026-10-07', desc: 'x', cat: 'Food', method: 'Debit card', amount: 1, cur: 'DOP' }],
     ['patch', '/api/transactions/seed-tx-2026-10-1', { amount: 1 }],
     ['del', '/api/transactions/seed-tx-2026-10-1'],
     ['post', '/api/transfers', { monthKey: '2026-10', date: '2026-10-07', via: 'Remitly', fromAccountId: 'us', toAccountId: 'dr', amount: 1, rate: 58 }],
@@ -528,7 +528,12 @@ describe('cuentas', () => {
     await api.post('/api/accounts', { id: 'pp', name: 'PayPal', currency: 'USD' });
     await api.patch('/api/months/2026-10', { budgets: { pp: 10 } });
     expect((await api.del('/api/accounts/pp')).error).toEqual(inUse);
-    await api.patch('/api/months/2026-10', { budgets: { pp: 0 } });
+    // Dejar la parte en 0 no basta: el registro del presupuesto conserva sus movimientos. Hay que borrarlos.
+    const zeroed = await api.patch<Month>('/api/months/2026-10', { budgets: { pp: 0 } });
+    expect((await api.del('/api/accounts/pp')).error).toEqual(inUse);
+    for (const e of zeroed.body.budgetLog.filter((x) => x.accountId === 'pp')) {
+      expect((await api.del(`/api/months/2026-10/budget-log/${e.id}`)).status).toBe(200);
+    }
     const income = await api.post<Income>('/api/incomes', { date: '2026-10-07', amount: 1, cur: 'USD', accountId: 'pp' });
     expect((await api.del('/api/accounts/pp')).error).toEqual(inUse);
     await api.del(`/api/incomes/${income.body.id}`);
@@ -624,7 +629,14 @@ describe('meses', () => {
     expect(r.status).toBe(200);
     expect(r.body.key).toBe('2026-10');
     expect(r.body.budgets).toEqual({ dr: 70000 });
-    expect(r.body.rates).toEqual([{ from: 'USD', to: 'DOP', rate: 58.76 }]);
+    expect(r.body.rates).toEqual([
+      { from: 'USD', to: 'DOP', rate: 58.76, date: '2026-10-01' },
+      { from: 'USD', to: 'DOP', rate: 58.76, date: '2026-10-06' },
+    ]);
+    expect(r.body.budgetLog.map(({ id: _id, ...e }) => e)).toEqual([
+      { date: '2026-10-01', accountId: 'dr', amount: 65000, kind: 'initial', note: '' },
+      { date: '2026-10-05', accountId: 'dr', amount: 5000, kind: 'adjust', note: 'Car repair' },
+    ]);
     expect(r.body.fixed).toHaveLength(11);
     expect(r.body.transfers).toHaveLength(1);
     expect(r.body.tx).toHaveLength(7);
@@ -690,82 +702,143 @@ describe('meses', () => {
 });
 
 describe('tasas del mes', () => {
-  it('PUT /api/months/:key/rates escribe la tasa de un par: una sola por par, también si llega al revés', async () => {
+  it('PUT /api/months/:key/rates escribe la tasa de un par desde una fecha: una por par y fecha, también si llega al revés', async () => {
     const { api, sqlite } = await seeded();
-    const r = await api.put<Month>('/api/months/2026-10/rates', { from: 'USD', to: 'DOP', rate: 59.1 });
+    // Octubre ya tiene dos (día 1 y día 6). Escribir la del día 6 otra vez la sustituye.
+    const r = await api.put<Month>('/api/months/2026-10/rates', { from: 'USD', to: 'DOP', rate: 59.1, date: '2026-10-06' });
     expect(r.status).toBe(200);
     expect(r.body.key).toBe('2026-10');
-    expect(r.body.rates).toEqual([{ from: 'USD', to: 'DOP', rate: 59.1 }]);
+    expect(r.body.rates).toEqual([
+      { from: 'USD', to: 'DOP', rate: 58.76, date: '2026-10-01' },
+      { from: 'USD', to: 'DOP', rate: 59.1, date: '2026-10-06' },
+    ]);
     expect(r.body.fixed).toHaveLength(11);
 
-    // Escribir DOP → USD sustituye a la USD → DOP: es el mismo par.
-    const inverse = await api.put<Month>('/api/months/2026-10/rates', { from: 'DOP', to: 'USD', rate: 0.0168 });
-    expect(inverse.body.rates).toEqual([{ from: 'DOP', to: 'USD', rate: 0.0168 }]);
-    const third = await api.put<Month>('/api/months/2026-10/rates', { from: 'TRY', to: 'USD', rate: 0.025 });
-    expect(third.body.rates).toEqual([
-      { from: 'DOP', to: 'USD', rate: 0.0168 },
-      { from: 'TRY', to: 'USD', rate: 0.025 },
+    // Escribir DOP → USD sustituye a la USD → DOP de esa fecha: es el mismo par.
+    const inverse = await api.put<Month>('/api/months/2026-10/rates', { from: 'DOP', to: 'USD', rate: 0.0168, date: '2026-10-06' });
+    expect(inverse.body.rates).toEqual([
+      { from: 'USD', to: 'DOP', rate: 58.76, date: '2026-10-01' },
+      { from: 'DOP', to: 'USD', rate: 0.0168, date: '2026-10-06' },
     ]);
-    expect(count(sqlite, 'month_rates', F)).toBe(2);
-    // Lo que se calcula con ella cambia: el mismo gasto en USD pesa ahora 1 / 0.0168 DOP por dólar.
+    // Otra fecha del mismo par se añade; otro par, también.
+    await api.put<Month>('/api/months/2026-10/rates', { from: 'USD', to: 'DOP', rate: 60, date: '2026-10-08' });
+    const third = await api.put<Month>('/api/months/2026-10/rates', { from: 'TRY', to: 'USD', rate: 0.025, date: '2026-10-02' });
+    expect(third.body.rates).toEqual([
+      { from: 'USD', to: 'DOP', rate: 58.76, date: '2026-10-01' },
+      { from: 'TRY', to: 'USD', rate: 0.025, date: '2026-10-02' },
+      { from: 'DOP', to: 'USD', rate: 0.0168, date: '2026-10-06' },
+      { from: 'USD', to: 'DOP', rate: 60, date: '2026-10-08' },
+    ]);
+    expect(count(sqlite, 'month_rates', F)).toBe(4);
+    // La tasa del mes es la última; lo de cada día, la vigente ese día.
     const { state } = (await api.get<StateResponse>('/api/state')).body;
-    expect(monthCalc(state, '2026-10').rate).toEqual({ rate: 1 / 0.0168, source: 'month', monthKey: '2026-10' });
+    expect(monthCalc(state, '2026-10').rate).toEqual({ rate: 60, source: 'month', monthKey: '2026-10', date: '2026-10-08' });
+    expect(rateFor(state, '2026-10', 'USD', 'DOP', '2026-10-07')).toEqual({ rate: 1 / 0.0168, source: 'month', monthKey: '2026-10', date: '2026-10-06' });
+    expect(rateFor(state, '2026-10', 'USD', 'DOP', '2026-10-05').rate).toBe(58.76);
     // Un mes sin tasa escrita también la admite (septiembre, reabierto).
     await api.post('/api/months/2026-09/reopen');
-    expect((await api.put<Month>('/api/months/2026-09/rates', { from: 'USD', to: 'DOP', rate: 58.6 })).body.rates).toHaveLength(1);
+    expect((await api.put<Month>('/api/months/2026-09/rates', { from: 'USD', to: 'DOP', rate: 58.6, date: '2026-09-15' })).body.rates).toEqual([
+      { from: 'USD', to: 'DOP', rate: 58.6, date: '2026-09-15' },
+    ]);
   });
 
-  it('DELETE /api/months/:key/rates/:from/:to la quita, esté guardada en un sentido o en el otro', async () => {
+  it('escribir hoy una tasa nueva no cambia lo convertido en las transacciones anteriores', async () => {
+    const { api } = await seeded();
+    // Dos gastos de 10 USD pagados desde la cuenta en DOP: el día 2 y el día 8.
+    const usd = { monthKey: '2026-10', desc: 'Domain', cat: 'Subscriptions', method: 'Debit card', amount: 10, cur: 'USD', accountId: 'dr' };
+    await api.post('/api/transactions', { ...usd, id: 'early', date: '2026-10-02' });
+    const before = (await api.get<StateResponse>('/api/state')).body.state;
+    expect(monthCalc(before, '2026-10').varSpent).toBeCloseTo(10845 + 587.6, 8);
+    const drBefore = await balance(api, 'dr');
+    expect(drBefore).toBeCloseTo(220641.93 - 587.6, 6);
+
+    // El día 8 se escribe 60.
+    expect((await api.put('/api/months/2026-10/rates', { from: 'USD', to: 'DOP', rate: 60, date: '2026-10-08' })).status).toBe(200);
+    const after = (await api.get<StateResponse>('/api/state')).body.state;
+    // El gasto del día 2 sigue valiendo 587.60 en el mes y en el saldo de la cuenta.
+    expect(monthCalc(after, '2026-10').varSpent).toBeCloseTo(10845 + 587.6, 8);
+    expect(await balance(api, 'dr')).toBeCloseTo(drBefore, 8);
+    // Uno del día 8 ya va a 60.
+    await api.post('/api/transactions', { ...usd, id: 'late', date: '2026-10-08' });
+    expect(monthCalc((await api.get<StateResponse>('/api/state')).body.state, '2026-10').varSpent).toBeCloseTo(10845 + 587.6 + 600, 8);
+    expect(await balance(api, 'dr')).toBeCloseTo(drBefore - 600, 8);
+    // Lo que es del mes entero sí sigue a la última: la tasa del mes y el fijo en USD.
+    expect(monthCalc(after, '2026-10').rate.rate).toBe(60);
+    expect(monthCalc(after, '2026-10').fixedPaid).toBeCloseTo(32076.15 + 106 * 60, 6);
+  });
+
+  it('DELETE /api/months/:key/rates/:from/:to?date= quita la de esa fecha, esté guardada en un sentido o en el otro', async () => {
     const { api, sqlite } = await seeded();
-    // Octubre la tiene escrita como USD → DOP; se pide al revés.
-    const r = await api.del<Month>('/api/months/2026-10/rates/DOP/USD');
-    expect(r.status).toBe(200);
-    expect(r.body.key).toBe('2026-10');
+    // Octubre las tiene escritas como USD → DOP; se pide al revés. Solo se va la de la fecha pedida.
+    const one = await api.del<Month>('/api/months/2026-10/rates/DOP/USD?date=2026-10-06');
+    expect(one.status).toBe(200);
+    expect(one.body.key).toBe('2026-10');
+    expect(one.body.rates).toEqual([{ from: 'USD', to: 'DOP', rate: 58.76, date: '2026-10-01' }]);
+    const r = await api.del<Month>('/api/months/2026-10/rates/USD/DOP?date=2026-10-01');
     expect(r.body.rates).toEqual([]);
     expect(count(sqlite, 'month_rates', F)).toBe(0);
     // Sin tasa escrita, la app la saca de los envíos del mes (aquí, la misma cifra).
     const { state } = (await api.get<StateResponse>('/api/state')).body;
-    expect(monthCalc(state, '2026-10').rate).toEqual({ rate: 58.76, source: 'transfers', monthKey: '2026-10' });
-    // Quitar la de un par que no tiene tasa escrita no es un error: el mes queda igual.
-    expect((await api.del<Month>('/api/months/2026-10/rates/USD/DOP')).body).toEqual(r.body);
-    expect((await api.del<Month>('/api/months/2026-10/rates/TRY/USD')).status).toBe(200);
+    expect(monthCalc(state, '2026-10').rate).toEqual({ rate: 58.76, source: 'transfers', monthKey: '2026-10', date: null });
+    // Quitar la de un par o una fecha que no tiene tasa escrita no es un error: el mes queda igual.
+    expect((await api.del<Month>('/api/months/2026-10/rates/USD/DOP?date=2026-10-01')).body).toEqual(r.body);
+    expect((await api.del<Month>('/api/months/2026-10/rates/TRY/USD?date=2026-10-03')).status).toBe(200);
+    // Sin fecha (o con una que no lo es) no se sabe cuál quitar: 400.
+    for (const path of ['/api/months/2026-10/rates/USD/DOP', '/api/months/2026-10/rates/USD/DOP?date=', '/api/months/2026-10/rates/USD/DOP?date=2026-10', '/api/months/2026-10/rates/USD/DOP?date=2026-02-30']) {
+      const bad = await api.del(path);
+      expect(bad.status, path).toBe(400);
+      expect(bad.error?.code, path).toBe('validation');
+    }
+    expect((await api.del('/api/months/2026-10/rates/USD/DOP')).error?.message).toBe('Invalid data: date: is required');
   });
 
   it('valida el par y la tasa, y da 404 si el mes no existe', async () => {
     const { api } = await seeded();
     const bad: unknown[] = [
       {},
-      { from: 'USD', to: 'DOP' },
-      { from: 'USD', to: 'DOP', rate: 0 },
-      { from: 'USD', to: 'DOP', rate: -58 },
-      { from: 'USD', to: 'DOP', rate: '58.76' },
-      { from: 'USD', to: 'USD', rate: 1 },
-      { from: 'USD', to: 'EUR', rate: 1 },
-      { from: 'usd', to: 'DOP', rate: 58 },
-      { from: 'USD', to: 'DOP', rate: 58, monthKey: '2026-10' },
-      [{ from: 'USD', to: 'DOP', rate: 58 }],
+      { from: 'USD', to: 'DOP', date: '2026-10-08' },
+      { from: 'USD', to: 'DOP', rate: 0, date: '2026-10-08' },
+      { from: 'USD', to: 'DOP', rate: -58, date: '2026-10-08' },
+      { from: 'USD', to: 'DOP', rate: '58.76', date: '2026-10-08' },
+      { from: 'USD', to: 'USD', rate: 1, date: '2026-10-08' },
+      { from: 'USD', to: 'EUR', rate: 1, date: '2026-10-08' },
+      { from: 'usd', to: 'DOP', rate: 58, date: '2026-10-08' },
+      { from: 'USD', to: 'DOP', rate: 58, date: '2026-10-08', monthKey: '2026-10' },
+      [{ from: 'USD', to: 'DOP', rate: 58, date: '2026-10-08' }],
       null,
+      // La fecha: obligatoria, una fecha de verdad y dentro del mes de la ruta.
+      { from: 'USD', to: 'DOP', rate: 58 },
+      { from: 'USD', to: 'DOP', rate: 58, date: '2026-10' },
+      { from: 'USD', to: 'DOP', rate: 58, date: '2026-10-32' },
+      { from: 'USD', to: 'DOP', rate: 58, date: '2026-09-30' },
+      { from: 'USD', to: 'DOP', rate: 58, date: '2026-11-01' },
     ];
     for (const body of bad) {
       const r = await api.put('/api/months/2026-10/rates', body);
       expect(r.status, JSON.stringify(body)).toBe(400);
       expect(r.error?.code).toBe('validation');
     }
-    expect((await api.put('/api/months/2026-10/rates', { from: 'USD', to: 'USD', rate: 1 })).error?.message).toBe(
+    expect((await api.put('/api/months/2026-10/rates', { from: 'USD', to: 'USD', rate: 1, date: '2026-10-06' })).error?.message).toBe(
       'Invalid data: to: must be different from `from`',
     );
-    for (const path of ['/api/months/2026-10/rates/USD/USD', '/api/months/2026-10/rates/USD/EUR', '/api/months/2026-10/rates/usd/dop']) {
+    expect((await api.put('/api/months/2026-10/rates', { from: 'USD', to: 'DOP', rate: 58, date: '2026-11-01' })).error?.message).toBe(
+      'Invalid data: date: must be a date in 2026-10',
+    );
+    for (const path of ['/api/months/2026-10/rates/USD/USD?date=2026-10-01', '/api/months/2026-10/rates/USD/EUR?date=2026-10-01', '/api/months/2026-10/rates/usd/dop?date=2026-10-01']) {
       const r = await api.del(path);
       expect(r.status, path).toBe(400);
       expect(r.error?.code).toBe('validation');
     }
-    expect((await api.get<Month>('/api/months/2026-10')).body.rates).toEqual([{ from: 'USD', to: 'DOP', rate: 58.76 }]);
-    expect((await api.put('/api/months/2031-01/rates', { from: 'USD', to: 'DOP', rate: 58 })).error).toEqual({
+    expect((await api.get<Month>('/api/months/2026-10')).body.rates).toEqual([
+      { from: 'USD', to: 'DOP', rate: 58.76, date: '2026-10-01' },
+      { from: 'USD', to: 'DOP', rate: 58.76, date: '2026-10-06' },
+    ]);
+    expect((await api.put('/api/months/2031-01/rates', { from: 'USD', to: 'DOP', rate: 58, date: '2031-01-01' })).error).toEqual({
       code: 'not_found',
       message: 'Month 2031-01 does not exist.',
     });
-    expect((await api.del('/api/months/2031-01/rates/USD/DOP')).status).toBe(404);
-    expect((await api.put('/api/months/nada/rates', { from: 'USD', to: 'DOP', rate: 58 })).status).toBe(404);
+    expect((await api.del('/api/months/2031-01/rates/USD/DOP?date=2031-01-01')).status).toBe(404);
+    expect((await api.put('/api/months/nada/rates', { from: 'USD', to: 'DOP', rate: 58, date: '2026-10-01' })).status).toBe(404);
     // Solo existen esas dos rutas.
     expect((await api.get('/api/months/2026-10/rates')).status).toBe(404);
     expect((await api.del('/api/months/2026-10/rates/USD')).status).toBe(404);
@@ -785,7 +858,7 @@ describe('borrar un mes', () => {
     expect(count(sqlite, 'fixed_expenses', F)).toBe(22);
     expect(count(sqlite, 'transactions', F)).toBe(17);
     expect(count(sqlite, 'transfers', F)).toBe(3);
-    expect(count(sqlite, 'month_budgets', F)).toBe(2);
+    expect(count(sqlite, 'month_budget_log', F)).toBe(3);
     // Ya no cuentan sus envíos (2,300 USD) ni su Claude (106 USD); el sueldo de septiembre sí: es un ingreso.
     expect(await balance(api, 'us')).toBeCloseTo(13482 + 2300 + 106, 8);
     expect(await balance(api, 'dr')).toBeCloseTo(60000 + 104730 + 88140 - 27850 - 10845 - 35750.26 - 32076.15, 6);
@@ -835,7 +908,12 @@ describe('cerrar y reabrir', () => {
       transfers: [],
       tx: [],
     });
-    expect(october.rates).toHaveLength(1);
+    expect(october.rates).toHaveLength(2);
+    // El presupuesto del mes nuevo arranca con un movimiento inicial por cuenta, del día 1.
+    expect(next.budgetLog.map(({ id: _id, ...e }) => e)).toEqual([
+      { date: '2026-11-01', accountId: 'dr', amount: 70000, kind: 'initial', note: '' },
+      { date: '2026-11-01', accountId: 'us', amount: 150, kind: 'initial', note: '' },
+    ]);
     expect(next.fixed.map((f) => [f.name, f.day, f.amount, f.cur, f.accountId, f.sort, f.paid, f.monthKey])).toEqual(
       october.fixed.map((f) => [f.name, f.day, f.amount, f.cur, f.accountId, f.sort, false, '2026-11']),
     );
@@ -844,9 +922,9 @@ describe('cerrar y reabrir', () => {
     expect((await api.get<Month>('/api/months/2026-11')).body).toEqual(next);
     // Cerrar no mueve ningún saldo: los fijos del mes nuevo nacen sin pagar.
     expect(await balance(api, 'dr', '2026-11')).toBeCloseTo(220641.93, 6);
-    // Y sin tasa propia, noviembre usa la del mes anterior más cercano que la tenga.
+    // Y sin tasa propia, en noviembre sigue vigente la última escrita.
     const { state } = (await api.get<StateResponse>('/api/state')).body;
-    expect(monthCalc(state, '2026-11').rate).toEqual({ rate: 58.76, source: 'previous', monthKey: '2026-10' });
+    expect(monthCalc(state, '2026-11').rate).toEqual({ rate: 58.76, source: 'previous', monthKey: '2026-10', date: '2026-10-06' });
   });
 
   it('si el mes siguiente ya existe, cerrar no lo toca ni duplica sus fijos', async () => {
@@ -858,9 +936,9 @@ describe('cerrar y reabrir', () => {
     const nov = (await api.get<Month>('/api/months/2026-11')).body;
     await api.patch(`/api/fixed/${nov.fixed[0]!.id}`, { paid: true, amount: 1400 });
     await api.del(`/api/fixed/${nov.fixed[10]!.id}`);
-    await api.post('/api/transactions', { monthKey: '2026-11', date: '2026-11-01', desc: 'Coffee', cat: 'Food', method: 'Card', amount: 200, cur: 'DOP' });
+    await api.post('/api/transactions', { monthKey: '2026-11', date: '2026-11-01', desc: 'Coffee', cat: 'Food', method: 'Debit card', amount: 200, cur: 'DOP' });
     await api.patch('/api/months/2026-11', { budgets: { dr: 80000 } });
-    await api.put('/api/months/2026-11/rates', { from: 'USD', to: 'DOP', rate: 59 });
+    await api.put('/api/months/2026-11/rates', { from: 'USD', to: 'DOP', rate: 59, date: '2026-11-01' });
     const before = (await api.get<Month>('/api/months/2026-11')).body;
 
     const r = await api.post<CloseResponse>('/api/months/2026-10/close');
@@ -1014,7 +1092,7 @@ describe('gastos fijos', () => {
 });
 
 describe('transacciones', () => {
-  const tx = { monthKey: '2026-10', date: '2026-10-07', desc: 'Uber', cat: 'Transport', method: 'Card', amount: 850, cur: 'DOP' };
+  const tx = { monthKey: '2026-10', date: '2026-10-07', desc: 'Uber', cat: 'Transport', method: 'Debit card', amount: 850, cur: 'DOP' };
 
   it('crear, editar y borrar', async () => {
     const { api } = await seeded();
@@ -1027,7 +1105,7 @@ describe('transacciones', () => {
       desc: 'Uber',
       place: 'Uber',
       cat: 'Transport',
-      method: 'Card',
+      method: 'Debit card',
       amount: 850,
       cur: 'DOP',
       accountId: 'dr',
@@ -1185,15 +1263,17 @@ describe('envíos', () => {
     expect([await balance(api, 'us'), await balance(api, 'dr')]).toEqual([us, dr]);
   });
 
-  it('sin `rate` lleva la tasa del mes para las monedas de las dos cuentas; entre cuentas de la misma moneda, 1', async () => {
+  it('sin `rate` lleva la tasa vigente en su fecha para las monedas de las dos cuentas; entre cuentas de la misma moneda, 1', async () => {
     const { api } = await seeded();
     const { rate: _rate, ...noRate } = transfer;
     // Octubre tiene escrita 1 USD = 58.76 DOP.
     expect((await api.post<Transfer>('/api/transfers', noRate)).body.rate).toBe(58.76);
     const back = await api.post<Transfer>('/api/transfers', { ...noRate, fromAccountId: 'dr', toAccountId: 'us' });
     expect(back.body.rate).toBeCloseTo(1 / 58.76, 12);
-    await api.put('/api/months/2026-10/rates', { from: 'USD', to: 'DOP', rate: 60 });
-    expect((await api.post<Transfer>('/api/transfers', noRate)).body.rate).toBe(60);
+    // Se escribe 60 desde el día 6: un envío del día 5 sigue con 58.76; uno del día 6, con 60.
+    await api.put('/api/months/2026-10/rates', { from: 'USD', to: 'DOP', rate: 60, date: '2026-10-06' });
+    expect((await api.post<Transfer>('/api/transfers', noRate)).body.rate).toBe(58.76);
+    expect((await api.post<Transfer>('/api/transfers', { ...noRate, date: '2026-10-06' })).body.rate).toBe(60);
 
     await api.post('/api/accounts', { id: 'pp', name: 'PayPal', currency: 'USD' });
     expect((await api.post<Transfer>('/api/transfers', { ...noRate, toAccountId: 'pp' })).body.rate).toBe(1);
@@ -1277,12 +1357,12 @@ describe('ingresos', () => {
 
     const created = await api.post<Income>('/api/incomes', { ...income, desc: '  Freelance ' });
     expect(created.status).toBe(201);
-    expect(created.body).toEqual({ id: expect.stringMatching(/^[A-Za-z0-9_-]{1,64}$/), ...income });
+    expect(created.body).toEqual({ id: expect.stringMatching(/^[A-Za-z0-9_-]{1,64}$/), ...income, budget: false });
     const id = created.body.id;
 
     const patched = await api.patch<Income>(`/api/incomes/${id}`, { date: '2026-10-16', desc: '', accountId: 'dr', amount: 23500, cur: 'DOP' });
     expect(patched.status).toBe(200);
-    expect(patched.body).toEqual({ id, date: '2026-10-16', desc: '', accountId: 'dr', amount: 23500, cur: 'DOP' });
+    expect(patched.body).toEqual({ id, date: '2026-10-16', desc: '', accountId: 'dr', amount: 23500, cur: 'DOP', budget: false });
     expect((await api.patch<Income>(`/api/incomes/${id}`, { amount: 0 })).body.amount).toBe(0);
     expect((await api.patch<Income>(`/api/incomes/${id}`, {})).body).toEqual({ ...patched.body, amount: 0 });
     // Sale en el estado, con los demás.
@@ -1370,7 +1450,7 @@ describe('mes cerrado = solo lectura', () => {
       api.patch('/api/fixed/seed-fx-2026-08-1', { paid: false }),
       api.patch('/api/fixed/seed-fx-2026-08-1', { accountId: 'us' }),
       api.del('/api/fixed/seed-fx-2026-08-1'),
-      api.post('/api/transactions', { monthKey: '2026-08', date: '2026-08-30', desc: 'x', cat: 'Food', method: 'Card', amount: 1, cur: 'DOP' }),
+      api.post('/api/transactions', { monthKey: '2026-08', date: '2026-08-30', desc: 'x', cat: 'Food', method: 'Debit card', amount: 1, cur: 'DOP' }),
       api.patch('/api/transactions/seed-tx-2026-08-1', { amount: 1 }),
       api.patch('/api/transactions/seed-tx-2026-08-1', { accountId: 'us' }),
       api.del('/api/transactions/seed-tx-2026-08-1'),
@@ -1382,9 +1462,12 @@ describe('mes cerrado = solo lectura', () => {
       api.patch('/api/months/2026-08', { budgets: { dr: 1 } }),
       api.patch('/api/months/2026-08', { budgets: { dr: 0 } }),
       api.patch('/api/months/2026-08', { budgets: { us: 1, dr: 2 } }),
-      api.put('/api/months/2026-08/rates', { from: 'USD', to: 'DOP', rate: 60 }),
-      api.put('/api/months/2026-08/rates', { from: 'TRY', to: 'USD', rate: 0.025 }),
-      api.del('/api/months/2026-08/rates/USD/DOP'),
+      api.put('/api/months/2026-08/rates', { from: 'USD', to: 'DOP', rate: 60, date: '2026-08-01' }),
+      api.put('/api/months/2026-08/rates', { from: 'TRY', to: 'USD', rate: 0.025, date: '2026-08-01' }),
+      api.del('/api/months/2026-08/rates/USD/DOP?date=2026-08-01'),
+      api.post('/api/months/2026-08/budget-log', { accountId: 'dr', amount: 100 }),
+      api.del('/api/months/2026-08/budget-log/seed-bg-2026-08-1'),
+      api.post('/api/months/2026-08/leftover'),
     ];
     for (const r of await Promise.all(attempts)) {
       expect(r.status).toBe(409);
@@ -1414,8 +1497,8 @@ describe('mes cerrado = solo lectura', () => {
     const { api } = await seeded();
     expect((await api.post('/api/months/2026-08/reopen')).status).toBe(200);
     expect((await api.patch('/api/months/2026-08', { budgets: { dr: 1 } })).status).toBe(200);
-    expect((await api.put('/api/months/2026-08/rates', { from: 'USD', to: 'DOP', rate: 58 })).status).toBe(200);
-    expect((await api.del('/api/months/2026-08/rates/USD/DOP')).status).toBe(200);
+    expect((await api.put('/api/months/2026-08/rates', { from: 'USD', to: 'DOP', rate: 58, date: '2026-08-01' })).status).toBe(200);
+    expect((await api.del('/api/months/2026-08/rates/USD/DOP?date=2026-08-01')).status).toBe(200);
     expect((await api.del('/api/transactions/seed-tx-2026-08-1')).status).toBe(200);
     expect((await api.post('/api/fixed', { monthKey: '2026-08', name: 'Agua', amount: 500, cur: 'DOP' })).status).toBe(201);
   });
@@ -1444,18 +1527,18 @@ describe('metas', () => {
     const created = await api.post<Goal>('/api/goals', { name: ' Car ' });
     expect(created.status).toBe(201);
     // Sin `cur`, la meta queda en la moneda principal del usuario (DOP).
-    expect(created.body).toEqual({ id: expect.any(String), name: 'Car', cur: 'DOP', monthly: null, start: null, end: null, sort: 2 });
+    expect(created.body).toEqual({ id: expect.any(String), name: 'Car', cur: 'DOP', monthly: null, start: null, end: null, approxCur: null, sort: 2 });
     const id = created.body.id;
 
     const planned = await api.post<Goal>('/api/goals', { id: 'house', name: 'House', cur: 'USD', monthly: 500, start: '2026-10', end: '2030-09' });
-    expect(planned.body).toEqual({ id: 'house', name: 'House', cur: 'USD', monthly: 500, start: '2026-10', end: '2030-09', sort: 3 });
+    expect(planned.body).toEqual({ id: 'house', name: 'House', cur: 'USD', monthly: 500, start: '2026-10', end: '2030-09', approxCur: null, sort: 3 });
     expect((await api.post('/api/goals', { id: 'house', name: 'Other' })).error).toEqual({
       code: 'conflict',
       message: 'A record with that id already exists.',
     });
 
-    const patched = await api.patch<Goal>(`/api/goals/${id}`, { name: 'New car', cur: 'TRY', monthly: 250, start: '2026-11', end: '2027-11', sort: 0 });
-    expect(patched.body).toEqual({ id, name: 'New car', cur: 'TRY', monthly: 250, start: '2026-11', end: '2027-11', sort: 0 });
+    const patched = await api.patch<Goal>(`/api/goals/${id}`, { name: 'New car', cur: 'TRY', monthly: 250, start: '2026-11', end: '2027-11', approxCur: null, sort: 0 });
+    expect(patched.body).toEqual({ id, name: 'New car', cur: 'TRY', monthly: 250, start: '2026-11', end: '2027-11', approxCur: null, sort: 0 });
     // null en los tres vuelve a "aportes variables".
     expect((await api.patch<Goal>(`/api/goals/${id}`, { monthly: null, start: null, end: null })).body).toEqual({
       ...patched.body,
@@ -1668,7 +1751,7 @@ describe('dos usuarios por la API', () => {
 
     // Frank cambia filas cuyos ids también tiene Eda.
     await api.patch('/api/months/2026-10', { budgets: { dr: 1, us: 2 } });
-    await api.put('/api/months/2026-10/rates', { from: 'USD', to: 'DOP', rate: 60 });
+    await api.put('/api/months/2026-10/rates', { from: 'USD', to: 'DOP', rate: 60, date: '2026-10-06' });
     await api.patch('/api/accounts/dr', { name: 'De Frank', opening: 1 });
     await api.patch('/api/accounts/us', { hidden: true });
     await api.patch('/api/fixed/seed-fx-2026-10-1', { name: 'De Frank', paid: false, accountId: 'us' });
@@ -1716,7 +1799,7 @@ describe('dos usuarios por la API', () => {
     // Filas que solo tiene Frank.
     await api.post('/api/accounts', { id: 'acc-frank', name: 'PayPal', currency: 'USD' });
     await api.post('/api/fixed', { id: 'fx-frank', monthKey: '2026-10', name: 'Agua', amount: 500, cur: 'DOP' });
-    await api.post('/api/transactions', { id: 'tx-frank', monthKey: '2026-10', date: '2026-10-07', desc: 'x', cat: 'Food', method: 'Card', amount: 1, cur: 'DOP' });
+    await api.post('/api/transactions', { id: 'tx-frank', monthKey: '2026-10', date: '2026-10-07', desc: 'x', cat: 'Food', method: 'Debit card', amount: 1, cur: 'DOP' });
     await api.post('/api/transfers', { id: 'tr-frank', monthKey: '2026-10', date: '2026-10-07', via: 'Wise', fromAccountId: 'us', toAccountId: 'acc-frank', amount: 1 });
     await api.post('/api/incomes', { id: 'in-frank', date: '2026-10-07', amount: 5, cur: 'USD', accountId: 'acc-frank' });
     await api.post('/api/goals', { id: 'goal-frank', name: 'Car' });
@@ -1757,7 +1840,7 @@ describe('dos usuarios por la API', () => {
       ['reabrir mes', await eda.post('/api/months/2026-11/reopen'), await eda.post('/api/months/2031-01/reopen')],
       ['cerrar mes', await eda.post('/api/months/2026-11/close'), await eda.post('/api/months/2031-01/close')],
       ['presupuesto del mes', await eda.patch('/api/months/2026-11', { budgets: { dr: 1 } }), await eda.patch('/api/months/2031-01', { budgets: { dr: 1 } })],
-      ['tasa del mes', await eda.put('/api/months/2026-11/rates', { from: 'USD', to: 'DOP', rate: 1 }), await eda.put('/api/months/2031-01/rates', { from: 'USD', to: 'DOP', rate: 1 })],
+      ['tasa del mes', await eda.put('/api/months/2026-11/rates', { from: 'USD', to: 'DOP', rate: 1, date: '2026-11-01' }), await eda.put('/api/months/2031-01/rates', { from: 'USD', to: 'DOP', rate: 1, date: '2031-01-01' })],
       ['borrar mes', await eda.del('/api/months/2026-11'), await eda.del('/api/months/2031-01')],
     ];
     for (const [what, foreign, missing] of attempts) {
@@ -1773,7 +1856,7 @@ describe('dos usuarios por la API', () => {
     const { api, eda, db } = await pair();
     await api.post('/api/accounts', { id: 'acc-frank', name: 'PayPal', currency: 'USD' });
     const before = [await loadState(db, F), await loadState(db, E)];
-    const tx = { monthKey: '2026-10', date: '2026-10-07', desc: 'x', cat: 'Food', method: 'Card', amount: 1, cur: 'DOP' };
+    const tx = { monthKey: '2026-10', date: '2026-10-07', desc: 'x', cat: 'Food', method: 'Debit card', amount: 1, cur: 'DOP' };
     const transfer = { monthKey: '2026-10', date: '2026-10-07', via: 'Wise', amount: 1 };
     const using = (id: string) => [
       eda.post('/api/transactions', { ...tx, accountId: id }),
@@ -1802,7 +1885,7 @@ describe('dos usuarios por la API', () => {
 
   it('el mismo id del cliente vale para una fila de cada usuario; repetido en el mismo, 409', async () => {
     const { api, eda } = await pair();
-    const tx = { id: 'tx-igual', monthKey: '2026-10', date: '2026-10-07', desc: 'x', cat: 'Food', method: 'Card', amount: 1, cur: 'DOP' };
+    const tx = { id: 'tx-igual', monthKey: '2026-10', date: '2026-10-07', desc: 'x', cat: 'Food', method: 'Debit card', amount: 1, cur: 'DOP' };
     expect((await api.post('/api/transactions', tx)).status).toBe(201);
     expect((await eda.post('/api/transactions', { ...tx, amount: 2 })).status).toBe(201);
     expect((await api.post('/api/transactions', tx)).status).toBe(409);
@@ -1839,7 +1922,7 @@ describe('importar (JSON)', () => {
         accounts: { usd: 10, dop: 20 },
         fixed: [{ name: ' Luz ', day: '', amount: 1500, cur: 'DOP', paid: true }],
         transfers: [{ date: '2026-10-02', via: 'Remitly', usd: 1000, rate: 59 }],
-        tx: [{ date: '2026-10-03', desc: 'Café', place: '', cat: 'Food', method: 'Card', amount: 250, cur: 'DOP', notes: '' }],
+        tx: [{ date: '2026-10-03', desc: 'Café', place: '', cat: 'Food', method: 'Debit card', amount: 250, cur: 'DOP', notes: '' }],
       },
       { key: '2026-11', closed: false, budget: 60000, incomeUSD: 5000, accounts: { usd: 10, dop: 20 }, fixed: [], transfers: [], tx: [] },
     ],
@@ -2050,7 +2133,7 @@ describe('rutas de desarrollo', () => {
     const state = await loadState(db, F);
     // La cuenta por defecto de los datos de ejemplo ('dr') no se conserva: las cuentas son otras, recién creadas.
     expect(state).toEqual(arrivedState('es'));
-    for (const table of ['incomes', 'transactions', 'transfers', 'fixed_expenses', 'contributions', 'month_budgets', 'month_rates']) {
+    for (const table of ['incomes', 'transactions', 'transfers', 'fixed_expenses', 'contributions', 'month_budget_log', 'month_rates']) {
       expect(count(sqlite, table, F), table).toBe(0);
     }
     // Abrir la app después no añade nada.
@@ -2163,8 +2246,8 @@ describe('errores y cabeceras', () => {
       await api.get('/api/accounts'),
       await api.get('/api/incomes'),
       await api.get('/api/goals'),
-      await api.put('/api/months/2026-10/rates', { from: 'USD', to: 'DOP', rate: 59 }),
-      await api.del('/api/months/2026-10/rates/USD/DOP'),
+      await api.put('/api/months/2026-10/rates', { from: 'USD', to: 'DOP', rate: 59, date: '2026-10-06' }),
+      await api.del('/api/months/2026-10/rates/USD/DOP?date=2026-10-06'),
       await api.del('/api/accounts/us'),
       await api.patch('/api/settings', { language: 'en' }),
       await api.post('/api/fixed', { monthKey: '2026-10', name: 'Agua', amount: 1, cur: 'DOP' }),
@@ -2183,7 +2266,7 @@ describe('errores y cabeceras', () => {
     expect(blocked.error).toEqual({ code: 'forbidden', message: 'Request rejected: it comes from another site.' });
     expect((await api.del('/api/transactions/seed-tx-2026-10-1', cross)).status).toBe(403);
     expect((await api.patch('/api/settings', { language: 'es' }, cross)).status).toBe(403);
-    expect((await api.put('/api/months/2026-10/rates', { from: 'USD', to: 'DOP', rate: 1 }, cross)).status).toBe(403);
+    expect((await api.put('/api/months/2026-10/rates', { from: 'USD', to: 'DOP', rate: 1, date: '2026-10-06' }, cross)).status).toBe(403);
     expect((await api.del('/api/months/2026-10', cross)).status).toBe(403);
     expect((await api.post('/api/accounts', { name: 'PayPal', currency: 'USD' }, cross)).status).toBe(403);
     expect((await api.del('/api/incomes/seed-in-1', cross)).status).toBe(403);
@@ -2192,7 +2275,10 @@ describe('errores y cabeceras', () => {
     expect(count(sqlite, 'accounts', F)).toBe(2);
     expect(count(sqlite, 'incomes', F)).toBe(3);
     expect((await api.get<StateResponse>('/api/state')).body.state).toMatchObject({ language: 'en' });
-    expect((await api.get<Month>('/api/months/2026-10')).body.rates).toEqual([{ from: 'USD', to: 'DOP', rate: 58.76 }]);
+    expect((await api.get<Month>('/api/months/2026-10')).body.rates).toEqual([
+      { from: 'USD', to: 'DOP', rate: 58.76, date: '2026-10-01' },
+      { from: 'USD', to: 'DOP', rate: 58.76, date: '2026-10-06' },
+    ]);
 
     expect((await api.get('/api/state', cross)).status).toBe(200);
     expect((await api.get('/api/session', cross)).status).toBe(200);

@@ -202,11 +202,36 @@ export function asD1(db: NodeD1Database): D1Database {
   return db as unknown as D1Database;
 }
 
-/** Base en memoria recién creada con todas las migraciones de migrations/*.sql aplicadas, en orden. */
-export function createTestDb(): NodeD1Database {
-  const db = new NodeD1Database();
-  for (const file of readdirSync(MIGRATIONS_DIR).filter((f) => f.endsWith('.sql')).sort()) {
-    db.sqlite.exec(readFileSync(join(MIGRATIONS_DIR, file), 'utf8'));
+/** Los archivos de migrations/*.sql, en el orden en que se aplican. */
+export function migrationFiles(): string[] {
+  return readdirSync(MIGRATIONS_DIR)
+    .filter((f) => f.endsWith('.sql'))
+    .sort();
+}
+
+/**
+ * Aplica esos archivos de migración, en orden. Como en D1, cada uno va en su propia transacción y con las
+ * claves foráneas activas: `PRAGMA defer_foreign_keys = true` las difiere hasta el final del archivo.
+ */
+export function applyMigrations(db: NodeD1Database, files: readonly string[] = migrationFiles()): void {
+  for (const file of files) {
+    db.sqlite.exec('BEGIN');
+    try {
+      db.sqlite.exec(readFileSync(join(MIGRATIONS_DIR, file), 'utf8'));
+      db.sqlite.exec('COMMIT');
+    } catch (err) {
+      db.sqlite.exec('ROLLBACK');
+      throw err;
+    }
   }
+}
+
+/**
+ * Base en memoria recién creada con las migraciones de migrations/*.sql aplicadas, en orden: todas, o solo las
+ * que se indiquen (para probar una migración sobre una base que se quedó en una anterior).
+ */
+export function createTestDb(files: readonly string[] = migrationFiles()): NodeD1Database {
+  const db = new NodeD1Database();
+  applyMigrations(db, files);
   return db;
 }

@@ -259,9 +259,13 @@ export function createApp(): Hono<AppEnv> {
     return c.json((await db.patchMonth(c.env.DB, uid(c), key, patch)) satisfies Month);
   });
 
-  app.post('/months/:key/close', async (c) =>
-    c.json((await db.closeMonth(c.env.DB, uid(c), monthParam(c))) satisfies CloseResponse),
-  );
+  // El cuerpo es opcional: sin él, el mes siguiente arranca con las partes del presupuesto del que se cierra.
+  app.post('/months/:key/close', async (c) => {
+    const key = monthParam(c);
+    const bytes = await readBody(c.req.raw, MAX_JSON_BYTES, BODY_TOO_LARGE);
+    const request = bytes.byteLength === 0 ? {} : v.parse(v.closeRequestSchema, parseJson(bytes));
+    return c.json((await db.closeMonth(c.env.DB, uid(c), key, request)) satisfies CloseResponse);
+  });
 
   app.post('/months/:key/reopen', async (c) => c.json((await db.reopenMonth(c.env.DB, uid(c), monthParam(c))) satisfies Month));
 
@@ -270,7 +274,21 @@ export function createApp(): Hono<AppEnv> {
     return c.json(OK);
   });
 
-  // Tasas del mes escritas a mano: una por par de monedas
+  // Registro del presupuesto del mes
+  app.post('/months/:key/budget-log', async (c) => {
+    const key = monthParam(c);
+    const input = await jsonBody(c, v.budgetEntryCreateSchema);
+    return c.json((await db.addBudgetEntry(c.env.DB, uid(c), key, input)) satisfies Month, 201);
+  });
+
+  app.delete('/months/:key/budget-log/:id', async (c) =>
+    c.json((await db.deleteBudgetEntry(c.env.DB, uid(c), monthParam(c), idParam(c))) satisfies Month),
+  );
+
+  // Suma al mes lo que sobró del anterior
+  app.post('/months/:key/leftover', async (c) => c.json((await db.addLeftover(c.env.DB, uid(c), monthParam(c))) satisfies Month, 201));
+
+  // Tasas escritas a mano: una por par de monedas y fecha
   app.put('/months/:key/rates', async (c) => {
     const key = monthParam(c);
     const rate = await jsonBody(c, v.monthRateSchema);
@@ -279,8 +297,8 @@ export function createApp(): Hono<AppEnv> {
 
   app.delete('/months/:key/rates/:from/:to', async (c) => {
     const key = monthParam(c);
-    const pair = v.parse(v.ratePairSchema, { from: c.req.param('from'), to: c.req.param('to') });
-    return c.json((await db.deleteMonthRate(c.env.DB, uid(c), key, pair.from, pair.to)) satisfies Month);
+    const pair = v.parse(v.ratePairSchema, { from: c.req.param('from'), to: c.req.param('to'), date: c.req.query('date') });
+    return c.json((await db.deleteMonthRate(c.env.DB, uid(c), key, pair.from, pair.to, pair.date)) satisfies Month);
   });
 
   // Gastos fijos

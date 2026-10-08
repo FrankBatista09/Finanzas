@@ -8,10 +8,12 @@
 //
 // Aquí no se calcula dinero: los saldos, las conversiones y los totales salen de shared/calc.ts sobre el estado
 // que dejan estas funciones. Lo único que se le pide a calc es lo que una escritura necesita para ser válida
-// (la cuenta por defecto, la tasa del mes de un envío, el saldo inicial que corrige un saldo).
+// (la cuenta por defecto, la tasa vigente de un envío, el saldo inicial que corrige un saldo, lo que suma hoy el
+// registro del presupuesto de una cuenta y el sobrante del mes anterior).
 
 import type {
   AccountPatch,
+  BudgetEntryCreate,
   ContributionPatch,
   FixedPatch,
   GoalPatch,
@@ -21,12 +23,13 @@ import type {
   TransferPatch,
   TxPatch,
 } from '../../shared/api';
-import { accountsById, defaultAccount, openingFor, rateFor, sortedKeys } from '../../shared/calc';
+import { accountsById, budgetsFromLog, convert, defaultAccount, leftoverFor, monthCalc, openingFor, rateFor, sortedKeys } from '../../shared/calc';
 import { CURRENCIES, MAX_LEN } from '../../shared/constants';
-import { isISODate, isMonthKey } from '../../shared/month';
+import { clampToMonth, firstDay, inMonth, isISODate, isMonthKey } from '../../shared/month';
 import type {
   Account,
   AppState,
+  BudgetEntry,
   Contribution,
   Currency,
   FixedExpense,
@@ -45,10 +48,15 @@ export type Action =
   | { type: 'account/add'; row: Account }
   | { type: 'account/patch'; id: string; patch: AccountPatch }
   | { type: 'account/remove'; id: string }
-  | { type: 'month/patch'; key: MonthKey; patch: MonthPatch }
+  /** `date`: la fecha del movimiento que se añade al registro (hoy, llevado al mes); sin ella, el primer día del mes. */
+  | { type: 'month/patch'; key: MonthKey; patch: MonthPatch; date?: ISODate }
   | { type: 'month/reopen'; key: MonthKey }
+  | { type: 'budget/add'; key: MonthKey; row: BudgetEntry }
+  | { type: 'budget/remove'; key: MonthKey; id: string }
+  /** `row` es el movimiento 'leftover' tal como se espera que lo escriba el servidor (leftoverEntry). */
+  | { type: 'budget/leftover'; key: MonthKey; row: BudgetEntry }
   | { type: 'rate/set'; key: MonthKey; rate: MonthRate }
-  | { type: 'rate/remove'; key: MonthKey; from: Currency; to: Currency }
+  | { type: 'rate/remove'; key: MonthKey; from: Currency; to: Currency; date: ISODate }
   | { type: 'fixed/add'; row: FixedExpense }
   | { type: 'fixed/patch'; id: string; patch: FixedPatch }
   | { type: 'fixed/remove'; id: string }
@@ -141,31 +149,58 @@ function removeTop(state: AppState, list: TopList, id: string): AppState {
   return rows.some((r) => r.id === id) ? { ...state, [list]: rows.filter((r) => r.id !== id) } : state;
 }
 
-/** Las partes del presupuesto que vengan sustituyen a las que había; 0 quita la parte, como en el servidor. */
-function patchMonth(m: Month, patch: MonthPatch): Month {
+/** Id de un movimiento del registro que todavía no tiene el suyo: lo pone el servidor y llega con el siguiente refresco. */
+export const LOCAL_ENTRY = 'local-';
+
+/** true si el movimiento se añadió aquí y aún no se conoce su id del servidor: no se puede borrar todavía. */
+export function isLocalEntry(id: string): boolean {
+  return id.startsWith(LOCAL_ENTRY);
+}
+
+// Como el servidor (ROUND(…, 6)): una diferencia de 1e-12 no es un cambio.
+const round6 = (n: number) => Math.round(n * 1e6) / 1e6;
+
+/** El mes con ese registro del presupuesto y sus partes (Month.budgets) recalculadas. */
+function withLog(m: Month, budgetLog: BudgetEntry[]): Month {
+  return { ...m, budgetLog, budgets: budgetsFromLog(budgetLog) };
+}
+
+/**
+ * Como el servidor: cada parte que venga es el monto en que debe quedar la suma del registro de esa cuenta, y se
+ * añade un movimiento con la diferencia ('initial' si la cuenta no tenía ninguno en el mes, si no 'adjust').
+ * Sin diferencia no se añade nada: por eso aplicar dos veces la misma acción da lo mismo que una.
+ */
+function patchMonth(m: Month, patch: MonthPatch, date: ISODate): Month {
   if (!patch.budgets) return m;
-  const budgets = { ...m.budgets };
-  let changed = false;
-  for (const [id, amount] of Object.entries(patch.budgets)) {
-    if ((budgets[id] ?? 0) === amount && (amount !== 0 || !Object.hasOwn(budgets, id))) continue;
-    changed = true;
-    if (amount === 0) Reflect.deleteProperty(budgets, id);
-    else budgets[id] = amount;
+  const log = [...m.budgetLog];
+  for (const [accountId, amount] of Object.entries(patch.budgets)) {
+    const diff = round6(amount - (budgetsFromLog(log)[accountId] ?? 0));
+    if (diff === 0) continue;
+    const kind = log.some((e) => e.accountId === accountId) ? 'adjust' : 'initial';
+    // El largo del registro no basta como sufijo: tras quitar un movimiento volvería a salir un id ya usado.
+    let n = log.length;
+    while (log.some((e) => e.id === `${LOCAL_ENTRY}${accountId}-${n}`)) n++;
+    log.push({ id: `${LOCAL_ENTRY}${accountId}-${n}`, date, accountId, amount: diff, kind, note: '' });
   }
-  return changed ? { ...m, budgets } : m;
+  return log.length === m.budgetLog.length ? m : withLog(m, log);
 }
 
 const samePair = (r: Pick<MonthRate, 'from' | 'to'>, from: Currency, to: Currency) =>
   (r.from === from && r.to === to) || (r.from === to && r.to === from);
 
-/** Una sola tasa escrita por par: la nueva sustituye a la que hubiera, estuviera en el sentido que estuviera. */
+const sameRate = (r: MonthRate, from: Currency, to: Currency, date: ISODate) => samePair(r, from, to) && r.date === date;
+
+/**
+ * Una tasa escrita por par y fecha: la nueva sustituye a la de esa misma fecha, estuviera en el sentido que
+ * estuviera, y en su sitio. Las de otras fechas no se tocan: siguen valiendo para lo registrado entre su fecha y esta.
+ */
 function setRate(m: Month, rate: MonthRate): Month {
-  const i = m.rates.findIndex((r) => samePair(r, rate.from, rate.to));
+  const i = m.rates.findIndex((r) => sameRate(r, rate.from, rate.to, rate.date));
   if (i < 0) return { ...m, rates: [...m.rates, rate] };
   const old = m.rates[i]!;
   if (old.from === rate.from && old.to === rate.to && old.rate === rate.rate) return m;
-  const rates = m.rates.filter((r) => !samePair(r, rate.from, rate.to));
-  rates.splice(i, 0, rate);
+  const rates = m.rates.slice();
+  rates[i] = rate;
   return { ...m, rates };
 }
 
@@ -198,16 +233,26 @@ export function reduce(state: AppState, action: Action): AppState {
     }
 
     case 'month/patch':
-      return withMonth(state, action.key, (m) => patchMonth(m, action.patch));
+      return withMonth(state, action.key, (m) => patchMonth(m, action.patch, action.date ?? firstDay(action.key)));
     case 'month/reopen':
       return withMonth(state, action.key, (m) => (m.closed ? { ...m, closed: false, closedAt: null } : m));
+
+    case 'budget/add':
+      return withMonth(state, action.key, (m) => withLog(m, upsert(m.budgetLog, action.row)));
+    case 'budget/remove':
+      return withMonth(state, action.key, (m) =>
+        m.budgetLog.some((e) => e.id === action.id) ? withLog(m, m.budgetLog.filter((e) => e.id !== action.id)) : m,
+      );
+    case 'budget/leftover':
+      // Como mucho uno por mes: si ya lo tiene (el servidor lo confirmó, o es la segunda vez), no se repite.
+      return withMonth(state, action.key, (m) => (m.budgetLog.some((e) => e.kind === 'leftover') ? m : withLog(m, [...m.budgetLog, action.row])));
 
     case 'rate/set':
       return withMonth(state, action.key, (m) => setRate(m, action.rate));
     case 'rate/remove':
       return withMonth(state, action.key, (m) =>
-        m.rates.some((r) => samePair(r, action.from, action.to))
-          ? { ...m, rates: m.rates.filter((r) => !samePair(r, action.from, action.to)) }
+        m.rates.some((r) => sameRate(r, action.from, action.to, action.date))
+          ? { ...m, rates: m.rates.filter((r) => !sameRate(r, action.from, action.to, action.date)) }
           : m,
       );
 
@@ -281,7 +326,7 @@ export function removeMonth(state: AppState, key: MonthKey): AppState {
 export function mergePatch(prev: PatchAction, next: PatchAction): PatchAction {
   if (prev.type === 'rate/set' || next.type === 'rate/set') return next;
   if (prev.type === 'month/patch' && next.type === 'month/patch') {
-    return { ...prev, patch: { budgets: { ...prev.patch.budgets, ...next.patch.budgets } } };
+    return { ...prev, ...next, patch: { budgets: { ...prev.patch.budgets, ...next.patch.budgets } } };
   }
   return { ...prev, patch: { ...prev.patch, ...next.patch } } as PatchAction;
 }
@@ -296,14 +341,17 @@ export function fieldsOf(action: PatchAction): string[] {
 const pairKey = (a: Currency, b: Currency) => [a, b].sort().join('-');
 
 /**
- * A qué entidad se refiere la acción ('tx:abc', 'month:2026-10', 'rate:2026-10:DOP-USD', 'settings'). Sirve de clave
- * para agrupar ediciones de una fila y para descartar lo que quede en cola de una fila que ya no existe.
+ * A qué entidad se refiere la acción ('tx:abc', 'month:2026-10', 'rate:2026-10:DOP-USD:2026-10-07', 'settings').
+ * Sirve de clave para agrupar ediciones de una fila y para descartar lo que quede en cola de una fila que ya no
+ * existe. Cada tasa (par y fecha) es su propia fila, y cada movimiento del registro del presupuesto también.
  */
 export function targetOf(action: Action): string {
   const kind = action.type.slice(0, action.type.indexOf('/'));
   if (action.type === 'settings/patch') return kind;
-  if (action.type === 'rate/set') return `${kind}:${action.key}:${pairKey(action.rate.from, action.rate.to)}`;
-  if (action.type === 'rate/remove') return `${kind}:${action.key}:${pairKey(action.from, action.to)}`;
+  if (action.type === 'rate/set') return `${kind}:${action.key}:${pairKey(action.rate.from, action.rate.to)}:${action.rate.date}`;
+  if (action.type === 'rate/remove') return `${kind}:${action.key}:${pairKey(action.from, action.to)}:${action.date}`;
+  if (action.type === 'budget/add' || action.type === 'budget/leftover') return `${kind}:${action.row.id}`;
+  if (action.type === 'budget/remove') return `${kind}:${action.id}`;
   if ('key' in action) return `${kind}:${action.key}`;
   return `${kind}:${'row' in action ? action.row.id : action.id}`;
 }
@@ -375,6 +423,7 @@ export function incomeChange(state: AppState, patch: IncomePatch): IncomePatch {
     amount: notAmount,
     cur: notCurrency,
     accountId: (id) => !hasAccount(state, id),
+    budget: (budget) => typeof budget !== 'boolean',
   });
 }
 
@@ -436,6 +485,8 @@ export interface IncomeInput {
   accountId?: string;
   amount: number;
   cur: Currency;
+  /** true: el ingreso sube además el presupuesto del mes de su fecha (Income.budget). Sin indicar: false. */
+  budget?: boolean;
 }
 
 export interface ContributionInput {
@@ -460,7 +511,12 @@ export interface GoalInput extends Partial<GoalPlan> {
   name: string;
   /** Moneda de la meta. Sin indicar: la moneda principal del usuario. */
   cur?: Currency;
+  /** Moneda de la línea "≈" de la meta. null o sin indicar: la moneda principal del usuario. */
+  approxCur?: Currency | null;
 }
+
+/** Un movimiento del presupuesto escrito a mano. Sin fecha: la que se pase como "hoy", llevada al mes. */
+export type BudgetEntryInput = Pick<BudgetEntryCreate, 'accountId' | 'amount' | 'date' | 'kind' | 'note'>;
 
 /** Concepto, monto > 0 y una cuenta que exista. Queda al final de la lista, sin pagar. */
 export function newFixed(state: AppState, monthKey: MonthKey, input: FixedInput, id: string): FixedExpense | null {
@@ -496,15 +552,16 @@ export function newTx(state: AppState, monthKey: MonthKey, input: TxInput, id: s
 
 /**
  * La tasa con la que se guarda un envío entre esas dos cuentas, o null si el envío no vale: falta una cuenta, son
- * la misma, o la tasa indicada no es > 0. Sin tasa indicada es la del mes para ese par; entre monedas iguales, 1.
+ * la misma, o la tasa indicada no es > 0. Sin tasa indicada es la vigente en la fecha del envío para ese par (como
+ * hace el servidor); entre monedas iguales, 1.
  */
-function transferRate(state: AppState, monthKey: MonthKey, fromId: string, toId: string, given?: number): number | null {
+function transferRate(state: AppState, monthKey: MonthKey, date: ISODate, fromId: string, toId: string, given?: number): number | null {
   const accounts = accountsById(state);
   const from = accounts.get(fromId);
   const to = accounts.get(toId);
   if (!from || !to || from.id === to.id) return null;
   if (from.currency === to.currency) return 1;
-  if (given === undefined) return rateFor(state, monthKey, from.currency, to.currency).rate;
+  if (given === undefined) return rateFor(state, monthKey, from.currency, to.currency, date).rate;
   return positive(given) ? given : null;
 }
 
@@ -512,7 +569,7 @@ function transferRate(state: AppState, monthKey: MonthKey, fromId: string, toId:
 export function newTransfer(state: AppState, monthKey: MonthKey, input: TransferInput, id: string): Transfer | null {
   const via = named(input.via, MAX_LEN.label);
   if (!via || !state.months[monthKey] || !isISODate(input.date) || !positive(input.amount)) return null;
-  const rate = transferRate(state, monthKey, input.fromAccountId, input.toAccountId, input.rate);
+  const rate = transferRate(state, monthKey, input.date, input.fromAccountId, input.toAccountId, input.rate);
   if (rate === null) return null;
   return { id, monthKey, date: input.date, via, fromAccountId: input.fromAccountId, toAccountId: input.toAccountId, amount: input.amount, rate };
 }
@@ -554,7 +611,7 @@ export function transferChange(state: AppState, id: string, patch: TransferPatch
     out.rate = typed;
   } else if (fromCur && toCur) {
     const moved = fromCur !== accounts.get(row.fromAccountId)?.currency || toCur !== accounts.get(row.toAccountId)?.currency;
-    if (moved) out.rate = rateFor(state, monthKey, fromCur, toCur).rate;
+    if (moved) out.rate = rateFor(state, monthKey, fromCur, toCur, out.date ?? row.date).rate;
   }
   return out;
 }
@@ -564,7 +621,7 @@ export function newIncome(state: AppState, input: IncomeInput, id: string): Inco
   const desc = (input.desc ?? '').trim();
   const accountId = accountFor(state, input.accountId);
   if (!accountId || !isISODate(input.date) || !positive(input.amount) || !isCurrency(input.cur) || desc.length > MAX_LEN.desc) return null;
-  return { id, date: input.date, desc, accountId, amount: input.amount, cur: input.cur };
+  return { id, date: input.date, desc, accountId, amount: input.amount, cur: input.cur, budget: input.budget === true };
 }
 
 /** Monto > 0, fecha válida y una meta que exista. */
@@ -589,12 +646,12 @@ export function accountName(state: AppState, id: string, name: string): string |
   return hasAccount(state, id) && !isBlank(name) && name.length <= MAX_LEN.name ? name : null;
 }
 
-/** true si algo nombra esa cuenta: un gasto fijo, una transacción, un envío, un ingreso o una parte del presupuesto de cualquier mes. */
+/** true si algo nombra esa cuenta: un gasto fijo, una transacción, un envío, un ingreso o un movimiento del presupuesto de cualquier mes. */
 export function accountInUse(state: AppState, id: string): boolean {
   if (state.incomes.some((i) => i.accountId === id)) return true;
   return Object.values(state.months).some(
     (m) =>
-      Object.hasOwn(m.budgets, id) ||
+      m.budgetLog.some((e) => e.accountId === id) ||
       m.fixed.some((f) => f.accountId === id) ||
       m.tx.some((t) => t.accountId === id) ||
       m.transfers.some((t) => t.fromAccountId === id || t.toAccountId === id),
@@ -631,20 +688,57 @@ export function openingForBalance(state: AppState, monthKey: MonthKey, accountId
 
 const openMonth = (state: AppState, key: MonthKey) => state.months[key] !== undefined && !state.months[key].closed;
 
-/** La parte del presupuesto de una cuenta: un mes abierto, una cuenta que exista y un monto >= 0 (0 la quita; la API rechaza negativos). */
+/**
+ * La parte del presupuesto de una cuenta tal como se ve (BudgetPart.amount: su registro más los ingresos que suben
+ * el presupuesto) pasa a ser `amount`. Lo que se manda es lo que debe sumar su registro: `amount` menos lo que ya
+ * ponen esos ingresos, que no se tocan desde aquí. null si no se puede: mes cerrado, cuenta que no existe, monto
+ * que no es un número >= 0, o un monto por debajo de lo que suman los ingresos (el registro quedaría en negativo
+ * y la API lo rechaza).
+ */
 export function budgetPart(state: AppState, key: MonthKey, accountId: string, amount: number): MonthPatch | null {
-  const valid = Number.isFinite(amount) && amount >= 0;
-  return openMonth(state, key) && hasAccount(state, accountId) && valid ? { budgets: { [accountId]: amount } } : null;
+  if (!openMonth(state, key) || !hasAccount(state, accountId) || !nonNegative(amount)) return null;
+  const fromIncomes = monthCalc(state, key).budgetParts.find((p) => p.account.id === accountId)?.fromIncomes ?? 0;
+  const fromLog = round6(amount - fromIncomes);
+  return fromLog >= 0 ? { budgets: { [accountId]: fromLog } } : null;
 }
 
-/** La tasa escrita de un par: un mes abierto, dos monedas distintas y una tasa > 0. */
-export function monthRate(state: AppState, key: MonthKey, from: Currency, to: Currency, rate: number): MonthRate | null {
-  return openMonth(state, key) && isCurrency(from) && isCurrency(to) && from !== to && positive(rate) ? { from, to, rate } : null;
+/** Un movimiento escrito a mano en el registro de un mes abierto: una cuenta que exista, un monto finito distinto de 0 y una fecha del mes. */
+export function newBudgetEntry(state: AppState, key: MonthKey, input: BudgetEntryInput, id: string, today: ISODate): BudgetEntry | null {
+  const date = input.date ?? clampToMonth(today, key);
+  const note = (input.note ?? '').trim();
+  const valid = Number.isFinite(input.amount) && input.amount !== 0 && isISODate(date) && inMonth(date, key) && note.length <= MAX_LEN.desc;
+  if (!openMonth(state, key) || !hasAccount(state, input.accountId) || !valid) return null;
+  return { id, date, accountId: input.accountId, amount: input.amount, kind: input.kind ?? 'adjust', note };
 }
 
-/** La tasa escrita de ese par en ese mes, en el sentido en que se guardó; null si no hay o el mes está cerrado. */
-export function typedRate(state: AppState, key: MonthKey, from: Currency, to: Currency): MonthRate | null {
-  return (openMonth(state, key) && state.months[key]!.rates.find((r) => samePair(r, from, to))) || null;
+/** El movimiento de ese id en el registro de un mes abierto; null si no está, si el mes está cerrado o si aún no tiene id del servidor. */
+export function budgetEntry(state: AppState, key: MonthKey, id: string): BudgetEntry | null {
+  if (!openMonth(state, key) || isLocalEntry(id)) return null;
+  return state.months[key]!.budgetLog.find((e) => e.id === id) ?? null;
+}
+
+/**
+ * El movimiento 'leftover' que suma a ese mes lo que sobró del anterior, como lo escribe el servidor
+ * (POST …/leftover): en la cuenta por defecto y en su moneda, con la última tasa del mes. null si no se puede:
+ * mes cerrado, sin mes anterior, ya sumado, sin cuentas, o nada que sumar (sobró 0).
+ */
+export function leftoverEntry(state: AppState, key: MonthKey, id: string, today: ISODate): BudgetEntry | null {
+  const { leftover, added } = leftoverFor(state, key);
+  const account = defaultAccount(state);
+  if (!openMonth(state, key) || leftover === null || added || !account) return null;
+  const amount = convert(state, key, leftover, state.mainCurrency, account.currency);
+  return amount === 0 ? null : { id, date: clampToMonth(today, key), accountId: account.id, amount, kind: 'leftover', note: '' };
+}
+
+/** La tasa escrita de un par desde una fecha: un mes abierto, dos monedas distintas, una tasa > 0 y una fecha de ese mes. */
+export function monthRate(state: AppState, key: MonthKey, from: Currency, to: Currency, rate: number, date: ISODate): MonthRate | null {
+  const valid = isCurrency(from) && isCurrency(to) && from !== to && positive(rate) && isISODate(date) && inMonth(date, key);
+  return openMonth(state, key) && valid ? { from, to, rate, date } : null;
+}
+
+/** La tasa escrita de ese par y esa fecha en ese mes, en el sentido en que se guardó; null si no hay o el mes está cerrado. */
+export function typedRate(state: AppState, key: MonthKey, from: Currency, to: Currency, date: ISODate): MonthRate | null {
+  return (openMonth(state, key) && state.months[key]!.rates.find((r) => sameRate(r, from, to, date))) || null;
 }
 
 // ── Monedas y cuenta por defecto ─────────────────────────────────────────────
@@ -684,9 +778,10 @@ export function newGoal(state: AppState, input: GoalInput, id: string): Goal | n
   const name = named(input.name);
   const plan = normalizeGoalPlan(input);
   const cur = input.cur ?? state.mainCurrency;
-  if (!name || !plan || !isCurrency(cur)) return null;
+  const approxCur = input.approxCur ?? null;
+  if (!name || !plan || !isCurrency(cur) || (approxCur !== null && !isCurrency(approxCur))) return null;
   const sort = state.goals.reduce((max, g) => Math.max(max, g.sort), -1) + 1;
-  return { id, name, cur, ...plan, sort };
+  return { id, name, cur, ...plan, approxCur, sort };
 }
 
 /**
@@ -706,6 +801,11 @@ export function goalChange(state: AppState, id: string, patch: GoalPatch): GoalP
   if (patch.cur !== undefined) {
     if (!isCurrency(patch.cur)) return null;
     if (patch.cur !== goal.cur) out.cur = patch.cur;
+  }
+  if (patch.approxCur !== undefined) {
+    // null es un valor: "la moneda principal del usuario".
+    if (patch.approxCur !== null && !isCurrency(patch.approxCur)) return null;
+    if (patch.approxCur !== goal.approxCur) out.approxCur = patch.approxCur;
   }
   if (patch.sort !== undefined) {
     if (!Number.isFinite(patch.sort)) return null;

@@ -10,6 +10,8 @@ import type {
   AccountPatch,
   ApiErrorBody,
   ApiErrorCode,
+  BudgetEntryCreate,
+  CloseRequest,
   CloseResponse,
   ContributionCreate,
   ContributionPatch,
@@ -42,6 +44,7 @@ import type {
   FixedExpense,
   Goal,
   Income,
+  ISODate,
   Month,
   MonthKey,
   MonthRate,
@@ -189,15 +192,25 @@ export function createApiClient(fetchImpl: FetchLike = (input, init) => fetch(in
       // ── Meses ─────────────────────────────────────────────────────────────
       listMonths: (opts?: RequestOptions) => json<MonthSummary[]>('GET', '/api/months', { opts }),
       getMonth: (key: MonthKey, opts?: RequestOptions) => json<Month>('GET', `/api/months/${seg(key)}`, { opts }),
-      /** Partes del presupuesto por cuenta. */
+      /** Fija la parte del presupuesto de cada cuenta que venga: el servidor añade al registro la diferencia. */
       patchMonth: (key: MonthKey, patch: MonthPatch, opts?: RequestOptions) =>
         json<Month>('PATCH', `/api/months/${seg(key)}`, { json: patch, opts }),
-      /** Escribe la tasa de un par para ese mes (una sola por par: sustituye a la que hubiera, en el sentido que fuera). */
+      /** Añade un movimiento al registro del presupuesto del mes. */
+      addBudgetEntry: (key: MonthKey, body: BudgetEntryCreate, opts?: RequestOptions) =>
+        json<Month>('POST', `/api/months/${seg(key)}/budget-log`, { json: body, opts }),
+      deleteBudgetEntry: (key: MonthKey, id: string, opts?: RequestOptions) =>
+        json<Month>('DELETE', `/api/months/${seg(key)}/budget-log/${seg(id)}`, { opts }),
+      /** Suma a ese mes lo que sobró del anterior (409 si ya lo tiene). */
+      addLeftover: (key: MonthKey, opts?: RequestOptions) => json<Month>('POST', `/api/months/${seg(key)}/leftover`, { opts }),
+      /** Escribe la tasa de un par desde una fecha del mes (una por par y fecha: sustituye a la de esa fecha, en el sentido que fuera). */
       putMonthRate: (key: MonthKey, rate: MonthRate, opts?: RequestOptions) =>
         json<Month>('PUT', `/api/months/${seg(key)}/rates`, { json: rate, opts }),
-      deleteMonthRate: (key: MonthKey, from: Currency, to: Currency, opts?: RequestOptions) =>
-        json<Month>('DELETE', `/api/months/${seg(key)}/rates/${seg(from)}/${seg(to)}`, { opts }),
-      closeMonth: (key: MonthKey, opts?: RequestOptions) => json<CloseResponse>('POST', `/api/months/${seg(key)}/close`, { opts }),
+      /** Quita la tasa de ese par y esa fecha. La fecha no es un dato personal: va en la consulta porque así la pide la ruta. */
+      deleteMonthRate: (key: MonthKey, from: Currency, to: Currency, date: ISODate, opts?: RequestOptions) =>
+        json<Month>('DELETE', `/api/months/${seg(key)}/rates/${seg(from)}/${seg(to)}?date=${seg(date)}`, { opts }),
+      /** Sin `request` no se manda cuerpo: el mes siguiente arranca con las partes del que se cierra. */
+      closeMonth: (key: MonthKey, request?: CloseRequest, opts?: RequestOptions) =>
+        json<CloseResponse>('POST', `/api/months/${seg(key)}/close`, { json: request, opts }),
       reopenMonth: (key: MonthKey, opts?: RequestOptions) => json<Month>('POST', `/api/months/${seg(key)}/reopen`, { opts }),
       /** Borra el mes con todo lo suyo (gastos, transacciones, envíos, presupuesto y tasas), esté abierto o cerrado. */
       deleteMonth: (key: MonthKey, opts?: RequestOptions) => json<OkResponse>('DELETE', `/api/months/${seg(key)}`, { opts }),

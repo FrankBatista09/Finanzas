@@ -16,6 +16,8 @@ export interface GoalForm {
   name: string;
   /** Moneda de la meta: en ella van el objetivo, el ahorro mensual y lo ahorrado. */
   cur: Currency;
+  /** El selector "Show equivalent in": la moneda de la línea "≈" de la tarjeta. Arranca en la principal del usuario. */
+  approxCur: Currency;
   /** La casilla "This goal has a target". Al desmarcarla los campos del plan se conservan, por si se vuelve a marcar. */
   planned: boolean;
   start: MonthKey;
@@ -61,14 +63,17 @@ export function planMonths(form: Pick<GoalForm, 'start' | 'end'>): number {
 // ── De la meta al formulario ─────────────────────────────────────────────────
 
 /** Formulario de una meta nueva, en la moneda principal del usuario: sin objetivo; si se marca la casilla, el plan empieza este mes. */
-export function newGoalForm(today: ISODate, cur: Currency): GoalForm {
+export function newGoalForm(today: ISODate, cur: Currency, approxCur: Currency = cur): GoalForm {
   const start = monthOf(today);
-  return { name: '', cur, planned: false, start, end: addMonths(start, DEFAULT_MONTHS_AHEAD), target: '', monthly: '', exact: null };
+  return { name: '', cur, approxCur, planned: false, start, end: addMonths(start, DEFAULT_MONTHS_AHEAD), target: '', monthly: '', exact: null };
 }
 
-/** Formulario para editar una meta. El mensual exacto se conserva: guardar sin tocar nada no cambia la meta. */
-export function goalToForm(goal: Goal, today: ISODate): GoalForm {
-  const blank = { ...newGoalForm(today, goal.cur), name: goal.name };
+/**
+ * Formulario para editar una meta. El mensual exacto se conserva: guardar sin tocar nada no cambia la meta.
+ * `main` es la moneda principal del usuario: es la que enseña el selector "≈" de una meta que no eligió ninguna.
+ */
+export function goalToForm(goal: Goal, today: ISODate, main: Currency = goal.cur): GoalForm {
+  const blank = { ...newGoalForm(today, goal.cur, goal.approxCur ?? main), name: goal.name };
   const plan = normalizeGoalPlan(goal);
   if (!plan || plan.monthly === null || plan.start === null || plan.end === null) return blank;
   const { monthly, start, end } = plan;
@@ -168,10 +173,12 @@ export function goalFormErrors(form: GoalForm, goals: readonly Pick<Goal, 'id' |
 }
 
 /**
- * Lo que se guarda (actions.addGoal / patchGoal): el nombre sin espacios sobrantes, la moneda y el plan con sus tres
- * valores, o los tres en null si la meta es de aportes variables. Solo tiene sentido con el formulario ya validado.
+ * Lo que se guarda (actions.addGoal / patchGoal): el nombre sin espacios sobrantes, la moneda, la moneda "≈" y el
+ * plan con sus tres valores, o los tres en null si la meta es de aportes variables. Solo tiene sentido con el
+ * formulario ya validado. La moneda "≈" igual a la principal (`main`) se guarda como null: así sigue a la
+ * principal si el usuario la cambia después.
  */
-export function formToInput(form: GoalForm): { name: string; cur: Currency } & GoalPlan {
-  const base = { name: form.name.trim(), cur: form.cur };
+export function formToInput(form: GoalForm, main: Currency): { name: string; cur: Currency; approxCur: Currency | null } & GoalPlan {
+  const base = { name: form.name.trim(), cur: form.cur, approxCur: form.approxCur === main ? null : form.approxCur };
   return form.planned ? { ...base, monthly: form.exact, start: form.start, end: form.end } : { ...base, monthly: null, start: null, end: null };
 }

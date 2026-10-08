@@ -70,7 +70,7 @@ describe('GET /api/export.xlsx', () => {
     const { api, eda, db } = await seeded();
     await updateSettings(db, F, { language: 'es' });
     await updateSettings(db, E, { language: 'tr' });
-    await eda.post('/api/transactions', { monthKey: '2026-10', date: '2026-10-07', desc: 'Simit', cat: 'Food', method: 'Card', amount: 50, cur: 'DOP' });
+    await eda.post('/api/transactions', { monthKey: '2026-10', date: '2026-10-07', desc: 'Simit', cat: 'Food', method: 'Debit card', amount: 50, cur: 'DOP' });
 
     const mine = await api.raw('/api/export.xlsx', { method: 'GET' });
     const hers = await eda.raw('/api/export.xlsx', { method: 'GET' });
@@ -85,7 +85,7 @@ describe('GET /api/export.xlsx', () => {
     // Lo que se guarda no depende del idioma: el generador recibe los valores canónicos y es él quien traduce.
     expect(frankData).toEqual(buildExportData(seedState()));
     expect(edaData.months[2]!.tx).toHaveLength(8);
-    expect(edaData.months[2]!.tx.at(-1)).toMatchObject({ desc: 'Simit', cat: 'Food', method: 'Card' });
+    expect(edaData.months[2]!.tx.at(-1)).toMatchObject({ desc: 'Simit', cat: 'Food', method: 'Debit card' });
   });
 
   it('un nombre con tildes viaja en filename* y deja un nombre ASCII de respaldo', async () => {
@@ -133,7 +133,7 @@ describe('POST /api/import con el .xlsx crudo', () => {
         accounts: { usd: 1, dop: 2 },
         fixed: [{ name: 'Luz', day: '', amount: 1400, cur: 'DOP', paid: false }],
         transfers: [],
-        tx: [{ date: '2026-11-02', desc: 'Café', place: '', cat: 'Food', method: 'Card', amount: 200, cur: 'DOP', notes: '' }],
+        tx: [{ date: '2026-11-02', desc: 'Café', place: '', cat: 'Food', method: 'Debit card', amount: 200, cur: 'DOP', notes: '' }],
       },
     ],
     contribs: null,

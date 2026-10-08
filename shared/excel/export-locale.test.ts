@@ -33,6 +33,16 @@ const LANGS: Language[] = ['en', 'es', 'tr'];
  */
 const LISTED_CATS = 10;
 
+/**
+ * Lo mismo con los métodos: Config lista los tres del diseño original, con sus nombres de entonces. Los de hoy
+ * (débito, crédito, efectivo…) se escriben en las filas, y al importar la tarjeta de entonces vale por la de débito.
+ */
+const LISTED_METHODS: Record<Language, readonly string[]> = {
+  en: ['Card', 'Transfer', 'Bank app'],
+  es: ['Tarjeta', 'Transferencia', 'App del banco'],
+  tr: ['Kart', 'Havale', 'Banka uygulaması'],
+};
+
 /** Frases de fórmula: listas de trozos de texto, alguno de los cuales puede ir vacío. */
 const PHRASES = [
   'month.pctUsed',
@@ -85,15 +95,20 @@ const isPhrasePart = (path: string) => PHRASES.some((p) => path.startsWith(`${p}
  */
 function sampleData(): ExportData {
   const data = frozenExportData('en');
+  // La entrada congelada es de cuando había una sola tarjeta ('Card'): aquí va con el método de hoy.
+  for (const m of data.months) for (const t of m.tx) if (t.method === 'Card') t.method = 'Debit card';
   const oct = data.months[data.months.length - 1]!;
   oct.fixed.push({ name: 'Colegio', day: 'fin de mes', amount: 3000, cur: 'DOP', paid: false });
   oct.transfers.push({ date: '2026-10-06', via: 'Banco Popular', usd: 200, rate: 58.9 });
   oct.tx.push(
-    { date: '2026-10-08', desc: 'Compra semanal', place: 'Veterinaria', cat: 'Mascotas', method: 'Efectivo', amount: 950, cur: 'DOP', notes: 'Comida del perro' },
+    { date: '2026-10-08', desc: 'Compra semanal', place: 'Veterinaria', cat: 'Mascotas', method: 'Cheque', amount: 950, cur: 'DOP', notes: 'Comida del perro' },
     // 'Comida' es la categoría Food en español, pero no es el valor canónico: es texto del usuario y no se traduce.
     { date: '2026-10-09', desc: 'Almuerzo', place: 'Adrian Tropical', cat: 'Comida', method: 'Tarjeta', amount: 1150, cur: 'DOP', notes: '' },
     // "Other" es una categoría de la app que el libro no lista en Config: su fila se escribe traducida igualmente.
-    { date: '2026-10-10', desc: 'Regalo', place: 'Librería Cuesta', cat: 'Other', method: 'Card', amount: 500, cur: 'DOP', notes: '' },
+    { date: '2026-10-10', desc: 'Regalo', place: 'Librería Cuesta', cat: 'Other', method: 'Debit card', amount: 500, cur: 'DOP', notes: '' },
+    // Métodos de la app que el libro tampoco lista en Config.
+    { date: '2026-10-11', desc: 'Zapatos', place: 'Ágora Mall', cat: 'Clothing', method: 'Credit card', amount: 2800, cur: 'DOP', notes: '' },
+    { date: '2026-10-12', desc: 'Colmado', place: '', cat: 'Groceries', method: 'Cash', amount: 300, cur: 'DOP', notes: '' },
   );
   data.goals.push(
     { name: 'Ahorros', monthlyUSD: null, start: null, end: null },
@@ -196,7 +211,8 @@ describe('ExcelLocale', () => {
     expect(lists(EXCEL_ES).get('months')).toBe(12);
     expect(lists(EXCEL_ES).get('cats')).toBe(LISTED_CATS);
     expect(CATS).toHaveLength(LISTED_CATS + 1);
-    expect(lists(EXCEL_ES).get('methods')).toBe(METHODS.length);
+    expect(lists(EXCEL_ES).get('methods')).toBe(3);
+    expect(METHODS).toHaveLength(5);
   });
 
   it.each(LANGS)('%s: ningún texto vacío ni con espacios sobrantes; cada frase dice algo', (lang) => {
@@ -212,12 +228,13 @@ describe('ExcelLocale', () => {
     }
   });
 
-  it.each(LANGS)('%s: meses, categorías y métodos son los de shared/i18n', (lang) => {
+  it.each(LANGS)('%s: meses y categorías son los de shared/i18n; los métodos de la lista, los tres del diseño original', (lang) => {
     const L = EXCEL_LOCALES[lang];
     expect(L.months).toBe(MONTH_NAMES[lang]);
     expect(L.cats).toEqual(CAT_NAMES[lang].slice(0, LISTED_CATS));
     expect(CATS[LISTED_CATS]).toBe('Other');
-    expect(L.methods).toBe(METHOD_NAMES[lang]);
+    expect(L.methods).toEqual(LISTED_METHODS[lang]);
+    expect(L.methods).not.toEqual(METHOD_NAMES[lang]);
     expect(L.month.fixedCategory).toBe(FIXED_CATEGORY_NAMES[lang]);
   });
 
@@ -391,7 +408,7 @@ describe.each(LANGS)('libro en %s', (lang) => {
   it('categorías y métodos se escriben traducidos; lo que no está en las listas, tal cual', () => {
     // Listas de Config y filas de "Por categoría".
     expect(L.cats.map((_, i) => config.cells.get(`E${4 + i}`)?.value)).toEqual(CAT_NAMES[lang].slice(0, LISTED_CATS));
-    expect(METHODS.map((_, i) => config.cells.get(`F${4 + i}`)?.value)).toEqual([...METHOD_NAMES[lang]]);
+    expect(METHODS.map((_, i) => config.cells.get(`F${4 + i}`)?.value ?? null)).toEqual([...LISTED_METHODS[lang], null, null]);
     expect(oct.cells.get('M15')?.value).toBe(FIXED_CATEGORY_NAMES[lang]);
     expect(L.cats.map((_, i) => oct.cells.get(`M${16 + i}`)?.value)).toEqual(CAT_NAMES[lang].slice(0, LISTED_CATS));
 
@@ -401,11 +418,13 @@ describe.each(LANGS)('libro en %s', (lang) => {
     const row = (i: number) => ['C', 'D', 'E', 'F', 'K'].map((col) => oct.cells.get(`${col}${first + i}`)?.value ?? null);
     const cat = (name: (typeof CATS)[number]) => CAT_NAMES[lang][CATS.indexOf(name)];
     const method = (name: (typeof METHODS)[number]) => METHOD_NAMES[lang][METHODS.indexOf(name)];
-    expect(row(0)).toEqual(['Weekly groceries', 'Supermercado Nacional', cat('Groceries'), method('Card'), null]);
+    expect(row(0)).toEqual(['Weekly groceries', 'Supermercado Nacional', cat('Groceries'), method('Debit card'), null]);
     expect(row(3)).toEqual(['Movies', 'Caribbean Cinemas', cat('Entertainment'), method('Bank app'), null]);
-    expect(row(7)).toEqual(['Compra semanal', 'Veterinaria', 'Mascotas', 'Efectivo', 'Comida del perro']);
+    expect(row(7)).toEqual(['Compra semanal', 'Veterinaria', 'Mascotas', 'Cheque', 'Comida del perro']);
     expect(row(8)).toEqual(['Almuerzo', 'Adrian Tropical', 'Comida', 'Tarjeta', null]);
-    expect(row(9)).toEqual(['Regalo', 'Librería Cuesta', cat('Other'), method('Card'), null]);
+    expect(row(9)).toEqual(['Regalo', 'Librería Cuesta', cat('Other'), method('Debit card'), null]);
+    expect(row(10)).toEqual(['Zapatos', 'Ágora Mall', cat('Clothing'), method('Credit card'), null]);
+    expect(row(11)).toEqual(['Colmado', null, cat('Groceries'), method('Cash'), null]);
 
     // El método Transfer (agosto) también.
     const aug = book.sheet(`${L.months[7]} 2026`);
@@ -425,8 +444,24 @@ describe.each(LANGS)('libro en %s', (lang) => {
     expect([...oct.cells.values()].filter((c) => c.ref.startsWith('E') && c.value === other)).toHaveLength(1);
     // …y el lector la devuelve con su nombre canónico, sea cual sea el idioma.
     const read = parseFinanzasXlsx(bytes).months.find((m) => m.key === '2026-10')!;
-    expect(read.tx.find((x) => x.desc === 'Regalo')).toMatchObject({ cat: 'Other', method: 'Card', amount: 500 });
+    expect(read.tx.find((x) => x.desc === 'Regalo')).toMatchObject({ cat: 'Other', method: 'Debit card', amount: 500 });
     expect(read.tx.find((x) => x.desc === 'Movies')).toMatchObject({ cat: 'Entertainment' });
+  });
+
+  it('Config lista los tres métodos de antes; los de hoy salen traducidos en su fila y vuelven canónicos al importar', () => {
+    expect([4, 5, 6, 7].map((r) => config.cells.get(`F${r}`)?.value ?? null)).toEqual([...LISTED_METHODS[lang], null]);
+    const names = { en: ['Debit card', 'Credit card', 'Cash'], es: ['Tarjeta de débito', 'Tarjeta de crédito', 'Efectivo'], tr: ['Banka kartı', 'Kredi kartı', 'Nakit'] }[lang];
+    expect((['Debit card', 'Credit card', 'Cash'] as const).map((m) => METHOD_NAMES[lang][METHODS.indexOf(m)])).toEqual(names);
+    const written = (name: string) => [...oct.cells.values()].filter((c) => c.ref.startsWith('F') && c.value === name).length;
+    expect(names.map(written)).toEqual([7, 1, 1]);
+    // Ninguno de los nuevos entra en Config.
+    for (const name of names) expect([...config.cells.values()].some((c) => c.value === name), name).toBe(false);
+    const read = parseFinanzasXlsx(bytes).months.find((m) => m.key === '2026-10')!;
+    expect(read.tx.find((x) => x.desc === 'Zapatos')).toMatchObject({ cat: 'Clothing', method: 'Credit card' });
+    expect(read.tx.find((x) => x.desc === 'Colmado')).toMatchObject({ cat: 'Groceries', method: 'Cash' });
+    expect(read.tx.find((x) => x.desc === 'Weekly groceries')).toMatchObject({ method: 'Debit card' });
+    // 'Tarjeta' escrito por el usuario (o elegido de la lista de Config) es la tarjeta de antes: la de débito.
+    expect(read.tx.find((x) => x.desc === 'Almuerzo')).toMatchObject({ cat: 'Food', method: 'Debit card' });
   });
 
   it('la columna "Pagado" lleva los valores de ese idioma, también en su lista y en su formato', () => {

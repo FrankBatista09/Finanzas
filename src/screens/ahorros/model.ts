@@ -2,11 +2,11 @@
 // Los números salen de shared/calc.ts; aquí solo se les da formato y se arma cada frase en el idioma que se pida
 // (./strings). Sin React, para probarlo en Node.
 //
-// Cada meta va en su moneda; los ingresos y los aportes, en la suya. Lo que se ve convertido usa la tasa del mes
-// de la fecha de cada fila, y cada cifra convertida lleva una nota (RateNote) cuando esa tasa no es la escrita
-// para ese mes.
+// Cada meta va en su moneda; los ingresos y los aportes, en la suya. Lo que se ve convertido usa la tasa vigente
+// en la fecha de cada fila, y cada cifra convertida lleva una nota (RateNote) cuando esa tasa no es una escrita
+// en el mes de la fila.
 
-import { contribIn, convert, currentKey, defaultAccount, goalsProgress, incomeRows, rateFor, sortedIncomes, visibleAccounts } from '../../../shared/calc';
+import { contribIn, convertOn, currentKey, defaultAccount, goalsProgress, incomeRows, rateFor, sortedIncomes, visibleAccounts } from '../../../shared/calc';
 import type { GoalProgress, IncomeRow } from '../../../shared/calc';
 import { MAX_LEN } from '../../../shared/constants';
 import { f0, f2, fPct } from '../../../shared/format';
@@ -28,9 +28,9 @@ export interface RateNote {
 
 export const NO_NOTE: RateNote = { hint: '', fallback: false };
 
-/** La nota de la conversión `from` → `to` con las tasas del mes `key`. */
-export function rateNote(state: AppState, key: MonthKey, from: Currency, to: Currency, lang: Language): RateNote {
-  const info = rateFor(state, key, from, to);
+/** La nota de la conversión `from` → `to` con las tasas del mes `key`: la última del mes o, con `date`, la vigente ese día. */
+export function rateNote(state: AppState, key: MonthKey, from: Currency, to: Currency, lang: Language, date?: ISODate): RateNote {
+  const info = rateFor(state, key, from, to, date);
   if (info.source === 'same' || info.source === 'month') return NO_NOTE;
   return { hint: createI18n(lang).rateHint(info, from, to), fallback: info.source === 'default' };
 }
@@ -55,10 +55,15 @@ export interface GoalCardView {
   kind: string;
   /** Ahorrado en la moneda de la meta, con dos decimales. */
   saved: string;
-  /** Su equivalente en la moneda principal, sin decimales (la línea "≈"); null si la meta ya está en la principal. */
-  savedMain: string | null;
-  /** La tasa del mes en curso con la que se calculó `savedMain`. */
-  mainNote: RateNote;
+  /**
+   * Su equivalente en `approxCur`, sin decimales (la línea "≈"); null si esa moneda es la de la propia meta: la
+   * línea no se pinta.
+   */
+  savedApprox: string | null;
+  /** La moneda de la línea "≈": la que eligió la meta o, si no eligió, la principal del usuario. */
+  approxCur: Currency;
+  /** La tasa del mes en curso con la que se calculó `savedApprox`. */
+  approxNote: RateNote;
   /** Con objetivo: cuánto falta (o que ya se llegó, o que el mes objetivo pasó). Sin objetivo: cuántos aportes lleva. */
   plan: string;
   /** null = meta de aportes variables: sin barra de progreso. */
@@ -83,21 +88,22 @@ export function monthInSentence(key: MonthKey, lang: Language): string {
 }
 
 /**
- * `main` es la moneda principal del usuario. `current` es el mes en curso (shared/calc currentKey), el mismo desde
- * el que goalProgress cuenta los aportes que faltan: con él se sabe si el mes objetivo ya quedó atrás. `mainNote`
- * es la nota de la tasa con la que se pasó lo ahorrado a la moneda principal.
+ * `current` es el mes en curso (shared/calc currentKey), el mismo desde el que goalProgress cuenta los aportes que
+ * faltan: con él se sabe si el mes objetivo ya quedó atrás. `approxNote` es la nota de la tasa con la que se pasó
+ * lo ahorrado a la moneda de la línea "≈" (GoalProgress.approxCur).
  */
-export function goalCard(g: GoalProgress, lang: Language, main: Currency, current: MonthKey | null = null, mainNote: RateNote = NO_NOTE): GoalCardView {
+export function goalCard(g: GoalProgress, lang: Language, current: MonthKey | null = null, approxNote: RateNote = NO_NOTE): GoalCardView {
   const s = translator(AHORROS, lang);
   const currency = g.cur;
-  const same = g.cur === main;
+  const same = g.cur === g.approxCur;
   const base = {
     id: g.id,
     name: g.name,
     cur: g.cur,
     saved: f2(g.saved),
-    savedMain: same ? null : f0(g.savedMain),
-    mainNote: same ? NO_NOTE : mainNote,
+    savedApprox: same ? null : f0(g.savedApprox),
+    approxCur: g.approxCur,
+    approxNote: same ? NO_NOTE : approxNote,
   };
   const t = g.target;
   if (!t) {
@@ -127,9 +133,8 @@ export function goalCard(g: GoalProgress, lang: Language, main: Currency, curren
 
 export function goalCards(state: AppState, lang: Language): GoalCardView[] {
   const current = currentKey(state);
-  const main = state.mainCurrency;
-  // goalProgress pasa lo ahorrado a la moneda principal con la tasa del mes en curso: la nota es la de esa tasa.
-  return goalsProgress(state).map((g) => goalCard(g, lang, main, current, current ? rateNote(state, current, g.cur, main, lang) : NO_NOTE));
+  // goalProgress pasa lo ahorrado a la moneda "≈" con la última tasa del mes en curso: la nota es la de esa tasa.
+  return goalsProgress(state).map((g) => goalCard(g, lang, current, current ? rateNote(state, current, g.cur, g.approxCur, lang) : NO_NOTE));
 }
 
 // ── Ingresos por mes ─────────────────────────────────────────────────────────
@@ -158,7 +163,7 @@ type Dated = { date: ISODate; cur: Currency };
 
 /** ¿Alguna de esas filas con fecha en ese mes pasó a la moneda principal con la tasa de respaldo? */
 function usesFallback(state: AppState, key: MonthKey, rows: readonly Dated[]): boolean {
-  return rows.some((r) => monthOf(r.date) === key && rateFor(state, key, r.cur, state.mainCurrency).source === 'default');
+  return rows.some((r) => monthOf(r.date) === key && rateFor(state, key, r.cur, state.mainCurrency, r.date).source === 'default');
 }
 
 export function incomeRowView(r: IncomeRow, lang: Language, incomeFallback = false, savedFallback = false): IncomeRowView {
@@ -189,15 +194,21 @@ export interface IncomeItemView {
   /** El mismo monto con formato, para el nombre del botón de eliminar. */
   amountText: string;
   cur: Currency;
-  /** En la moneda principal, con la tasa del mes de su fecha. */
+  /** true: además de entrar a la cuenta, sube el presupuesto del mes de su fecha (la casilla "Adds to budget"). */
+  budget: boolean;
+  /** En la moneda principal, con la tasa vigente en su fecha. */
   main: string;
   mainNote: RateNote;
 }
 
-/** Del más reciente al más antiguo; los de un mismo día quedan en el orden en que se registraron. */
-export function incomeItems(state: AppState, lang: Language): IncomeItemView[] {
+/**
+ * Del más reciente al más antiguo; los de un mismo día quedan en el orden en que se registraron. Con `monthKey`,
+ * solo los que tienen fecha en ese mes (la tarjeta "Income" de la hoja del mes).
+ */
+export function incomeItems(state: AppState, lang: Language, monthKey?: MonthKey): IncomeItemView[] {
   const main = state.mainCurrency;
-  return sortedIncomes(state).map((i) => {
+  const all = sortedIncomes(state);
+  return (monthKey === undefined ? all : all.filter((i) => monthOf(i.date) === monthKey)).map((i) => {
     const key = monthOf(i.date);
     return {
       id: i.id,
@@ -207,8 +218,9 @@ export function incomeItems(state: AppState, lang: Language): IncomeItemView[] {
       amount: i.amount,
       amountText: f2(i.amount),
       cur: i.cur,
-      main: f2(convert(state, key, i.amount, i.cur, main)),
-      mainNote: rateNote(state, key, i.cur, main, lang),
+      budget: i.budget,
+      main: f2(convertOn(state, i.date, i.amount, i.cur, main)),
+      mainNote: rateNote(state, key, i.cur, main, lang, i.date),
     };
   });
 }
@@ -223,9 +235,15 @@ export interface IncomeDraft {
   amount: number;
   /** null = la moneda de la cuenta elegida: la sigue hasta que el usuario elige otra. */
   cur: Currency | null;
+  /** La casilla "Adds to budget" de la fila de agregar. */
+  budget: boolean;
 }
 
-export const EMPTY_INCOME: IncomeDraft = { date: null, desc: '', accountId: null, amount: 0, cur: null };
+/** La fila de agregar de Savings: el ingreso entra a la cuenta y no toca el presupuesto. */
+export const EMPTY_INCOME: IncomeDraft = { date: null, desc: '', accountId: null, amount: 0, cur: null, budget: false };
+
+/** La fila de agregar de la hoja del mes: el ingreso sube además el presupuesto de ese mes, salvo que se desmarque. */
+export const EMPTY_MONTH_INCOME: IncomeDraft = { ...EMPTY_INCOME, budget: true };
 
 /** Un ingreso tal como lo muestra la fila de agregar, con todos sus campos resueltos. */
 export interface IncomeDraftView {
@@ -235,11 +253,13 @@ export interface IncomeDraftView {
   accountId: string;
   amount: number;
   cur: Currency;
+  budget: boolean;
 }
 
 /**
  * Lo que muestra la fila de agregar. Una cuenta que ya no se ofrece (se ocultó o se eliminó) se cambia por la
- * cuenta por defecto. Sin moneda elegida va la de la cuenta.
+ * cuenta por defecto. Sin moneda elegida va la de la cuenta. `today` es la fecha que se propone: hoy en Savings; en
+ * la hoja del mes, la de sus filas de agregar (useFinanzas().draftDate).
  */
 export function resolveIncomeDraft(draft: IncomeDraft, state: AppState, today: ISODate): IncomeDraftView {
   const account = visibleAccounts(state).find((a) => a.id === draft.accountId) ?? defaultAccount(state);
@@ -249,6 +269,7 @@ export function resolveIncomeDraft(draft: IncomeDraft, state: AppState, today: I
     accountId: account?.id ?? '',
     amount: draft.amount,
     cur: draft.cur ?? account?.currency ?? state.mainCurrency,
+    budget: draft.budget,
   };
 }
 
@@ -263,7 +284,7 @@ export function incomeDraftInput(draft: IncomeDraft, state: AppState, today: ISO
   return ok ? { ...input, desc } : null;
 }
 
-/** Después de agregar se limpia lo propio de cada ingreso; fecha, cuenta y moneda se quedan para el siguiente. */
+/** Después de agregar se limpia lo propio de cada ingreso; fecha, cuenta, moneda y la casilla del presupuesto se quedan para el siguiente. */
 export function afterIncomeAdd(draft: IncomeDraft): IncomeDraft {
   return { ...draft, desc: '', amount: 0 };
 }
@@ -284,7 +305,7 @@ export interface ContributionRowView {
   /** En la moneda de su meta, con el código ('3,000.00 USD'); una raya si la meta ya no existe. */
   inGoal: string;
   goalNote: RateNote;
-  /** En la moneda principal. Las dos conversiones usan la tasa del mes de la fecha del aporte. */
+  /** En la moneda principal. Las dos conversiones usan la tasa vigente en la fecha del aporte. */
   main: string;
   mainNote: RateNote;
 }
@@ -307,9 +328,9 @@ export function contributionRows(state: AppState, lang: Language): ContributionR
         amountText: f2(c.amount),
         cur: c.cur,
         inGoal: goal ? `${f2(contribIn(state, c, goal.cur))} ${goal.cur}` : '—',
-        goalNote: goal ? rateNote(state, key, c.cur, goal.cur, lang) : NO_NOTE,
+        goalNote: goal ? rateNote(state, key, c.cur, goal.cur, lang, c.date) : NO_NOTE,
         main: f2(contribIn(state, c, main)),
-        mainNote: rateNote(state, key, c.cur, main, lang),
+        mainNote: rateNote(state, key, c.cur, main, lang, c.date),
       };
     });
 }

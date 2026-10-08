@@ -5,6 +5,8 @@ import { ApiError, toApiError, zodMessage } from './errors';
 import {
   accountCreateSchema,
   accountPatchSchema,
+  budgetEntryCreateSchema,
+  closeRequestSchema,
   contributionCreateSchema,
   fixedCreateSchema,
   fixedPatchSchema,
@@ -28,7 +30,7 @@ import {
   txPatchSchema,
 } from './validate';
 
-const tx = { monthKey: '2026-10', date: '2026-10-07', desc: 'Uber', cat: 'Transport', method: 'Card', amount: 850, cur: 'DOP' };
+const tx = { monthKey: '2026-10', date: '2026-10-07', desc: 'Uber', cat: 'Transport', method: 'Debit card', amount: 850, cur: 'DOP' };
 
 function messageOf(fn: () => unknown): string {
   try {
@@ -205,20 +207,48 @@ describe('meses: presupuesto por cuenta y tasas', () => {
     expect(messageOf(() => parse(monthPatchSchema, { budgets: many }))).toBe('Invalid data: budgets: allows up to 100 accounts');
   });
 
-  it('tasa del mes: dos monedas distintas y tasa mayor que 0', () => {
-    expect(parse(monthRateSchema, { from: 'USD', to: 'DOP', rate: 58.76 })).toEqual({ from: 'USD', to: 'DOP', rate: 58.76 });
-    expect(parse(monthRateSchema, { from: 'TRY', to: 'USD', rate: 0.025 })).toEqual({ from: 'TRY', to: 'USD', rate: 0.025 });
-    expect(messageOf(() => parse(monthRateSchema, { from: 'USD', to: 'USD', rate: 1 }))).toBe('Invalid data: to: must be different from `from`');
-    expect(messageOf(() => parse(monthRateSchema, { from: 'USD', to: 'DOP', rate: 0 }))).toBe('Invalid data: rate: must be greater than 0');
-    expect(messageOf(() => parse(monthRateSchema, { from: 'USD', to: 'EUR', rate: 1 }))).toBe('Invalid data: to: must be DOP, USD or TRY');
-    for (const body of [{ from: 'USD', to: 'DOP' }, { from: 'USD', rate: 1 }, { from: 'USD', to: 'DOP', rate: -1 }, { from: 'USD', to: 'DOP', rate: '58' }, { from: 'USD', to: 'DOP', rate: 1, monthKey: '2026-10' }]) {
+  it('tasa: dos monedas distintas, tasa mayor que 0 y la fecha desde la que vale', () => {
+    expect(parse(monthRateSchema, { from: 'USD', to: 'DOP', rate: 58.76, date: '2026-10-08' })).toEqual({ from: 'USD', to: 'DOP', rate: 58.76, date: '2026-10-08' });
+    expect(parse(monthRateSchema, { from: 'TRY', to: 'USD', rate: 0.025, date: '2026-10-01' })).toEqual({ from: 'TRY', to: 'USD', rate: 0.025, date: '2026-10-01' });
+    const ok = { from: 'USD', to: 'DOP', rate: 58, date: '2026-10-08' };
+    expect(messageOf(() => parse(monthRateSchema, { ...ok, to: 'USD' }))).toBe('Invalid data: to: must be different from `from`');
+    expect(messageOf(() => parse(monthRateSchema, { ...ok, rate: 0 }))).toBe('Invalid data: rate: must be greater than 0');
+    expect(messageOf(() => parse(monthRateSchema, { ...ok, to: 'EUR' }))).toBe('Invalid data: to: must be DOP, USD or TRY');
+    expect(messageOf(() => parse(monthRateSchema, { from: 'USD', to: 'DOP', rate: 58 }))).toBe('Invalid data: date: is required');
+    expect(messageOf(() => parse(monthRateSchema, { ...ok, date: '2026-02-30' }))).toBe('Invalid data: date: is not a valid date (YYYY-MM-DD)');
+    for (const body of [{ from: 'USD', to: 'DOP', date: ok.date }, { from: 'USD', rate: 1, date: ok.date }, { ...ok, rate: -1 }, { ...ok, rate: '58' }, { ...ok, monthKey: '2026-10' }, { ...ok, date: '2026-10' }, { ...ok, date: 20261008 }]) {
       expect(() => parse(monthRateSchema, body), JSON.stringify(body)).toThrow(ApiError);
     }
-    // El par de la ruta de borrado.
-    expect(parse(ratePairSchema, { from: 'DOP', to: 'TRY' })).toEqual({ from: 'DOP', to: 'TRY' });
+    // El par y la fecha de la ruta de borrado.
+    expect(parse(ratePairSchema, { from: 'DOP', to: 'TRY', date: '2026-10-08' })).toEqual({ from: 'DOP', to: 'TRY', date: '2026-10-08' });
+    expect(messageOf(() => parse(ratePairSchema, { from: 'DOP', to: 'TRY' }))).toBe('Invalid data: date: is required');
     for (const pair of [{ from: 'DOP', to: 'DOP' }, { from: 'dop', to: 'USD' }, { from: 'DOP' }, { from: 'DOP', to: 'EUR' }]) {
-      expect(() => parse(ratePairSchema, pair), JSON.stringify(pair)).toThrow(ApiError);
+      expect(() => parse(ratePairSchema, { ...pair, date: '2026-10-08' }), JSON.stringify(pair)).toThrow(ApiError);
     }
+    expect(() => parse(ratePairSchema, { from: 'DOP', to: 'TRY', date: 'hoy' })).toThrow(ApiError);
+  });
+
+  it('movimiento del presupuesto: cuenta y monto con signo (no 0); tipo inicial o ajuste; el sobrante no se escribe a mano', () => {
+    expect(parse(budgetEntryCreateSchema, { accountId: 'dr', amount: 5000 })).toEqual({ accountId: 'dr', amount: 5000 });
+    expect(parse(budgetEntryCreateSchema, { id: 'b-1', date: '2026-10-05', accountId: 'dr', amount: -1200.5, kind: 'initial', note: '  Car repair ' })).toEqual({
+      id: 'b-1', date: '2026-10-05', accountId: 'dr', amount: -1200.5, kind: 'initial', note: 'Car repair',
+    });
+    expect(messageOf(() => parse(budgetEntryCreateSchema, { accountId: 'dr', amount: 0 }))).toBe('Invalid data: amount: cannot be 0');
+    expect(messageOf(() => parse(budgetEntryCreateSchema, { accountId: 'dr', amount: 1, kind: 'leftover' }))).toBe('Invalid data: kind: must be initial or adjust');
+    expect(messageOf(() => parse(budgetEntryCreateSchema, { amount: 1 }))).toBe('Invalid data: accountId: is required');
+    expect(messageOf(() => parse(budgetEntryCreateSchema, { accountId: 'dr', amount: 1, date: '2026-13-01' }))).toBe('Invalid data: date: is not a valid date (YYYY-MM-DD)');
+    for (const body of [{ accountId: 'dr' }, { accountId: 'dr', amount: '5' }, { accountId: 'dr', amount: 1e13 }, { accountId: 'dr', amount: -1e13 }, { accountId: 'con espacios', amount: 1 }, { accountId: 'dr', amount: 1, monthKey: '2026-10' }, { accountId: 'dr', amount: 1, note: 5 }]) {
+      expect(() => parse(budgetEntryCreateSchema, body), JSON.stringify(body)).toThrow(ApiError);
+    }
+  });
+
+  it('cierre de mes: cuerpo opcional con las partes iniciales del mes siguiente y si se suma el sobrante', () => {
+    expect(parse(closeRequestSchema, {})).toEqual({});
+    expect(parse(closeRequestSchema, { budgets: { dr: 80000, us: 0 }, addLeftover: true })).toEqual({ budgets: { dr: 80000, us: 0 }, addLeftover: true });
+    expect(messageOf(() => parse(closeRequestSchema, { budgets: { dr: -1 } }))).toBe('Invalid data: budgets.dr: cannot be negative');
+    expect(messageOf(() => parse(closeRequestSchema, { addLeftover: 'yes' }))).toBe('Invalid data: addLeftover: must be true or false');
+    expect(messageOf(() => parse(closeRequestSchema, { leftover: true }))).toContain('Unrecognized key');
+    for (const body of [null, [], 'x', { budgets: [1] }]) expect(() => parse(closeRequestSchema, body), JSON.stringify(body)).toThrow(ApiError);
   });
 });
 
@@ -283,6 +313,27 @@ describe('cuentas e ingresos', () => {
     });
     expect(() => parse(incomePatchSchema, { amount: -1 })).toThrow(ApiError);
     expect(() => parse(incomePatchSchema, { id: 'otro' })).toThrow(ApiError);
+  });
+
+  it('ingreso que sube el presupuesto: `budget` es opcional y solo true o false', () => {
+    expect(parse(incomeCreateSchema, { date: '2026-10-01', amount: 1, cur: 'USD', budget: true }).budget).toBe(true);
+    expect(parse(incomeCreateSchema, { date: '2026-10-01', amount: 1, cur: 'USD', budget: false }).budget).toBe(false);
+    expect(parse(incomeCreateSchema, { date: '2026-10-01', amount: 1, cur: 'USD' }).budget).toBeUndefined();
+    expect(parse(incomePatchSchema, { budget: true })).toEqual({ budget: true });
+    for (const budget of [1, 'true', null]) {
+      expect(messageOf(() => parse(incomeCreateSchema, { date: '2026-10-01', amount: 1, cur: 'USD', budget })), String(budget)).toBe('Invalid data: budget: must be true or false');
+      expect(() => parse(incomePatchSchema, { budget }), String(budget)).toThrow(ApiError);
+    }
+  });
+
+  it('meta: la moneda "≈" es una de las tres o null, también la de la propia meta', () => {
+    for (const approxCur of ['DOP', 'USD', 'TRY', null]) {
+      expect(parse(goalCreateSchema, { name: 'x', cur: 'USD', approxCur }).approxCur).toBe(approxCur);
+      expect(parse(goalPatchSchema, { approxCur })).toEqual({ approxCur });
+    }
+    expect(parse(goalCreateSchema, { name: 'x' }).approxCur).toBeUndefined();
+    expect(messageOf(() => parse(goalCreateSchema, { name: 'x', approxCur: 'EUR' }))).toBe('Invalid data: approxCur: must be DOP, USD or TRY');
+    expect(messageOf(() => parse(goalPatchSchema, { approxCur: 'usd' }))).toBe('Invalid data: approxCur: must be DOP, USD or TRY');
   });
 });
 

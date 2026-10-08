@@ -2,8 +2,8 @@
 
 App web de finanzas personales para quien cobra y gasta en más de una moneda (DOP, USD y TRY). La usan varias personas (hoy Frank y Eda), cada una con sus finanzas completamente aparte, en su idioma, con sus monedas, sus cuentas y sus colores.
 
-- **Mes**: arriba, el presupuesto (el total en la moneda principal, «≈» en la segunda y la parte que sale de cada cuenta), la dona y la lista del presupuesto. Debajo: gastos mensuales fijos (pagado / no pagado), historial de transacciones, gasto por categoría, las tasas del mes y los envíos entre cuentas. Cada gasto dice de qué cuenta se paga.
-- **Cierre de mes**: el mes queda de solo lectura y se crea el siguiente con los mismos gastos fijos sin pagar y el mismo presupuesto. Un mes también se puede eliminar.
+- **Mes**: arriba, el presupuesto (el total en la moneda principal, «≈» en la segunda, la parte que sale de cada cuenta, el sobrante del mes anterior con su botón para sumarlo y, plegado, el historial de cómo fue cambiando), la dona y la lista del presupuesto. Debajo: gastos mensuales fijos (pagado / no pagado), gasto por categoría, las tasas del mes (cada una con su fecha), los envíos entre cuentas, los ingresos del mes (los que se agregan ahí suben además el presupuesto, salvo que se desmarque) y el historial de transacciones. Cada gasto dice de qué cuenta se paga.
+- **Cierre de mes**: el mes queda de solo lectura y se crea el siguiente con los mismos gastos fijos sin pagar y su presupuesto inicial: el diálogo de cierre pregunta la parte de cada cuenta (nace con la de este mes) y si se le suma lo que sobró. Un mes también se puede eliminar.
 - **Ahorros**: arriba, el dinero total (con el saldo de cada cuenta; ahí se agregan, renombran, ocultan y se les corrige el saldo) y la dona del dinero por cuenta. Debajo: metas, aportes, la tabla de ingreso por mes y los ingresos uno por uno.
 - **Excel**: descarga un resumen del histórico del usuario en un `.xlsx` (una hoja por mes + ahorros + Config), en su idioma, y lo vuelve a cargar. El libro conserva el diseño original (USD y DOP, dos cuentas): ver [Excel](#excel).
 - **Claude**: un servidor MCP y un endpoint de ingesta para registrar gastos, ingresos y envíos desde un chat («gasté 850 en Uber hoy con tarjeta»).
@@ -134,27 +134,29 @@ En «Settings → Appearance» cada usuario elige tres colores: acento (botones,
 
 ## Modelo de datos y cálculos
 
-D1 es la fuente de verdad. Tablas (`migrations/0001_init.sql`): `months`, `accounts`, `month_budgets`, `month_rates`, `fixed_expenses`, `transactions`, `transfers`, `incomes`, `goals`, `contributions` y `settings`. Todas llevan `user_id` y todas las claves son `(user_id, …)`, de modo que dos usuarios pueden tener el mismo mes o los mismos ids sin tocarse.
+D1 es la fuente de verdad. Tablas (`migrations/0001_init.sql` y `0002_dated_rates_budget_log.sql`): `months`, `accounts`, `month_budget_log`, `month_rates`, `fixed_expenses`, `transactions`, `transfers`, `incomes`, `goals`, `contributions` y `settings`. Todas llevan `user_id` y todas las claves son `(user_id, …)`, de modo que dos usuarios pueden tener el mismo mes o los mismos ids sin tocarse.
 
 ### El dinero
 
 - **Tres monedas**: DOP, USD y TRY. Cada fila guarda su **monto y su moneda originales**; nada convertido se guarda nunca, ni tampoco los saldos.
 - **Moneda principal y segunda moneda**, por usuario («Settings → Currencies»). En la principal se ven el presupuesto, los totales y la primera columna de importes de cada tabla; en la segunda, las líneas «≈» y la segunda columna. Tienen que ser distintas; al cambiarlas, todas las cifras y los encabezados las siguen. Un usuario nuevo empieza con DOP y USD.
 - **Cuentas**, de cada usuario: un nombre y una moneda. Se agregan, se renombran y se ocultan en «Savings». Una cuenta oculta no aparece en las listas ni suma al dinero total, pero conserva sus movimientos. Una cuenta con movimientos no se elimina ni cambia de moneda (se oculta), y siempre queda al menos una.
-- **Saldos calculados.** El saldo de una cuenta no se escribe mes a mes: es su saldo inicial, más los ingresos que le entran, menos las transacciones y los gastos fijos **pagados** que salen de ella, menos los envíos que salen y más los que entran, todo hasta el mes que se mira. Un movimiento en otra moneda entra o sale convertido con las tasas de su propio mes. «Corregir» un saldo a mano (escribiéndolo en «Savings», solo en el último mes) ajusta el saldo inicial; los movimientos no se tocan. Los aportes a metas son un apartado y no mueven saldos.
+- **Saldos calculados.** El saldo de una cuenta no se escribe mes a mes: es su saldo inicial, más los ingresos que le entran, menos las transacciones y los gastos fijos **pagados** que salen de ella, menos los envíos que salen y más los que entran, todo hasta el mes que se mira. Un movimiento en otra moneda entra o sale convertido con la tasa vigente en su fecha (un gasto fijo, que no tiene fecha, con la última de su mes). «Corregir» un saldo a mano (escribiéndolo en «Savings», solo en el último mes) ajusta el saldo inicial; los movimientos no se tocan. Los aportes a metas son un apartado y no mueven saldos.
 - **Cuenta por defecto**: de ella sale un gasto cuando no se indica otra (también los que registra Claude). Es la elegida en «Settings»; si no hay, la primera visible en la moneda principal.
 - **Ingresos**, uno por uno: fecha, descripción, cuenta, monto y moneda. El ingreso de un mes es la suma de los que tienen fecha en él; ya no se escribe. No pertenecen a un mes: se agregan y editan aunque el mes esté cerrado.
 - **Envíos** entre dos cuentas distintas: lo que sale (en la moneda de la cuenta de origen) y la tasa; a la de destino le entra `monto × tasa`. Entre cuentas de la misma moneda la tasa es 1. La vía es texto libre; Remitly y PayPal son solo sugerencias.
-- **Presupuesto por cuenta.** El presupuesto del mes se reparte por la cuenta de la que sale, cada parte en la moneda de su cuenta; el total es la suma convertida a la moneda principal. Son planes, no saldos.
-- **Tasas del mes**, por par de monedas y escritas a mano (tarjeta «Month rates»). Cuando falta la de un par, se resuelve en este orden y la interfaz dice de dónde salió:
-  1. la escrita para ese mes (o su inversa);
-  2. el promedio ponderado de los envíos de ese mes entre esas dos monedas;
-  3. cruzando por la tercera moneda con tasas de ese mes;
-  4. cualquiera de las anteriores, del mes anterior más reciente que la tenga;
+- **Presupuesto por cuenta, con historia.** El presupuesto del mes se reparte por la cuenta de la que sale, cada parte en la moneda de su cuenta; el total es la suma convertida a la moneda principal. Son planes, no saldos. No es un número que se sobrescribe: es la suma de un registro de movimientos con fecha (`month_budget_log`: el inicial, los ajustes y el sobrante), así queda cómo fue cambiando. Fijar la parte de una cuenta añade al registro la diferencia.
+- **Ingresos que suben el presupuesto.** Un ingreso marcado con `budget` suma además al presupuesto del mes de su fecha, en la parte de su cuenta (convertido a la moneda de la cuenta con la tasa de su fecha). No escribe nada en el registro: lo suma el cálculo.
+- **Sobrante.** Lo que sobra de un mes es su disponible (presupuesto − usado). Se puede sumar al mes siguiente, una sola vez, como un movimiento del registro en la cuenta por defecto; si el mes se pasó, resta. Al cerrar un mes se eligen las partes iniciales del siguiente y si se le suma el sobrante.
+- **Tasas con fecha**, por par de monedas y escritas a mano (tarjeta «Month rates»). Cada una vale desde su fecha hasta la siguiente que se escriba para ese par, también en los meses siguientes, y un mes puede tener varias. Cada fila con fecha propia (transacción, ingreso, aporte, envío sin tasa) se convierte con la vigente en **su** fecha: escribir hoy una tasa nueva no cambia lo registrado antes. Lo que es del mes entero (gastos fijos, presupuesto, totales, saldos «al final del mes») usa la última del mes. Una tasa se resuelve en este orden y la interfaz dice de dónde salió:
+  1. la última escrita para el par con fecha anterior o igual a la de la fila (o su inversa), sea de ese mes o de uno anterior;
+  2. si no hay ninguna vigente, el promedio ponderado de los envíos de ese mes entre esas dos monedas;
+  3. cruzando por la tercera moneda (cada tramo, la escrita vigente o los envíos de ese mes);
+  4. lo mismo, en el mes anterior más reciente que lo tenga;
   5. un valor fijo de respaldo (1 USD = 58.76 DOP = 42 TRY). Es un número de referencia, no el del mercado: la barra superior y la tarjeta de tasas lo avisan («default value, not set yet») y conviene escribir la tasa.
 
-  Un envío guardado sin tasa toma la que resuelva el mes en ese momento; a partir de ahí cuenta como envío del mes (paso 2).
-- **Metas en su moneda.** Cada meta tiene la suya: en ella van el ahorro mensual, el objetivo y lo ahorrado. Cada aporte guarda su moneda y se convierte a la de la meta con la tasa del mes de su fecha.
+  Un envío guardado sin tasa toma la vigente en su fecha en ese momento; a partir de ahí cuenta como envío del mes (paso 2).
+- **Metas en su moneda.** Cada meta tiene la suya: en ella van el ahorro mensual, el objetivo y lo ahorrado. Cada aporte guarda su moneda y se convierte a la de la meta con la tasa vigente en su fecha. Cada meta puede elegir además en qué moneda se muestra su línea «≈» (por defecto, la principal).
 - **Mes cerrado = solo lectura.** La API responde `409 month_closed` a cualquier escritura en sus gastos, transacciones, envíos, presupuesto o tasas. Se puede reabrir y eliminar.
 - **Eliminar un mes** («Delete month», al final de la hoja; abierto o cerrado) borra sus gastos fijos, transacciones, envíos, presupuesto y tasas, y no se puede deshacer. Los saldos cambian en consecuencia. Los ingresos y los aportes con fecha en ese mes se conservan (no son del mes). Si era el único mes, al volver a entrar se crea el actual.
 - **Ajustes por usuario** (`settings`): idioma, tema, moneda principal, segunda moneda, cuenta por defecto, tasa USD→DOP de respaldo y la marca de que ya se le crearon las cuentas y metas iniciales (si las borra, no vuelven).
@@ -289,7 +291,7 @@ El token Bearer solo sirve en `/mcp` y `/api/ingest/*`; no abre el resto de la A
 
 | Herramienta | Argumentos | Qué hace |
 | --- | --- | --- |
-| `add_transaction` | `user`, `description`, `amount`; opcionales `currency` (DOP, USD, TRY), `account`, `date`, `place`, `category`, `method`, `notes` | Registra un gasto. Por defecto: la cuenta por defecto y su moneda, hoy, Food, Card. Responde con el saldo nuevo de la cuenta. |
+| `add_transaction` | `user`, `description`, `amount`; opcionales `currency` (DOP, USD, TRY), `account`, `date`, `place`, `category`, `method`, `notes` | Registra un gasto. Por defecto: la cuenta por defecto y su moneda, hoy, Food, Debit card. Responde con el saldo nuevo de la cuenta. |
 | `list_transactions` | `user`; opcionales `month`, `limit` | Transacciones del mes, de la más reciente a la más antigua, con su cuenta. |
 | `month_summary` | `user`; opcional `month` | En la moneda principal: presupuesto y sus partes por cuenta, usado, disponible, fijos pendientes, gasto por categoría, ingreso del mes, saldos y las tasas del mes con su origen. |
 | `add_transfer` | `user`, `from_account`, `to_account`, `amount`; opcionales `rate`, `via`, `date` | Registra un envío entre dos cuentas. Sin `rate` usa la del mes y dice de dónde salió (si es el valor de respaldo, avisa). |
@@ -312,7 +314,7 @@ En local la URL es `http://localhost:8788/mcp` y el token, el de `.dev.vars`.
 
 En **claude.ai** (conector personalizado) hace falta enviar esa misma cabecera. Según la documentación de conectores de Claude, las cabeceras fijas están en beta para un grupo limitado de organizaciones: si al agregar el conector no aparece la sección «Request headers», no se puede conectar, porque este servidor no implementa OAuth.
 
-Reglas propias del MCP: la categoría y el método tienen que ser de las listas de la app, dichos en inglés, español o turco («Transporte», «Kart»), y se guardan con el nombre en inglés; la vía de un envío es texto libre; una fecha solo se acepta si su mes existe o está entre 6 meses atrás y 1 adelante de hoy; un mes cerrado no admite gastos ni envíos; entre cuentas de la misma moneda un envío no lleva tasa. Los saldos que responde son «a hoy»: al final del último mes registrado (o del mes actual, o del mes recién escrito, el que sea posterior).
+Reglas propias del MCP: la categoría y el método tienen que ser de las listas de la app, dichos en inglés, español o turco («Transporte», «Kredi kartı»), y se guardan con el nombre en inglés («tarjeta», «card» o «kart» a secas es la de débito, `Debit card`); la vía de un envío es texto libre; una fecha solo se acepta si su mes existe o está entre 6 meses atrás y 1 adelante de hoy; un mes cerrado no admite gastos ni envíos; entre cuentas de la misma moneda un envío no lleva tasa. Los saldos que responde son «a hoy»: al final del último mes registrado (o del mes actual, o del mes recién escrito, el que sea posterior).
 
 ### Endpoint de ingesta
 
@@ -325,7 +327,7 @@ curl -X POST https://<host>/api/ingest/transaction \
   -d '{"user":"frank","description":"Uber","amount":850,"category":"Transporte","method":"Tarjeta"}'
 ```
 
-Campos: `user`, `date` (AAAA-MM-DD, por defecto hoy), `description`, `place`, `category` (por defecto Food), `method` (Card), `amount`, `account` (id o nombre; por defecto la cuenta por defecto), `currency` (por defecto la de esa cuenta) y `notes`. La categoría y el método se aceptan en los tres idiomas y se guardan con su nombre en inglés; lo que no es de las listas se guarda tal cual. Responde `201` con la transacción, `400` si falta el usuario o no existe (o la cuenta no existe o es ambigua), `401` sin token válido y `409` si el mes está cerrado.
+Campos: `user`, `date` (AAAA-MM-DD, por defecto hoy), `description`, `place`, `category` (por defecto Food), `method` (por defecto Debit card; «Tarjeta», «Card» o «Kart» a secas se guarda como Debit card), `amount`, `account` (id o nombre; por defecto la cuenta por defecto), `currency` (por defecto la de esa cuenta) y `notes`. La categoría y el método se aceptan en los tres idiomas y se guardan con su nombre en inglés; lo que no es de las listas se guarda tal cual. Responde `201` con la transacción, `400` si falta el usuario o no existe (o la cuenta no existe o es ambigua), `401` sin token válido y `409` si el mes está cerrado.
 
 ## Pruebas
 

@@ -44,6 +44,7 @@ export const es: Shape<typeof en> = {
   saved: 'Ahorrado',
   pctSaved: '% ahorro',
   deleteMonth: 'Eliminar mes',
+  addsToBudget: 'Suma al presupuesto',
 
   // ── De dónde salió una tasa ────────────────────────────────────────────────
   rateTyped: 'escrita para este mes',
@@ -118,6 +119,18 @@ export const es: Shape<typeof en> = {
   usedSoFar: 'Usado hasta hoy',
   availableAfterFixed: 'Disponible tras fijos pendientes',
   usedIn: 'Usado en {currency}',
+  
+  leftoverFromLast: 'Sobrante del mes pasado:',
+  addToBudget: 'Sumar al presupuesto',
+  leftoverAdded: 'sumado',
+  budgetHistory: 'Historial del presupuesto',
+  budgetHistoryEmpty: 'Aún no hay movimientos del presupuesto.',
+  budgetKind: 'Tipo',
+  budgetKindInitial: 'Inicial',
+  budgetKindAdjust: 'Ajuste',
+  budgetKindLeftover: 'Sobrante',
+  budgetKindIncome: 'Ingreso',
+  deleteBudgetEntry: 'Eliminar {kind} del {date}: {amount} {currency}',
 
   // ── Dinero total y cuentas ─────────────────────────────────────────────────
   totalMoney: 'Dinero total',
@@ -142,6 +155,9 @@ export const es: Shape<typeof en> = {
     'Se creará {next} con los mismos gastos mensuales, sin marcar como pagados. ¿Lo agrego también al Excel? Se descargará el archivo con todos los meses, incluido {next}.',
   closeOnlyPage: 'Solo en la página',
   closeWithExcel: 'Sí, agregar al Excel',
+  closeBudgetIntro: 'El presupuesto de {next} arranca con estos montos por cuenta:',
+  closeBudgetOf: 'Presupuesto de {account} ({currency})',
+  closeAddLeftover: 'Sumar el sobrante de este mes ({amount} {currency}) al presupuesto de {next}',
 
   // ── Diálogo de borrar mes ──────────────────────────────────────────────────
   deleteMonthTitle: '¿Eliminar {month}?',

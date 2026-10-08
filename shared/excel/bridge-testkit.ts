@@ -2,7 +2,7 @@
 // puente entre el modelo de cuentas y el libro de Excel (data.ts).
 
 import { DEFAULT_ACCOUNTS, DEFAULT_GOALS, DEFAULT_MAIN_CURRENCY, DEFAULT_RATE, DEFAULT_SECOND_CURRENCY } from '../constants';
-import { seedState } from '../seed';
+import { seedState, setBudgets } from '../seed';
 import type { AppState, Currency, MonthKey, Transaction, Transfer } from '../types';
 
 /** Un usuario recién llegado, como lo deja el servidor: sus cuentas y metas iniciales y el mes actual, vacío. */
@@ -18,7 +18,7 @@ export function newUserState(current: MonthKey = '2026-10'): AppState {
     incomes: [],
     goals: DEFAULT_GOALS.map((g) => ({ ...g })),
     contribs: [],
-    months: { [current]: { key: current, closed: false, closedAt: null, budgets: {}, rates: [], fixed: [], transfers: [], tx: [] } },
+    months: { [current]: { key: current, closed: false, closedAt: null, budgetLog: [], budgets: {}, rates: [], fixed: [], transfers: [], tx: [] } },
   };
 }
 
@@ -29,10 +29,13 @@ export function newUserState(current: MonthKey = '2026-10'): AppState {
  * los sentidos (también entre cuentas de la misma moneda) y el presupuesto repartido entre varias cuentas.
  *
  * Las tasas de cada mes son coherentes entre sí, que es cuando el dinero total del libro coincide con el de la
- * app: cada mes tiene tasa propia para dos de los tres pares y el tercero sale de cruzarlos.
+ * app: cada mes tiene tasa propia para dos de los tres pares y el tercero sale de cruzarlos (o cuadra con ellos).
  *  · agosto: USD↔DOP de sus envíos y USD→TRY escrita a mano;
- *  · septiembre: USD↔DOP y USD↔TRY de sus envíos (en los dos sentidos);
- *  · octubre: USD↔DOP y TRY↔DOP de sus envíos (en los dos sentidos); ninguna escrita a mano.
+ *  · septiembre: USD↔DOP de sus envíos y USD→TRY escrita a mano, la que dan sus envíos (en los dos sentidos);
+ *  · octubre: USD↔DOP y TRY↔DOP de sus envíos (en los dos sentidos) y USD→TRY escrita a mano, la que sale de
+ *    cruzar las otras dos.
+ * Una tasa escrita sigue vigente hasta que se escribe otra: por eso, escrita la de agosto, septiembre y octubre
+ * llevan la suya desde su día 1 (sin ella valdría la de agosto y el mes dejaría de cuadrar con sus envíos).
  * Ningún mes tiene escrita la tasa USD→DOP: la app la saca de los envíos, igual que el libro.
  */
 export function mixedState(): AppState {
@@ -51,9 +54,18 @@ export function mixedState(): AppState {
   const aug = s.months['2026-08']!;
   const sep = s.months['2026-09']!;
   const oct = s.months['2026-10']!;
-  aug.rates = [{ from: 'USD', to: 'TRY', rate: 39 }];
-  sep.rates = [];
-  oct.rates = [];
+  aug.rates = [{ from: 'USD', to: 'TRY', rate: 39, date: '2026-08-01' }];
+  // Septiembre: 500 USD → 19,700 TRY y 3,950 TRY → 100.33 USD. Octubre: USD→DOP (102,785 DOP por 1,750 USD)
+  // entre TRY→DOP (4,350 DOP por 3,001 TRY), las dos de sus envíos.
+  sep.rates = [{ from: 'USD', to: 'TRY', rate: (500 * 39.4 + 3950) / (500 + 3950 * 0.0254), date: '2026-09-01' }];
+  oct.rates = [
+    {
+      from: 'USD',
+      to: 'TRY',
+      rate: (1500 * 58.76 + 11700 + 50 * 58.9) / (1500 + 11700 / 58.5 + 50) / ((1000 * 1.45 + 2900) / (1000 + 2900 * 0.69)),
+      date: '2026-10-01',
+    },
+  ];
 
   const transfer = (key: MonthKey, n: number, day: string, via: string, from: string, to: string, amount: number, rate: number): Transfer => ({
     id: `mx-tr-${key}-${n}`,
@@ -95,7 +107,7 @@ export function mixedState(): AppState {
     desc,
     place: '',
     cat,
-    method: 'Card',
+    method: 'Debit card',
     amount,
     cur,
     accountId,
@@ -117,21 +129,21 @@ export function mixedState(): AppState {
     { id: 'mx-fx-2', monthKey: '2026-10', name: 'Istanbul gym', day: '', amount: 900, cur: 'TRY', paid: false, accountId: 'tr', sort: 12 },
   );
 
-  sep.budgets = { dr: 70000, old: 25 };
-  oct.budgets = { dr: 60000, us: 100, tr: 4000 };
+  setBudgets(sep, { dr: 70000, old: 25 });
+  setBudgets(oct, { dr: 60000, us: 100, tr: 4000 });
 
   s.incomes.push(
-    { id: 'mx-in-1', date: '2026-09-20', desc: 'Sold bike', accountId: 'cash', amount: 8000, cur: 'DOP' },
-    { id: 'mx-in-2', date: '2026-10-15', desc: 'Freelance', accountId: 'tr', amount: 20000, cur: 'TRY' },
-    { id: 'mx-in-3', date: '2026-10-02', desc: 'Refund', accountId: 'old', amount: 40, cur: 'USD' },
+    { id: 'mx-in-1', date: '2026-09-20', desc: 'Sold bike', accountId: 'cash', amount: 8000, cur: 'DOP', budget: false },
+    { id: 'mx-in-2', date: '2026-10-15', desc: 'Freelance', accountId: 'tr', amount: 20000, cur: 'TRY', budget: false },
+    { id: 'mx-in-3', date: '2026-10-02', desc: 'Refund', accountId: 'old', amount: 40, cur: 'USD', budget: false },
     // Con fecha en un mes que todavía no existe: no tiene hoja en la que salir.
-    { id: 'mx-in-4', date: '2026-11-01', desc: 'Early salary', accountId: 'us', amount: 100, cur: 'USD' },
+    { id: 'mx-in-4', date: '2026-11-01', desc: 'Early salary', accountId: 'us', amount: 100, cur: 'USD', budget: false },
   );
 
   s.goals.push(
-    { id: 'flat', name: 'Istanbul flat', cur: 'TRY', monthly: 10000, start: '2026-09', end: '2027-08', sort: 3 },
-    { id: 'gifts', name: 'Gifts', cur: 'DOP', monthly: null, start: null, end: null, sort: 4 },
-    { id: 'half', name: 'Half plan', cur: 'TRY', monthly: 500, start: '2026-10', end: null, sort: 5 },
+    { id: 'flat', name: 'Istanbul flat', cur: 'TRY', monthly: 10000, start: '2026-09', end: '2027-08', approxCur: null, sort: 3 },
+    { id: 'gifts', name: 'Gifts', cur: 'DOP', monthly: null, start: null, end: null, approxCur: null, sort: 4 },
+    { id: 'half', name: 'Half plan', cur: 'TRY', monthly: 500, start: '2026-10', end: null, approxCur: null, sort: 5 },
   );
   s.contribs.push(
     { id: 'mx-ct-1', goalId: 'flat', date: '2026-09-10', amount: 4000, cur: 'TRY' },

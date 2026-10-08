@@ -1,7 +1,7 @@
 // Textos del libro en inglés (el idioma por defecto), con los mismos términos que la interfaz.
 
 import { APP_NAME } from '../constants';
-import { CAT_NAMES, FIXED_CATEGORY_NAMES, METHOD_NAMES, MONTH_NAMES } from '../i18n';
+import { CAT_NAMES, FIXED_CATEGORY_NAMES, MONTH_NAMES } from '../i18n';
 import type { ExcelLocale } from './locale';
 
 export const EXCEL_EN: ExcelLocale = {
@@ -10,7 +10,9 @@ export const EXCEL_EN: ExcelLocale = {
   // La lista del libro son las diez categorías del diseño original; 'Other' se escribe en las filas pero no entra
   // en la lista de la hoja Config (cambiaría el libro de referencia).
   cats: CAT_NAMES.en.slice(0, 10),
-  methods: METHOD_NAMES.en,
+  // La lista del libro son los tres métodos del diseño original (no cambia el libro de referencia); las filas se
+  // escriben con el método de hoy ('Debit card'…) y al importar 'Card' vale por la tarjeta de débito.
+  methods: ['Card', 'Transfer', 'Bank app'],
   yes: 'Yes',
   no: 'No',
   brand: APP_NAME,

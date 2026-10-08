@@ -157,7 +157,7 @@ describe('de punta a punta: dos usuarios con las mismas finanzas de partida', ()
     expect(hers.state.language).toBe('tr');
     expect(hers.state.theme).toEqual(OCEAN);
     expect(hers.state.accounts).toEqual(seed.accounts);
-    expect(hers.state.goals).toEqual([...seed.goals, { id: added.goal.id, name: 'Ev', cur: 'USD', monthly: 500, start: '2026-10', end: '2027-09', sort: 3 }]);
+    expect(hers.state.goals).toEqual([...seed.goals, { id: added.goal.id, name: 'Ev', cur: 'USD', monthly: 500, start: '2026-10', end: '2027-09', approxCur: null, sort: 3 }]);
     expect(hers.state.contribs).toEqual([...seed.contribs, added.contribution]);
     expect(hers.state.incomes).toEqual([...seed.incomes, added.income]);
     expect(withoutTimestamps(hers.state).months).toEqual({
@@ -237,7 +237,7 @@ describe('de punta a punta: dos usuarios con las mismas finanzas de partida', ()
     // …en sus propias filas y cuentas: sus tres metas siguen siendo las mismas (mismo id) y la de Eda se le creó aparte.
     expect(frankAfter.accounts.map((a) => a.id)).toEqual(frankBefore.accounts.map((a) => a.id));
     expect(frankAfter.goals.slice(0, 3)).toEqual(frankBefore.goals);
-    expect(frankAfter.goals[3]).toMatchObject({ name: 'Ev', cur: 'USD', monthly: 500, start: '2026-10', end: '2027-09', sort: 3 });
+    expect(frankAfter.goals[3]).toMatchObject({ name: 'Ev', cur: 'USD', monthly: 500, start: '2026-10', end: '2027-09', approxCur: null, sort: 3 });
     expect(frankAfter.goals[3]!.id).not.toBe(edaBefore.goals[3]!.id);
     // …con los saldos que traía el libro, que son los de Eda al final de octubre…
     expect(monthEnd(frankAfter, '2026-10')).toEqual(monthEnd(edaBefore, '2026-10'));

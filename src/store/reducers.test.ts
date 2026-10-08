@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { balances, monthCalc, rateFor } from '../../shared/calc';
+import { balances, budgetHistory, budgetsFromLog, leftoverFor, monthCalc, rateFor } from '../../shared/calc';
 import { f2 } from '../../shared/format';
-import { seedState } from '../../shared/seed';
-import type { AppState, Month } from '../../shared/types';
+import { seedState, setBudgets } from '../../shared/seed';
+import type { AppState, BudgetEntry, Income, Month } from '../../shared/types';
 import {
   accountInUse,
   accountName,
+  budgetEntry,
   budgetPart,
   canHideAccount,
   canRemoveAccount,
@@ -16,11 +17,15 @@ import {
   fixedChange,
   goalChange,
   incomeChange,
+  isLocalEntry,
   isPatch,
   latestKey,
+  leftoverEntry,
+  LOCAL_ENTRY,
   mergePatch,
   monthRate,
   newAccount,
+  newBudgetEntry,
   newContribution,
   newFixed,
   newGoal,
@@ -54,6 +59,26 @@ function frozen(base: AppState = seedState()): AppState {
 
 /** Saldo de una cuenta al final de octubre, en su moneda. */
 const balanceOf = (state: AppState, id: string, asOf = OCT) => balances(state, asOf).accounts.find((a) => a.account.id === id)!.balance;
+
+/** Los datos de ejemplo con dos tasas USD → DOP de fechas distintas en octubre: 58 desde el día 1 y 60 desde el día 6. */
+function twoRates(): AppState {
+  const s = seedState();
+  s.months[OCT]!.rates = [
+    { from: 'USD', to: 'DOP', rate: 58, date: '2026-10-01' },
+    { from: 'USD', to: 'DOP', rate: 60, date: '2026-10-06' },
+  ];
+  return s;
+}
+
+/** Los datos de ejemplo más un ingreso de octubre que sube el presupuesto (Income.budget). */
+function withBudgetIncome(income: Partial<Income> = {}): AppState {
+  const s = seedState();
+  s.incomes.push({ id: 'in-budget', date: '2026-10-10', desc: 'Freelance', accountId: 'dr', amount: 10000, cur: 'DOP', budget: true, ...income });
+  return s;
+}
+
+/** La parte del presupuesto de una cuenta tal como se ve (registro + ingresos que lo suben). */
+const partOf = (state: AppState, id: string, key = OCT) => monthCalc(state, key).budgetParts.find((p) => p.account.id === id)!;
 
 describe('reduce · mes', () => {
   it('edita la parte del presupuesto de una cuenta sin tocar las demás ni lo demás', () => {
@@ -90,6 +115,83 @@ describe('reduce · mes', () => {
     expect(reduce(s, { type: 'month/patch', key: OCT, patch: {} })).toBe(s);
   });
 
+  it('no sobrescribe el presupuesto: añade al registro un movimiento con la diferencia de cada cuenta', () => {
+    const s = frozen();
+    // Octubre arranca con 65,000 ('initial') + 5,000 ('adjust') en la DR account; la US account no tiene parte.
+    const before = s.months[OCT]!.budgetLog;
+    const next = reduce(s, { type: 'month/patch', key: OCT, patch: { budgets: { dr: 80000, us: 200 } }, date: '2026-10-09' });
+    const log = next.months[OCT]!.budgetLog;
+    expect(log).toHaveLength(4);
+    // Lo que ya estaba en el registro sigue ahí, tal cual.
+    expect(log[0]).toBe(before[0]);
+    expect(log[1]).toBe(before[1]);
+    // 'adjust' si la cuenta ya tenía movimientos en el mes; 'initial' si es el primero.
+    expect(log[2]).toEqual({ id: expect.stringMatching(/^local-/) as string, date: '2026-10-09', accountId: 'dr', amount: 10000, kind: 'adjust', note: '' });
+    expect(log[3]).toEqual({ id: expect.stringMatching(/^local-/) as string, date: '2026-10-09', accountId: 'us', amount: 200, kind: 'initial', note: '' });
+    expect(new Set(log.map((e) => e.id)).size).toBe(4);
+    expect(log.slice(2).every((e) => isLocalEntry(e.id))).toBe(true);
+    // Month.budgets es la suma del registro, ya hecha.
+    expect(next.months[OCT]!.budgets).toEqual({ dr: 80000, us: 200 });
+    expect(next.months[OCT]!.budgets).toEqual(budgetsFromLog(log));
+    expect(monthCalc(next, OCT).budget).toBeCloseTo(80000 + 200 * 58.76, 8);
+  });
+
+  it('bajar una parte añade un movimiento negativo; dejarla en 0, uno que la anula', () => {
+    const s = frozen();
+    const lower = reduce(s, { type: 'month/patch', key: OCT, patch: { budgets: { dr: 50000 } }, date: '2026-10-09' });
+    expect(lower.months[OCT]!.budgetLog.at(-1)).toMatchObject({ accountId: 'dr', amount: -20000, kind: 'adjust' });
+    expect(lower.months[OCT]!.budgets).toEqual({ dr: 50000 });
+
+    const zero = reduce(s, { type: 'month/patch', key: OCT, patch: { budgets: { dr: 0 } }, date: '2026-10-09' });
+    expect(zero.months[OCT]!.budgetLog).toHaveLength(3);
+    expect(zero.months[OCT]!.budgetLog.at(-1)).toMatchObject({ accountId: 'dr', amount: -70000, kind: 'adjust' });
+    // La historia se conserva aunque la suma quede en cero.
+    expect(budgetHistory(zero, OCT).map((r) => r.total)).toEqual([65000, 70000, 0]);
+  });
+
+  it('el movimiento lleva la fecha de la acción o, sin ella, el primer día del mes', () => {
+    const s = frozen();
+    const dated = reduce(s, { type: 'month/patch', key: OCT, patch: { budgets: { us: 50 } }, date: '2026-10-21' });
+    expect(dated.months[OCT]!.budgetLog.at(-1)!.date).toBe('2026-10-21');
+    const plain = reduce(s, { type: 'month/patch', key: OCT, patch: { budgets: { us: 50 } } });
+    expect(plain.months[OCT]!.budgetLog.at(-1)!.date).toBe('2026-10-01');
+  });
+
+  it('es idempotente: repetir la acción no añade otro movimiento, y un segundo cambio parte de la suma nueva', () => {
+    const s = frozen();
+    const action: Action = { type: 'month/patch', key: OCT, patch: { budgets: { dr: 80000, us: 200 } }, date: '2026-10-09' };
+    const once = reduce(s, action);
+    expect(reduce(once, action)).toBe(once);
+    // Otro monto para la misma cuenta: solo la diferencia con lo que ya suma su registro.
+    const twice = reduce(once, { type: 'month/patch', key: OCT, patch: { budgets: { dr: 81500.5 } }, date: '2026-10-12' });
+    expect(twice.months[OCT]!.budgetLog).toHaveLength(5);
+    expect(twice.months[OCT]!.budgetLog.at(-1)).toMatchObject({ accountId: 'dr', amount: 1500.5, kind: 'adjust', date: '2026-10-12' });
+    expect(twice.months[OCT]!.budgets).toEqual({ dr: 81500.5, us: 200 });
+    expect(new Set(twice.months[OCT]!.budgetLog.map((e) => e.id)).size).toBe(5);
+  });
+
+  it('el ruido de la coma flotante no es una diferencia', () => {
+    const s = seedState();
+    s.months[OCT]!.budgetLog = [
+      { id: 'a', date: '2026-10-01', accountId: 'us', amount: 0.1, kind: 'initial', note: '' },
+      { id: 'b', date: '2026-10-02', accountId: 'us', amount: 0.2, kind: 'adjust', note: '' },
+    ];
+    s.months[OCT]!.budgets = budgetsFromLog(s.months[OCT]!.budgetLog);
+    const f = frozen(s);
+    expect(reduce(f, { type: 'month/patch', key: OCT, patch: { budgets: { us: 0.3 } } })).toBe(f);
+    expect(reduce(f, { type: 'month/patch', key: OCT, patch: { budgets: { us: 0.3 + 1e-12 } } })).toBe(f);
+  });
+
+  it('los ingresos que suben el presupuesto no están en el registro: el patch fija solo lo que suma el registro', () => {
+    const s = frozen(withBudgetIncome());
+    // La parte se ve en 80,000 (70,000 del registro + 10,000 del ingreso); el registro ya suma 70,000.
+    expect(reduce(s, { type: 'month/patch', key: OCT, patch: { budgets: { dr: 70000 } } })).toBe(s);
+    const next = reduce(s, { type: 'month/patch', key: OCT, patch: { budgets: { dr: 75000 } } });
+    expect(next.months[OCT]!.budgetLog.at(-1)).toMatchObject({ amount: 5000, kind: 'adjust' });
+    expect(next.months[OCT]!.budgets).toEqual({ dr: 75000 });
+    expect(partOf(next, 'dr')).toMatchObject({ amount: 85000, fromLog: 75000, fromIncomes: 10000 });
+  });
+
   it('reabre un mes cerrado', () => {
     const s = frozen();
     const next = reduce(s, { type: 'month/reopen', key: '2026-09' });
@@ -100,44 +202,162 @@ describe('reduce · mes', () => {
   });
 });
 
+describe('reduce · registro del presupuesto', () => {
+  const entry = (over: Partial<BudgetEntry> = {}): BudgetEntry => ({ id: 'bg-new', date: '2026-10-09', accountId: 'dr', amount: 2500, kind: 'adjust', note: 'Gift', ...over });
+
+  it('budget/add añade un movimiento y recalcula las partes; repetirlo no lo duplica', () => {
+    const s = frozen();
+    const next = reduce(s, { type: 'budget/add', key: OCT, row: entry() });
+    expect(next.months[OCT]!.budgetLog).toHaveLength(3);
+    expect(next.months[OCT]!.budgetLog.at(-1)).toEqual(entry());
+    expect(next.months[OCT]!.budgets).toEqual({ dr: 72500 });
+    expect(monthCalc(next, OCT).budget).toBe(72500);
+    // Lo demás del mes conserva su identidad.
+    expect(next.months[OCT]!.tx).toBe(s.months[OCT]!.tx);
+    expect(next.months[OCT]!.budgetLog[0]).toBe(s.months[OCT]!.budgetLog[0]);
+    expect(next.months['2026-09']).toBe(s.months['2026-09']);
+    // Con el mismo id sustituye al que hubiera (un refetch puede traerlo ya aplicado).
+    const again = reduce(next, { type: 'budget/add', key: OCT, row: entry() });
+    expect(again).toEqual(next);
+    expect(again.months[OCT]!.budgetLog).toHaveLength(3);
+  });
+
+  it('budget/add: un movimiento negativo recorta la parte, y otra cuenta estrena la suya', () => {
+    const s = frozen();
+    const cut = reduce(s, { type: 'budget/add', key: OCT, row: entry({ amount: -70000 }) });
+    // La cuenta que suma 0 deja de aparecer en las partes, pero su registro sigue.
+    expect(cut.months[OCT]!.budgets).toEqual({});
+    expect(cut.months[OCT]!.budgetLog).toHaveLength(3);
+    const other = reduce(s, { type: 'budget/add', key: OCT, row: entry({ accountId: 'us', amount: 150, kind: 'initial' }) });
+    expect(other.months[OCT]!.budgets).toEqual({ dr: 70000, us: 150 });
+    expect(monthCalc(other, OCT).budget).toBeCloseTo(70000 + 150 * 58.76, 8);
+  });
+
+  it('budget/remove quita ese movimiento y recalcula; uno que no está, o un mes que no existe, no cambia nada', () => {
+    const s = frozen();
+    // El ajuste del día 5 (5,000, "Car repair").
+    const next = reduce(s, { type: 'budget/remove', key: OCT, id: 'seed-bg-2026-10-2' });
+    expect(next.months[OCT]!.budgetLog.map((e) => e.id)).toEqual(['seed-bg-2026-10-1']);
+    expect(next.months[OCT]!.budgets).toEqual({ dr: 65000 });
+    expect(monthCalc(next, OCT).budget).toBe(65000);
+    expect(reduce(next, { type: 'budget/remove', key: OCT, id: 'seed-bg-2026-10-2' })).toBe(next);
+    expect(reduce(s, { type: 'budget/remove', key: OCT, id: 'nope' })).toBe(s);
+    // El id es de octubre: en otro mes no está.
+    expect(reduce(s, { type: 'budget/remove', key: '2026-09', id: 'seed-bg-2026-10-2' })).toBe(s);
+    expect(reduce(s, { type: 'budget/remove', key: '2030-01', id: 'seed-bg-2026-10-2' })).toBe(s);
+    expect(reduce(s, { type: 'budget/add', key: '2030-01', row: entry() })).toBe(s);
+  });
+
+  it('budget/leftover suma el sobrante una sola vez por mes', () => {
+    const s = frozen();
+    const row = leftoverEntry(s, OCT, 'local-lo', '2026-10-07')!;
+    const next = reduce(s, { type: 'budget/leftover', key: OCT, row });
+    expect(next.months[OCT]!.budgetLog.at(-1)).toBe(row);
+    expect(next.months[OCT]!.budgets.dr).toBeCloseTo(70000 + row.amount, 8);
+    expect(monthCalc(next, OCT).budget).toBeCloseTo(70000 + monthCalc(s, '2026-09').avail, 8);
+    expect(leftoverFor(next, OCT).added).toBe(true);
+    // La misma acción otra vez, u otra con otro id (el servidor ya lo escribió con el suyo): no se repite.
+    expect(reduce(next, { type: 'budget/leftover', key: OCT, row })).toBe(next);
+    expect(reduce(next, { type: 'budget/leftover', key: OCT, row: { ...row, id: 'server-id', amount: 1 } })).toBe(next);
+    expect(reduce(s, { type: 'budget/leftover', key: '2030-01', row })).toBe(s);
+  });
+
+  it('budget/leftover: quitado el movimiento, se puede volver a sumar', () => {
+    const s = frozen();
+    const row = { ...leftoverEntry(s, OCT, 'lo-1', '2026-10-07')! };
+    const added = reduce(s, { type: 'budget/leftover', key: OCT, row });
+    const removed = reduce(added, { type: 'budget/remove', key: OCT, id: 'lo-1' });
+    expect(removed.months[OCT]!.budgetLog).toEqual(s.months[OCT]!.budgetLog);
+    expect(leftoverFor(removed, OCT).added).toBe(false);
+    expect(reduce(removed, { type: 'budget/leftover', key: OCT, row }).months[OCT]!.budgetLog).toHaveLength(3);
+  });
+});
+
 describe('reduce · tasas del mes', () => {
   it('la tasa escrita manda sobre los envíos del mes', () => {
     const s = frozen();
     // Agosto no tiene tasa escrita: sale de sus envíos.
     expect(rateFor(s, '2026-08', 'USD', 'DOP').source).toBe('transfers');
-    const next = reduce(s, { type: 'rate/set', key: '2026-08', rate: { from: 'USD', to: 'DOP', rate: 60 } });
-    expect(next.months['2026-08']!.rates).toEqual([{ from: 'USD', to: 'DOP', rate: 60 }]);
-    expect(monthCalc(next, '2026-08').rate).toEqual({ rate: 60, source: 'month', monthKey: '2026-08' });
+    const next = reduce(s, { type: 'rate/set', key: '2026-08', rate: { from: 'USD', to: 'DOP', rate: 60, date: '2026-08-10' } });
+    expect(next.months['2026-08']!.rates).toEqual([{ from: 'USD', to: 'DOP', rate: 60, date: '2026-08-10' }]);
+    expect(monthCalc(next, '2026-08').rate).toEqual({ rate: 60, source: 'month', monthKey: '2026-08', date: '2026-08-10' });
     expect(next.months[OCT]).toBe(s.months[OCT]);
   });
 
-  it('hay una sola por par: la nueva sustituye a la que hubiera, en el sentido que fuera, y en su sitio', () => {
-    let s = reduce(frozen(), { type: 'rate/set', key: OCT, rate: { from: 'USD', to: 'TRY', rate: 40 } });
+  it('hay una por par y fecha: la nueva sustituye a la de esa fecha, en el sentido que fuera, y en su sitio', () => {
+    // Octubre trae USD → DOP escrita dos veces: el día 1 y el día 6.
+    let s = reduce(frozen(), { type: 'rate/set', key: OCT, rate: { from: 'USD', to: 'TRY', rate: 40, date: '2026-10-06' } });
     expect(s.months[OCT]!.rates).toEqual([
-      { from: 'USD', to: 'DOP', rate: 58.76 },
-      { from: 'USD', to: 'TRY', rate: 40 },
+      { from: 'USD', to: 'DOP', rate: 58.76, date: '2026-10-01' },
+      { from: 'USD', to: 'DOP', rate: 58.76, date: '2026-10-06' },
+      { from: 'USD', to: 'TRY', rate: 40, date: '2026-10-06' },
     ]);
-    s = reduce(s, { type: 'rate/set', key: OCT, rate: { from: 'DOP', to: 'USD', rate: 0.0165 } });
+    const first = s.months[OCT]!.rates[0];
+    s = reduce(s, { type: 'rate/set', key: OCT, rate: { from: 'DOP', to: 'USD', rate: 0.0165, date: '2026-10-06' } });
     expect(s.months[OCT]!.rates).toEqual([
-      { from: 'DOP', to: 'USD', rate: 0.0165 },
-      { from: 'USD', to: 'TRY', rate: 40 },
+      { from: 'USD', to: 'DOP', rate: 58.76, date: '2026-10-01' },
+      { from: 'DOP', to: 'USD', rate: 0.0165, date: '2026-10-06' },
+      { from: 'USD', to: 'TRY', rate: 40, date: '2026-10-06' },
     ]);
+    // La de otra fecha ni se toca: sigue valiendo para lo registrado antes del día 6.
+    expect(s.months[OCT]!.rates[0]).toBe(first);
     expect(rateFor(s, OCT, 'USD', 'DOP').rate).toBeCloseTo(1 / 0.0165, 10);
+    expect(rateFor(s, OCT, 'USD', 'DOP', '2026-10-05').rate).toBe(58.76);
+  });
+
+  it('varias tasas del mismo par, cada una con su fecha: cada fila se convierte con la vigente en la suya', () => {
+    let s = frozen();
+    for (const [rate, date] of [[59, '2026-10-10'], [60, '2026-10-20'], [59.5, '2026-10-15']] as const) {
+      s = reduce(s, { type: 'rate/set', key: OCT, rate: { from: 'USD', to: 'DOP', rate, date } });
+    }
+    // Se guardan en el orden en que se escribieron; shared/calc.ts las ordena por fecha.
+    expect(s.months[OCT]!.rates.map((r) => [r.date, r.rate])).toEqual([
+      ['2026-10-01', 58.76],
+      ['2026-10-06', 58.76],
+      ['2026-10-10', 59],
+      ['2026-10-20', 60],
+      ['2026-10-15', 59.5],
+    ]);
+    expect(rateFor(s, OCT, 'USD', 'DOP', '2026-10-09').rate).toBe(58.76);
+    expect(rateFor(s, OCT, 'USD', 'DOP', '2026-10-10').rate).toBe(59);
+    expect(rateFor(s, OCT, 'USD', 'DOP', '2026-10-17').rate).toBe(59.5);
+    expect(rateFor(s, OCT, 'USD', 'DOP', '2026-10-25')).toEqual({ rate: 60, source: 'month', monthKey: OCT, date: '2026-10-20' });
+    expect(monthCalc(s, OCT).rate.rate).toBe(60);
+    // Lo ya registrado no cambia: las siete transacciones de octubre son de los días 1 a 7.
+    expect(monthCalc(s, OCT).varSpent).toBe(monthCalc(seedState(), OCT).varSpent);
   });
 
   it('escribir la misma tasa otra vez no cambia nada', () => {
     const s = frozen();
-    expect(reduce(s, { type: 'rate/set', key: OCT, rate: { from: 'USD', to: 'DOP', rate: 58.76 } })).toBe(s);
-    expect(reduce(s, { type: 'rate/set', key: '2030-01', rate: { from: 'USD', to: 'DOP', rate: 1 } })).toBe(s);
+    expect(reduce(s, { type: 'rate/set', key: OCT, rate: { from: 'USD', to: 'DOP', rate: 58.76, date: '2026-10-06' } })).toBe(s);
+    expect(reduce(s, { type: 'rate/set', key: OCT, rate: { from: 'USD', to: 'DOP', rate: 58.76, date: '2026-10-01' } })).toBe(s);
+    expect(reduce(s, { type: 'rate/set', key: '2030-01', rate: { from: 'USD', to: 'DOP', rate: 1, date: '2030-01-01' } })).toBe(s);
+    // El mismo número en otra fecha sí es otra tasa.
+    expect(reduce(s, { type: 'rate/set', key: OCT, rate: { from: 'USD', to: 'DOP', rate: 58.76, date: '2026-10-07' } }).months[OCT]!.rates).toHaveLength(3);
   });
 
-  it('quitar la tasa escrita devuelve el par a lo que resuelva shared/calc', () => {
+  it('quitar una tasa quita solo la de esa fecha; sin ninguna, el par vuelve a lo que resuelva shared/calc', () => {
     const s = frozen();
     // Se quita aunque se pida en el otro sentido.
-    const next = reduce(s, { type: 'rate/remove', key: OCT, from: 'DOP', to: 'USD' });
-    expect(next.months[OCT]!.rates).toEqual([]);
-    expect(monthCalc(next, OCT).rate).toEqual({ rate: 58.76, source: 'transfers', monthKey: OCT });
-    expect(reduce(s, { type: 'rate/remove', key: OCT, from: 'USD', to: 'TRY' })).toBe(s);
+    const one = reduce(s, { type: 'rate/remove', key: OCT, from: 'DOP', to: 'USD', date: '2026-10-06' });
+    expect(one.months[OCT]!.rates).toEqual([{ from: 'USD', to: 'DOP', rate: 58.76, date: '2026-10-01' }]);
+    expect(one.months[OCT]!.rates[0]).toBe(s.months[OCT]!.rates[0]);
+    expect(monthCalc(one, OCT).rate).toEqual({ rate: 58.76, source: 'month', monthKey: OCT, date: '2026-10-01' });
+    const none = reduce(one, { type: 'rate/remove', key: OCT, from: 'USD', to: 'DOP', date: '2026-10-01' });
+    expect(none.months[OCT]!.rates).toEqual([]);
+    expect(monthCalc(none, OCT).rate).toEqual({ rate: 58.76, source: 'transfers', monthKey: OCT, date: null });
+    // Otro par, otra fecha u otro mes: nada que quitar.
+    expect(reduce(s, { type: 'rate/remove', key: OCT, from: 'USD', to: 'TRY', date: '2026-10-06' })).toBe(s);
+    expect(reduce(s, { type: 'rate/remove', key: OCT, from: 'USD', to: 'DOP', date: '2026-10-02' })).toBe(s);
+    expect(reduce(s, { type: 'rate/remove', key: '2026-09', from: 'USD', to: 'DOP', date: '2026-10-06' })).toBe(s);
+  });
+
+  it('quitar la tasa de una fecha devuelve sus filas a la anterior', () => {
+    const s = frozen(twoRates());
+    expect(rateFor(s, OCT, 'USD', 'DOP', '2026-10-07').rate).toBe(60);
+    const next = reduce(s, { type: 'rate/remove', key: OCT, from: 'USD', to: 'DOP', date: '2026-10-06' });
+    expect(rateFor(next, OCT, 'USD', 'DOP', '2026-10-07').rate).toBe(58);
+    expect(rateFor(next, OCT, 'USD', 'DOP').rate).toBe(58);
   });
 });
 
@@ -204,7 +424,7 @@ describe('reduce · filas del mes', () => {
   });
 
   it('sin tasa escrita, un envío nuevo cambia la tasa del mes (promedio ponderado)', () => {
-    const s = frozen(reduce(seedState(), { type: 'rate/remove', key: OCT, from: 'USD', to: 'DOP' }));
+    const s = frozen({ ...seedState(), months: { ...seedState().months, [OCT]: { ...seedState().months[OCT]!, rates: [] } } });
     const row = newTransfer(s, OCT, { date: '2026-10-08', via: 'PayPal', fromAccountId: 'us', toAccountId: 'dr', amount: 500, rate: 57 }, 'tr-new')!;
     const next = reduce(s, { type: 'transfer/add', row });
     expect(monthCalc(next, OCT).rate.rate).toBeCloseTo((1500 * 58.76 + 500 * 57) / 2000, 10);
@@ -272,7 +492,7 @@ describe('reduce · ingresos', () => {
   it('agrega, edita y elimina: el ingreso del mes es la suma de los suyos y entra a su cuenta', () => {
     const s = frozen();
     const row = newIncome(s, { date: '2026-10-15', desc: ' Bonus ', accountId: 'us', amount: 1000, cur: 'USD' }, 'in-new')!;
-    expect(row).toEqual({ id: 'in-new', date: '2026-10-15', desc: 'Bonus', accountId: 'us', amount: 1000, cur: 'USD' });
+    expect(row).toEqual({ id: 'in-new', date: '2026-10-15', desc: 'Bonus', accountId: 'us', amount: 1000, cur: 'USD', budget: false });
 
     let next = reduce(s, { type: 'income/add', row });
     expect(next.incomes).toHaveLength(4);
@@ -290,6 +510,28 @@ describe('reduce · ingresos', () => {
     expect(monthCalc(next, OCT).income).toBeCloseTo(5800 * 58.76, 6);
 
     expect(reduce(next, { type: 'income/remove', id: 'in-new' }).incomes).toEqual(s.incomes);
+  });
+
+  it('un ingreso marcado para el presupuesto sube la parte de su cuenta sin tocar el registro del mes', () => {
+    const s = frozen();
+    const row = newIncome(s, { date: '2026-10-15', desc: 'Bonus', accountId: 'dr', amount: 100, cur: 'USD', budget: true }, 'in-new')!;
+    expect(row.budget).toBe(true);
+    const next = reduce(s, { type: 'income/add', row });
+    // Ningún BudgetEntry: lo suma shared/calc.ts.
+    expect(next.months).toBe(s.months);
+    expect(monthCalc(next, OCT).budget).toBeCloseTo(70000 + 100 * 58.76, 8);
+    expect(partOf(next, 'dr')).toMatchObject({ fromLog: 70000 });
+    expect(partOf(next, 'dr').fromIncomes).toBeCloseTo(5876, 8);
+    expect(budgetHistory(next, OCT).at(-1)).toMatchObject({ kind: 'income', id: 'in-new', note: 'Bonus' });
+
+    // Desmarcarlo lo devuelve a un ingreso corriente: entra a la cuenta, pero no al presupuesto.
+    const off = reduce(next, { type: 'income/patch', id: 'in-new', patch: { budget: false } });
+    expect(monthCalc(off, OCT).budget).toBe(70000);
+    expect(balanceOf(off, 'dr')).toBe(balanceOf(next, 'dr'));
+    // Y marcar uno que ya existía, también.
+    const on = reduce(s, { type: 'income/patch', id: 'seed-in-3', patch: { budget: true } });
+    expect(partOf(on, 'us')).toMatchObject({ amount: 5800, fromLog: 0, fromIncomes: 5800 });
+    expect(monthCalc(on, OCT).budget).toBeCloseTo(70000 + 5800 * 58.76, 6);
   });
 });
 
@@ -358,15 +600,17 @@ describe('reduce · metas', () => {
     const s = frozen();
     const row = newGoal(s, { name: ' Car ', monthly: 500, start: '2026-10', end: '2027-09' }, 'g-new')!;
     // Sin moneda indicada, la principal del usuario.
-    expect(row).toEqual({ id: 'g-new', name: 'Car', cur: 'DOP', monthly: 500, start: '2026-10', end: '2027-09', sort: 3 });
+    expect(row).toEqual({ id: 'g-new', name: 'Car', cur: 'DOP', monthly: 500, start: '2026-10', end: '2027-09', approxCur: null, sort: 3 });
 
     let next = reduce(s, { type: 'goal/add', row });
     expect(next.goals.map((g) => g.id)).toEqual(['emergency', 'personal', 'turkey', 'g-new']);
     expect(next.contribs).toBe(s.contribs);
     expect(next.months).toBe(s.months);
 
-    next = reduce(next, { type: 'goal/patch', id: 'g-new', patch: { name: 'New car', monthly: 600, cur: 'USD' } });
-    expect(next.goals.at(-1)).toEqual({ ...row, name: 'New car', monthly: 600, cur: 'USD' });
+    next = reduce(next, { type: 'goal/patch', id: 'g-new', patch: { name: 'New car', monthly: 600, cur: 'USD', approxCur: 'TRY' } });
+    expect(next.goals.at(-1)).toEqual({ ...row, name: 'New car', monthly: 600, cur: 'USD', approxCur: 'TRY' });
+    // null es un valor: vuelve a la moneda principal del usuario.
+    expect(reduce(next, { type: 'goal/patch', id: 'g-new', patch: { approxCur: null } }).goals.at(-1)!.approxCur).toBeNull();
     // Las demás metas conservan su identidad.
     expect(next.goals[0]).toBe(s.goals[0]);
 
@@ -390,9 +634,14 @@ describe('reduce · idempotencia', () => {
     const actions: Action[] = [
       { type: 'month/patch', key: OCT, patch: { budgets: { us: 100, dr: 0 } } },
       { type: 'month/reopen', key: '2026-08' },
-      { type: 'rate/set', key: OCT, rate: { from: 'DOP', to: 'USD', rate: 0.017 } },
-      { type: 'rate/set', key: OCT, rate: { from: 'USD', to: 'TRY', rate: 40 } },
-      { type: 'rate/remove', key: OCT, from: 'USD', to: 'DOP' },
+      { type: 'month/patch', key: OCT, patch: { budgets: { dr: 82000.55 } }, date: '2026-10-09' },
+      { type: 'budget/add', key: OCT, row: { id: 'bg-new', date: '2026-10-09', accountId: 'us', amount: -40, kind: 'adjust', note: '' } },
+      { type: 'budget/remove', key: OCT, id: s.months[OCT]!.budgetLog[1]!.id },
+      { type: 'budget/leftover', key: OCT, row: leftoverEntry(s, OCT, 'local-lo', '2026-10-07')! },
+      { type: 'rate/set', key: OCT, rate: { from: 'DOP', to: 'USD', rate: 0.017, date: '2026-10-06' } },
+      { type: 'rate/set', key: OCT, rate: { from: 'USD', to: 'DOP', rate: 59, date: '2026-10-07' } },
+      { type: 'rate/set', key: OCT, rate: { from: 'USD', to: 'TRY', rate: 40, date: '2026-10-01' } },
+      { type: 'rate/remove', key: OCT, from: 'USD', to: 'DOP', date: '2026-10-01' },
       { type: 'account/add', row: newAccount(s, { name: 'PayPal', currency: 'USD' }, 'pp')! },
       { type: 'account/patch', id: 'us', patch: { name: 'Chase', opening: 10, hidden: true } },
       { type: 'account/remove', id: 'dr' },
@@ -404,7 +653,7 @@ describe('reduce · idempotencia', () => {
       { type: 'transfer/patch', id: s.months[OCT]!.transfers[0]!.id, patch: { amount: 2, via: 'Wise' } },
       { type: 'transfer/remove', id: s.months[OCT]!.transfers[0]!.id },
       { type: 'income/add', row: newIncome(s, { date: '2026-10-07', amount: 1, cur: 'USD' }, 'in-new')! },
-      { type: 'income/patch', id: s.incomes[0]!.id, patch: { amount: 6000 } },
+      { type: 'income/patch', id: s.incomes[0]!.id, patch: { amount: 6000, budget: true } },
       { type: 'income/remove', id: s.incomes[0]!.id },
       { type: 'contribution/add', row: newContribution(s, { goalId: 'emergency', date: '2026-10-07', amount: 1, cur: 'DOP' }, 'ct-new')! },
       { type: 'contribution/patch', id: s.contribs[0]!.id, patch: { amount: 5, cur: 'TRY' } },
@@ -412,7 +661,7 @@ describe('reduce · idempotencia', () => {
       { type: 'settings/patch', patch: { language: 'tr', theme: { accent: '#2a6f97', header: '#16202a', background: '#eef1f4' } } },
       { type: 'settings/patch', patch: { theme: null, mainCurrency: 'USD', secondCurrency: 'DOP', defaultAccountId: null } },
       { type: 'goal/add', row: newGoal(s, { name: 'Car', cur: 'TRY', monthly: 500, start: '2026-10', end: '2027-09' }, 'g-new')! },
-      { type: 'goal/patch', id: 'turkey', patch: { name: 'Istanbul', monthly: null, start: null, end: null } },
+      { type: 'goal/patch', id: 'turkey', patch: { name: 'Istanbul', monthly: null, start: null, end: null, approxCur: 'TRY' } },
       { type: 'goal/remove', id: 'personal' },
     ];
     for (const action of actions) {
@@ -495,11 +744,22 @@ describe('filas nuevas: validación del contrato', () => {
     expect(newTransfer(s, OCT, { ...ok, via: 'x'.repeat(61) }, 'x')).toBeNull();
   });
 
-  it('envío sin tasa: la del mes para ese par; entre cuentas de la misma moneda, siempre 1', () => {
+  it('envío sin tasa: la vigente en su fecha para ese par; entre cuentas de la misma moneda, siempre 1', () => {
     const base = { date: '2026-10-07', via: 'Remitly', fromAccountId: 'us', toAccountId: 'dr', amount: 500 };
     expect(newTransfer(s, OCT, base, 'x')!.rate).toBe(58.76);
     expect(newTransfer(s, OCT, { ...base, fromAccountId: 'dr', toAccountId: 'us' }, 'x')!.rate).toBeCloseTo(1 / 58.76, 12);
-    expect(newTransfer(s, '2026-08', base, 'x')!.rate).toBeCloseTo(rateFor(s, '2026-08', 'USD', 'DOP').rate, 12);
+    // Agosto no tiene tasa escrita, ni la había antes: la de sus envíos.
+    expect(newTransfer(s, '2026-08', { ...base, date: '2026-08-20' }, 'x')!.rate).toBeCloseTo(rateFor(s, '2026-08', 'USD', 'DOP').rate, 12);
+
+    // Con dos tasas escritas en el mes (58 desde el día 1, 60 desde el día 6), manda la fecha del envío.
+    const dated = twoRates();
+    expect(newTransfer(dated, OCT, { ...base, date: '2026-10-03' }, 'x')!.rate).toBe(58);
+    expect(newTransfer(dated, OCT, { ...base, date: '2026-10-05' }, 'x')!.rate).toBe(58);
+    expect(newTransfer(dated, OCT, { ...base, date: '2026-10-06' }, 'x')!.rate).toBe(60);
+    expect(newTransfer(dated, OCT, { ...base, date: '2026-10-28' }, 'x')!.rate).toBe(60);
+    expect(newTransfer(dated, OCT, { ...base, date: '2026-10-03', fromAccountId: 'dr', toAccountId: 'us' }, 'x')!.rate).toBeCloseTo(1 / 58, 12);
+    // La escrita a mano en el envío manda sobre cualquiera de las dos.
+    expect(newTransfer(dated, OCT, { ...base, date: '2026-10-03', rate: 57.5 }, 'x')!.rate).toBe(57.5);
 
     const two = { ...s, accounts: [...s.accounts, newAccount(s, { name: 'PayPal', currency: 'USD' }, 'pp')!] };
     expect(newTransfer(two, OCT, { ...base, toAccountId: 'pp' }, 'x')!.rate).toBe(1);
@@ -508,8 +768,15 @@ describe('filas nuevas: validación del contrato', () => {
 
   it('ingreso: fecha válida, monto > 0 y una cuenta que exista; no pertenece a un mes', () => {
     const ok = { date: '2026-10-01', desc: 'Salary', accountId: 'us', amount: 5800, cur: 'USD' as const };
-    expect(newIncome(s, ok, 'x')).toEqual({ id: 'x', ...ok });
+    expect(newIncome(s, ok, 'x')).toEqual({ id: 'x', ...ok, budget: false });
     expect(newIncome(s, { ...ok, desc: undefined }, 'x')!.desc).toBe('');
+    // Sube el presupuesto solo si se marca.
+    expect(newIncome(s, { ...ok, budget: true }, 'x')).toEqual({ id: 'x', ...ok, budget: true });
+    expect(newIncome(s, { ...ok, budget: false }, 'x')!.budget).toBe(false);
+    expect(newIncome(s, { ...ok, budget: undefined }, 'x')!.budget).toBe(false);
+    expect(newIncome(s, { ...ok, budget: 'yes' as unknown as boolean }, 'x')!.budget).toBe(false);
+    // Marcado vale también con fecha de un mes cerrado: no pertenece al mes.
+    expect(newIncome(s, { ...ok, date: '2026-09-15', budget: true }, 'x')).toMatchObject({ date: '2026-09-15', budget: true });
     expect(newIncome(s, { ...ok, amount: 0 }, 'x')).toBeNull();
     expect(newIncome(s, { ...ok, date: '2026-02-30' }, 'x')).toBeNull();
     expect(newIncome(s, { ...ok, accountId: 'gone' }, 'x')).toBeNull();
@@ -557,6 +824,10 @@ describe('ediciones de celda: lo que el servidor rechazaría se ignora y el rest
   it('ingreso y aporte', () => {
     expect(incomeChange(s, { amount: -5, desc: '' })).toEqual({ desc: '' });
     expect(incomeChange(s, { accountId: 'gone', date: 'ayer', amount: 10 })).toEqual({ amount: 10 });
+    // La casilla "sube el presupuesto" pasa en los dos sentidos; lo que no sea un booleano, no.
+    expect(incomeChange(s, { budget: true })).toEqual({ budget: true });
+    expect(incomeChange(s, { budget: false, amount: -1 })).toEqual({ budget: false });
+    expect(incomeChange(s, { budget: 'yes' as unknown as boolean, desc: 'Bonus' })).toEqual({ desc: 'Bonus' });
     expect(contributionChange(s, { goalId: 'marte', amount: 10 })).toEqual({ amount: 10 });
     expect(contributionChange(s, { goalId: 'personal', date: '2026-10-09', amount: -1, cur: 'DOP' })).toEqual({ goalId: 'personal', date: '2026-10-09', cur: 'DOP' });
   });
@@ -603,6 +874,18 @@ describe('ediciones de celda: lo que el servidor rechazaría se ignora y el rest
       rate: 0.0171,
     });
   });
+
+  it('envío: la tasa del par nuevo es la vigente en la fecha del envío (la nueva, si la fecha cambia a la vez)', () => {
+    // El envío de octubre es del día 2: entre la tasa del día 1 (58) y la del día 6 (60).
+    const dated = twoRates();
+    const flipped = transferChange(dated, transfer.id, { fromAccountId: 'dr', toAccountId: 'us' });
+    expect(flipped.rate).toBeCloseTo(1 / 58, 12);
+    const moved = transferChange(dated, transfer.id, { fromAccountId: 'dr', toAccountId: 'us', date: '2026-10-08' });
+    expect(moved).toMatchObject({ fromAccountId: 'dr', toAccountId: 'us', date: '2026-10-08' });
+    expect(moved.rate).toBeCloseTo(1 / 60, 12);
+    // Cambiar solo la fecha no toca la tasa: la del envío es la que se usó de verdad.
+    expect(transferChange(dated, transfer.id, { date: '2026-10-08' })).toEqual({ date: '2026-10-08' });
+  });
 });
 
 describe('cuentas: reglas', () => {
@@ -628,6 +911,7 @@ describe('cuentas: reglas', () => {
     // Cada cosa que puede nombrarla, por separado.
     const uses: Action[] = [
       { type: 'month/patch', key: '2026-08', patch: { budgets: { spare: 100 } } },
+      { type: 'budget/add', key: OCT, row: { id: 'bg-spare', date: '2026-10-09', accountId: 'spare', amount: -5, kind: 'adjust', note: '' } },
       { type: 'fixed/patch', id: s.months[OCT]!.fixed[0]!.id, patch: { accountId: 'spare' } },
       { type: 'tx/patch', id: s.months['2026-09']!.tx[0]!.id, patch: { accountId: 'spare' } },
       { type: 'transfer/patch', id: s.months[OCT]!.transfers[0]!.id, patch: { toAccountId: 'spare' } },
@@ -635,6 +919,10 @@ describe('cuentas: reglas', () => {
       { type: 'income/patch', id: s.incomes[0]!.id, patch: { accountId: 'spare' } },
     ];
     for (const use of uses) expect(canRemoveAccount(reduce(spare, use), 'spare'), use.type).toBe(false);
+    // Lo que cuenta es el registro, no la suma: una parte que se dejó en cero sigue nombrando la cuenta.
+    const zeroed = reduce(reduce(spare, uses[0]!), { type: 'month/patch', key: '2026-08', patch: { budgets: { spare: 0 } } });
+    expect(zeroed.months['2026-08']!.budgets).toEqual({ dr: 70000 });
+    expect(canRemoveAccount(zeroed, 'spare')).toBe(false);
     // Ser la cuenta por defecto es una preferencia, no un movimiento.
     expect(canRemoveAccount({ ...spare, defaultAccountId: 'spare' }, 'spare')).toBe(true);
   });
@@ -687,19 +975,183 @@ describe('cuentas: reglas', () => {
     expect(budgetPart(s, '2026-09', 'us', 200)).toBeNull(); // cerrado
     expect(budgetPart(s, '2030-01', 'us', 200)).toBeNull();
 
-    expect(monthRate(s, OCT, 'USD', 'TRY', 40)).toEqual({ from: 'USD', to: 'TRY', rate: 40 });
-    expect(monthRate(s, OCT, 'USD', 'USD', 1)).toBeNull();
-    expect(monthRate(s, OCT, 'USD', 'TRY', 0)).toBeNull();
-    expect(monthRate(s, OCT, 'USD', 'TRY', -3)).toBeNull();
-    expect(monthRate(s, OCT, 'USD', 'EUR' as 'TRY', 1.1)).toBeNull();
-    expect(monthRate(s, '2026-09', 'USD', 'TRY', 40)).toBeNull();
+    expect(monthRate(s, OCT, 'USD', 'TRY', 40, '2026-10-07')).toEqual({ from: 'USD', to: 'TRY', rate: 40, date: '2026-10-07' });
+    expect(monthRate(s, OCT, 'USD', 'USD', 1, '2026-10-07')).toBeNull();
+    expect(monthRate(s, OCT, 'USD', 'TRY', 0, '2026-10-07')).toBeNull();
+    expect(monthRate(s, OCT, 'USD', 'TRY', -3, '2026-10-07')).toBeNull();
+    expect(monthRate(s, OCT, 'USD', 'EUR' as 'TRY', 1.1, '2026-10-07')).toBeNull();
+    expect(monthRate(s, '2026-09', 'USD', 'TRY', 40, '2026-09-07')).toBeNull();
   });
 
-  it('typedRate: la tasa escrita del par, en el sentido en que se guardó', () => {
-    expect(typedRate(s, OCT, 'USD', 'DOP')).toEqual({ from: 'USD', to: 'DOP', rate: 58.76 });
-    expect(typedRate(s, OCT, 'DOP', 'USD')).toEqual({ from: 'USD', to: 'DOP', rate: 58.76 });
-    expect(typedRate(s, OCT, 'USD', 'TRY')).toBeNull();
-    expect(typedRate(s, '2026-08', 'USD', 'DOP')).toBeNull();
+  it('monthRate: la fecha tiene que ser una fecha de verdad y caer dentro del mes', () => {
+    expect(monthRate(s, OCT, 'USD', 'DOP', 59, '2026-10-01')).toMatchObject({ date: '2026-10-01' });
+    expect(monthRate(s, OCT, 'USD', 'DOP', 59, '2026-10-31')).toMatchObject({ date: '2026-10-31' });
+    expect(monthRate(s, OCT, 'USD', 'DOP', 59, '2026-09-30')).toBeNull();
+    expect(monthRate(s, OCT, 'USD', 'DOP', 59, '2026-11-01')).toBeNull();
+    expect(monthRate(s, OCT, 'USD', 'DOP', 59, '2026-10-32')).toBeNull();
+    expect(monthRate(s, OCT, 'USD', 'DOP', 59, '2026-10')).toBeNull();
+    expect(monthRate(s, OCT, 'USD', 'DOP', 59, '')).toBeNull();
+    expect(monthRate(s, OCT, 'USD', 'DOP', 59, undefined as unknown as string)).toBeNull();
+  });
+
+  it('budgetPart: el monto es la parte tal como se ve; lo que se manda es lo que debe sumar el registro', () => {
+    // Un ingreso de 10,000 DOP sube el presupuesto de la DR account: se ve en 80,000 (70,000 + 10,000).
+    const raised = withBudgetIncome();
+    expect(partOf(raised, 'dr')).toMatchObject({ amount: 80000, fromLog: 70000, fromIncomes: 10000 });
+    expect(budgetPart(raised, OCT, 'dr', 85000)).toEqual({ budgets: { dr: 75000 } });
+    // Escribir lo que ya se ve deja el registro donde estaba.
+    expect(budgetPart(raised, OCT, 'dr', 80000)).toEqual({ budgets: { dr: 70000 } });
+    expect(reduce(raised, { type: 'month/patch', key: OCT, patch: budgetPart(raised, OCT, 'dr', 80000)! })).toBe(raised);
+    // Aplicado, la parte se ve en lo que se escribió.
+    const next = reduce(raised, { type: 'month/patch', key: OCT, patch: budgetPart(raised, OCT, 'dr', 85000)! });
+    expect(partOf(next, 'dr')).toMatchObject({ amount: 85000, fromLog: 75000, fromIncomes: 10000 });
+    // El ingreso es de la DR account: la parte de la otra cuenta no lo descuenta.
+    expect(budgetPart(raised, OCT, 'us', 200)).toEqual({ budgets: { us: 200 } });
+  });
+
+  it('budgetPart: por debajo de lo que ya suman los ingresos no se puede (el registro quedaría en negativo)', () => {
+    const raised = withBudgetIncome();
+    // Justo lo de los ingresos: el registro queda en cero.
+    expect(budgetPart(raised, OCT, 'dr', 10000)).toEqual({ budgets: { dr: 0 } });
+    expect(budgetPart(raised, OCT, 'dr', 9999.99)).toBeNull();
+    expect(budgetPart(raised, OCT, 'dr', 0)).toBeNull();
+    // Sin ese ingreso, 0 vale.
+    expect(budgetPart(s, OCT, 'dr', 0)).toEqual({ budgets: { dr: 0 } });
+  });
+
+  it('budgetPart: un ingreso en otra moneda cuenta convertido a la de la cuenta, con la tasa de su fecha', () => {
+    // 100 USD cobrados el día 3 en la DR account, con 58 hasta el día 6 y 60 después: suman 5,800, no 6,000.
+    const dated = twoRates();
+    dated.incomes.push({ id: 'in-usd', date: '2026-10-03', desc: '', accountId: 'dr', amount: 100, cur: 'USD', budget: true });
+    expect(partOf(dated, 'dr').fromIncomes).toBe(5800);
+    expect(budgetPart(dated, OCT, 'dr', 80000)).toEqual({ budgets: { dr: 74200 } });
+    expect(budgetPart(dated, OCT, 'dr', 5800)).toEqual({ budgets: { dr: 0 } });
+    expect(budgetPart(dated, OCT, 'dr', 5799)).toBeNull();
+  });
+
+  it('budgetPart: solo cuentan los ingresos marcados y con fecha en ese mes', () => {
+    expect(budgetPart(withBudgetIncome({ budget: false }), OCT, 'dr', 5000)).toEqual({ budgets: { dr: 5000 } });
+    expect(budgetPart(withBudgetIncome({ date: '2026-09-28' }), OCT, 'dr', 5000)).toEqual({ budgets: { dr: 5000 } });
+    expect(budgetPart(withBudgetIncome({ accountId: 'us', cur: 'USD', amount: 300 }), OCT, 'us', 500)).toEqual({ budgets: { us: 200 } });
+  });
+
+  it('typedRate: la tasa escrita del par y la fecha, en el sentido en que se guardó', () => {
+    expect(typedRate(s, OCT, 'USD', 'DOP', '2026-10-06')).toEqual({ from: 'USD', to: 'DOP', rate: 58.76, date: '2026-10-06' });
+    expect(typedRate(s, OCT, 'DOP', 'USD', '2026-10-01')).toEqual({ from: 'USD', to: 'DOP', rate: 58.76, date: '2026-10-01' });
+    // Es la escrita ese día, no la vigente ese día.
+    expect(typedRate(s, OCT, 'USD', 'DOP', '2026-10-03')).toBeNull();
+    expect(typedRate(s, OCT, 'USD', 'TRY', '2026-10-06')).toBeNull();
+    expect(typedRate(s, '2026-08', 'USD', 'DOP', '2026-08-01')).toBeNull();
+    // Un mes cerrado no deja quitar sus tasas.
+    const closed = { ...s, months: { ...s.months, [OCT]: { ...s.months[OCT]!, closed: true } } };
+    expect(typedRate(closed, OCT, 'USD', 'DOP', '2026-10-06')).toBeNull();
+  });
+
+  it('newBudgetEntry: una cuenta que exista, un monto distinto de 0 y una fecha del mes', () => {
+    const today = '2026-10-07';
+    expect(newBudgetEntry(s, OCT, { accountId: 'dr', amount: 2500 }, 'x', today)).toEqual({ id: 'x', date: today, accountId: 'dr', amount: 2500, kind: 'adjust', note: '' });
+    expect(newBudgetEntry(s, OCT, { accountId: 'us', amount: -40.5, date: '2026-10-20', kind: 'initial', note: '  Trip  ' }, 'x', today)).toEqual({
+      id: 'x',
+      date: '2026-10-20',
+      accountId: 'us',
+      amount: -40.5,
+      kind: 'initial',
+      note: 'Trip',
+    });
+    expect(newBudgetEntry(s, OCT, { accountId: 'dr', amount: 0 }, 'x', today)).toBeNull();
+    expect(newBudgetEntry(s, OCT, { accountId: 'dr', amount: Number.NaN }, 'x', today)).toBeNull();
+    expect(newBudgetEntry(s, OCT, { accountId: 'dr', amount: Number.POSITIVE_INFINITY }, 'x', today)).toBeNull();
+    expect(newBudgetEntry(s, OCT, { accountId: 'gone', amount: 1 }, 'x', today)).toBeNull();
+    expect(newBudgetEntry(s, OCT, { accountId: 'dr', amount: 1, date: '2026-11-01' }, 'x', today)).toBeNull();
+    expect(newBudgetEntry(s, OCT, { accountId: 'dr', amount: 1, date: '2026-10-32' }, 'x', today)).toBeNull();
+    expect(newBudgetEntry(s, OCT, { accountId: 'dr', amount: 1, note: 'x'.repeat(201) }, 'x', today)).toBeNull();
+    expect(newBudgetEntry(s, '2026-09', { accountId: 'dr', amount: 1 }, 'x', '2026-09-07')).toBeNull(); // cerrado
+    expect(newBudgetEntry(s, '2030-01', { accountId: 'dr', amount: 1 }, 'x', today)).toBeNull();
+  });
+
+  it('newBudgetEntry: sin fecha es hoy, llevado al mes si cae fuera', () => {
+    expect(newBudgetEntry(s, OCT, { accountId: 'dr', amount: 1 }, 'x', '2026-11-03')!.date).toBe('2026-10-31');
+    expect(newBudgetEntry(s, OCT, { accountId: 'dr', amount: 1 }, 'x', '2026-09-29')!.date).toBe('2026-10-01');
+    expect(newBudgetEntry(s, OCT, { accountId: 'dr', amount: 1 }, 'x', '2027-01-15')!.date).toBe('2026-10-31');
+  });
+
+  it('budgetEntry / isLocalEntry: solo se puede quitar un movimiento que ya tiene id del servidor, de un mes abierto', () => {
+    expect(budgetEntry(s, OCT, 'seed-bg-2026-10-2')).toBe(s.months[OCT]!.budgetLog[1]);
+    expect(budgetEntry(s, OCT, 'nope')).toBeNull();
+    expect(budgetEntry(s, '2026-09', 'seed-bg-2026-09-1')).toBeNull(); // cerrado
+    expect(budgetEntry(s, '2030-01', 'seed-bg-2026-10-2')).toBeNull();
+    // El que añade month/patch aquí todavía no tiene id: lo pone el servidor.
+    const patched = reduce(s, { type: 'month/patch', key: OCT, patch: { budgets: { us: 200 } } });
+    const local = patched.months[OCT]!.budgetLog.at(-1)!;
+    expect(local.id.startsWith(LOCAL_ENTRY)).toBe(true);
+    expect(isLocalEntry(local.id)).toBe(true);
+    expect(budgetEntry(patched, OCT, local.id)).toBeNull();
+    expect(isLocalEntry('seed-bg-2026-10-2')).toBe(false);
+    expect(isLocalEntry('')).toBe(false);
+  });
+
+  it('leftoverEntry: lo que sobró del mes anterior, en la cuenta por defecto y en su moneda', () => {
+    // Septiembre: presupuesto − usado, en la moneda principal (DOP). La cuenta por defecto es la DR account (DOP).
+    const sep = monthCalc(s, '2026-09').avail;
+    expect(sep).toBeGreaterThan(0);
+    expect(leftoverEntry(s, OCT, 'local-lo', '2026-10-07')).toEqual({ id: 'local-lo', date: '2026-10-07', accountId: 'dr', amount: sep, kind: 'leftover', note: '' });
+    // Hoy fuera del mes: la fecha se lleva al mes.
+    expect(leftoverEntry(s, OCT, 'x', '2026-11-02')!.date).toBe('2026-10-31');
+    expect(leftoverEntry(s, OCT, 'x', '2026-09-30')!.date).toBe('2026-10-01');
+  });
+
+  it('leftoverEntry: con la cuenta por defecto en otra moneda, convertido con la última tasa del mes', () => {
+    const sep = monthCalc(s, '2026-09').avail;
+    const usd = leftoverEntry({ ...s, defaultAccountId: 'us' }, OCT, 'x', '2026-10-07')!;
+    expect(usd).toMatchObject({ accountId: 'us', kind: 'leftover' });
+    expect(usd.amount).toBeCloseTo(sep / 58.76, 10);
+    // La última del mes (60), no la vigente hoy (58): el día 3 todavía vale la del día 1.
+    const dated = { ...twoRates(), defaultAccountId: 'us' };
+    expect(leftoverEntry(dated, OCT, 'x', '2026-10-03')!.amount).toBeCloseTo(monthCalc(dated, '2026-09').avail / 60, 10);
+    // Con otra moneda principal el sobrante ya viene en ella: a una cuenta en esa moneda entra tal cual.
+    const main = { ...s, mainCurrency: 'USD' as const, secondCurrency: 'DOP' as const, defaultAccountId: 'us' };
+    expect(leftoverEntry(main, OCT, 'x', '2026-10-07')!.amount).toBe(monthCalc(main, '2026-09').avail);
+    // Sin cuenta elegida: la automática (shared/calc defaultAccount).
+    expect(leftoverEntry({ ...s, defaultAccountId: null }, OCT, 'x', '2026-10-07')!.accountId).toBe('dr');
+  });
+
+  it('leftoverEntry: si el mes anterior se pasó del presupuesto, el movimiento es negativo', () => {
+    const over = seedState();
+    setBudgets(over.months['2026-09']!, { dr: 1000 });
+    const row = leftoverEntry(over, OCT, 'x', '2026-10-07')!;
+    expect(row.amount).toBe(monthCalc(over, '2026-09').avail);
+    expect(row.amount).toBeLessThan(0);
+    expect(monthCalc(reduce(over, { type: 'budget/leftover', key: OCT, row }), OCT).budget).toBeCloseTo(70000 + row.amount, 8);
+  });
+
+  it('leftoverEntry: null si no hay nada que sumar o no se puede', () => {
+    // Mes cerrado.
+    expect(leftoverEntry(s, '2026-09', 'x', '2026-09-07')).toBeNull();
+    // Mes que no existe.
+    expect(leftoverEntry(s, '2026-11', 'x', '2026-11-07')).toBeNull();
+    // Sin mes anterior.
+    const only = { ...s, months: { [OCT]: s.months[OCT]! } };
+    expect(leftoverFor(only, OCT)).toEqual({ previousKey: null, leftover: null, added: false });
+    expect(leftoverEntry(only, OCT, 'x', '2026-10-07')).toBeNull();
+    // Ya sumado.
+    const added = reduce(s, { type: 'budget/leftover', key: OCT, row: leftoverEntry(s, OCT, 'x', '2026-10-07')! });
+    expect(leftoverEntry(added, OCT, 'y', '2026-10-08')).toBeNull();
+    // Sin cuentas no hay dónde ponerlo.
+    expect(leftoverEntry({ ...s, accounts: [] }, OCT, 'x', '2026-10-07')).toBeNull();
+    // No sobró nada: el mes anterior usó justo su presupuesto.
+    const even = seedState();
+    const sep = even.months['2026-09']!;
+    sep.fixed = [];
+    sep.tx = [{ ...sep.tx[0]!, amount: 1000 }];
+    setBudgets(sep, { dr: 1000 });
+    expect(monthCalc(even, '2026-09').avail).toBe(0);
+    expect(leftoverEntry(even, OCT, 'x', '2026-10-07')).toBeNull();
+  });
+
+  it('leftoverEntry: el mes anterior es el registrado más cercano, aunque no sea el del calendario', () => {
+    const gap = removeMonth(s, '2026-09');
+    expect(leftoverFor(gap, OCT).previousKey).toBe('2026-08');
+    expect(leftoverEntry(gap, OCT, 'x', '2026-10-07')!.amount).toBe(monthCalc(gap, '2026-08').avail);
   });
 
   it('currencyChange: las dos monedas quedan siempre distintas', () => {
@@ -751,7 +1203,7 @@ describe('metas: la regla del plan', () => {
   });
 
   it('newGoal: nombre obligatorio, plan válido y una moneda (por defecto, la principal)', () => {
-    expect(newGoal(s, { name: 'Car' }, 'x')).toEqual({ id: 'x', name: 'Car', cur: 'DOP', monthly: null, start: null, end: null, sort: 3 });
+    expect(newGoal(s, { name: 'Car' }, 'x')).toEqual({ id: 'x', name: 'Car', cur: 'DOP', monthly: null, start: null, end: null, approxCur: null, sort: 3 });
     expect(newGoal(s, { name: 'Car', cur: 'TRY', ...plan }, 'x')).toMatchObject({ cur: 'TRY', ...plan });
     expect(newGoal({ ...s, mainCurrency: 'USD', secondCurrency: 'DOP' }, { name: 'Car' }, 'x')!.cur).toBe('USD');
     expect(newGoal(s, { name: '   ' }, 'x')).toBeNull();
@@ -761,6 +1213,32 @@ describe('metas: la regla del plan', () => {
     expect(newGoal(s, { name: 'Car', cur: 'EUR' as 'USD' }, 'x')).toBeNull();
     // Sin metas, la primera lleva sort 0.
     expect(newGoal({ ...s, goals: [] }, { name: 'Car' }, 'x')!.sort).toBe(0);
+  });
+
+  it('newGoal: la moneda de la línea "≈" es opcional; null o sin indicar, la principal del usuario', () => {
+    expect(newGoal(s, { name: 'Car' }, 'x')!.approxCur).toBeNull();
+    expect(newGoal(s, { name: 'Car', approxCur: null }, 'x')!.approxCur).toBeNull();
+    expect(newGoal(s, { name: 'Car', approxCur: undefined }, 'x')!.approxCur).toBeNull();
+    expect(newGoal(s, { name: 'Car', cur: 'USD', approxCur: 'TRY', ...plan }, 'x')).toMatchObject({ cur: 'USD', approxCur: 'TRY', ...plan });
+    // Puede ser cualquiera de las tres, también la de la propia meta o la principal.
+    expect(newGoal(s, { name: 'Car', cur: 'USD', approxCur: 'USD' }, 'x')!.approxCur).toBe('USD');
+    expect(newGoal(s, { name: 'Car', approxCur: 'DOP' }, 'x')!.approxCur).toBe('DOP');
+    expect(newGoal(s, { name: 'Car', approxCur: 'EUR' as 'USD' }, 'x')).toBeNull();
+  });
+
+  it('goalChange: la moneda de la línea "≈", con null como un valor más', () => {
+    expect(goalChange(s, 'turkey', { approxCur: 'TRY' })).toEqual({ approxCur: 'TRY' });
+    // Ya era null: no hay nada que mandar.
+    expect(goalChange(s, 'turkey', { approxCur: null })).toEqual({});
+    expect(goalChange(s, 'turkey', { approxCur: undefined })).toEqual({});
+    expect(goalChange(s, 'turkey', { approxCur: 'EUR' as 'USD' })).toBeNull();
+    const lira = reduce(s, { type: 'goal/patch', id: 'turkey', patch: { approxCur: 'TRY' } });
+    expect(goalChange(lira, 'turkey', { approxCur: 'TRY' })).toEqual({});
+    expect(goalChange(lira, 'turkey', { approxCur: 'USD' })).toEqual({ approxCur: 'USD' });
+    // Volver a la moneda principal es mandar null, no dejar de mandarlo.
+    expect(goalChange(lira, 'turkey', { approxCur: null })).toEqual({ approxCur: null });
+    // Viaja con lo demás del diálogo, sin arrastrar el plan si no cambió.
+    expect(goalChange(lira, 'turkey', { name: 'Istanbul', approxCur: null, monthly: 3000 })).toEqual({ name: 'Istanbul', approxCur: null });
   });
 
   it('goalChange: solo lo que cambia; el plan, siempre los tres campos juntos', () => {
@@ -776,7 +1254,7 @@ describe('metas: la regla del plan', () => {
 
   it('goalChange: un patch sin cambios da {}', () => {
     expect(goalChange(s, 'turkey', {})).toEqual({});
-    expect(goalChange(s, 'turkey', { name: 'Trip to Turkey', cur: 'USD', monthly: 3000, start: '2026-08', end: '2027-10', sort: 2 })).toEqual({});
+    expect(goalChange(s, 'turkey', { name: 'Trip to Turkey', cur: 'USD', monthly: 3000, start: '2026-08', end: '2027-10', approxCur: null, sort: 2 })).toEqual({});
     expect(goalChange(s, 'personal', { monthly: null })).toEqual({});
   });
 
@@ -838,7 +1316,7 @@ describe('auxiliares', () => {
       { type: 'settings/patch', patch: {} },
       { type: 'account/patch', id: 'us', patch: {} },
       { type: 'month/patch', key: OCT, patch: {} },
-      { type: 'rate/set', key: OCT, rate: { from: 'USD', to: 'DOP', rate: 1 } },
+      { type: 'rate/set', key: OCT, rate: { from: 'USD', to: 'DOP', rate: 1, date: '2026-10-07' } },
       { type: 'fixed/patch', id: 'x', patch: {} },
       { type: 'tx/patch', id: 'x', patch: {} },
       { type: 'transfer/patch', id: 'x', patch: {} },
@@ -849,7 +1327,11 @@ describe('auxiliares', () => {
     const direct: Action[] = [
       { type: 'goal/patch', id: 'turkey', patch: {} },
       { type: 'account/add', row: s.accounts[0]! },
-      { type: 'rate/remove', key: OCT, from: 'USD', to: 'DOP' },
+      { type: 'rate/remove', key: OCT, from: 'USD', to: 'DOP', date: '2026-10-07' },
+      // El registro del presupuesto no son celdas: cada movimiento sale de una vez.
+      { type: 'budget/add', key: OCT, row: s.months[OCT]!.budgetLog[0]! },
+      { type: 'budget/remove', key: OCT, id: 'x' },
+      { type: 'budget/leftover', key: OCT, row: s.months[OCT]!.budgetLog[0]! },
       { type: 'month/reopen', key: OCT },
       { type: 'income/remove', id: 'x' },
     ];
@@ -872,15 +1354,26 @@ describe('auxiliares', () => {
         { type: 'month/patch', key: OCT, patch: { budgets: { dr: 65000 } } },
       ),
     ).toEqual({ type: 'month/patch', key: OCT, patch: { budgets: { us: 100, dr: 65000 } } });
-    const later: Action = { type: 'rate/set', key: OCT, rate: { from: 'DOP', to: 'USD', rate: 0.017 } };
-    expect(mergePatch({ type: 'rate/set', key: OCT, rate: { from: 'USD', to: 'DOP', rate: 59 } }, later as never)).toBe(later);
+    const later: Action = { type: 'rate/set', key: OCT, rate: { from: 'DOP', to: 'USD', rate: 0.017, date: '2026-10-07' } };
+    expect(mergePatch({ type: 'rate/set', key: OCT, rate: { from: 'USD', to: 'DOP', rate: 59, date: '2026-10-07' } }, later as never)).toBe(later);
+  });
+
+  it('mergePatch: al fundir dos partes del presupuesto queda la fecha de la más reciente', () => {
+    expect(
+      mergePatch(
+        { type: 'month/patch', key: OCT, patch: { budgets: { us: 100 } }, date: '2026-10-07' },
+        { type: 'month/patch', key: OCT, patch: { budgets: { dr: 65000 } }, date: '2026-10-08' },
+      ),
+    ).toEqual({ type: 'month/patch', key: OCT, patch: { budgets: { us: 100, dr: 65000 } }, date: '2026-10-08' });
   });
 
   it('fieldsOf: cada campo, cada cuenta del presupuesto y la tasa llevan su propio retraso', () => {
     expect(fieldsOf({ type: 'tx/patch', id: 'a', patch: { desc: 'U', amount: 1 } })).toEqual(['desc', 'amount']);
     expect(fieldsOf({ type: 'month/patch', key: OCT, patch: { budgets: { us: 1, dr: 2 } } })).toEqual(['budgets.us', 'budgets.dr']);
     expect(fieldsOf({ type: 'month/patch', key: OCT, patch: {} })).toEqual([]);
-    expect(fieldsOf({ type: 'rate/set', key: OCT, rate: { from: 'USD', to: 'DOP', rate: 59 } })).toEqual(['rate']);
+    expect(fieldsOf({ type: 'rate/set', key: OCT, rate: { from: 'USD', to: 'DOP', rate: 59, date: '2026-10-07' } })).toEqual(['rate']);
+    expect(fieldsOf({ type: 'month/patch', key: OCT, patch: { budgets: { us: 1 } }, date: '2026-10-07' })).toEqual(['budgets.us']);
+    expect(fieldsOf({ type: 'income/patch', id: 'i1', patch: { budget: true } })).toEqual(['budget']);
     expect(fieldsOf({ type: 'settings/patch', patch: {} })).toEqual([]);
   });
 
@@ -906,15 +1399,29 @@ describe('auxiliares', () => {
     expect(targetOf({ type: 'contribution/patch', id: 'c1', patch: {} })).toBe(targetOf({ type: 'contribution/remove', id: 'c1' }));
   });
 
-  it('targetOf: una tasa se nombra por su mes y su par, en cualquiera de los dos sentidos', () => {
-    const set = targetOf({ type: 'rate/set', key: OCT, rate: { from: 'USD', to: 'DOP', rate: 59 } });
-    expect(set).toBe(`rate:${OCT}:DOP-USD`);
-    expect(targetOf({ type: 'rate/set', key: OCT, rate: { from: 'DOP', to: 'USD', rate: 0.017 } })).toBe(set);
-    expect(targetOf({ type: 'rate/remove', key: OCT, from: 'DOP', to: 'USD' })).toBe(set);
-    expect(targetOf({ type: 'rate/set', key: OCT, rate: { from: 'USD', to: 'TRY', rate: 40 } })).not.toBe(set);
-    expect(targetOf({ type: 'rate/set', key: '2026-09', rate: { from: 'USD', to: 'DOP', rate: 59 } })).not.toBe(set);
+  it('targetOf: una tasa se nombra por su mes, su par (en cualquiera de los dos sentidos) y su fecha', () => {
+    const set = targetOf({ type: 'rate/set', key: OCT, rate: { from: 'USD', to: 'DOP', rate: 59, date: '2026-10-07' } });
+    expect(set).toBe(`rate:${OCT}:DOP-USD:2026-10-07`);
+    expect(targetOf({ type: 'rate/set', key: OCT, rate: { from: 'DOP', to: 'USD', rate: 0.017, date: '2026-10-07' } })).toBe(set);
+    expect(targetOf({ type: 'rate/remove', key: OCT, from: 'DOP', to: 'USD', date: '2026-10-07' })).toBe(set);
+    expect(targetOf({ type: 'rate/set', key: OCT, rate: { from: 'USD', to: 'TRY', rate: 40, date: '2026-10-07' } })).not.toBe(set);
+    expect(targetOf({ type: 'rate/set', key: '2026-09', rate: { from: 'USD', to: 'DOP', rate: 59, date: '2026-10-07' } })).not.toBe(set);
+    // Cada fecha es su propia fila: la tasa de otro día ni se funde con esta ni se descarta al quitarla.
+    expect(targetOf({ type: 'rate/set', key: OCT, rate: { from: 'USD', to: 'DOP', rate: 59, date: '2026-10-08' } })).toBe(`rate:${OCT}:DOP-USD:2026-10-08`);
+    expect(targetOf({ type: 'rate/remove', key: OCT, from: 'USD', to: 'DOP', date: '2026-10-08' })).not.toBe(set);
     // Y no se confunde con el presupuesto del mes.
     expect(set).not.toBe(targetOf({ type: 'month/patch', key: OCT, patch: {} }));
+  });
+
+  it('targetOf: cada movimiento del registro del presupuesto es su propia fila, aparte de las partes del mes', () => {
+    const row: BudgetEntry = { id: 'b1', date: '2026-10-09', accountId: 'dr', amount: 500, kind: 'adjust', note: '' };
+    expect(targetOf({ type: 'budget/add', key: OCT, row })).toBe('budget:b1');
+    expect(targetOf({ type: 'budget/remove', key: OCT, id: 'b1' })).toBe('budget:b1');
+    expect(targetOf({ type: 'budget/leftover', key: OCT, row: { ...row, id: 'local-lo', kind: 'leftover' } })).toBe('budget:local-lo');
+    expect(targetOf({ type: 'budget/remove', key: OCT, id: 'b2' })).not.toBe('budget:b1');
+    // Quitar un movimiento no descarta la parte del mes que esperaba su retraso (store.ts: queue.drop por clave).
+    expect(targetOf({ type: 'budget/remove', key: OCT, id: 'b1' })).not.toBe(targetOf({ type: 'month/patch', key: OCT, patch: {} }));
+    expect(targetOf({ type: 'month/patch', key: OCT, patch: {}, date: '2026-10-09' })).toBe(`month:${OCT}`);
   });
 
   it('putMonths: reemplaza y agrega meses (respuesta de cerrar mes)', () => {

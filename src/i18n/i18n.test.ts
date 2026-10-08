@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { rateFor } from '../../shared/calc';
-import { LANGUAGES } from '../../shared/i18n';
+import type { RateInfo } from '../../shared/calc';
+import { METHODS } from '../../shared/constants';
+import { canonicalMethod, LANGUAGES } from '../../shared/i18n';
 import { seedState } from '../../shared/seed';
 import type { Language } from '../../shared/types';
 import { CORE, createI18n } from './core';
@@ -189,10 +191,12 @@ describe('rateHint: de dónde salió una tasa', () => {
     const typed = rateHint(rateFor(s, '2026-10', 'USD', 'DOP'), 'USD', 'DOP');
     const transfers = rateHint(rateFor(s, '2026-08', 'USD', 'DOP'), 'USD', 'DOP');
     const fallback = rateHint(rateFor(s, '2026-10', 'USD', 'TRY'), 'USD', 'TRY');
-    // Con USD → DOP y USD → TRY escritas, TRY → DOP sale cruzando por USD.
-    s.months['2026-10']!.rates.push({ from: 'USD', to: 'TRY', rate: 40 });
-    const crossed = rateHint(rateFor(s, '2026-10', 'TRY', 'DOP'), 'TRY', 'DOP');
-    // Un mes sin tasa propia ni envíos toma la del anterior más reciente que la tenga.
+    // Con USD → DOP y USD → TRY escritas, TRY → DOP sale cruzando por USD. (Otro estado: el de arriba ya se usó
+    // para calcular y no se muta, que shared/calc.ts memoriza las tasas por objeto de estado.)
+    const both = seedState();
+    both.months['2026-10']!.rates.push({ from: 'USD', to: 'TRY', rate: 40, date: '2026-10-01' });
+    const crossed = rateHint(rateFor(both, '2026-10', 'TRY', 'DOP'), 'TRY', 'DOP');
+    // Un mes posterior sin tasa propia sigue con la última escrita, que es de un mes anterior.
     const previous = rateHint(rateFor(s, '2027-03', 'USD', 'DOP'), 'USD', 'DOP');
     const same = rateHint(rateFor(s, '2026-10', 'DOP', 'DOP'), 'DOP', 'DOP');
     return { typed, transfers, fallback, crossed, previous, same };
@@ -226,6 +230,120 @@ describe('rateHint: de dónde salió una tasa', () => {
       previous: 'Ekim 2026 ayından',
       same: '',
     });
+  });
+});
+
+describe('rateHint con la fecha de la tasa (RateInfo.date)', () => {
+  it('la fecha no cambia la frase: una escrita de este mes, sea del día que sea, es "typed for this month"', () => {
+    const { rateHint } = createI18n('en');
+    const first: RateInfo = { rate: 58.76, source: 'month', monthKey: '2026-10', date: '2026-10-01' };
+    const later: RateInfo = { ...first, rate: 60, date: '2026-10-06' };
+    expect(rateHint(first, 'USD', 'DOP')).toBe('typed for this month');
+    expect(rateHint(later, 'USD', 'DOP')).toBe('typed for this month');
+  });
+
+  it('una escrita en un mes anterior que sigue vigente dice de qué mes es, no el día', () => {
+    const info: RateInfo = { rate: 58.76, source: 'previous', monthKey: '2026-10', date: '2026-10-06' };
+    expect(createI18n('en').rateHint(info, 'USD', 'DOP')).toBe('from October 2026');
+    expect(createI18n('es').rateHint(info, 'USD', 'DOP')).toBe('de octubre 2026');
+    expect(createI18n('tr').rateHint(info, 'USD', 'DOP')).toBe('Ekim 2026 ayından');
+    // Lo que no sale de una escrita no trae fecha.
+    const fromTransfers: RateInfo = { rate: 58.57, source: 'previous', monthKey: '2026-09', date: null };
+    expect(createI18n('en').rateHint(fromTransfers, 'USD', 'DOP')).toBe('from September 2026');
+  });
+
+  it('con los datos de ejemplo: una fila anterior a la primera tasa escrita del mes no la usa', () => {
+    const s = seedState();
+    s.months['2026-10']!.rates = [{ from: 'USD', to: 'DOP', rate: 60, date: '2026-10-05' }];
+    const { rateHint } = createI18n('en');
+    // El día 3 la escrita del 5 aún no vale y antes nadie escribió ninguna: salen los envíos de octubre.
+    const before = rateFor(s, '2026-10', 'USD', 'DOP', '2026-10-03');
+    expect(before).toMatchObject({ source: 'transfers', date: null });
+    expect(rateHint(before, 'USD', 'DOP')).toBe("from this month's transfers");
+    const after = rateFor(s, '2026-10', 'USD', 'DOP', '2026-10-05');
+    expect(after).toEqual({ rate: 60, source: 'month', monthKey: '2026-10', date: '2026-10-05' });
+    expect(rateHint(after, 'USD', 'DOP')).toBe('typed for this month');
+  });
+});
+
+describe('métodos de pago', () => {
+  it('los cinco, en el orden de la lista y en cada idioma', () => {
+    expect([...METHODS]).toEqual(['Debit card', 'Credit card', 'Transfer', 'Bank app', 'Cash']);
+    const labels = (lang: Language) => METHODS.map((m) => createI18n(lang).methodLabel(m));
+    expect(labels('en')).toEqual(['Debit card', 'Credit card', 'Transfer', 'Bank app', 'Cash']);
+    expect(labels('es')).toEqual(['Tarjeta de débito', 'Tarjeta de crédito', 'Transferencia', 'App del banco', 'Efectivo']);
+    expect(labels('tr')).toEqual(['Banka kartı', 'Kredi kartı', 'Havale', 'Banka uygulaması', 'Nakit']);
+  });
+
+  it('el método por defecto es la tarjeta de débito', () => {
+    expect(METHODS[0]).toBe('Debit card');
+  });
+
+  it('la tarjeta de antes (Card / Tarjeta / Kart) vale por la de débito al leerla; al mostrarla, una fila vieja sale tal cual', () => {
+    expect(['Card', 'tarjeta', ' KART '].map(canonicalMethod)).toEqual(['Debit card', 'Debit card', 'Debit card']);
+    expect(['Tarjeta de crédito', 'kredi kartı', 'credit card', 'tarjeta de credito'].map(canonicalMethod)).toEqual(Array(4).fill('Credit card'));
+    expect(['Efectivo', 'Nakit', 'cash'].map(canonicalMethod)).toEqual(['Cash', 'Cash', 'Cash']);
+    expect(canonicalMethod(' Cheque ')).toBe('Cheque');
+    for (const lang of LANGS) expect(createI18n(lang).methodLabel('Card')).toBe('Card');
+  });
+});
+
+describe('presupuesto: sobrante, historial y cierre del mes', () => {
+  const en = translator(CORE, 'en');
+  const es = translator(CORE, 'es');
+  const tr = translator(CORE, 'tr');
+
+  it('la casilla de un ingreso', () => {
+    expect([en('addsToBudget'), es('addsToBudget'), tr('addsToBudget')]).toEqual(['Adds to budget', 'Suma al presupuesto', 'Bütçeye eklenir']);
+  });
+
+  it('el sobrante del mes anterior', () => {
+    expect([en('leftoverFromLast'), en('addToBudget'), en('leftoverAdded')]).toEqual(['Leftover from last month:', 'Add to budget', 'added']);
+    expect([es('leftoverFromLast'), es('addToBudget'), es('leftoverAdded')]).toEqual(['Sobrante del mes pasado:', 'Sumar al presupuesto', 'sumado']);
+    expect([tr('leftoverFromLast'), tr('addToBudget'), tr('leftoverAdded')]).toEqual(['Geçen aydan kalan:', 'Bütçeye ekle', 'eklendi']);
+    // El botón no dice lo mismo que la casilla de un ingreso ("Adds to budget"), en ningún idioma.
+    for (const t of [en, es, tr]) expect(t('addToBudget')).not.toBe(t('addsToBudget'));
+  });
+
+  it('el historial del presupuesto y sus clases de movimiento', () => {
+    const kinds = ['budgetKindInitial', 'budgetKindAdjust', 'budgetKindLeftover', 'budgetKindIncome'] as const;
+    expect([en('budgetHistory'), en('budgetHistoryEmpty'), en('budgetKind')]).toEqual(['Budget history', 'No budget entries yet.', 'Kind']);
+    expect(kinds.map((k) => en(k))).toEqual(['Initial', 'Adjustment', 'Leftover', 'Income']);
+    expect([es('budgetHistory'), es('budgetHistoryEmpty'), es('budgetKind')]).toEqual([
+      'Historial del presupuesto',
+      'Aún no hay movimientos del presupuesto.',
+      'Tipo',
+    ]);
+    expect(kinds.map((k) => es(k))).toEqual(['Inicial', 'Ajuste', 'Sobrante', 'Ingreso']);
+    expect([tr('budgetHistory'), tr('budgetHistoryEmpty'), tr('budgetKind')]).toEqual(['Bütçe geçmişi', 'Henüz bütçe hareketi yok.', 'Tür']);
+    expect(kinds.map((k) => tr(k))).toEqual(['Başlangıç', 'Düzeltme', 'Devreden', 'Gelir']);
+    // Cada clase se distingue de las demás.
+    for (const t of [en, es, tr]) expect(new Set(kinds.map((k) => t(k))).size).toBe(4);
+  });
+
+  it('la × de un movimiento dice cuál quita', () => {
+    const entry = { kind: 'Adjustment', date: '2026-10-05', amount: '5,000.00', currency: 'DOP' };
+    expect(en('deleteBudgetEntry', entry)).toBe('Delete Adjustment of 2026-10-05: 5,000.00 DOP');
+    expect(es('deleteBudgetEntry', { ...entry, kind: 'Ajuste' })).toBe('Eliminar Ajuste del 2026-10-05: 5,000.00 DOP');
+    expect(tr('deleteBudgetEntry', { ...entry, kind: 'Düzeltme' })).toBe('Sil: Düzeltme, 2026-10-05, 5,000.00 DOP');
+  });
+
+  it('el diálogo de cierre pregunta por el presupuesto del mes siguiente', () => {
+    expect(en('closeBudgetIntro', { next: 'November 2026' })).toBe("November 2026's budget starts with these amounts per account:");
+    expect(en('closeBudgetOf', { account: 'DR account', currency: 'DOP' })).toBe('Budget from DR account (DOP)');
+    expect(en('closeAddLeftover', { amount: '20,850.29', currency: 'DOP', next: 'November 2026' })).toBe(
+      "Add this month's leftover (20,850.29 DOP) to November 2026's budget",
+    );
+    expect(es('closeBudgetIntro', { next: 'Noviembre 2026' })).toBe('El presupuesto de Noviembre 2026 arranca con estos montos por cuenta:');
+    expect(es('closeBudgetOf', { account: 'DR account', currency: 'DOP' })).toBe('Presupuesto de DR account (DOP)');
+    expect(es('closeAddLeftover', { amount: '20,850.29', currency: 'DOP', next: 'Noviembre 2026' })).toBe(
+      'Sumar el sobrante de este mes (20,850.29 DOP) al presupuesto de Noviembre 2026',
+    );
+    expect(tr('closeBudgetIntro', { next: 'Kasım 2026' })).toBe('Kasım 2026 bütçesi hesap başına şu tutarlarla başlar:');
+    expect(tr('closeBudgetOf', { account: 'DR account', currency: 'DOP' })).toBe('DR account bütçesi (DOP)');
+    expect(tr('closeAddLeftover', { amount: '20,850.29', currency: 'DOP', next: 'Kasım 2026' })).toBe(
+      'Bu ayın kalanını (20,850.29 DOP) Kasım 2026 bütçesine ekle',
+    );
   });
 });
 
@@ -305,7 +423,7 @@ describe('createI18n', () => {
     expect(es.t('add')).toBe('Agregar');
 
     const tr = createI18n('tr');
-    expect([tr.label('2026-10'), tr.catLabel('Food'), tr.methodLabel('Card'), tr.fixedCategory]).toEqual(['Ekim 2026', 'Yemek', 'Kart', 'Sabit giderler']);
+    expect([tr.label('2026-10'), tr.catLabel('Food'), tr.methodLabel('Debit card'), tr.fixedCategory]).toEqual(['Ekim 2026', 'Yemek', 'Banka kartı', 'Sabit giderler']);
     expect(createI18n('en').label('2026-10')).toBe('October 2026');
   });
 

@@ -9,7 +9,7 @@ import {
   DEFAULT_SECOND_CURRENCY,
 } from '../shared/constants';
 import { applyImportToState, IMPORTED_INCOME } from '../shared/excel/data';
-import { seedState, SEED_ACCOUNTS, SEED_PLANNED_GOAL } from '../shared/seed';
+import { seedState, SEED_ACCOUNTS, SEED_PLANNED_GOAL, setBudgets } from '../shared/seed';
 import type { AppState, FixedExpense, Month } from '../shared/types';
 import {
   applyImport,
@@ -22,6 +22,7 @@ import {
   createTransaction,
   createTransfer,
   deleteAccount,
+  deleteBudgetEntry,
   deleteContribution,
   deleteFixed,
   deleteGoal,
@@ -81,7 +82,7 @@ const EMPTY: AppState = {
   language: 'en',
 };
 
-const emptyMonth = (key: string): Month => ({ key, closed: false, closedAt: null, budgets: {}, rates: [], fixed: [], transfers: [], tx: [] });
+const emptyMonth = (key: string): Month => ({ key, closed: false, closedAt: null, budgetLog: [], budgets: {}, rates: [], fixed: [], transfers: [], tx: [] });
 
 const DEFAULT_SETTINGS = { theme: null, language: 'en', mainCurrency: 'DOP', secondCurrency: 'USD', defaultAccountId: null };
 
@@ -177,13 +178,16 @@ describe('loadState / replaceAll', () => {
     other.secondCurrency = 'DOP';
     other.defaultAccountId = 'tr';
     other.accounts.push({ id: 'tr', name: 'TR account', currency: 'TRY', opening: -150.5, hidden: true, sort: 2 });
-    other.goals = [{ id: 'g1', name: 'Única', cur: 'TRY', monthly: null, start: null, end: null, sort: 0 }];
+    other.goals = [{ id: 'g1', name: 'Única', cur: 'TRY', monthly: null, start: null, end: null, approxCur: null, sort: 0 }];
     other.contribs = [{ id: 'c1', goalId: 'g1', date: '2026-10-01', amount: 10, cur: 'TRY' }];
-    other.incomes = [{ id: 'i1', date: '2027-03-15', desc: 'Maaş', accountId: 'tr', amount: 90000, cur: 'TRY' }];
-    other.months['2026-10']!.budgets = { dr: 50000, tr: 12000.5 };
+    other.incomes = [{ id: 'i1', date: '2027-03-15', desc: 'Maaş', accountId: 'tr', amount: 90000, cur: 'TRY', budget: true }];
+    setBudgets(other.months['2026-10']!, { dr: 50000, tr: 12000.5 });
+    other.months['2026-10']!.budgetLog.push({ id: 'cut', date: '2026-10-09', accountId: 'tr', amount: -2000.5, kind: 'adjust', note: 'Menos' });
+    other.months['2026-10']!.budgets = { dr: 50000, tr: 10000 };
     other.months['2026-10']!.rates = [
-      { from: 'USD', to: 'DOP', rate: 59 },
-      { from: 'TRY', to: 'USD', rate: 0.025 },
+      { from: 'USD', to: 'DOP', rate: 59, date: '2026-10-01' },
+      { from: 'TRY', to: 'USD', rate: 0.025, date: '2026-10-01' },
+      { from: 'USD', to: 'DOP', rate: 59.5, date: '2026-10-06' },
     ];
     other.months['2026-10']!.transfers.push({
       id: 't-try', monthKey: '2026-10', date: '2026-10-08', via: 'Wise', fromAccountId: 'us', toAccountId: 'tr', amount: 100, rate: 40.2,
@@ -200,19 +204,25 @@ describe('loadState / replaceAll', () => {
   it('una parte del presupuesto en 0 no se guarda (es no tenerla) y una tasa que la app ignoraría, tampoco', async () => {
     const { db, sqlite } = makeEnv();
     const state = seedState();
-    state.months['2026-10']!.budgets = { dr: 70000, us: 0 };
+    // Lo que se guarda es el registro: `budgets` es su suma y lo que traiga el estado no cuenta.
+    state.months['2026-10']!.budgets = { dr: 1, us: 5 };
     state.months['2026-10']!.rates = [
-      { from: 'USD', to: 'DOP', rate: 58.76 },
-      { from: 'USD', to: 'TRY', rate: 0 },
-      // El mismo par al revés: vale la primera, que es la que usa rateFor.
-      { from: 'DOP', to: 'USD', rate: 0.02 },
+      { from: 'USD', to: 'DOP', rate: 58.76, date: '2026-10-01' },
+      { from: 'USD', to: 'TRY', rate: 0, date: '2026-10-01' },
+      // El mismo par y la misma fecha al revés: vale la última, que es la que usa rateFor.
+      { from: 'DOP', to: 'USD', rate: 0.02, date: '2026-10-01' },
+      // Otra fecha del mismo par sí es otra tasa.
+      { from: 'USD', to: 'DOP', rate: 59, date: '2026-10-04' },
     ];
     await replaceAll(db, F, state);
     const october = (await loadState(db, F)).months['2026-10']!;
     expect(october.budgets).toEqual({ dr: 70000 });
-    expect(october.rates).toEqual([{ from: 'USD', to: 'DOP', rate: 58.76 }]);
-    expect(count(sqlite, 'month_budgets')).toBe(3);
-    expect(count(sqlite, 'month_rates')).toBe(1);
+    expect(october.rates).toEqual([
+      { from: 'DOP', to: 'USD', rate: 0.02, date: '2026-10-01' },
+      { from: 'USD', to: 'DOP', rate: 59, date: '2026-10-04' },
+    ]);
+    expect(count(sqlite, 'month_budget_log')).toBe(4);
+    expect(count(sqlite, 'month_rates')).toBe(2);
   });
 
   it('getMonth da el mes completo o null', async () => {
@@ -220,7 +230,14 @@ describe('loadState / replaceAll', () => {
     const m = await getMonth(db, F, '2026-10');
     expect(m).toEqual((await loadState(db, F)).months['2026-10']);
     expect(m!.budgets).toEqual({ dr: 70000 });
-    expect(m!.rates).toEqual([{ from: 'USD', to: 'DOP', rate: 58.76 }]);
+    expect(m!.rates).toEqual([
+      { from: 'USD', to: 'DOP', rate: 58.76, date: '2026-10-01' },
+      { from: 'USD', to: 'DOP', rate: 58.76, date: '2026-10-06' },
+    ]);
+    expect(m!.budgetLog.map((e) => [e.date, e.amount, e.kind])).toEqual([
+      ['2026-10-01', 65000, 'initial'],
+      ['2026-10-05', 5000, 'adjust'],
+    ]);
     expect(m!.fixed).toHaveLength(11);
     expect(m!.transfers).toHaveLength(1);
     expect(m!.tx).toHaveLength(7);
@@ -252,8 +269,8 @@ describe('dos usuarios: cada uno con sus finanzas', () => {
     // Los datos de ejemplo tienen ids fijos: están dos veces en la base, una por usuario.
     expect(count(sqlite, 'months')).toBe(6);
     expect(count(sqlite, 'accounts')).toBe(4);
-    expect(count(sqlite, 'month_budgets')).toBe(6);
-    expect(count(sqlite, 'month_rates')).toBe(2);
+    expect(count(sqlite, 'month_budget_log')).toBe(8);
+    expect(count(sqlite, 'month_rates')).toBe(4);
     expect(count(sqlite, 'fixed_expenses')).toBe(66);
     expect(count(sqlite, 'transactions')).toBe(54);
     expect(count(sqlite, 'transfers')).toBe(10);
@@ -264,7 +281,7 @@ describe('dos usuarios: cada uno con sus finanzas', () => {
 
     await patchTransaction(db, F, 'seed-tx-2026-10-1', { amount: 1, desc: 'Solo de Frank' });
     await patchMonth(db, F, '2026-10', { budgets: { dr: 1, us: 2 } });
-    await setMonthRate(db, F, '2026-10', { from: 'USD', to: 'DOP', rate: 60 });
+    await setMonthRate(db, F, '2026-10', { from: 'USD', to: 'DOP', rate: 60, date: '2026-10-06' });
     await patchAccount(db, F, 'dr', { name: 'Banco de Frank', opening: 1 });
     await patchIncome(db, F, 'seed-in-1', { amount: 1 });
     expect((await getMonth(db, F, '2026-10'))!.tx[0]).toMatchObject({ id: 'seed-tx-2026-10-1', amount: 1, desc: 'Solo de Frank' });
@@ -294,7 +311,7 @@ describe('dos usuarios: cada uno con sus finanzas', () => {
     // Filas que solo tiene Frank.
     await createAccount(db, F, { id: 'acc-frank', name: 'PayPal', currency: 'USD' });
     await createFixed(db, F, { id: 'fx-frank', monthKey: '2026-10', name: 'Agua', amount: 500, cur: 'DOP' });
-    await createTransaction(db, F, { id: 'tx-frank', monthKey: '2026-10', date: '2026-10-07', desc: 'x', cat: 'Food', method: 'Card', amount: 1, cur: 'DOP' });
+    await createTransaction(db, F, { id: 'tx-frank', monthKey: '2026-10', date: '2026-10-07', desc: 'x', cat: 'Food', method: 'Debit card', amount: 1, cur: 'DOP' });
     await createTransfer(db, F, { id: 'tr-frank', monthKey: '2026-10', date: '2026-10-07', via: 'Wise', fromAccountId: 'us', toAccountId: 'acc-frank', amount: 1 });
     await createIncome(db, F, { id: 'in-frank', date: '2026-10-07', amount: 5, cur: 'USD', accountId: 'acc-frank' });
     await createGoal(db, F, { id: 'goal-frank', name: 'Car' });
@@ -330,7 +347,7 @@ describe('dos usuarios: cada uno con sus finanzas', () => {
 
     // Ni pagar, cobrar, enviar o presupuestar con una cuenta ajena: para ella esa cuenta no existe.
     const foreign = unknownAccount('acc-frank');
-    const tx = { monthKey: '2026-10', date: '2026-10-07', desc: 'x', cat: 'Food', method: 'Card', amount: 1, cur: 'DOP' as const };
+    const tx = { monthKey: '2026-10', date: '2026-10-07', desc: 'x', cat: 'Food', method: 'Debit card', amount: 1, cur: 'DOP' as const };
     await expect(createTransaction(db, E, { ...tx, accountId: 'acc-frank' })).rejects.toMatchObject(foreign);
     await expect(patchTransaction(db, E, 'seed-tx-2026-10-1', { accountId: 'acc-frank' })).rejects.toMatchObject(foreign);
     await expect(createFixed(db, E, { monthKey: '2026-10', name: 'Agua', amount: 1, cur: 'DOP', accountId: 'acc-frank' })).rejects.toMatchObject(foreign);
@@ -349,7 +366,7 @@ describe('dos usuarios: cada uno con sus finanzas', () => {
 
   it('el mismo id sirve para una fila nueva de cada usuario; repetido dentro del mismo, 409', async () => {
     const { db } = await seeded();
-    const tx = { id: 'tx-igual', monthKey: '2026-10', date: '2026-10-07', desc: 'x', cat: 'Food', method: 'Card', amount: 1, cur: 'DOP' as const };
+    const tx = { id: 'tx-igual', monthKey: '2026-10', date: '2026-10-07', desc: 'x', cat: 'Food', method: 'Debit card', amount: 1, cur: 'DOP' as const };
     await createTransaction(db, F, tx);
     await createAccount(db, F, { id: 'pp', name: 'PayPal', currency: 'USD' });
     await createIncome(db, F, { id: 'in-igual', date: '2026-10-07', amount: 1, cur: 'USD' });
@@ -768,7 +785,7 @@ describe('cuentas', () => {
     expect(fixed.paid).toBe(false);
     await deleteFixed(db, F, fixed.id);
 
-    const tx = await createTransaction(db, F, { monthKey: '2026-10', date: '2026-10-07', desc: 'x', cat: 'Food', method: 'Card', amount: 1, cur: 'USD', accountId: 'pp' });
+    const tx = await createTransaction(db, F, { monthKey: '2026-10', date: '2026-10-07', desc: 'x', cat: 'Food', method: 'Debit card', amount: 1, cur: 'USD', accountId: 'pp' });
     await blocked('transacción');
     await patchTransaction(db, F, tx.id, { accountId: 'us' });
 
@@ -782,9 +799,15 @@ describe('cuentas', () => {
     await blocked('ingreso');
     await deleteIncome(db, F, income.id);
 
-    await patchMonth(db, F, '2026-10', { budgets: { pp: 50 } });
+    const withPart = await patchMonth(db, F, '2026-10', { budgets: { pp: 50 } });
     await blocked('presupuesto');
-    await patchMonth(db, F, '2026-10', { budgets: { pp: 0 } });
+    // Dejar la parte en 0 no la libera: el registro guarda la historia (+50, −50) y la sigue nombrando.
+    const zeroed = await patchMonth(db, F, '2026-10', { budgets: { pp: 0 } });
+    expect(zeroed.budgets).toEqual({});
+    await blocked('historia del presupuesto');
+    // Solo borrando esos movimientos deja de usarla.
+    for (const e of zeroed.budgetLog.filter((x) => x.accountId === 'pp')) await deleteBudgetEntry(db, F, '2026-10', e.id);
+    expect(withPart.budgetLog.filter((x) => x.accountId === 'pp')).toHaveLength(1);
 
     await deleteAccount(db, F, 'pp');
     expect((await listAccounts(db, F)).map((a) => a.id)).toEqual(['us', 'dr']);
@@ -819,7 +842,7 @@ describe('cuentas', () => {
 });
 
 describe('cuenta por defecto de lo que no dice de cuál sale', () => {
-  const tx = { monthKey: '2026-10', date: '2026-10-07', desc: 'x', cat: 'Food', method: 'Card', amount: 1, cur: 'DOP' as const };
+  const tx = { monthKey: '2026-10', date: '2026-10-07', desc: 'x', cat: 'Food', method: 'Debit card', amount: 1, cur: 'DOP' as const };
   const fixed = { monthKey: '2026-10', name: 'Agua', amount: 1, cur: 'DOP' as const };
   const income = { date: '2026-10-07', amount: 1, cur: 'USD' as const };
 
@@ -994,8 +1017,14 @@ describe('ensureMonth', () => {
     expect(created).toBe(true);
     expect(month.closed).toBe(false);
     expect(month.budgets).toEqual({ dr: 70000, us: 250 });
-    expect(october.rates).toHaveLength(1);
+    expect(october.rates).toHaveLength(2);
     expect(month.rates).toEqual([]);
+    // Un movimiento inicial por cuenta, del primer día del mes nuevo, por lo que sumaba el registro de octubre.
+    expect(month.budgetLog.map(({ id: _id, ...e }) => e)).toEqual([
+      { date: '2026-12-01', accountId: 'dr', amount: 70000, kind: 'initial', note: '' },
+      { date: '2026-12-01', accountId: 'us', amount: 250, kind: 'initial', note: '' },
+    ]);
+    for (const e of month.budgetLog) expect(e.id).toMatch(/^[A-Za-z0-9_-]{1,64}$/);
     expect(month.transfers).toEqual([]);
     expect(month.tx).toEqual([]);
     expect(month.fixed.map(core)).toEqual(october.fixed.map(core));
@@ -1005,8 +1034,8 @@ describe('ensureMonth', () => {
     const ids = new Set([...month.fixed, ...october.fixed].map((f) => f.id));
     expect(ids.size).toBe(22);
     for (const f of month.fixed) expect(f.id).toMatch(/^[A-Za-z0-9_-]{1,64}$/);
-    // Sin tasa propia, diciembre usa la del mes anterior más cercano que la tenga.
-    expect(rateFor(await loadState(db, F), '2026-12', 'USD', 'DOP')).toEqual({ rate: 58.76, source: 'previous', monthKey: '2026-10' });
+    // Sin tasa propia, en diciembre sigue vigente la última escrita.
+    expect(rateFor(await loadState(db, F), '2026-12', 'USD', 'DOP')).toEqual({ rate: 58.76, source: 'previous', monthKey: '2026-10', date: '2026-10-06' });
   });
 
   it('un mes intermedio se copia del anterior, no del posterior', async () => {
@@ -1038,7 +1067,7 @@ describe('closeMonth', () => {
   it('cruza el año: cerrar diciembre crea enero', async () => {
     const { db } = makeEnv();
     await ensureMonth(db, F, '2026-12');
-    const { closed, next } = await closeMonth(db, F, '2026-12', new Date('2027-01-02T03:04:05.000Z'));
+    const { closed, next } = await closeMonth(db, F, '2026-12', {}, new Date('2027-01-02T03:04:05.000Z'));
     expect(closed.closed).toBe(true);
     expect(closed.closedAt).toBe('2027-01-02T03:04:05.000Z');
     expect(next.key).toBe('2027-01');
@@ -1066,23 +1095,85 @@ describe('closeMonth', () => {
 });
 
 describe('presupuesto por cuenta (patchMonth)', () => {
-  it('las partes que vienen se mezclan con las que hay; 0 quita la parte', async () => {
+  const NOW = new Date('2026-10-08T15:00:00.000Z');
+  const log = (m: Month) => m.budgetLog.map((e) => [e.date, e.accountId, e.amount, e.kind]);
+
+  it('fija la parte de una cuenta añadiendo al registro la diferencia: inicial la primera vez, ajuste después', async () => {
     const { db, sqlite } = await seeded();
-    expect((await patchMonth(db, F, '2026-10', { budgets: { us: 200 } })).budgets).toEqual({ dr: 70000, us: 200 });
-    expect((await patchMonth(db, F, '2026-10', { budgets: { dr: 58248.5 } })).budgets).toEqual({ dr: 58248.5, us: 200 });
+    // La US account no tenía nada en octubre: su primer movimiento es el inicial, con fecha de hoy.
+    const first = await patchMonth(db, F, '2026-10', { budgets: { us: 200 } }, NOW);
+    expect(first.budgets).toEqual({ dr: 70000, us: 200 });
+    expect(log(first)).toEqual([
+      ['2026-10-01', 'dr', 65000, 'initial'],
+      ['2026-10-05', 'dr', 5000, 'adjust'],
+      ['2026-10-08', 'us', 200, 'initial'],
+    ]);
+    // La DR account ya tenía 70,000: bajarla a 58,248.5 es un ajuste de −11,751.5.
+    const second = await patchMonth(db, F, '2026-10', { budgets: { dr: 58248.5 } }, NOW);
+    expect(second.budgets).toEqual({ dr: 58248.5, us: 200 });
+    expect(log(second).at(-1)).toEqual(['2026-10-08', 'dr', -11751.5, 'adjust']);
     // El total es la suma convertida a la moneda principal con la tasa del mes.
     expect(monthCalc(await loadState(db, F), '2026-10').budget).toBeCloseTo(58248.5 + 200 * 58.76, 8);
-    expect(count(sqlite, 'month_budgets', F)).toBe(4);
+    expect(count(sqlite, 'month_budget_log', F)).toBe(6);
 
-    expect((await patchMonth(db, F, '2026-10', { budgets: { dr: 0 } })).budgets).toEqual({ us: 200 });
-    expect(count(sqlite, 'month_budgets', F)).toBe(3);
-    // Quitar una parte que no hay no es un error.
-    expect((await patchMonth(db, F, '2026-10', { budgets: { dr: 0, us: 0 } })).budgets).toEqual({});
+    // El mismo monto otra vez no añade nada (ni el mismo que ya suma): la diferencia es 0.
+    expect(log(await patchMonth(db, F, '2026-10', { budgets: { dr: 58248.5, us: 200 } }, NOW))).toEqual(log(second));
+    expect(count(sqlite, 'month_budget_log', F)).toBe(6);
+
+    // 0 deja la parte en cero con un ajuste negativo: la historia se conserva.
+    const zero = await patchMonth(db, F, '2026-10', { budgets: { dr: 0 } }, NOW);
+    expect(zero.budgets).toEqual({ us: 200 });
+    expect(log(zero).at(-1)).toEqual(['2026-10-08', 'dr', -58248.5, 'adjust']);
+    // Volver a ponerle 0, o ponérselo a una cuenta sin parte, no es un error ni un movimiento.
+    expect((await patchMonth(db, F, '2026-10', { budgets: { dr: 0, us: 0 } }, NOW)).budgets).toEqual({});
+    expect(count(sqlite, 'month_budget_log', F)).toBe(8);
     // Varias a la vez, y los demás meses no se enteran.
-    const month = await patchMonth(db, F, '2026-10', { budgets: { dr: 1, us: 2 } });
+    const month = await patchMonth(db, F, '2026-10', { budgets: { dr: 1, us: 2 } }, NOW);
     expect(month.budgets).toEqual({ dr: 1, us: 2 });
+    expect(log(month).slice(-2)).toEqual([
+      ['2026-10-08', 'dr', 1, 'adjust'],
+      ['2026-10-08', 'us', 2, 'adjust'],
+    ]);
     expect(month.fixed).toHaveLength(11);
     expect((await getMonth(db, F, '2026-09'))!.budgets).toEqual({ dr: 70000 });
+  });
+
+  it('la fecha del movimiento es hoy en Santo Domingo, llevada al mes si cae fuera', async () => {
+    const { db } = await seeded();
+    await reopenMonth(db, F, '2026-08');
+    await ensureMonth(db, F, '2026-12');
+    // A las 03:00 UTC del día 9 en Santo Domingo todavía es el día 8.
+    const late = new Date('2026-10-09T03:00:00.000Z');
+    expect(log(await patchMonth(db, F, '2026-10', { budgets: { dr: 70001 } }, late)).at(-1)).toEqual(['2026-10-08', 'dr', 1, 'adjust']);
+    // Un mes pasado: su último día. Uno futuro: el primero.
+    expect(log(await patchMonth(db, F, '2026-08', { budgets: { dr: 70010 } }, late)).at(-1)).toEqual(['2026-08-31', 'dr', 10, 'adjust']);
+    expect(log(await patchMonth(db, F, '2026-12', { budgets: { dr: 70100 } }, late)).at(-1)).toEqual(['2026-12-01', 'dr', 100, 'adjust']);
+  });
+
+  it('no arrastra el ruido de la coma flotante: 0.1 + 0.2 ya es 0.3', async () => {
+    const { db, sqlite } = await arrived();
+    await patchMonth(db, F, '2026-10', { budgets: { dr: 0.1 } }, NOW);
+    await patchMonth(db, F, '2026-10', { budgets: { dr: 0.3 } }, NOW);
+    const before = count(sqlite, 'month_budget_log', F);
+    const month = await patchMonth(db, F, '2026-10', { budgets: { dr: 0.3 } }, NOW);
+    expect(count(sqlite, 'month_budget_log', F)).toBe(before);
+    expect(month.budgets).toEqual({ dr: 0.3 });
+    expect(log(month)).toEqual([
+      ['2026-10-08', 'dr', 0.1, 'initial'],
+      ['2026-10-08', 'dr', 0.2, 'adjust'],
+    ]);
+  });
+
+  it('los ingresos que suben el presupuesto no entran en la cuenta: se fija lo que suma el registro', async () => {
+    const { db } = await seeded();
+    await createIncome(db, F, { id: 'bonus', date: '2026-10-04', accountId: 'dr', amount: 3000, cur: 'DOP', budget: true });
+    expect(monthCalc(await loadState(db, F), '2026-10').budget).toBe(73000);
+    const month = await patchMonth(db, F, '2026-10', { budgets: { dr: 71000 } }, NOW);
+    expect(log(month).at(-1)).toEqual(['2026-10-08', 'dr', 1000, 'adjust']);
+    expect(month.budgets).toEqual({ dr: 71000 });
+    const c = monthCalc(await loadState(db, F), '2026-10');
+    expect(c.budget).toBe(74000);
+    expect(c.budgetParts.find((p) => p.account.id === 'dr')).toMatchObject({ amount: 74000, fromLog: 71000, fromIncomes: 3000 });
   });
 
   it('un patch vacío devuelve el mes sin cambios', async () => {
@@ -1105,20 +1196,41 @@ describe('presupuesto por cuenta (patchMonth)', () => {
 describe('tasas del mes', () => {
   it('una por par de monedas: escribirla otra vez la sustituye, también en el otro sentido', async () => {
     const { db, sqlite } = await seeded();
-    expect((await setMonthRate(db, F, '2026-10', { from: 'USD', to: 'DOP', rate: 59.1 })).rates).toEqual([{ from: 'USD', to: 'DOP', rate: 59.1 }]);
-    expect(rateFor(await loadState(db, F), '2026-10', 'USD', 'DOP')).toEqual({ rate: 59.1, source: 'month', monthKey: '2026-10' });
+    // La del día 1 se sustituye; la del día 6 es otra tasa y no se toca.
+    expect((await setMonthRate(db, F, '2026-10', { from: 'USD', to: 'DOP', rate: 59.1, date: '2026-10-01' })).rates).toEqual([
+      { from: 'USD', to: 'DOP', rate: 59.1, date: '2026-10-01' },
+      { from: 'USD', to: 'DOP', rate: 58.76, date: '2026-10-06' },
+    ]);
+    const state = await loadState(db, F);
+    expect(rateFor(state, '2026-10', 'USD', 'DOP', '2026-10-05')).toEqual({ rate: 59.1, source: 'month', monthKey: '2026-10', date: '2026-10-01' });
+    expect(rateFor(state, '2026-10', 'USD', 'DOP')).toEqual({ rate: 58.76, source: 'month', monthKey: '2026-10', date: '2026-10-06' });
 
-    // DOP → USD es el mismo par: sustituye a la USD → DOP, no se suma a ella.
-    const inverse = await setMonthRate(db, F, '2026-10', { from: 'DOP', to: 'USD', rate: 0.0168 });
-    expect(inverse.rates).toEqual([{ from: 'DOP', to: 'USD', rate: 0.0168 }]);
-    expect(count(sqlite, 'month_rates', F)).toBe(1);
+    // DOP → USD es el mismo par: sustituye a la USD → DOP de esa fecha, no se suma a ella.
+    const inverse = await setMonthRate(db, F, '2026-10', { from: 'DOP', to: 'USD', rate: 0.0168, date: '2026-10-06' });
+    expect(inverse.rates).toEqual([
+      { from: 'USD', to: 'DOP', rate: 59.1, date: '2026-10-01' },
+      { from: 'DOP', to: 'USD', rate: 0.0168, date: '2026-10-06' },
+    ]);
+    expect(count(sqlite, 'month_rates', F)).toBe(2);
     expect(rateFor(await loadState(db, F), '2026-10', 'USD', 'DOP').rate).toBeCloseTo(1 / 0.0168, 10);
 
+    // Una fecha nueva se añade a la historia: las anteriores siguen valiendo para lo de antes.
+    const third = await setMonthRate(db, F, '2026-10', { from: 'USD', to: 'DOP', rate: 60, date: '2026-10-08' });
+    expect(third.rates.map((r) => [r.date, r.rate])).toEqual([
+      ['2026-10-01', 59.1],
+      ['2026-10-06', 0.0168],
+      ['2026-10-08', 60],
+    ]);
+    const dated = await loadState(db, F);
+    expect([rateFor(dated, '2026-10', 'USD', 'DOP', '2026-10-03').rate, rateFor(dated, '2026-10', 'USD', 'DOP').rate]).toEqual([59.1, 60]);
+    await deleteMonthRate(db, F, '2026-10', 'USD', 'DOP', '2026-10-08');
+    await deleteMonthRate(db, F, '2026-10', 'USD', 'DOP', '2026-10-06');
+
     // Otro par se añade; con dos, el tercero sale cruzando.
-    const two = await setMonthRate(db, F, '2026-10', { from: 'USD', to: 'TRY', rate: 40 });
+    const two = await setMonthRate(db, F, '2026-10', { from: 'USD', to: 'TRY', rate: 40, date: '2026-10-01' });
     expect(two.rates).toEqual([
-      { from: 'DOP', to: 'USD', rate: 0.0168 },
-      { from: 'USD', to: 'TRY', rate: 40 },
+      { from: 'USD', to: 'DOP', rate: 59.1, date: '2026-10-01' },
+      { from: 'USD', to: 'TRY', rate: 40, date: '2026-10-01' },
     ]);
     expect(rateFor(await loadState(db, F), '2026-10', 'TRY', 'DOP').source).toBe('cross');
     // Y cada mes tiene las suyas.
@@ -1128,17 +1240,39 @@ describe('tasas del mes', () => {
 
   it('quitarla, esté guardada en un sentido o en el otro; si no la hay, el mes queda igual', async () => {
     const { db, sqlite } = await seeded();
-    await setMonthRate(db, F, '2026-10', { from: 'USD', to: 'TRY', rate: 40 });
-    // Guardada como USD → DOP, se quita pidiendo DOP → USD.
-    const removed = await deleteMonthRate(db, F, '2026-10', 'DOP', 'USD');
-    expect(removed.rates).toEqual([{ from: 'USD', to: 'TRY', rate: 40 }]);
-    // Sin la escrita, octubre vuelve a la de sus envíos.
-    expect(rateFor(await loadState(db, F), '2026-10', 'USD', 'DOP')).toEqual({ rate: 58.76, source: 'transfers', monthKey: '2026-10' });
-    expect(await deleteMonthRate(db, F, '2026-10', 'DOP', 'USD')).toEqual(removed);
-    expect((await deleteMonthRate(db, F, '2026-10', 'USD', 'TRY')).rates).toEqual([]);
+    await setMonthRate(db, F, '2026-10', { from: 'USD', to: 'TRY', rate: 40, date: '2026-10-01' });
+    // Guardada como USD → DOP, se quita pidiendo DOP → USD; solo la de esa fecha.
+    const one = await deleteMonthRate(db, F, '2026-10', 'DOP', 'USD', '2026-10-06');
+    expect(one.rates).toEqual([
+      { from: 'USD', to: 'DOP', rate: 58.76, date: '2026-10-01' },
+      { from: 'USD', to: 'TRY', rate: 40, date: '2026-10-01' },
+    ]);
+    // Una fecha en la que no hay tasa: nada cambia.
+    expect(await deleteMonthRate(db, F, '2026-10', 'USD', 'DOP', '2026-10-02')).toEqual(one);
+    const removed = await deleteMonthRate(db, F, '2026-10', 'DOP', 'USD', '2026-10-01');
+    expect(removed.rates).toEqual([{ from: 'USD', to: 'TRY', rate: 40, date: '2026-10-01' }]);
+    // Sin ninguna escrita, octubre vuelve a la de sus envíos.
+    expect(rateFor(await loadState(db, F), '2026-10', 'USD', 'DOP')).toEqual({ rate: 58.76, source: 'transfers', monthKey: '2026-10', date: null });
+    expect(await deleteMonthRate(db, F, '2026-10', 'DOP', 'USD', '2026-10-01')).toEqual(removed);
+    expect((await deleteMonthRate(db, F, '2026-10', 'USD', 'TRY', '2026-10-01')).rates).toEqual([]);
     expect(count(sqlite, 'month_rates', F)).toBe(0);
-    await expect(deleteMonthRate(db, F, '2031-01', 'USD', 'DOP')).rejects.toMatchObject(notFound);
-    await expect(setMonthRate(db, F, '2031-01', { from: 'USD', to: 'DOP', rate: 1 })).rejects.toMatchObject(notFound);
+    await expect(deleteMonthRate(db, F, '2031-01', 'USD', 'DOP', '2031-01-01')).rejects.toMatchObject(notFound);
+    await expect(setMonthRate(db, F, '2031-01', { from: 'USD', to: 'DOP', rate: 1, date: '2031-01-01' })).rejects.toMatchObject(notFound);
+  });
+
+  it('la fecha de una tasa tiene que caer dentro de su mes', async () => {
+    const { db } = await seeded();
+    const before = await getMonth(db, F, '2026-10');
+    for (const date of ['2026-09-30', '2026-11-01', '2025-10-08']) {
+      await expect(setMonthRate(db, F, '2026-10', { from: 'USD', to: 'DOP', rate: 60, date }), date).rejects.toMatchObject({
+        ...invalid,
+        message: 'Invalid data: date: must be a date in 2026-10',
+      });
+    }
+    expect(await getMonth(db, F, '2026-10')).toEqual(before);
+    expect((await setMonthRate(db, F, '2026-10', { from: 'USD', to: 'DOP', rate: 60, date: '2026-10-31' })).rates.at(-1)).toEqual({
+      from: 'USD', to: 'DOP', rate: 60, date: '2026-10-31',
+    });
   });
 });
 
@@ -1149,18 +1283,18 @@ describe('mes cerrado: el presupuesto y las tasas también son de solo lectura',
     const closed = { ...closedMonth, message: 'August 2026 is closed: it is read-only. Reopen it to make changes.' };
     await expect(patchMonth(db, F, '2026-08', { budgets: { dr: 1 } })).rejects.toMatchObject(closed);
     await expect(patchMonth(db, F, '2026-08', { budgets: { dr: 0 } })).rejects.toMatchObject(closed);
-    await expect(setMonthRate(db, F, '2026-08', { from: 'USD', to: 'DOP', rate: 60 })).rejects.toMatchObject(closed);
-    await expect(deleteMonthRate(db, F, '2026-08', 'USD', 'DOP')).rejects.toMatchObject(closed);
+    await expect(setMonthRate(db, F, '2026-08', { from: 'USD', to: 'DOP', rate: 60, date: '2026-08-01' })).rejects.toMatchObject(closed);
+    await expect(deleteMonthRate(db, F, '2026-08', 'USD', 'DOP', '2026-08-01')).rejects.toMatchObject(closed);
     expect(await loadState(db, F)).toEqual(before);
 
     // Con una tasa ya escrita en el mes cerrado tampoco se puede sustituir (ni por su inversa) ni quitar.
     await reopenMonth(db, F, '2026-08');
-    expect((await setMonthRate(db, F, '2026-08', { from: 'USD', to: 'DOP', rate: 58 })).rates).toHaveLength(1);
+    expect((await setMonthRate(db, F, '2026-08', { from: 'USD', to: 'DOP', rate: 58, date: '2026-08-01' })).rates).toHaveLength(1);
     expect((await patchMonth(db, F, '2026-08', { budgets: { dr: 65000 } })).budgets).toEqual({ dr: 65000 });
     await closeMonth(db, F, '2026-08');
-    await expect(setMonthRate(db, F, '2026-08', { from: 'DOP', to: 'USD', rate: 0.02 })).rejects.toMatchObject(closedMonth);
-    await expect(deleteMonthRate(db, F, '2026-08', 'DOP', 'USD')).rejects.toMatchObject(closedMonth);
-    expect((await getMonth(db, F, '2026-08'))!.rates).toEqual([{ from: 'USD', to: 'DOP', rate: 58 }]);
+    await expect(setMonthRate(db, F, '2026-08', { from: 'DOP', to: 'USD', rate: 0.02, date: '2026-08-01' })).rejects.toMatchObject(closedMonth);
+    await expect(deleteMonthRate(db, F, '2026-08', 'DOP', 'USD', '2026-08-01')).rejects.toMatchObject(closedMonth);
+    expect((await getMonth(db, F, '2026-08'))!.rates).toEqual([{ from: 'USD', to: 'DOP', rate: 58, date: '2026-08-01' }]);
     // Un patch vacío solo lee.
     expect((await patchMonth(db, F, '2026-08', {})).closed).toBe(true);
   });
@@ -1175,7 +1309,10 @@ describe('borrar un mes', () => {
     expect(count(sqlite, 'fixed_expenses', F)).toBe(22);
     expect(count(sqlite, 'transactions', F)).toBe(20);
     expect(count(sqlite, 'transfers', F)).toBe(4);
-    expect(count(sqlite, 'month_budgets', F)).toBe(2);
+    expect(count(sqlite, 'month_budget_log', F)).toBe(2);
+    // Lo del otro usuario sigue entero.
+    expect(count(sqlite, 'month_budget_log', E)).toBe(4);
+    expect(count(sqlite, 'month_rates', E)).toBe(2);
     expect(count(sqlite, 'month_rates', F)).toBe(0);
     // Septiembre: cerrado.
     await deleteMonth(db, F, '2026-09');
@@ -1233,7 +1370,7 @@ describe('carreras entre peticiones (D1 no tiene transacciones interactivas)', (
     // El mes de la otra petición, vacío: nada de la copia que se deshizo.
     expect(month).toEqual(emptyMonth('2026-11'));
     expect(count(sqlite, 'fixed_expenses', F)).toBe(33);
-    expect(count(sqlite, 'month_budgets', F)).toBe(3);
+    expect(count(sqlite, 'month_budget_log', F)).toBe(4);
   });
 
   it('ensureMonth: que OTRO usuario cree ese mismo mes a la vez no estorba', async () => {
@@ -1269,9 +1406,9 @@ describe('carreras entre peticiones (D1 no tiene transacciones interactivas)', (
     const racy = () => interleaved(db, (call) => void (call === 1 && sqlite.sqlite.exec(close)));
     await expect(patchMonth(racy(), F, '2026-10', { budgets: { dr: 1, us: 2 } })).rejects.toMatchObject(closedMonth);
     await reopenMonth(db, F, '2026-10');
-    await expect(setMonthRate(racy(), F, '2026-10', { from: 'DOP', to: 'USD', rate: 1 })).rejects.toMatchObject(closedMonth);
+    await expect(setMonthRate(racy(), F, '2026-10', { from: 'DOP', to: 'USD', rate: 1, date: '2026-10-01' })).rejects.toMatchObject(closedMonth);
     await reopenMonth(db, F, '2026-10');
-    await expect(deleteMonthRate(racy(), F, '2026-10', 'USD', 'DOP')).rejects.toMatchObject(closedMonth);
+    await expect(deleteMonthRate(racy(), F, '2026-10', 'USD', 'DOP', '2026-10-01')).rejects.toMatchObject(closedMonth);
     expect(await getMonth(db, F, '2026-10')).toEqual({ ...before, closed: true });
   });
 
@@ -1382,7 +1519,7 @@ describe('envíos entre cuentas', () => {
     // Hacia una cuenta en TRY nadie escribió nunca una tasa: el valor de respaldo (58.76 DOP y 42 TRY por USD).
     await createAccount(db, F, { id: 'tr', name: 'TR account', currency: 'TRY' });
     expect((await createTransfer(db, F, { ...transfer, toAccountId: 'tr' })).rate).toBe(42);
-    await setMonthRate(db, F, '2026-10', { from: 'TRY', to: 'USD', rate: 0.025 });
+    await setMonthRate(db, F, '2026-10', { from: 'TRY', to: 'USD', rate: 0.025, date: '2026-10-01' });
     expect((await createTransfer(db, F, { ...transfer, toAccountId: 'tr' })).rate).toBeCloseTo(40, 10);
   });
 
@@ -1436,13 +1573,13 @@ describe('ingresos', () => {
     expect(await listIncomes(db, F)).toEqual(seedState().incomes);
 
     const created = await createIncome(db, F, { date: '2026-10-15', desc: 'Freelance', accountId: 'us', amount: 400, cur: 'USD' });
-    expect(created).toEqual({ id: expect.stringMatching(/^[A-Za-z0-9_-]{1,64}$/), date: '2026-10-15', desc: 'Freelance', accountId: 'us', amount: 400, cur: 'USD' });
+    expect(created).toEqual({ id: expect.stringMatching(/^[A-Za-z0-9_-]{1,64}$/), date: '2026-10-15', desc: 'Freelance', accountId: 'us', amount: 400, cur: 'USD', budget: false });
     expect(monthCalc(await loadState(db, F), '2026-10').income).toBeCloseTo((5800 + 400) * 58.76, 6);
     expect(await balance(db, F, 'us')).toBeCloseTo(13482 + 400, 8);
 
     // En otra moneda y a otra cuenta: entra convertido con la tasa del mes de su fecha.
     const patched = await patchIncome(db, F, created.id, { date: '2026-10-16', desc: '', accountId: 'dr', amount: 1000, cur: 'TRY' });
-    expect(patched).toEqual({ id: created.id, date: '2026-10-16', desc: '', accountId: 'dr', amount: 1000, cur: 'TRY' });
+    expect(patched).toEqual({ id: created.id, date: '2026-10-16', desc: '', accountId: 'dr', amount: 1000, cur: 'TRY', budget: false });
     expect(await balance(db, F, 'us')).toBeCloseTo(13482, 8);
     expect(await balance(db, F, 'dr')).toBeCloseTo(220641.93 + (1000 * 58.76) / 42, 6);
     expect((await patchIncome(db, F, created.id, { amount: 0 })).amount).toBe(0);
@@ -1457,7 +1594,7 @@ describe('ingresos', () => {
   it('sin descripción queda vacía; el id puede venir del cliente y repetido es un 409', async () => {
     const { db } = await seeded();
     expect(await createIncome(db, F, { id: 'in-1', date: '2026-10-15', amount: 1, cur: 'DOP' })).toEqual({
-      id: 'in-1', date: '2026-10-15', desc: '', accountId: 'dr', amount: 1, cur: 'DOP',
+      id: 'in-1', date: '2026-10-15', desc: '', accountId: 'dr', amount: 1, cur: 'DOP', budget: false,
     });
     await expect(createIncome(db, F, { id: 'in-1', date: '2026-10-15', amount: 1, cur: 'DOP' })).rejects.toMatchObject(conflict);
     await expect(createIncome(db, F, { id: 'seed-in-1', date: '2026-10-15', amount: 1, cur: 'DOP' })).rejects.toMatchObject(conflict);
@@ -1594,7 +1731,7 @@ describe('resetAll', () => {
       mainCurrency: 'USD',
       secondCurrency: 'TRY',
     });
-    for (const table of ['incomes', 'contributions', 'transactions', 'transfers', 'fixed_expenses', 'month_budgets', 'month_rates']) {
+    for (const table of ['incomes', 'contributions', 'transactions', 'transfers', 'fixed_expenses', 'month_budget_log', 'month_rates']) {
       expect(count(sqlite, table, F), table).toBe(0);
     }
   });
@@ -1630,7 +1767,7 @@ describe('applyImport', () => {
     ],
     transfers: [{ date: `${key}-05`, via: 'Remitly', usd: 1000, rate: 59 }],
     tx: [
-      { date: `${key}-02`, desc: 'Café', place: '', cat: 'Food', method: 'Card', amount: 250, cur: 'DOP', notes: '' },
+      { date: `${key}-02`, desc: 'Café', place: '', cat: 'Food', method: 'Debit card', amount: 250, cur: 'DOP', notes: '' },
       { date: `${key}-03`, desc: 'Libro', place: 'Cuesta', cat: 'Otra', method: 'Efectivo', amount: 20, cur: 'USD', notes: 'n' },
     ],
   });
@@ -1695,7 +1832,7 @@ describe('applyImport', () => {
     expect(oct.transfers.map((t) => [t.fromAccountId, t.toAccountId, t.amount, t.rate])).toEqual([['us', 'dr', 1000, 59]]);
     // Lo que no es de las listas (categoría, método) se guarda tal cual.
     expect(oct.tx.map((t) => [t.date, t.desc, t.cat, t.method, t.amount, t.cur, t.accountId, t.source, t.createdAt])).toEqual([
-      ['2026-10-02', 'Café', 'Food', 'Card', 250, 'DOP', 'dr', 'import', NOW.toISOString()],
+      ['2026-10-02', 'Café', 'Food', 'Debit card', 250, 'DOP', 'dr', 'import', NOW.toISOString()],
       ['2026-10-03', 'Libro', 'Otra', 'Efectivo', 20, 'USD', 'us', 'import', NOW.toISOString()],
     ]);
     // …el mes nuevo se crea, cerrado en el momento de importar…
@@ -1799,7 +1936,7 @@ describe('applyImport', () => {
             desc: `Gasto ${i}`,
             place: '',
             cat: 'Food',
-            method: 'Card',
+            method: 'Debit card',
             amount: i + 0.25,
             cur: 'DOP' as const,
             notes: '',
@@ -1828,27 +1965,27 @@ describe('applyImport', () => {
     const state = seedState();
     state.accounts = Array.from({ length: 40 }, (_, i) => ({ id: `a${i}`, name: `Cuenta ${i}`, currency: 'DOP' as const, opening: i, hidden: false, sort: i }));
     state.defaultAccountId = 'a0';
-    state.incomes = Array.from({ length: 80 }, (_, i) => ({ id: `i${i}`, date: `${keys[i]!}-01`, desc: '', accountId: `a${i % 40}`, amount: 1, cur: 'USD' as const }));
+    state.incomes = Array.from({ length: 80 }, (_, i) => ({ id: `i${i}`, date: `${keys[i]!}-01`, desc: '', accountId: `a${i % 40}`, amount: 1, cur: 'USD' as const, budget: i % 2 === 0 }));
     state.months = Object.fromEntries(
-      keys.map((key) => [
-        key,
-        {
+      keys.map((key) => {
+        const month: Month = {
           ...emptyMonth(key),
           closed: true,
-          budgets: { a0: 1, a1: 2 },
           rates: [
-            { from: 'USD' as const, to: 'DOP' as const, rate: 58 },
-            { from: 'USD' as const, to: 'TRY' as const, rate: 40 },
+            { from: 'USD' as const, to: 'DOP' as const, rate: 58, date: `${key}-01` },
+            { from: 'USD' as const, to: 'TRY' as const, rate: 40, date: `${key}-15` },
           ],
           fixed: [{ id: `f-${key}`, monthKey: key, name: 'Luz', day: '', amount: 1, cur: 'DOP' as const, paid: true, accountId: 'a2', sort: 0 }],
-        },
-      ]),
+        };
+        setBudgets(month, { a0: 1, a1: 2 });
+        return [key, month];
+      }),
     );
     await replaceAll(db, F, state);
     await replaceAll(db, F, state);
     expect(count(sqlite, 'months', F)).toBe(150);
     expect(count(sqlite, 'fixed_expenses', F)).toBe(150);
-    expect(count(sqlite, 'month_budgets', F)).toBe(300);
+    expect(count(sqlite, 'month_budget_log', F)).toBe(300);
     expect(count(sqlite, 'month_rates', F)).toBe(300);
     expect(count(sqlite, 'accounts', F)).toBe(40);
     expect(count(sqlite, 'incomes', F)).toBe(80);
@@ -1885,7 +2022,7 @@ describe('applyImport', () => {
 describe('errores del repositorio', () => {
   it('lanza ApiError con el código del contrato y el mensaje en inglés', async () => {
     const { db } = await seeded();
-    const tx = { date: '2026-10-07', desc: 'x', cat: 'Food', method: 'Card', amount: 1, cur: 'DOP' as const };
+    const tx = { date: '2026-10-07', desc: 'x', cat: 'Food', method: 'Debit card', amount: 1, cur: 'DOP' as const };
     await expect(createTransaction(db, F, { ...tx, monthKey: '2030-01' })).rejects.toBeInstanceOf(ApiError);
     await expect(createTransaction(db, F, { ...tx, monthKey: '2030-01' })).rejects.toMatchObject({
       ...notFound,

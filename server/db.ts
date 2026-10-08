@@ -18,6 +18,8 @@
 import type {
   AccountCreate,
   AccountPatch,
+  BudgetEntryCreate,
+  CloseRequest,
   CloseResponse,
   ContributionCreate,
   ContributionPatch,
@@ -38,7 +40,7 @@ import type {
   TxCreate,
   TxPatch,
 } from '../shared/api';
-import { accountsById, defaultAccount, monthCalc, rateFor, sortedKeys } from '../shared/calc';
+import { accountsById, budgetsFromLog, convert, defaultAccount, leftoverFor, monthCalc, rateFor, sortedKeys } from '../shared/calc';
 import {
   CURRENCIES,
   DEFAULT_ACCOUNTS,
@@ -49,16 +51,18 @@ import {
 } from '../shared/constants';
 import { applyImportToState } from '../shared/excel/data';
 import { DEFAULT_LANGUAGE, isLanguage } from '../shared/i18n';
-import { currentMonthKey, isMonthKey, nextKey } from '../shared/month';
+import { clampToMonth, currentMonthKey, firstDay, inMonth, isMonthKey, nextKey, todayISO } from '../shared/month';
 import { isDefaultTheme, normalizeTheme } from '../shared/theme';
 import type {
   Account,
   AppState,
+  BudgetEntryKind,
   Contribution,
   Currency,
   FixedExpense,
   Goal,
   Income,
+  ISODate,
   Language,
   Month,
   MonthKey,
@@ -100,16 +104,21 @@ interface AccountRow {
   sort: number;
 }
 
-interface BudgetRow {
+interface BudgetLogRow {
+  id: string;
   month_key: string;
+  date: string;
   account_id: string;
   amount: number;
+  kind: BudgetEntryKind;
+  note: string;
 }
 
 interface RateRow {
   month_key: string;
   from_currency: Currency;
   to_currency: Currency;
+  date: string;
   rate: number;
 }
 
@@ -159,6 +168,7 @@ interface IncomeRow {
   account_id: string;
   amount: number;
   currency: Currency;
+  budget: number;
 }
 
 interface GoalRow {
@@ -168,6 +178,7 @@ interface GoalRow {
   monthly: number | null;
   start_month: string | null;
   end_month: string | null;
+  approx_currency: Currency | null;
   sort: number;
 }
 
@@ -234,11 +245,20 @@ function toTransfer(r: TransferRow): Transfer {
 }
 
 function toIncome(r: IncomeRow): Income {
-  return { id: r.id, date: r.date, desc: r.description, accountId: r.account_id, amount: r.amount, cur: r.currency };
+  return { id: r.id, date: r.date, desc: r.description, accountId: r.account_id, amount: r.amount, cur: r.currency, budget: r.budget === 1 };
 }
 
 function toGoal(r: GoalRow): Goal {
-  return { id: r.id, name: r.name, cur: r.currency, monthly: r.monthly, start: r.start_month, end: r.end_month, sort: r.sort };
+  return {
+    id: r.id,
+    name: r.name,
+    cur: r.currency,
+    monthly: r.monthly,
+    start: r.start_month,
+    end: r.end_month,
+    approxCur: r.approx_currency,
+    sort: r.sort,
+  };
 }
 
 function toContribution(r: ContributionRow): Contribution {
@@ -247,7 +267,7 @@ function toContribution(r: ContributionRow): Contribution {
 
 /** Las filas que cuelgan de los meses, de uno o de todos. */
 interface MonthParts {
-  budgets: BudgetRow[];
+  budgetLog: BudgetLogRow[];
   rates: RateRow[];
   fixed: FixedRow[];
   transfers: TransferRow[];
@@ -258,13 +278,14 @@ interface MonthParts {
 function toMonths(months: MonthRow[], parts: MonthParts): Record<MonthKey, Month> {
   const byKey: Record<MonthKey, Month> = {};
   for (const r of months) {
-    byKey[r.key] = { key: r.key, closed: r.closed === 1, closedAt: r.closed_at, budgets: {}, rates: [], fixed: [], transfers: [], tx: [] };
+    byKey[r.key] = { key: r.key, closed: r.closed === 1, closedAt: r.closed_at, budgetLog: [], budgets: {}, rates: [], fixed: [], transfers: [], tx: [] };
   }
-  for (const r of parts.budgets) {
-    const month = byKey[r.month_key];
-    if (month) month.budgets[r.account_id] = r.amount;
+  for (const r of parts.budgetLog) {
+    byKey[r.month_key]?.budgetLog.push({ id: r.id, date: r.date, accountId: r.account_id, amount: r.amount, kind: r.kind, note: r.note });
   }
-  for (const r of parts.rates) byKey[r.month_key]?.rates.push({ from: r.from_currency, to: r.to_currency, rate: r.rate });
+  // Las partes por cuenta no se guardan: son la suma del registro, hecha al leer.
+  for (const month of Object.values(byKey)) month.budgets = budgetsFromLog(month.budgetLog);
+  for (const r of parts.rates) byKey[r.month_key]?.rates.push({ from: r.from_currency, to: r.to_currency, rate: r.rate, date: r.date });
   for (const r of parts.fixed) byKey[r.month_key]?.fixed.push(toFixed(r));
   for (const r of parts.transfers) byKey[r.month_key]?.transfers.push(toTransfer(r));
   for (const r of parts.tx) byKey[r.month_key]?.tx.push(toTx(r));
@@ -279,13 +300,15 @@ const MAX_PARAMS = 100;
 // Orden de lectura = orden de inserción (rowid), como los arreglos del prototipo; la interfaz ordena por fecha.
 // Lo que el usuario ordena (cuentas, fijos, metas) se lee por su `sort`.
 const BY_SORT = 'sort, rowid';
+// Lo que es una historia (tasas, registro del presupuesto) se lee por fecha; con la misma, en el orden de alta.
+const BY_DATE = 'date, rowid';
 
 type MonthTable = 'fixed_expenses' | 'transactions' | 'transfers';
 
 const ACCOUNT_INSERT = ['user_id', 'id', 'name', 'currency', 'opening', 'hidden', 'sort'];
 const MONTH_INSERT = ['user_id', 'key', 'closed', 'closed_at'];
-const BUDGET_INSERT = ['user_id', 'month_key', 'account_id', 'amount'];
-const RATE_INSERT = ['user_id', 'month_key', 'from_currency', 'to_currency', 'rate'];
+const BUDGET_LOG_INSERT = ['user_id', 'id', 'month_key', 'date', 'account_id', 'amount', 'kind', 'note'];
+const RATE_INSERT = ['user_id', 'month_key', 'from_currency', 'to_currency', 'date', 'rate'];
 const FIXED_INSERT = ['user_id', 'id', 'month_key', 'name', 'day', 'amount', 'currency', 'paid', 'account_id', 'sort'];
 const TRANSFER_INSERT = ['user_id', 'id', 'month_key', 'date', 'via', 'from_account_id', 'to_account_id', 'amount', 'rate'];
 const TX_INSERT = [
@@ -304,8 +327,8 @@ const TX_INSERT = [
   'source',
   'created_at',
 ];
-const INCOME_INSERT = ['user_id', 'id', 'date', 'description', 'account_id', 'amount', 'currency'];
-const GOAL_INSERT = ['user_id', 'id', 'name', 'currency', 'monthly', 'start_month', 'end_month', 'sort'];
+const INCOME_INSERT = ['user_id', 'id', 'date', 'description', 'account_id', 'amount', 'currency', 'budget'];
+const GOAL_INSERT = ['user_id', 'id', 'name', 'currency', 'monthly', 'start_month', 'end_month', 'approx_currency', 'sort'];
 const CONTRIBUTION_INSERT = ['user_id', 'id', 'goal_id', 'date', 'amount', 'currency'];
 
 export function newId(): string {
@@ -629,8 +652,8 @@ async function readState(db: D1Database, userId: string): Promise<{ state: AppSt
   const [months, accounts, budgets, rates, fixed, transfers, tx, incomes, goals, contribs, settings] = await db.batch([
     db.prepare('SELECT * FROM months WHERE user_id = ? ORDER BY key').bind(userId),
     db.prepare(`SELECT * FROM accounts WHERE user_id = ? ORDER BY ${BY_SORT}`).bind(userId),
-    db.prepare('SELECT * FROM month_budgets WHERE user_id = ?').bind(userId),
-    db.prepare('SELECT * FROM month_rates WHERE user_id = ? ORDER BY rowid').bind(userId),
+    db.prepare(`SELECT * FROM month_budget_log WHERE user_id = ? ORDER BY ${BY_DATE}`).bind(userId),
+    db.prepare(`SELECT * FROM month_rates WHERE user_id = ? ORDER BY ${BY_DATE}`).bind(userId),
     db.prepare(`SELECT * FROM fixed_expenses WHERE user_id = ? ORDER BY ${BY_SORT}`).bind(userId),
     db.prepare('SELECT * FROM transfers WHERE user_id = ? ORDER BY rowid').bind(userId),
     db.prepare('SELECT * FROM transactions WHERE user_id = ? ORDER BY rowid').bind(userId),
@@ -645,7 +668,7 @@ async function readState(db: D1Database, userId: string): Promise<{ state: AppSt
   return {
     state: {
       months: toMonths(rows<MonthRow>(months), {
-        budgets: rows<BudgetRow>(budgets),
+        budgetLog: rows<BudgetLogRow>(budgets),
         rates: rows<RateRow>(rates),
         fixed: rows<FixedRow>(fixed),
         transfers: rows<TransferRow>(transfers),
@@ -693,12 +716,12 @@ function initStatements(db: D1Database, userId: string): D1PreparedStatement[] {
     ...DEFAULT_GOALS.map((g) =>
       db
         .prepare(
-          `INSERT INTO goals (user_id, id, name, currency, monthly, start_month, end_month, sort)
-           SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, COALESCE((SELECT MAX(sort) FROM goals WHERE user_id = ?1), -1) + 1
+          `INSERT INTO goals (user_id, id, name, currency, monthly, start_month, end_month, approx_currency, sort)
+           SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, COALESCE((SELECT MAX(sort) FROM goals WHERE user_id = ?1), -1) + 1
            WHERE ${fresh}
              AND NOT EXISTS (SELECT 1 FROM goals WHERE user_id = ?1 AND (id = ?2 OR lower(name) = lower(?3)))`,
         )
-        .bind(userId, g.id, g.name, g.cur, g.monthly, g.start, g.end),
+        .bind(userId, g.id, g.name, g.cur, g.monthly, g.start, g.end, g.approxCur),
     ),
     setSettingIfMissing(db, userId, 'default_rate', String(DEFAULT_RATE)),
     setSettingIfMissing(db, userId, 'initialized', '1'),
@@ -774,8 +797,8 @@ export async function listMonths(db: D1Database, userId: string): Promise<MonthS
 function monthStatements(db: D1Database, userId: string, key: MonthKey): D1PreparedStatement[] {
   return [
     db.prepare('SELECT * FROM months WHERE user_id = ? AND key = ?').bind(userId, key),
-    db.prepare('SELECT * FROM month_budgets WHERE user_id = ? AND month_key = ?').bind(userId, key),
-    db.prepare('SELECT * FROM month_rates WHERE user_id = ? AND month_key = ? ORDER BY rowid').bind(userId, key),
+    db.prepare(`SELECT * FROM month_budget_log WHERE user_id = ? AND month_key = ? ORDER BY ${BY_DATE}`).bind(userId, key),
+    db.prepare(`SELECT * FROM month_rates WHERE user_id = ? AND month_key = ? ORDER BY ${BY_DATE}`).bind(userId, key),
     db.prepare(`SELECT * FROM fixed_expenses WHERE user_id = ? AND month_key = ? ORDER BY ${BY_SORT}`).bind(userId, key),
     db.prepare('SELECT * FROM transfers WHERE user_id = ? AND month_key = ? ORDER BY rowid').bind(userId, key),
     db.prepare('SELECT * FROM transactions WHERE user_id = ? AND month_key = ? ORDER BY rowid').bind(userId, key),
@@ -788,7 +811,7 @@ const MONTH_READS = 6;
 function monthFrom(results: D1Result<unknown>[], key: MonthKey): Month | null {
   const [month, budgets, rates, fixed, transfers, tx] = results.slice(-MONTH_READS);
   const months = toMonths(rows<MonthRow>(month), {
-    budgets: rows<BudgetRow>(budgets),
+    budgetLog: rows<BudgetLogRow>(budgets),
     rates: rows<RateRow>(rates),
     fixed: rows<FixedRow>(fixed),
     transfers: rows<TransferRow>(transfers),
@@ -814,15 +837,15 @@ const ACCOUNT_PATCH = { name: 'name', currency: 'currency', opening: 'opening', 
 const NO_ACCOUNT = 'Account not found.';
 
 /**
- * "Algo usa la cuenta": un gasto fijo, una transacción, un envío (de salida o de llegada), un ingreso o una
- * parte del presupuesto de algún mes. ?1 es el usuario y ?2, la cuenta.
+ * "Algo usa la cuenta": un gasto fijo, una transacción, un envío (de salida o de llegada), un ingreso o un
+ * movimiento del presupuesto de algún mes. ?1 es el usuario y ?2, la cuenta.
  */
 const ACCOUNT_IN_USE = `(
   EXISTS (SELECT 1 FROM fixed_expenses WHERE user_id = ?1 AND account_id = ?2)
   OR EXISTS (SELECT 1 FROM transactions WHERE user_id = ?1 AND account_id = ?2)
   OR EXISTS (SELECT 1 FROM transfers WHERE user_id = ?1 AND (from_account_id = ?2 OR to_account_id = ?2))
   OR EXISTS (SELECT 1 FROM incomes WHERE user_id = ?1 AND account_id = ?2)
-  OR EXISTS (SELECT 1 FROM month_budgets WHERE user_id = ?1 AND account_id = ?2))`;
+  OR EXISTS (SELECT 1 FROM month_budget_log WHERE user_id = ?1 AND account_id = ?2))`;
 
 function accountNameTaken(): ApiError {
   return conflictError('There is already an account with that name.');
@@ -937,11 +960,23 @@ function writtenMonth(results: D1Result<unknown>[], key: MonthKey): Month {
   return month;
 }
 
+/** Fecha de un movimiento que se escribe ahora en el mes `key`: hoy (en la zona de los usuarios), llevado al mes si cae fuera. */
+function entryDate(key: MonthKey, now: Date): ISODate {
+  return clampToMonth(todayISO(now), key);
+}
+
+/** Suma del registro del presupuesto de una cuenta en un mes. ?1 usuario, ?2 mes, ?3 cuenta. */
+const LOG_SUM = 'COALESCE((SELECT SUM(amount) FROM month_budget_log WHERE user_id = ?1 AND month_key = ?2 AND account_id = ?3), 0)';
+
 /**
- * Cambia las partes del presupuesto que vengan (cuenta → monto en la moneda de esa cuenta): las demás se
- * conservan y un 0 quita la parte. Toda cuenta nombrada tiene que ser del usuario (400). No son saldos.
+ * Fija la parte del presupuesto de las cuentas que vengan (cuenta → monto en la moneda de esa cuenta): por cada
+ * una añade al registro un movimiento con la diferencia entre ese monto y lo que suma hoy su registro; si no hay
+ * diferencia, nada. El movimiento es 'initial' si la cuenta no tenía ninguno en el mes y 'adjust' si ya tenía,
+ * con fecha de hoy llevada al mes. La diferencia se calcula dentro del propio INSERT, no con una lectura previa:
+ * dos guardados seguidos del mismo monto no lo suman dos veces. Toda cuenta nombrada tiene que ser del usuario
+ * (400). Los ingresos que suben el presupuesto no entran en esta cuenta: se fija lo que suma el registro.
  */
-export async function patchMonth(db: D1Database, userId: string, key: MonthKey, patch: MonthPatch): Promise<Month> {
+export async function patchMonth(db: D1Database, userId: string, key: MonthKey, patch: MonthPatch, now: Date = new Date()): Promise<Month> {
   const parts = Object.entries(patch.budgets ?? {});
   // Patch vacío: no es una escritura, se devuelve el mes tal como está (también si está cerrado).
   if (parts.length === 0) return requireMonth(db, userId, key);
@@ -950,95 +985,245 @@ export async function patchMonth(db: D1Database, userId: string, key: MonthKey, 
   const unknown = await accountError(db, userId, parts.map(([accountId]) => accountId));
   if (unknown) throw unknown;
 
+  const date = entryDate(key, now);
   const results = await db.batch([
     ...parts.map(([accountId, amount]) =>
-      amount === 0
-        ? db
-            .prepare(`DELETE FROM month_budgets WHERE user_id = ? AND month_key = ? AND account_id = ? AND month_key IN ${OPEN_MONTHS}`)
-            .bind(userId, key, accountId, userId)
-        : db
-            .prepare(
-              `INSERT INTO month_budgets (user_id, month_key, account_id, amount)
-               SELECT m.user_id, m.key, a.id, ?4 FROM months m JOIN accounts a ON a.user_id = m.user_id AND a.id = ?3
-               WHERE m.user_id = ?1 AND m.key = ?2 AND m.closed = 0
-               ON CONFLICT(user_id, month_key, account_id) DO UPDATE SET amount = excluded.amount`,
-            )
-            .bind(userId, key, accountId, amount),
+      db
+        .prepare(
+          // ROUND quita el ruido de la coma flotante: una diferencia de 1e-12 no es un cambio.
+          `INSERT INTO month_budget_log (user_id, id, month_key, date, account_id, amount, kind, note)
+           SELECT m.user_id, ?4, m.key, ?5, a.id, ROUND(?6 - ${LOG_SUM}, 6),
+                  CASE WHEN EXISTS (SELECT 1 FROM month_budget_log WHERE user_id = ?1 AND month_key = ?2 AND account_id = ?3)
+                       THEN 'adjust' ELSE 'initial' END, ''
+           FROM months m JOIN accounts a ON a.user_id = m.user_id AND a.id = ?3
+           WHERE m.user_id = ?1 AND m.key = ?2 AND m.closed = 0 AND ROUND(?6 - ${LOG_SUM}, 6) <> 0`,
+        )
+        .bind(userId, key, accountId, newId(), date, amount),
     ),
     ...monthStatements(db, userId, key),
   ]);
   return writtenMonth(results, key);
 }
 
+const NO_BUDGET_ENTRY = 'Budget entry not found.';
+
+function outsideMonth(field: string, key: MonthKey): ApiError {
+  return validationError(invalidData(`${field}: must be a date in ${key}`));
+}
+
 /**
- * Escribe la tasa de un par para ese mes (1 `from` = `rate` `to`). Hay una sola por par, en el sentido en que
- * se escribió la última vez: escribir USD → DOP sustituye a la DOP → USD que hubiera.
+ * Añade un movimiento al registro del presupuesto del mes: suma (o resta) `amount` a la parte de esa cuenta.
+ * Sin fecha lleva la de hoy, llevada al mes; con fecha, tiene que caer dentro del mes (400). 'leftover' no se
+ * escribe por aquí (addLeftover).
+ */
+export async function addBudgetEntry(
+  db: D1Database,
+  userId: string,
+  key: MonthKey,
+  input: BudgetEntryCreate,
+  now: Date = new Date(),
+): Promise<Month> {
+  if (input.date !== undefined && !inMonth(input.date, key)) throw outsideMonth('date', key);
+  let results: D1Result<unknown>[];
+  try {
+    results = await db.batch([
+      db
+        .prepare(
+          `INSERT INTO month_budget_log (user_id, id, month_key, date, account_id, amount, kind, note)
+           SELECT m.user_id, ?3, m.key, ?4, a.id, ?6, ?7, ?8
+           FROM months m JOIN accounts a ON a.user_id = m.user_id AND a.id = ?5
+           WHERE m.user_id = ?1 AND m.key = ?2 AND m.closed = 0 RETURNING id`,
+        )
+        .bind(userId, key, input.id ?? newId(), input.date ?? entryDate(key, now), input.accountId, input.amount, input.kind ?? 'adjust', input.note ?? ''),
+      ...monthStatements(db, userId, key),
+    ]);
+  } catch (err) {
+    throw isUniqueViolation(err) ? duplicateId() : err;
+  }
+  if (rows(results[0]).length === 0) throw await createError(db, userId, key, [input.accountId]);
+  return writtenMonth(results, key);
+}
+
+/** Quita un movimiento del registro del presupuesto de un mes abierto; 404 si ese mes no lo tiene. */
+export async function deleteBudgetEntry(db: D1Database, userId: string, key: MonthKey, id: string): Promise<Month> {
+  const results = await db.batch([
+    db
+      .prepare(`DELETE FROM month_budget_log WHERE user_id = ? AND month_key = ? AND id = ? AND month_key IN ${OPEN_MONTHS} RETURNING id`)
+      .bind(userId, key, id, userId),
+    ...monthStatements(db, userId, key),
+  ]);
+  const month = writtenMonth(results, key);
+  if (rows(results[0]).length === 0) throw notFoundError(NO_BUDGET_ENTRY);
+  return month;
+}
+
+/**
+ * Sentencia que suma un sobrante al presupuesto del mes `key`: un movimiento 'leftover' en `accountId`, solo si
+ * el mes está abierto y todavía no tiene uno (el índice único budget_log_leftover lo garantiza además).
+ */
+function leftoverStatement(db: D1Database, userId: string, key: MonthKey, accountId: string, amount: number, date: ISODate): D1PreparedStatement {
+  return db
+    .prepare(
+      `INSERT INTO month_budget_log (user_id, id, month_key, date, account_id, amount, kind, note)
+       SELECT m.user_id, ?3, m.key, ?4, a.id, ?6, 'leftover', ''
+       FROM months m JOIN accounts a ON a.user_id = m.user_id AND a.id = ?5
+       WHERE m.user_id = ?1 AND m.key = ?2 AND m.closed = 0
+         AND NOT EXISTS (SELECT 1 FROM month_budget_log WHERE user_id = ?1 AND month_key = ?2 AND kind = 'leftover')
+       RETURNING id`,
+    )
+    .bind(userId, key, newId(), date, accountId, amount);
+}
+
+/**
+ * Lo que sobró del mes `from` (su disponible: presupuesto − usado, en la moneda principal) tal como se suma al
+ * mes `to`: en la cuenta por defecto del usuario y en su moneda, convertido con la última tasa del mes `to`.
+ */
+function leftoverEntry(state: AppState, from: MonthKey, to: MonthKey): { accountId: string; amount: number } {
+  const account = defaultAccount(state);
+  if (!account) throw noAccountsError();
+  const leftover = monthCalc(state, from).avail;
+  return { accountId: account.id, amount: convert(state, to, leftover, state.mainCurrency, account.currency) };
+}
+
+function leftoverTaken(key: MonthKey): ApiError {
+  return conflictError(`The leftover of the previous month was already added to ${key}.`);
+}
+
+/**
+ * Suma al presupuesto del mes `key` lo que sobró del mes registrado anterior (leftoverFor en shared/calc.ts),
+ * como un movimiento 'leftover' con fecha de hoy llevada al mes. Si sobró en negativo, el movimiento es
+ * negativo. 400 si no hay mes anterior; 409 `conflict` si el mes ya tiene el suyo; 409 `month_closed` si está
+ * cerrado. La cifra sale del estado leído justo antes: no hay forma de calcularla dentro de la escritura.
+ */
+export async function addLeftover(db: D1Database, userId: string, key: MonthKey, now: Date = new Date()): Promise<Month> {
+  const state = await loadState(db, userId);
+  const month = state.months[key];
+  if (!month) throw monthNotFoundError(key);
+  if (month.closed) throw monthClosedError(key);
+  const { previousKey, added } = leftoverFor(state, key);
+  if (previousKey === null) throw validationError(`There is no month before ${key} to take a leftover from.`);
+  if (added) throw leftoverTaken(key);
+
+  const entry = leftoverEntry(state, previousKey, key);
+  let results: D1Result<unknown>[];
+  try {
+    results = await db.batch([
+      leftoverStatement(db, userId, key, entry.accountId, entry.amount, entryDate(key, now)),
+      ...monthStatements(db, userId, key),
+    ]);
+  } catch (err) {
+    throw isUniqueViolation(err) ? leftoverTaken(key) : err;
+  }
+  const written = writtenMonth(results, key);
+  // Otra petición lo sumó entre la lectura y la escritura.
+  if (rows(results[0]).length === 0) throw leftoverTaken(key);
+  return written;
+}
+
+/**
+ * Escribe la tasa de un par desde una fecha del mes (1 `from` = `rate` `to`). Hay una por par y fecha, en el
+ * sentido en que se escribió la última vez: escribir USD → DOP sustituye a la DOP → USD de esa misma fecha.
+ * Las de otras fechas no se tocan: siguen valiendo para lo registrado entre su fecha y esta.
  */
 export async function setMonthRate(db: D1Database, userId: string, key: MonthKey, rate: MonthRate): Promise<Month> {
+  if (!inMonth(rate.date, key)) throw outsideMonth('date', key);
   const results = await db.batch([
     db
       .prepare(
-        `DELETE FROM month_rates WHERE user_id = ? AND month_key = ? AND from_currency = ? AND to_currency = ? AND month_key IN ${OPEN_MONTHS}`,
+        `DELETE FROM month_rates WHERE user_id = ? AND month_key = ? AND from_currency = ? AND to_currency = ? AND date = ? AND month_key IN ${OPEN_MONTHS}`,
       )
-      .bind(userId, key, rate.to, rate.from, userId),
+      .bind(userId, key, rate.to, rate.from, rate.date, userId),
     db
       .prepare(
-        `INSERT INTO month_rates (user_id, month_key, from_currency, to_currency, rate)
-         SELECT m.user_id, m.key, ?3, ?4, ?5 FROM months m WHERE m.user_id = ?1 AND m.key = ?2 AND m.closed = 0
-         ON CONFLICT(user_id, month_key, from_currency, to_currency) DO UPDATE SET rate = excluded.rate`,
+        `INSERT INTO month_rates (user_id, month_key, from_currency, to_currency, date, rate)
+         SELECT m.user_id, m.key, ?3, ?4, ?5, ?6 FROM months m WHERE m.user_id = ?1 AND m.key = ?2 AND m.closed = 0
+         ON CONFLICT(user_id, month_key, from_currency, to_currency, date) DO UPDATE SET rate = excluded.rate`,
       )
-      .bind(userId, key, rate.from, rate.to, rate.rate),
+      .bind(userId, key, rate.from, rate.to, rate.date, rate.rate),
     ...monthStatements(db, userId, key),
   ]);
   return writtenMonth(results, key);
 }
 
 /**
- * Quita la tasa escrita de ese par, esté guardada en un sentido o en el otro; a partir de ahí la resuelve
- * rateFor (shared/calc.ts). Si el mes no tenía tasa escrita para el par no cambia nada: devuelve el mes igual.
+ * Quita la tasa escrita de ese par y esa fecha, esté guardada en un sentido o en el otro; a partir de ahí vale
+ * la anterior del par o, si no hay, lo que resuelva rateFor (shared/calc.ts). Si el mes no tenía esa tasa no
+ * cambia nada: devuelve el mes igual.
  */
-export async function deleteMonthRate(db: D1Database, userId: string, key: MonthKey, from: Currency, to: Currency): Promise<Month> {
+export async function deleteMonthRate(
+  db: D1Database,
+  userId: string,
+  key: MonthKey,
+  from: Currency,
+  to: Currency,
+  date: ISODate,
+): Promise<Month> {
   const results = await db.batch([
     db
       .prepare(
-        `DELETE FROM month_rates WHERE user_id = ? AND month_key = ?
+        `DELETE FROM month_rates WHERE user_id = ? AND month_key = ? AND date = ?
          AND ((from_currency = ? AND to_currency = ?) OR (from_currency = ? AND to_currency = ?)) AND month_key IN ${OPEN_MONTHS}`,
       )
-      .bind(userId, key, from, to, to, from, userId),
+      .bind(userId, key, date, from, to, to, from, userId),
     ...monthStatements(db, userId, key),
   ]);
   return writtenMonth(results, key);
 }
 
+/** El mes registrado anterior más cercano a ?2 del usuario ?1. */
+const PREVIOUS_MONTH = '(SELECT MAX(key) FROM months WHERE user_id = ?1 AND key < ?2)';
+
 /**
- * Sentencias que crean `key` copiando del mes anterior más cercano del usuario los fijos (sin pagar, con su
- * cuenta y con ids nuevos) y las partes del presupuesto; si no hay mes anterior, queda vacío. Las tasas no se
- * copian: son las de cada mes, y las que falten las resuelve rateFor. Todo en SQL para que la copia sea atómica
- * dentro del batch. El INSERT del mes falla (UNIQUE) si el mes ya existe.
+ * Sentencias que crean `key` con los fijos del mes anterior más cercano del usuario (sin pagar, con su cuenta
+ * y con ids nuevos); si no hay mes anterior, queda sin fijos. Las tasas no se copian: la última escrita sigue
+ * vigente hasta que se escriba otra (rateFor). Todo en SQL para que la copia sea atómica dentro del batch.
+ * El INSERT del mes falla (UNIQUE) si el mes ya existe.
  */
 function createMonthStatements(db: D1Database, userId: string, key: MonthKey): D1PreparedStatement[] {
-  const previous = '(SELECT MAX(key) FROM months WHERE user_id = ?1 AND key < ?2)';
   return [
     db.prepare('INSERT INTO months (user_id, key) VALUES (?1, ?2)').bind(userId, key),
     db
       .prepare(
         `INSERT INTO fixed_expenses (user_id, id, month_key, name, day, amount, currency, paid, account_id, sort)
          SELECT ?1, lower(hex(randomblob(16))), ?2, name, day, amount, currency, 0, account_id, sort
-         FROM fixed_expenses WHERE user_id = ?1 AND month_key = ${previous} ORDER BY ${BY_SORT}`,
-      )
-      .bind(userId, key),
-    db
-      .prepare(
-        `INSERT INTO month_budgets (user_id, month_key, account_id, amount)
-         SELECT ?1, ?2, account_id, amount FROM month_budgets WHERE user_id = ?1 AND month_key = ${previous}`,
+         FROM fixed_expenses WHERE user_id = ?1 AND month_key = ${PREVIOUS_MONTH} ORDER BY ${BY_SORT}`,
       )
       .bind(userId, key),
   ];
 }
 
 /**
- * Devuelve el mes `key` del usuario, creándolo si falta (ver createMonthStatements). `created` dice si lo creó
- * esta llamada. No mira si está cerrado: eso lo decide quien llama.
+ * Sentencia que arranca el presupuesto de un mes recién creado con las partes del mes anterior más cercano:
+ * un movimiento 'initial' por cuenta, con fecha del primer día, por lo que suma el registro de esa cuenta en el
+ * mes anterior (los ingresos que subieron aquel presupuesto no se heredan). Va después de createMonthStatements.
+ */
+function copyBudgetStatement(db: D1Database, userId: string, key: MonthKey): D1PreparedStatement {
+  return db
+    .prepare(
+      `INSERT INTO month_budget_log (user_id, id, month_key, date, account_id, amount, kind, note)
+       SELECT ?1, lower(hex(randomblob(16))), ?2, ?3, account_id, ROUND(SUM(amount), 6), 'initial', ''
+       FROM month_budget_log WHERE user_id = ?1 AND month_key = ${PREVIOUS_MONTH}
+       GROUP BY account_id HAVING ROUND(SUM(amount), 6) <> 0 ORDER BY MIN(rowid)`,
+    )
+    .bind(userId, key, firstDay(key));
+}
+
+/** Como copyBudgetStatement, pero con las partes que se indican (cuenta → monto; un 0 no deja movimiento). */
+function initialBudgetStatements(db: D1Database, userId: string, key: MonthKey, budgets: Record<string, number>): D1PreparedStatement[] {
+  return insertMany(
+    db,
+    'month_budget_log',
+    BUDGET_LOG_INSERT,
+    Object.entries(budgets)
+      .filter(([, amount]) => amount !== 0)
+      .map(([accountId, amount]) => [userId, newId(), key, firstDay(key), accountId, amount, 'initial', '']),
+  );
+}
+
+/**
+ * Devuelve el mes `key` del usuario, creándolo si falta con los fijos y las partes del presupuesto del mes
+ * anterior más cercano (createMonthStatements, copyBudgetStatement). `created` dice si lo creó esta llamada.
+ * No mira si está cerrado: eso lo decide quien llama.
  */
 export async function ensureMonth(db: D1Database, userId: string, key: MonthKey): Promise<{ month: Month; created: boolean }> {
   if (!isMonthKey(key)) throw validationError('Invalid month (expected YYYY-MM).');
@@ -1047,7 +1232,7 @@ export async function ensureMonth(db: D1Database, userId: string, key: MonthKey)
 
   let created = true;
   try {
-    await db.batch(createMonthStatements(db, userId, key));
+    await db.batch([...createMonthStatements(db, userId, key), copyBudgetStatement(db, userId, key)]);
   } catch (err) {
     // Otra petición lo creó entre la lectura y el batch: vale el suyo.
     if (!isUniqueViolation(err)) throw err;
@@ -1057,11 +1242,19 @@ export async function ensureMonth(db: D1Database, userId: string, key: MonthKey)
 }
 
 /**
- * Cierra el mes y, si el siguiente no existe, lo crea con los mismos fijos sin pagar y las mismas partes del
- * presupuesto (doClose() del prototipo), todo en un batch. Cerrar un mes ya cerrado no cambia nada (conserva
- * su closed_at), para que un reintento no falle.
+ * Cierra el mes y, si el siguiente no existe, lo crea con los mismos fijos sin pagar y su presupuesto inicial,
+ * todo en un batch: un movimiento 'initial' por cuenta con las partes de `request.budgets` o, si no vienen, las
+ * del mes que se cierra; con `request.addLeftover`, además el sobrante del mes que se cierra (como addLeftover).
+ * Si el mes siguiente ya existe no se le toca nada. Cerrar un mes ya cerrado no cambia nada (conserva su
+ * closed_at), para que un reintento no falle.
  */
-export async function closeMonth(db: D1Database, userId: string, key: MonthKey, now: Date = new Date()): Promise<CloseResponse> {
+export async function closeMonth(
+  db: D1Database,
+  userId: string,
+  key: MonthKey,
+  request: CloseRequest = {},
+  now: Date = new Date(),
+): Promise<CloseResponse> {
   const next = nextKey(key);
   const found = await db
     .prepare('SELECT key FROM months WHERE user_id = ?1 AND key IN (?2, ?3)')
@@ -1082,8 +1275,20 @@ export async function closeMonth(db: D1Database, userId: string, key: MonthKey, 
   if (have.has(next)) {
     await db.batch([close()]);
   } else {
+    const budgets = request.budgets;
+    if (budgets) {
+      // Se comprueba antes de escribir: una cuenta desconocida no debe dejar el mes cerrado a medias.
+      const unknown = await accountError(db, userId, Object.keys(budgets));
+      if (unknown) throw unknown;
+    }
+    const extra: D1PreparedStatement[] = budgets ? initialBudgetStatements(db, userId, next, budgets) : [copyBudgetStatement(db, userId, next)];
+    if (request.addLeftover) {
+      // El sobrante sale del estado de ahora, antes de cerrar: cerrar no cambia ninguna cifra del mes.
+      const entry = leftoverEntry(await loadState(db, userId), key, next);
+      extra.push(leftoverStatement(db, userId, next, entry.accountId, entry.amount, entryDate(next, now)));
+    }
     try {
-      await db.batch([close(), ...createMonthStatements(db, userId, next)]);
+      await db.batch([close(), ...createMonthStatements(db, userId, next), ...extra]);
     } catch (err) {
       // El mes siguiente apareció entre la lectura y el batch (que se deshizo entero): solo queda cerrar.
       if (!isUniqueViolation(err)) throw err;
@@ -1105,7 +1310,7 @@ export async function reopenMonth(db: D1Database, userId: string, key: MonthKey)
 }
 
 /**
- * Borra el mes, abierto o cerrado, con todo lo suyo: fijos, transacciones, envíos, presupuesto y tasas (las
+ * Borra el mes, abierto o cerrado, con todo lo suyo: fijos, transacciones, envíos, registro del presupuesto y tasas (las
  * claves foráneas lo arrastran). Los saldos cambian en consecuencia, porque se calculan de lo que queda; los
  * ingresos y los aportes no son de ningún mes y se conservan.
  */
@@ -1239,8 +1444,8 @@ function sameAccountError(): ApiError {
 }
 
 /**
- * Tasa del mes para las monedas de las dos cuentas (rateFor de shared/calc.ts; 1 si son la misma): la que lleva
- * un envío que llega sin la suya.
+ * Tasa vigente en la fecha del envío para las monedas de las dos cuentas (rateFor de shared/calc.ts; 1 si son
+ * la misma): la que lleva un envío que llega sin la suya.
  */
 async function monthTransferRate(db: D1Database, userId: string, input: TransferCreate): Promise<number> {
   const state = await loadState(db, userId);
@@ -1249,12 +1454,12 @@ async function monthTransferRate(db: D1Database, userId: string, input: Transfer
   const to = accounts.get(input.toAccountId);
   if (!from) throw unknownAccountError(input.fromAccountId);
   if (!to) throw unknownAccountError(input.toAccountId);
-  return rateFor(state, input.monthKey, from.currency, to.currency).rate;
+  return rateFor(state, input.monthKey, from.currency, to.currency, input.date).rate;
 }
 
 /**
  * Mueve `amount` (en la moneda de la cuenta de origen) de una cuenta a otra distinta; a la de destino le entra
- * amount × rate. Sin `rate` se usa la tasa del mes para las monedas de las dos cuentas.
+ * amount × rate. Sin `rate` se usa la tasa vigente en su fecha para las monedas de las dos cuentas.
  */
 export async function createTransfer(db: D1Database, userId: string, input: TransferCreate): Promise<Transfer> {
   if (input.fromAccountId === input.toAccountId) throw sameAccountError();
@@ -1304,7 +1509,14 @@ export async function deleteTransfer(db: D1Database, userId: string, id: string)
 // No pertenecen a un mes: cuentan en el de su fecha (shared/calc.ts incomeInMonth) y se pueden crear, editar y
 // borrar siempre, esté ese mes cerrado o ni siquiera exista.
 
-const INCOME_PATCH = { date: 'date', desc: 'description', accountId: 'account_id', amount: 'amount', cur: 'currency' } as const;
+const INCOME_PATCH = {
+  date: 'date',
+  desc: 'description',
+  accountId: 'account_id',
+  amount: 'amount',
+  cur: 'currency',
+  budget: 'budget',
+} as const;
 const NO_INCOME = 'Income not found.';
 
 export async function listIncomes(db: D1Database, userId: string): Promise<Income[]> {
@@ -1312,18 +1524,21 @@ export async function listIncomes(db: D1Database, userId: string): Promise<Incom
   return res.results.map(toIncome);
 }
 
-/** Sin `accountId` el ingreso entra a la cuenta por defecto del usuario. */
+/**
+ * Sin `accountId` el ingreso entra a la cuenta por defecto del usuario. Con `budget: true` sube además el
+ * presupuesto del mes de su fecha: no se escribe nada en el registro, lo suma shared/calc.ts al calcular.
+ */
 export async function createIncome(db: D1Database, userId: string, input: IncomeCreate): Promise<Income> {
   const accountId = input.accountId ?? (await defaultAccountId(db, userId));
   // La fila sale de las cuentas del usuario: una cuenta de otro usuario es como una que no existe.
   const row = await firstOrConflict<IncomeRow>(
     db
       .prepare(
-        `INSERT INTO incomes (user_id, id, date, description, account_id, amount, currency)
-         SELECT a.user_id, ?2, ?3, ?4, a.id, ?6, ?7 FROM accounts a WHERE a.user_id = ?1 AND a.id = ?5
+        `INSERT INTO incomes (user_id, id, date, description, account_id, amount, currency, budget)
+         SELECT a.user_id, ?2, ?3, ?4, a.id, ?6, ?7, ?8 FROM accounts a WHERE a.user_id = ?1 AND a.id = ?5
          RETURNING *`,
       )
-      .bind(userId, input.id ?? newId(), input.date, input.desc ?? '', accountId, input.amount, input.cur),
+      .bind(userId, input.id ?? newId(), input.date, input.desc ?? '', accountId, input.amount, input.cur, input.budget ? 1 : 0),
   );
   if (!row) throw unknownAccountError(accountId);
   return toIncome(row);
@@ -1361,6 +1576,7 @@ const GOAL_PATCH = {
   monthly: 'monthly',
   start: 'start_month',
   end: 'end_month',
+  approxCur: 'approx_currency',
   sort: 'sort',
 } as const;
 const NO_GOAL = 'Goal not found.';
@@ -1399,12 +1615,12 @@ export async function createGoal(db: D1Database, userId: string, input: GoalCrea
   const row = await firstOrConflict<GoalRow>(
     db
       .prepare(
-        `INSERT INTO goals (user_id, id, name, currency, monthly, start_month, end_month, sort)
-         SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, COALESCE((SELECT MAX(sort) FROM goals WHERE user_id = ?1), -1) + 1
+        `INSERT INTO goals (user_id, id, name, currency, monthly, start_month, end_month, approx_currency, sort)
+         SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, COALESCE((SELECT MAX(sort) FROM goals WHERE user_id = ?1), -1) + 1
          WHERE NOT EXISTS (SELECT 1 FROM goals WHERE user_id = ?1 AND lower(name) = lower(?3))
          RETURNING *`,
       )
-      .bind(userId, input.id ?? newId(), input.name, cur, plan.monthly, plan.start, plan.end),
+      .bind(userId, input.id ?? newId(), input.name, cur, plan.monthly, plan.start, plan.end, input.approxCur ?? null),
   );
   if (!row) throw goalNameTaken();
   return toGoal(row);
@@ -1531,7 +1747,7 @@ const DATA_TABLES = [
   'transactions',
   'transfers',
   'fixed_expenses',
-  'month_budgets',
+  'month_budget_log',
   'month_rates',
   'months',
   'goals',
@@ -1539,17 +1755,18 @@ const DATA_TABLES = [
 ] as const;
 
 /**
- * Las tasas escritas de un mes tal como se pueden guardar: mayores que 0, entre dos monedas distintas y una
- * sola por par (la primera, que es la que usa rateFor). Lo demás la base lo rechazaría y shared/calc lo ignora.
+ * Las tasas escritas de un mes tal como se pueden guardar: mayores que 0, entre dos monedas distintas, con
+ * fecha dentro del mes (una sin fecha, o con fecha de otro mes, pasa al primer día) y una sola por par y fecha
+ * (la última, que es la que usa rateFor). Lo demás la base lo rechazaría y shared/calc lo ignora.
  */
-function storableRates(rates: readonly MonthRate[]): MonthRate[] {
-  const pairs = new Set<string>();
-  return rates.filter((r) => {
-    const pair = [r.from, r.to].sort().join('/');
-    if (!(r.rate > 0) || r.from === r.to || pairs.has(pair)) return false;
-    pairs.add(pair);
-    return true;
-  });
+function storableRates(key: MonthKey, rates: readonly MonthRate[]): MonthRate[] {
+  const byPairDate = new Map<string, MonthRate>();
+  for (const r of rates) {
+    if (!(r.rate > 0) || r.from === r.to) continue;
+    const date = r.date && inMonth(r.date, key) ? r.date : firstDay(key);
+    byPairDate.set(`${[r.from, r.to].sort().join('/')}|${date}`, { ...r, date });
+  }
+  return [...byPairDate.values()];
 }
 
 /** Los datos de un usuario: su estado sin los ajustes. */
@@ -1558,7 +1775,7 @@ type UserData = Pick<AppState, 'months' | 'accounts' | 'incomes' | 'goals' | 'co
 /**
  * Sentencias que dejan como datos del usuario exactamente los de `state`: borran todo lo que tiene (salvo sus
  * ajustes) y lo insertan de nuevo, en el orden del estado. `stamp` es la fecha de alta de las transacciones que
- * no traen la suya. Una parte del presupuesto en 0 no se guarda: es lo mismo que no tenerla.
+ * no traen la suya. Del presupuesto se guarda el registro (Month.budgetLog); Month.budgets es su suma y no se guarda.
  */
 function dataStatements(db: D1Database, userId: string, state: UserData, stamp: string): D1PreparedStatement[] {
   const months = Object.keys(state.months)
@@ -1576,7 +1793,7 @@ function dataStatements(db: D1Database, userId: string, state: UserData, stamp: 
       db,
       'goals',
       GOAL_INSERT,
-      state.goals.map((g) => [userId, g.id, g.name, g.cur, g.monthly, g.start, g.end, g.sort]),
+      state.goals.map((g) => [userId, g.id, g.name, g.cur, g.monthly, g.start, g.end, g.approxCur ?? null, g.sort]),
     ),
     ...insertMany(
       db,
@@ -1586,19 +1803,18 @@ function dataStatements(db: D1Database, userId: string, state: UserData, stamp: 
     ),
     ...insertMany(
       db,
-      'month_budgets',
-      BUDGET_INSERT,
+      'month_budget_log',
+      BUDGET_LOG_INSERT,
+      // La base exige la fecha dentro del mes: una que venga de fuera se lleva a él en vez de tumbar toda la carga.
       months.flatMap((m) =>
-        Object.entries(m.budgets)
-          .filter(([, amount]) => amount !== 0)
-          .map(([accountId, amount]) => [userId, m.key, accountId, amount]),
+        m.budgetLog.map((e) => [userId, e.id, m.key, clampToMonth(e.date || firstDay(m.key), m.key), e.accountId, e.amount, e.kind, e.note ?? '']),
       ),
     ),
     ...insertMany(
       db,
       'month_rates',
       RATE_INSERT,
-      months.flatMap((m) => storableRates(m.rates).map((r) => [userId, m.key, r.from, r.to, r.rate])),
+      months.flatMap((m) => storableRates(m.key, m.rates).map((r) => [userId, m.key, r.from, r.to, r.date, r.rate])),
     ),
     ...insertMany(
       db,
@@ -1641,7 +1857,7 @@ function dataStatements(db: D1Database, userId: string, state: UserData, stamp: 
       db,
       'incomes',
       INCOME_INSERT,
-      state.incomes.map((i) => [userId, i.id, i.date, i.desc, i.accountId, i.amount, i.cur]),
+      state.incomes.map((i) => [userId, i.id, i.date, i.desc, i.accountId, i.amount, i.cur, i.budget ? 1 : 0]),
     ),
     ...insertMany(
       db,
@@ -1678,7 +1894,7 @@ export async function replaceAll(db: D1Database, userId: string, state: AppState
  */
 export async function resetAll(db: D1Database, userId: string, key: MonthKey = currentMonthKey()): Promise<void> {
   const blank: UserData = {
-    months: { [key]: { key, closed: false, closedAt: null, budgets: {}, rates: [], fixed: [], transfers: [], tx: [] } },
+    months: { [key]: { key, closed: false, closedAt: null, budgetLog: [], budgets: {}, rates: [], fixed: [], transfers: [], tx: [] } },
     accounts: [...DEFAULT_ACCOUNTS],
     incomes: [],
     goals: [...DEFAULT_GOALS],

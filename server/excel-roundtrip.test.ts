@@ -15,7 +15,7 @@ import { IMPORTED_INCOME } from '../shared/excel/data';
 import { XLSX_MIME } from '../shared/excel/export';
 import { parseFinanzasXlsx } from '../shared/excel/import';
 import { LANGUAGES } from '../shared/i18n';
-import { seedState } from '../shared/seed';
+import { seedState, setBudgets } from '../shared/seed';
 import type { AppState } from '../shared/types';
 import { loadState, replaceAll, resetAll } from './db';
 import { client, EDA, FRANK, makeEnv } from './test-util';
@@ -99,7 +99,7 @@ function expectSeedHistory(state: AppState) {
   );
   // La tasa escrita a mano de octubre tampoco: el libro (y la app, al volver) la sacan de los envíos del mes.
   for (const m of Object.values(state.months)) expect(m.rates).toEqual([]);
-  expect(rateFor(state, '2026-10', 'USD', 'DOP')).toEqual({ rate: 58.76, source: 'transfers', monthKey: '2026-10' });
+  expect(rateFor(state, '2026-10', 'USD', 'DOP')).toEqual({ rate: 58.76, source: 'transfers', monthKey: '2026-10', date: null });
   // Con todo eso, las cifras de cada mes son las mismas.
   for (const key of Object.keys(seed.months)) {
     const [mine, theirs] = [monthCalc(state, key), monthCalc(seed, key)];
@@ -182,7 +182,7 @@ describe('Excel: exportar e importar de verdad', () => {
     // las categorías y los métodos, con su nombre canónico, y las tres metas de la versión 1, con su nombre de hoy.
     expect(figures(state)).toEqual(figures(seedState()));
     // Descripciones, lugares y notas quedan como estaban en el libro.
-    expect(state.months['2026-10']!.tx[0]).toMatchObject({ desc: 'Compra semanal', cat: 'Groceries', method: 'Card', accountId: 'dr' });
+    expect(state.months['2026-10']!.tx[0]).toMatchObject({ desc: 'Compra semanal', cat: 'Groceries', method: 'Debit card', accountId: 'dr' });
     expect(state.months['2026-10']!.fixed.find((f) => f.cur === 'USD')).toMatchObject({ name: 'Claude', accountId: 'us' });
     // Los saldos del libro (los de su último mes) son ahora los de las dos cuentas.
     expect(balances(state, '2026-10').accounts.map((a) => [a.account.id, Math.round(a.balance * 100) / 100])).toEqual([
@@ -203,12 +203,12 @@ describe('Excel: exportar e importar de verdad', () => {
     mine.secondCurrency = 'USD';
     mine.accounts.push({ id: 'tr', name: 'TR account', currency: 'TRY', opening: 50000, hidden: false, sort: 2 });
     const october = mine.months['2026-10']!;
-    october.rates.push({ from: 'USD', to: 'TRY', rate: 40 });
-    october.budgets = { dr: 60000, tr: 4000 };
+    october.rates.push({ from: 'USD', to: 'TRY', rate: 40, date: '2026-10-01' });
+    setBudgets(october, { dr: 60000, tr: 4000 });
     october.tx.push({ ...october.tx[0]!, id: 'lira', desc: 'Baklava', amount: 1250, cur: 'TRY', accountId: 'tr' });
     october.transfers.push({ id: 'to-tr', monthKey: '2026-10', date: '2026-10-08', via: 'Wise', fromAccountId: 'us', toAccountId: 'tr', amount: 100, rate: 40 });
-    mine.incomes.push({ id: 'maas', date: '2026-10-15', desc: 'Maaş', accountId: 'tr', amount: 20000, cur: 'TRY' });
-    mine.goals.push({ id: 'flat', name: 'Istanbul flat', cur: 'TRY', monthly: 10000, start: '2026-10', end: '2027-09', sort: 3 });
+    mine.incomes.push({ id: 'maas', date: '2026-10-15', desc: 'Maaş', accountId: 'tr', amount: 20000, cur: 'TRY', budget: false });
+    mine.goals.push({ id: 'flat', name: 'Istanbul flat', cur: 'TRY', monthly: 10000, start: '2026-10', end: '2027-09', approxCur: null, sort: 3 });
     mine.contribs.push({ id: 'c-try', goalId: 'flat', date: '2026-10-09', amount: 4000, cur: 'TRY' });
     await replaceAll(db, F, mine);
 

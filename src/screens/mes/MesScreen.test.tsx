@@ -6,8 +6,8 @@
 
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { seedState } from '../../../shared/seed';
-import type { Account, AppState, ISODate, Language, MonthKey } from '../../../shared/types';
+import { seedState, setBudgets } from '../../../shared/seed';
+import type { Account, AppState, Income, ISODate, Language, MonthKey } from '../../../shared/types';
 import { I18nProvider } from '../../i18n';
 import { buildFinanzas, FinanzasContext } from '../../store';
 import type { Actions, Finanzas } from '../../store';
@@ -17,16 +17,17 @@ interface RenderOptions {
   /** Idioma del usuario (state.language). Fijo en inglés para no depender del de los datos de ejemplo. */
   lang?: Language;
   state?: AppState;
+  /** Fecha de las filas de agregar. Por defecto la que arma la app: hoy si el mes es el de hoy; si no, su día 1. */
   draftDate?: ISODate;
   /** Idioma forzado con <I18nProvider>, como hace FinanzasProvider en la app. */
   provider?: Language;
 }
 
-function render(monthKey: MonthKey, { lang = 'en', state = seedState(), draftDate = '2026-10-07', provider }: RenderOptions = {}): string {
+function render(monthKey: MonthKey, { lang = 'en', state = seedState(), draftDate, provider }: RenderOptions = {}): string {
   state.language = lang;
-  // El mismo valor que arma FinanzasProvider; solo la fecha de los borradores se fija aparte.
+  // El mismo valor que arma FinanzasProvider (hoy es el 7 de octubre); la fecha de los borradores se puede fijar aparte.
   const built = buildFinanzas({ user: { id: 'frank', name: 'Frank' }, state, monthKey, today: '2026-10-07', actions: {} as Actions });
-  const value: Finanzas = { ...built!, draftDate };
+  const value: Finanzas = { ...built!, draftDate: draftDate ?? built!.draftDate };
   const screen = (
     <FinanzasContext value={value}>
       <MesScreen />
@@ -58,6 +59,20 @@ const account = (id: string, name: string, currency: Account['currency'], over: 
   sort: 9,
   ...over,
 });
+
+/** Un ingreso más para los datos de ejemplo: de octubre, en pesos y en la DR account. */
+const income = (over: Partial<Income> & Pick<Income, 'id' | 'amount'>): Income => ({
+  date: '2026-10-03',
+  desc: 'Refund',
+  accountId: 'dr',
+  cur: 'DOP',
+  budget: false,
+  ...over,
+});
+
+/** Marcas de fin de sección: el título de la tarjeta siguiente (el texto suelto también sale en notas y etiquetas). */
+const INCOME = '>Income</h2>';
+const HISTORY = '>Transaction history</h2>';
 
 /** La opción seleccionada de la lista con esa etiqueta. */
 function selected(html: string, label: string): string | undefined {
@@ -189,26 +204,33 @@ describe('mes abierto · October 2026', () => {
     expect(Number.parseFloat(bars[1]!.style!.slice('width:'.length))).toBeCloseTo((4850 / 38304.71) * 100, 6);
   });
 
-  it('tasas del mes: el par en uso, con su tasa escrita editable, y la fila para escribir otra', () => {
-    const card = section(html, 'Month rates', 'Transfers');
-    expect(bare(card)).toContain('Month rates From Rate To 1 USD = DOP × Add rate');
+  it('tasas del mes: el par en uso, con sus tasas escritas editables (una por fecha), y la fila para escribir otra', () => {
+    const card = section(html, 'Month rates', '>Transfers</h2>');
+    // Bajo el título, la nota que explica desde cuándo vale una tasa; la primera columna es su fecha.
+    expect(bare(card)).toContain(
+      'Month rates A new rate applies from its date on. Earlier transactions keep the rate they had. Since From Rate To 01/10 1 USD = DOP × 06/10 1 USD = DOP × Add rate',
+    );
+    expect(els(card, 'p')).toHaveLength(1);
     expect(els(card, 'table')).toEqual([expect.objectContaining({ 'aria-label': 'Month rates' })]);
     const inputs = els(card, 'input');
-    expect(inputs).toHaveLength(2);
-    // La tasa escrita de octubre se corrige en su celda; no lleva nota de origen porque es la del mes.
-    expect(inputs[0]).toMatchObject({ type: 'number', value: '58.76', 'aria-label': 'Rate USD → DOP' });
+    expect(inputs).toHaveLength(4);
+    // Octubre tiene la tasa escrita dos veces (el 1 y el 6): cada una se corrige en su celda y dice desde cuándo vale.
+    // No llevan nota de origen porque son las del mes.
+    expect(inputs[0]).toMatchObject({ type: 'number', value: '58.76', 'aria-label': 'Rate USD → DOP since 01/10' });
+    expect(inputs[1]).toMatchObject({ type: 'number', value: '58.76', 'aria-label': 'Rate USD → DOP since 06/10' });
     expect(card).not.toContain('typed for this month');
     expect(card).not.toMatch(/warn/);
-    expect(els(card, 'button')[0]).toMatchObject({ 'aria-label': 'Delete rate USD → DOP' });
-    // Fila de agregar: par (todas las monedas) y tasa vacía.
-    expect(inputs[1]).toMatchObject({ type: 'number', value: '', placeholder: '0.00', 'aria-label': 'New rate' });
+    expect(els(card, 'button').map((b) => b['aria-label'])).toEqual(['Delete rate USD → DOP of 01/10', 'Delete rate USD → DOP of 06/10', undefined]);
+    // Fila de agregar: fecha, par (todas las monedas) y tasa vacía.
+    expect(inputs[2]).toMatchObject({ type: 'date', value: '2026-10-07', 'aria-label': 'Date the new rate applies from' });
+    expect(inputs[3]).toMatchObject({ type: 'number', value: '', placeholder: '0.00', 'aria-label': 'New rate' });
     expect(selected(card, 'Currency the new rate converts from')).toBe('USD');
     expect(selected(card, 'Currency the new rate converts to')).toBe('DOP');
     expect([...card.matchAll(/<option /g)]).toHaveLength(6);
-    expect(buttons(card)).toEqual(['×', 'Add rate']);
+    expect(buttons(card)).toEqual(['×', '×', 'Add rate']);
   });
 
-  it('envíos: la tarjeta va a todo el ancho, fuera de las dos columnas y antes del historial', () => {
+  it('envíos: la tarjeta va a todo el ancho, fuera de las dos columnas y antes de los ingresos y del historial', () => {
     // El bloque de dos columnas (gastos mensuales | categorías y tasas) se cierra antes de la tarjeta de envíos.
     const columns = section(html, '<div class="_columns_', '>Transfers</h2>');
     const cardStart = columns.lastIndexOf('<div class="_card_');
@@ -219,13 +241,13 @@ describe('mes abierto · October 2026', () => {
     expect(block).toContain('>Month rates</h2>');
     // La tarjeta es hija directa de la pila de la hoja, como el historial: sin clase de columna.
     expect(columns.slice(cardStart)).toMatch(/^<div class="_card_\w+"><div class="_header_\w+"><h2 class="_title_\w+"$/);
-    const order = ['>Monthly expenses</h2>', '>By category</h2>', '>Month rates</h2>', '>Transfers</h2>', '>Transaction history</h2>'].map((x) => html.indexOf(x));
+    const order = ['>Monthly expenses</h2>', '>By category</h2>', '>Month rates</h2>', '>Transfers</h2>', INCOME, HISTORY].map((x) => html.indexOf(x));
     expect(order.every((x) => x >= 0)).toBe(true);
     expect(order).toEqual([...order].sort((a, b) => a - b));
   });
 
   it('envíos: cada fila se edita en su sitio, con sus cuentas, su tasa y lo recibido', () => {
-    const card = section(html, 'Transfers', 'Transaction history');
+    const card = section(html, 'Transfers', INCOME);
     expect(bare(card)).toContain('Transfers Date Via From Amount To Rate Received USD 88,140.00 DOP × Add');
     expect(els(card, 'table')).toEqual([expect.objectContaining({ style: 'min-width:640px', 'aria-label': 'Transfers' })]);
     const inputs = els(card, 'input');
@@ -241,7 +263,7 @@ describe('mes abierto · October 2026', () => {
   });
 
   it('envíos: fila para agregar con las dos cuentas y la tasa del mes para sus monedas', () => {
-    const card = section(html, 'Transfers', 'Transaction history');
+    const card = section(html, 'Transfers', INCOME);
     const inputs = els(card, 'input').slice(4);
     expect(inputs[0]).toMatchObject({ type: 'date', value: '2026-10-07', style: 'min-width:118px', 'aria-label': 'Date of the new transfer' });
     expect(inputs[2]).toMatchObject({
@@ -264,7 +286,7 @@ describe('mes abierto · October 2026', () => {
   });
 
   it('envíos: la vía es un campo de texto libre con sugerencias, que arranca en Remitly', () => {
-    const card = section(html, 'Transfers', 'Transaction history');
+    const card = section(html, 'Transfers', INCOME);
     const via = els(card, 'input')[5]!;
     expect(via).toMatchObject({
       type: 'text',
@@ -315,13 +337,14 @@ describe('mes abierto · October 2026', () => {
     // El diálogo solo se monta al abrirlo.
     expect(card).not.toContain('<textarea');
     expect(card).not.toContain('role="dialog"');
-    // El borrador arranca en Food / Card, en la cuenta por defecto y en su moneda, con todas las categorías, métodos, monedas y cuentas.
+    // El borrador arranca en Food / Debit card, en la cuenta por defecto y en su moneda, con todas las categorías, métodos, monedas y cuentas.
     const draftRow = section(card, '<tbody>', '</tr>');
     expect(draftRow).toContain('<option value="Food" selected="">Food</option><option value="Groceries">Groceries</option>');
     expect(draftRow).toContain(
-      '<option value="Card" selected="">Card</option><option value="Transfer">Transfer</option><option value="Bank app">Bank app</option>',
+      '<option value="Debit card" selected="">Debit card</option><option value="Credit card">Credit card</option><option value="Transfer">Transfer</option><option value="Bank app">Bank app</option><option value="Cash">Cash</option></select>',
     );
-    expect([...draftRow.matchAll(/<option /g)]).toHaveLength(11 + 3 + 3 + 2);
+    // 11 categorías, 5 métodos, 3 monedas y 2 cuentas.
+    expect([...draftRow.matchAll(/<option /g)]).toHaveLength(11 + 5 + 3 + 2);
     expect(draftRow).toContain('<option value="Travel">Travel</option><option value="Other">Other</option></select>');
     expect(selected(draftRow, 'Account of the new transaction')).toBe('dr');
     expect(selected(draftRow, 'Currency of the new transaction')).toBe('DOP');
@@ -374,22 +397,29 @@ describe('borradores de las filas de agregar', () => {
   it('las fechas siguen la del shell: el día 1 cuando el mes seleccionado no es el de hoy', () => {
     const html = render('2026-09', { state: reopened(), draftDate: '2026-09-01' });
     const draftDate = (card: string, label: string) => els(card, 'input').find((i) => i['aria-label'] === label)!.value;
-    expect(draftDate(section(html, 'Transfers', 'Transaction history'), 'Date of the new transfer')).toBe('2026-09-01');
+    expect(draftDate(section(html, 'Transfers', INCOME), 'Date of the new transfer')).toBe('2026-09-01');
     expect(draftDate(section(html, 'Transaction history'), 'Date of the new transaction')).toBe('2026-09-01');
+    // También las de un ingreso y una tasa nuevos.
+    expect(els(section(html, INCOME, HISTORY), 'input')[0]).toMatchObject({ type: 'date', value: '2026-09-01', 'aria-label': 'Income date' });
+    expect(draftDate(section(html, 'Month rates', '>Transfers</h2>'), 'Date the new rate applies from')).toBe('2026-09-01');
+    // Es la fecha que arma la app sin que nadie la fije: hoy (7 de octubre) no cae en septiembre.
+    const own = render('2026-09', { state: reopened() });
+    expect(draftDate(section(own, 'Transfers', INCOME), 'Date of the new transfer')).toBe('2026-09-01');
+    expect(draftDate(section(render('2026-10'), 'Transfers', INCOME), 'Date of the new transfer')).toBe('2026-10-07');
   });
 
   it('la tasa del borrador de envío es la del mes, a dos decimales', () => {
     // Septiembre no tiene tasa escrita: el promedio ponderado de sus envíos.
-    const card = section(render('2026-09', { state: reopened(), draftDate: '2026-09-01' }), 'Transfers', 'Transaction history');
+    const card = section(render('2026-09', { state: reopened(), draftDate: '2026-09-01' }), 'Transfers', INCOME);
     expect(els(card, 'input').at(-1)).toMatchObject({ type: 'number', value: '58.57', 'aria-label': 'Rate of the new transfer' });
   });
 
   it('una tasa redonda conserva sus dos decimales en el campo (58.70, no 58.7)', () => {
     const state = seedState();
-    state.months['2026-10']!.rates[0]!.rate = 58.7;
+    state.months['2026-10']!.rates = [{ from: 'USD', to: 'DOP', rate: 58.7, date: '2026-10-01' }];
     const html = render('2026-10', { state });
-    expect(els(section(html, 'Month rates', 'Transfers'), 'input')[0]).toMatchObject({ type: 'number', value: '58.70' });
-    expect(els(section(html, 'Transfers', 'Transaction history'), 'input').at(-1)).toMatchObject({ type: 'number', value: '58.70' });
+    expect(els(section(html, 'Month rates', '>Transfers</h2>'), 'input')[0]).toMatchObject({ type: 'number', value: '58.70' });
+    expect(els(section(html, 'Transfers', INCOME), 'input').at(-1)).toMatchObject({ type: 'number', value: '58.70' });
   });
 
   it('con otra cuenta por defecto, los borradores la siguen: cuenta, moneda y sentido del envío', () => {
@@ -414,17 +444,34 @@ describe('borradores de las filas de agregar', () => {
     expect(rate).toHaveProperty('readOnly');
   });
 
+  it('la tasa del borrador de envío es la vigente en su fecha, no la última del mes', () => {
+    const state = () => {
+      const s = seedState();
+      s.months['2026-10']!.rates = [
+        { from: 'USD', to: 'DOP', rate: 58, date: '2026-10-01' },
+        { from: 'USD', to: 'DOP', rate: 60, date: '2026-10-05' },
+      ];
+      return s;
+    };
+    const draftRate = (draftDate?: ISODate) =>
+      els(render('2026-10', { state: state(), draftDate }), 'input').find((i) => i['aria-label'] === 'Rate of the new transfer')!.value;
+    // Hoy (día 7) ya vale la del 5; un envío con fecha del 3 se propone con la del 1.
+    expect(draftRate()).toBe('60.00');
+    expect(draftRate('2026-10-05')).toBe('60.00');
+    expect(draftRate('2026-10-03')).toBe('58.00');
+  });
+
   it('las sugerencias de vía suman las ya usadas hasta ese mes, sin las de meses posteriores', () => {
     const state = reopened();
     state.months['2026-08']!.transfers[1]!.via = 'Western Union';
     state.months['2026-09']!.transfers[1]!.via = 'Wise';
     state.months['2026-10']!.transfers[0]!.via = 'Zelle';
-    const september = section(render('2026-09', { state, draftDate: '2026-09-01' }), 'Transfers', 'Transaction history');
+    const september = section(render('2026-09', { state, draftDate: '2026-09-01' }), 'Transfers', INCOME);
     expect(offered(september)).toEqual(['Remitly', 'PayPal', 'Wise', 'Western Union']);
     // Las filas existentes enseñan su vía en su campo, sea cual sea.
     expect(els(september, 'input')).toContainEqual(expect.objectContaining({ type: 'text', value: 'Wise', 'aria-label': 'Via of Wise 17/09' }));
     expect(bare(september)).toContain('USD 46,896.00 DOP');
-    const october = section(render('2026-10', { state }), 'Transfers', 'Transaction history');
+    const october = section(render('2026-10', { state }), 'Transfers', INCOME);
     expect(offered(october)).toEqual(['Remitly', 'PayPal', 'Zelle', 'Wise', 'Western Union']);
   });
 });
@@ -457,29 +504,35 @@ describe('mes cerrado · September 2026', () => {
     const inputs = els(html, 'input');
     const boxes = inputs.filter((i) => i.type === 'checkbox');
     const fields = inputs.filter((i) => i.type !== 'checkbox');
-    expect(boxes).toHaveLength(11);
-    expect(boxes.every((b) => 'disabled' in b && 'checked' in b)).toBe(true);
-    // 11 fijos × (concepto, día, monto) + 2 envíos × (fecha, vía, monto, tasa) + 10 transacciones × (fecha, descripción, lugar, monto, notas).
-    expect(fields).toHaveLength(11 * 3 + 2 * 4 + 10 * 5);
+    // Los 11 "Paid" (todos marcados) y la casilla "Adds to budget" del sueldo (sin marcar).
+    expect(boxes).toHaveLength(11 + 1);
+    expect(boxes.every((b) => 'disabled' in b)).toBe(true);
+    expect(boxes.filter((b) => 'checked' in b)).toHaveLength(11);
+    // 11 fijos × (concepto, día, monto) + 2 envíos × (fecha, vía, monto, tasa) + 1 ingreso × (fecha, descripción, monto)
+    // + 10 transacciones × (fecha, descripción, lugar, monto, notas). Las tasas del mes van como texto.
+    expect(fields).toHaveLength(11 * 3 + 2 * 4 + 1 * 3 + 10 * 5);
     expect(fields.every((f) => 'readOnly' in f)).toBe(true);
     const selects = els(html, 'select');
-    // 11 fijos × (moneda, cuenta) + 2 envíos × (origen, destino) + 10 × (categoría, método, moneda, cuenta).
-    expect(selects).toHaveLength(11 * 2 + 2 * 2 + 10 * 4);
+    // 11 fijos × (moneda, cuenta) + 2 envíos × (origen, destino) + 1 ingreso × (cuenta, moneda) + 10 × (categoría, método, moneda, cuenta).
+    expect(selects).toHaveLength(11 * 2 + 2 * 2 + 1 * 2 + 10 * 4);
     expect(selects.every((s) => 'disabled' in s)).toBe(true);
   });
 
   it('conserva las cifras del mes', () => {
     expect(t).toContain('Monthly expenses 11 of 11 paid · total 42,081.54 DOP');
-    expect(bare(html)).toContain('Transfers Date Via From Amount To Rate Received USD 87,825.00 DOP USD 46,896.00 DOP');
-    const transfers = els(section(html, 'Transfers', 'Transaction history'), 'input');
+    expect(bare(html)).toContain('Transfers Date Via From Amount To Rate Received USD 87,825.00 DOP USD 46,896.00 DOP Income Total 339,731.22 DOP');
+    const transfers = els(section(html, 'Transfers', INCOME), 'input');
     expect(transfers.map((i) => i.value)).toEqual(['2026-09-02', 'Remitly', '1500', '58.55', '2026-09-17', 'Remitly', '800', '58.62']);
     expect(t).toContain('Transaction history 10 transactions · total 24,555.00 DOP');
   });
 
   it('tasas del mes: sin tasa escrita, dice de dónde sale y no se puede tocar', () => {
-    const card = section(html, 'Month rates', 'Transfers');
+    const card = section(html, 'Month rates', '>Transfers</h2>');
     // 1,500 a 58.55 y 800 a 58.62.
-    expect(text(card).replace(/&#x27;/g, "'")).toContain("Month rates From Rate To 1 USD = 58.57 DOP from this month's transfers");
+    // La fila no es una tasa escrita: en la columna de la fecha va una raya, y la cifra es texto.
+    expect(text(card).replace(/&#x27;/g, "'")).toContain(
+      "Month rates A new rate applies from its date on. Earlier transactions keep the rate they had. Since From Rate To — 1 USD = 58.57 DOP from this month's transfers",
+    );
     expect(els(card, 'input')).toEqual([]);
     expect(els(card, 'select')).toEqual([]);
     expect(buttons(card)).toEqual([]);
@@ -488,7 +541,7 @@ describe('mes cerrado · September 2026', () => {
 
   it('pasado de presupuesto, "Vs. budget" cambia de color', () => {
     const state = seedState();
-    state.months['2026-09']!.budgets = { dr: 60000 };
+    setBudgets(state.months['2026-09']!, { dr: 60000 });
     const over = render('2026-09', { state });
     expect(text(over)).toContain('Vs. budget -6,636.54');
     expect(over).toMatch(/valueOver/);
@@ -511,11 +564,17 @@ describe('casos límite', () => {
     const state = seedState();
     Object.assign(state.months['2026-10']!, { rates: [], transfers: [] });
     const html = render('2026-10', { state });
-    const card = section(html, 'Month rates', 'Transfers');
-    expect(bare(card)).toContain('1 USD = 58.57 DOP from September 2026');
+    const card = section(html, 'Month rates', '>Transfers</h2>');
+    expect(bare(card)).toContain('Since From Rate To — 1 USD = DOP from September 2026 Add rate');
     expect(card).not.toMatch(/warn/);
-    // No está escrita: no hay nada que corregir ni que quitar, solo la fila para escribirla.
-    expect(els(card, 'input')).toHaveLength(1);
+    // No está escrita: no hay nada que quitar. La cifra va en una celda (escribir en ella crea la tasa del mes), con
+    // dos decimales aunque la calculada traiga más, y debajo sigue la fila para escribir la de cualquier par.
+    expect(els(card, 'input').map((i) => [i.type, i.value, i['aria-label']])).toEqual([
+      ['number', '58.57', 'Rate USD → DOP'],
+      ['date', '2026-10-01', 'Date the new rate applies from'],
+      ['number', '', 'New rate'],
+    ]);
+    expect(els(card, 'input')[0]).not.toHaveProperty('readOnly');
     expect(buttons(card)).toEqual(['Add rate']);
     // El borrador de envío la propone.
     expect(els(html, 'input').find((i) => i['aria-label'] === 'Rate of the new transfer')).toMatchObject({ value: '58.57' });
@@ -524,12 +583,16 @@ describe('casos límite', () => {
   it('una tasa que nadie ha escrito nunca sale del valor de respaldo, y se avisa', () => {
     const state = seedState();
     state.accounts.push(account('tr', 'TR account', 'TRY'));
-    const card = section(render('2026-10', { state }), 'Month rates', 'Transfers');
+    const card = section(render('2026-10', { state }), 'Month rates', '>Transfers</h2>');
     const ct = bare(card);
-    expect(ct).toContain('1 USD = DOP ×');
+    expect(ct).toContain('01/10 1 USD = DOP × 06/10 1 USD = DOP ×');
+    // Sin fecha (raya) y sin ×: no son tasas escritas. La cifra va en su celda.
+    expect(ct).toContain('— 1 TRY = DOP default value, not set yet — 1 USD = TRY default value, not set yet Add rate');
     // 58.76 DOP y 42 TRY por dólar, los valores fijos.
-    expect(ct).toContain('1 TRY = 1.40 DOP default value, not set yet');
-    expect(ct).toContain('1 USD = 42.00 TRY default value, not set yet');
+    expect(els(card, 'input').slice(2, 4).map((i) => [i.value, i['aria-label']])).toEqual([
+      ['1.40', 'Rate TRY → DOP'],
+      ['42.00', 'Rate USD → TRY'],
+    ]);
     expect(els(card, 'span').filter((x) => /warn/.test(x.class ?? ''))).toHaveLength(2);
     // La fila de agregar propone la primera que falta.
     expect(selected(card, 'Currency the new rate converts from')).toBe('TRY');
@@ -539,11 +602,18 @@ describe('casos límite', () => {
   it('una tasa cruzada por la tercera moneda lo dice', () => {
     const state = seedState();
     state.accounts.push(account('tr', 'TR account', 'TRY'));
-    state.months['2026-10']!.rates.push({ from: 'USD', to: 'TRY', rate: 40 });
-    const card = section(render('2026-10', { state }), 'Month rates', 'Transfers');
+    state.months['2026-10']!.rates.push({ from: 'USD', to: 'TRY', rate: 40, date: '2026-10-03' });
+    const card = section(render('2026-10', { state }), 'Month rates', '>Transfers</h2>');
+    expect(bare(card)).toContain('— 1 TRY = DOP crossed through USD 03/10 1 USD = TRY ×');
     // 58.76 / 40 = 1.469.
-    expect(bare(card)).toContain('1 TRY = 1.47 DOP crossed through USD');
-    expect(els(card, 'input').map((i) => i['aria-label'])).toEqual(['Rate USD → DOP', 'Rate USD → TRY', 'New rate']);
+    expect(els(card, 'input').map((i) => [i.value, i['aria-label']])).toEqual([
+      ['58.76', 'Rate USD → DOP since 01/10'],
+      ['58.76', 'Rate USD → DOP since 06/10'],
+      ['1.47', 'Rate TRY → DOP'],
+      ['40.00', 'Rate USD → TRY since 03/10'],
+      ['2026-10-01', 'Date the new rate applies from'],
+      ['', 'New rate'],
+    ]);
     expect(card).not.toMatch(/warn/);
   });
 
@@ -551,7 +621,7 @@ describe('casos límite', () => {
     const state = seedState();
     state.mainCurrency = 'USD';
     state.secondCurrency = 'TRY';
-    state.months['2026-10']!.rates.push({ from: 'USD', to: 'TRY', rate: 40 });
+    state.months['2026-10']!.rates.push({ from: 'USD', to: 'TRY', rate: 40, date: '2026-10-01' });
     const html = render('2026-10', { state });
     const t = text(html);
     expect(t).toContain('Paid Item Day Amount Currency Account USD TRY');
@@ -563,9 +633,17 @@ describe('casos límite', () => {
     // Claude: 106 USD = 4,240 TRY.
     expect(bare(html)).toContain('106.00 4,240.00');
     // Las tres monedas están en uso: el par de la barra (TRY → USD) primero, en el sentido en que se escribió.
-    const rates = section(html, 'Month rates', 'Transfers');
-    expect(els(rates, 'input').map((i) => i['aria-label'])).toEqual(['Rate USD → TRY', 'Rate USD → DOP', 'New rate']);
-    expect(bare(rates)).toContain('1 TRY = 1.47 DOP crossed through USD');
+    const rates = section(html, 'Month rates', '>Transfers</h2>');
+    expect(els(rates, 'input').map((i) => i['aria-label'])).toEqual([
+      'Rate USD → TRY since 01/10',
+      'Rate USD → DOP since 01/10',
+      'Rate USD → DOP since 06/10',
+      'Rate TRY → DOP',
+      'Date the new rate applies from',
+      'New rate',
+    ]);
+    expect(bare(rates)).toContain('— 1 TRY = DOP crossed through USD');
+    expect(els(rates, 'input')[3]).toMatchObject({ value: '1.47' });
   });
 
   it('una cuenta que se ocultó después sigue viéndose en sus filas, y solo en ellas', () => {
@@ -579,7 +657,7 @@ describe('casos límite', () => {
     expect(selected(html, 'Account of Netflix')).toBe('old');
     expect([...html.matchAll(/<option value="old"[^>]*>Old wallet<\/option>/g)]).toHaveLength(2);
     // Una cuenta oculta en otra moneda no trae su moneda a las tasas del mes.
-    expect(bare(section(html, 'Month rates', 'Transfers'))).not.toContain('TRY');
+    expect(bare(section(html, 'Month rates', '>Transfers</h2>'))).not.toContain('TRY');
   });
 
   it('un envío entre cuentas de la misma moneda: tasa 1, que no se escribe', () => {
@@ -595,7 +673,7 @@ describe('casos límite', () => {
       amount: 200,
       rate: 1,
     });
-    const card = section(render('2026-10', { state }), 'Transfers', 'Transaction history');
+    const card = section(render('2026-10', { state }), 'Transfers', INCOME);
     const rate = els(card, 'input').find((i) => i['aria-label'] === 'Rate of PayPal 05/10')!;
     expect(rate).toMatchObject({ value: '1.00' });
     expect(rate).toHaveProperty('readOnly');
@@ -626,14 +704,20 @@ describe('casos límite', () => {
     const state = seedState();
     const coffee = state.months['2026-10']!.tx.find((x) => x.desc === 'Coffee')!;
     coffee.cat = 'Pets';
-    coffee.method = 'Cash';
+    coffee.method = 'Cheque';
+    // Una fila de antes de que hubiera dos tarjetas: su 'Card' se conserva, no pasa sola a ser la de débito.
+    state.months['2026-10']!.tx.find((x) => x.desc === 'Gas')!.method = 'Card';
     const html = render('2026-10', { state });
     const card = section(html, 'Transaction history', 'Closing the month');
     // Van al final de su lista y son la opción seleccionada; el resto de las filas no las ofrece.
     expect(card).toContain('<option value="Other">Other</option><option value="Pets" selected="">Pets</option></select>');
-    expect(card).toContain('<option value="Bank app">Bank app</option><option value="Cash" selected="">Cash</option></select>');
+    expect(card).toContain('<option value="Cash">Cash</option><option value="Cheque" selected="">Cheque</option></select>');
+    expect(card).toContain('<option value="Cash">Cash</option><option value="Card" selected="">Card</option></select>');
     expect([...card.matchAll(/value="Pets"/g)]).toHaveLength(1);
-    expect([...card.matchAll(/value="Cash"/g)]).toHaveLength(1);
+    expect([...card.matchAll(/value="Cheque"/g)]).toHaveLength(1);
+    expect([...card.matchAll(/value="Card"/g)]).toHaveLength(1);
+    expect(selected(card, 'Method of Gas')).toBe('Card');
+    expect(selected(card, 'Method of Lunch')).toBe('Debit card');
     // La categoría nueva también suma en "By category".
     expect(text(html)).toContain('Pets 385');
   });
@@ -649,6 +733,488 @@ describe('casos límite', () => {
   });
 });
 
+describe('tasas del mes: una tasa por fecha', () => {
+  /** Las filas del cuerpo de la tabla de tasas, cada una con su HTML. */
+  const bodyRows = (card: string) => [...section(card, '<tbody>', '</tbody>').matchAll(/<tr\b[^>]*>(.*?)<\/tr>/g)].map((m) => m[1]!);
+  const ratesCard = (html: string) => section(html, 'Month rates', '>Transfers</h2>');
+
+  it('varias tasas escritas del mismo par salen por fecha, cada una con su celda y su ×', () => {
+    const state = seedState();
+    // Llegan desordenadas: la tarjeta las pone de la más antigua a la más reciente.
+    state.months['2026-10']!.rates = [
+      { from: 'USD', to: 'DOP', rate: 60, date: '2026-10-20' },
+      { from: 'USD', to: 'DOP', rate: 58, date: '2026-10-01' },
+      { from: 'USD', to: 'DOP', rate: 59.5, date: '2026-10-08' },
+    ];
+    const card = ratesCard(render('2026-10', { state }));
+    expect(bare(card)).toContain('Since From Rate To 01/10 1 USD = DOP × 08/10 1 USD = DOP × 20/10 1 USD = DOP × Add rate');
+    expect(els(card, 'input').slice(0, 3).map((i) => [i.type, i.value, i['aria-label']])).toEqual([
+      ['number', '58.00', 'Rate USD → DOP since 01/10'],
+      ['number', '59.50', 'Rate USD → DOP since 08/10'],
+      ['number', '60.00', 'Rate USD → DOP since 20/10'],
+    ]);
+    expect(els(card, 'button').map((b) => b['aria-label'])).toEqual([
+      'Delete rate USD → DOP of 01/10',
+      'Delete rate USD → DOP of 08/10',
+      'Delete rate USD → DOP of 20/10',
+      undefined,
+    ]);
+    expect(buttons(card)).toEqual(['×', '×', '×', 'Add rate']);
+    // Ninguna lleva nota de origen: son las escritas de este mes.
+    expect(els(card, 'span').filter((x) => /hint/.test(x.class ?? ''))).toEqual([]);
+  });
+
+  it('una tasa escrita en el otro sentido sale como se escribió', () => {
+    const state = seedState();
+    state.months['2026-10']!.rates = [
+      { from: 'USD', to: 'DOP', rate: 58, date: '2026-10-01' },
+      { from: 'DOP', to: 'USD', rate: 0.0165, date: '2026-10-04' },
+    ];
+    const card = ratesCard(render('2026-10', { state }));
+    expect(bare(card)).toContain('01/10 1 USD = DOP × 04/10 1 DOP = USD ×');
+    expect(els(card, 'input').slice(0, 2).map((i) => [i.value, i['aria-label']])).toEqual([
+      ['58.00', 'Rate USD → DOP since 01/10'],
+      ['0.0165', 'Rate DOP → USD since 04/10'],
+    ]);
+  });
+
+  it('un par sin tasa escrita en el mes: una sola fila, sin fecha ni ×, con el origen y la celda editable', () => {
+    const state = seedState();
+    state.accounts.push(account('tr', 'TR account', 'TRY'));
+    const rows = bodyRows(ratesCard(render('2026-10', { state })));
+    // Dos escritas de USD → DOP, una fila por cada par sin escribir y la fila de agregar.
+    expect(rows).toHaveLength(2 + 2 + 1);
+    const [first, second, tryDop, usdTry] = rows;
+    for (const typed of [first!, second!]) {
+      expect(buttons(typed)).toEqual(['×']);
+      expect(typed).not.toMatch(/hint/);
+      expect(typed).not.toMatch(/faint/);
+    }
+    for (const [row, label, value] of [
+      [tryDop!, 'Rate TRY → DOP', '1.40'],
+      [usdTry!, 'Rate USD → TRY', '42.00'],
+    ] as const) {
+      // La raya en la columna de la fecha, atenuada.
+      expect(els(row, 'td')[0]!.class).toMatch(/faint/);
+      expect(text(row).trim().startsWith('—')).toBe(true);
+      expect(text(row)).toContain('default value, not set yet');
+      // Sin ×: no hay nada guardado que quitar.
+      expect(els(row, 'button')).toEqual([]);
+      // Pero se escribe en ella: crea la tasa escrita del par.
+      const [cell, ...rest] = els(row, 'input');
+      expect(rest).toEqual([]);
+      expect(cell).toMatchObject({ type: 'number', value, 'aria-label': label, step: 'any' });
+      expect(cell).not.toHaveProperty('readOnly');
+      expect(cell).not.toHaveProperty('disabled');
+    }
+  });
+
+  it('la celda de una tasa sin escribir enseña la cifra como el resto de la tarjeta: dos decimales, o cuatro si es menor que 1', () => {
+    const state = seedState();
+    // Sin tasa escrita ni envíos en octubre ni en septiembre, la tasa sale del único envío de agosto: 58.123456.
+    Object.assign(state.months['2026-10']!, { rates: [], transfers: [] });
+    Object.assign(state.months['2026-09']!, { transfers: [] });
+    Object.assign(state.months['2026-08']!, { transfers: [{ ...state.months['2026-08']!.transfers[0]!, rate: 58.123456 }] });
+    const card = ratesCard(render('2026-10', { state }));
+    expect(els(card, 'input')[0]).toMatchObject({ value: '58.12', 'aria-label': 'Rate USD → DOP' });
+    expect(bare(card)).toContain('— 1 USD = DOP from August 2026');
+  });
+
+  it('mes cerrado: las tasas escritas van como texto con su fecha, sin ×, sin celdas y sin fila de agregar', () => {
+    const state = seedState();
+    state.months['2026-09']!.rates = [
+      { from: 'USD', to: 'DOP', rate: 58.5, date: '2026-09-01' },
+      { from: 'USD', to: 'DOP', rate: 58.6, date: '2026-09-15' },
+    ];
+    const card = ratesCard(render('2026-09', { state }));
+    expect(text(card)).toContain('Since From Rate To 01/09 1 USD = 58.50 DOP 15/09 1 USD = 58.60 DOP');
+    expect(els(card, 'input')).toEqual([]);
+    expect(els(card, 'select')).toEqual([]);
+    expect(buttons(card)).toEqual([]);
+    expect(bodyRows(card)).toHaveLength(2);
+    expect(card).not.toMatch(/hint/);
+    // La nota de la tarjeta se queda: explica lo que se ve.
+    expect(text(card)).toContain('A new rate applies from its date on.');
+  });
+
+  it('mes cerrado sin tasa escrita, con una tercera moneda: cada par como texto, con la raya y su origen', () => {
+    const state = seedState();
+    state.accounts.push(account('tr', 'TR account', 'TRY'));
+    const card = ratesCard(render('2026-09', { state }));
+    const ct = text(card).replace(/&#x27;/g, "'");
+    expect(ct).toContain("— 1 USD = 58.57 DOP from this month's transfers — 1 TRY = 1.40 DOP default value, not set yet — 1 USD = 42.00 TRY default value, not set yet");
+    expect(els(card, 'input')).toEqual([]);
+    expect(buttons(card)).toEqual([]);
+    expect(els(card, 'span').filter((x) => /warn/.test(x.class ?? ''))).toHaveLength(2);
+  });
+
+  describe('la fecha que propone la fila de agregar', () => {
+    const newRateDate = (html: string) => els(ratesCard(html), 'input').find((i) => i['aria-label'] === 'Date the new rate applies from')!;
+
+    it('hoy, si el mes seleccionado es el actual y el par ya tiene una tasa escrita vigente', () => {
+      const html = render('2026-10');
+      expect(selected(ratesCard(html), 'Currency the new rate converts from')).toBe('USD');
+      expect(newRateDate(html)).toMatchObject({ type: 'date', value: '2026-10-07' });
+      expect(newRateDate(html)).not.toHaveProperty('readOnly');
+    });
+
+    it('hoy también si la vigente se escribió en un mes anterior', () => {
+      const state = seedState();
+      state.months['2026-09']!.rates = [{ from: 'USD', to: 'DOP', rate: 58.5, date: '2026-09-10' }];
+      state.months['2026-10']!.rates = [];
+      const html = render('2026-10', { state });
+      const card = ratesCard(html);
+      // Octubre no tiene ninguna: enseña la de septiembre, que sigue valiendo (aunque octubre tenga envíos).
+      expect(bare(card)).toContain('— 1 USD = DOP from September 2026 Add rate');
+      expect(els(card, 'input')[0]).toMatchObject({ value: '58.50', 'aria-label': 'Rate USD → DOP' });
+      expect(newRateDate(html).value).toBe('2026-10-07');
+    });
+
+    it('el primer día del mes, si el mes seleccionado no es el actual', () => {
+      const state = seedState();
+      state.months['2026-09']!.closed = false;
+      state.months['2026-09']!.rates = [{ from: 'USD', to: 'DOP', rate: 58.5, date: '2026-09-10' }];
+      // Hoy es 7 de octubre: en septiembre los borradores arrancan el día 1.
+      expect(newRateDate(render('2026-09', { state })).value).toBe('2026-09-01');
+    });
+
+    it('el primer día del mes, aunque hoy sea otro, si el par no tiene ninguna tasa escrita', () => {
+      const state = seedState();
+      state.accounts.push(account('tr', 'TR account', 'TRY'));
+      const html = render('2026-10', { state });
+      // La fila propone el primer par sin escribir (TRY → DOP): así la tasa cubre también las filas del 1 al 6.
+      expect(selected(ratesCard(html), 'Currency the new rate converts from')).toBe('TRY');
+      expect(selected(ratesCard(html), 'Currency the new rate converts to')).toBe('DOP');
+      expect(newRateDate(html).value).toBe('2026-10-01');
+      // Las demás filas de agregar siguen en hoy.
+      expect(els(html, 'input').find((i) => i['aria-label'] === 'Date of the new transaction')!.value).toBe('2026-10-07');
+
+      // Lo mismo con el par de la barra cuando nadie lo ha escrito nunca: sale de los envíos del mes.
+      const none = seedState();
+      none.months['2026-10']!.rates = [];
+      const transfers = render('2026-10', { state: none });
+      expect(text(ratesCard(transfers)).replace(/&#x27;/g, "'")).toContain("— 1 USD = DOP from this month's transfers");
+      expect(newRateDate(transfers).value).toBe('2026-10-01');
+    });
+  });
+});
+
+describe('conversión con la tasa de la fecha', () => {
+  /** Octubre con dos tasas: 58 desde el día 1 y 60 desde el día 5. */
+  const dated = () => {
+    const state = seedState();
+    state.months['2026-10']!.rates = [
+      { from: 'USD', to: 'DOP', rate: 58, date: '2026-10-01' },
+      { from: 'USD', to: 'DOP', rate: 60, date: '2026-10-05' },
+    ];
+    return state;
+  };
+  /** La fila del historial de esa transacción, como texto sin las listas. */
+  const txRow = (html: string, name: string) => {
+    const card = section(html, HISTORY, 'Closing the month');
+    const row = [...card.matchAll(/<tr\b[^>]*>(.*?)<\/tr>/g)].map((m) => m[1]!).find((r) => r.includes(`aria-label="Date of ${name}"`));
+    expect(row, name).toBeDefined();
+    return bare(row!).trim();
+  };
+
+  it('una transacción en USD se convierte con la tasa vigente en su fecha: la nueva no cambia las filas anteriores', () => {
+    const state = dated();
+    const tx = state.months['2026-10']!.tx;
+    // Uber (día 2) y Coffee (día 7), las dos de 10 USD.
+    Object.assign(tx.find((x) => x.desc === 'Uber to work')!, { amount: 10, cur: 'USD' });
+    Object.assign(tx.find((x) => x.desc === 'Coffee')!, { amount: 10, cur: 'USD' });
+    const html = render('2026-10', { state });
+    expect(txRow(html, 'Uber to work')).toBe('580.00 10.00 ⋯ ×');
+    expect(txRow(html, 'Coffee')).toBe('600.00 10.00 ⋯ ×');
+    // El total del historial suma cada una con la suya: 10,845 − 320 − 385 + 580 + 600.
+    expect(text(html)).toContain('7 transactions · total 11,320.00 DOP');
+  });
+
+  it('el día en que cambia la tasa ya vale la nueva', () => {
+    const state = dated();
+    // Pharmacy es del día 5; Movies, del 4.
+    Object.assign(state.months['2026-10']!.tx.find((x) => x.desc === 'Pharmacy')!, { amount: 10, cur: 'USD' });
+    Object.assign(state.months['2026-10']!.tx.find((x) => x.desc === 'Movies')!, { amount: 10, cur: 'USD' });
+    const html = render('2026-10', { state });
+    expect(txRow(html, 'Pharmacy')).toBe('600.00 10.00 ⋯ ×');
+    expect(txRow(html, 'Movies')).toBe('580.00 10.00 ⋯ ×');
+  });
+
+  it('también la columna en la segunda moneda de una transacción en pesos', () => {
+    const html = render('2026-10', { state: dated() });
+    // Lunch (día 3): 1,150 / 58. Gas (día 6): 2,000 / 60.
+    expect(txRow(html, 'Lunch')).toBe('1,150.00 19.83 ⋯ ×');
+    expect(txRow(html, 'Gas')).toBe('2,000.00 33.33 ⋯ ×');
+  });
+
+  it('un gasto fijo no tiene fecha: va con la última tasa del mes', () => {
+    const html = render('2026-10', { state: dated() });
+    // Claude: 106 USD × 60.
+    expect(bare(section(html, 'Monthly expenses', 'By category'))).toContain('6,360.00 106.00');
+    // Electricity: 1,337.15 / 60.
+    expect(bare(section(html, 'Monthly expenses', 'By category'))).toContain('1,337.15 22.29');
+  });
+
+  it('un ingreso del mes también va con la de su fecha', () => {
+    const state = dated();
+    state.incomes.push(income({ id: 'in-3', amount: 100, cur: 'USD', date: '2026-10-03' }), income({ id: 'in-6', amount: 100, cur: 'USD', date: '2026-10-06' }));
+    const card = section(render('2026-10', { state }), INCOME, HISTORY);
+    // El sueldo del día 1 (5,800 × 58), 100 USD del 3 (× 58) y 100 USD del 6 (× 60).
+    expect(bare(card)).toContain('6,000.00 × 5,800.00 × 336,400.00 ×');
+    expect(bare(card)).toContain('Income Total 348,200.00 DOP');
+  });
+});
+
+describe('ingresos del mes', () => {
+  const incomeCard = (html: string, title = 'Income', next = 'Transaction history') => section(html, `>${title}</h2>`, `>${next}</h2>`);
+  const bodyRows = (card: string) => [...section(card, '<tbody>', '</tbody>').matchAll(/<tr\b[^>]*>(.*?)<\/tr>/g)].map((m) => m[1]!);
+
+  it('la tarjeta va a todo el ancho, entre los envíos y el historial, con el total del mes y su nota', () => {
+    const html = render('2026-10');
+    const card = incomeCard(html);
+    const ct = bare(card).replace(/&quot;/g, '"').replace(/&#x27;/g, "'");
+    // El sueldo de octubre: 5,800 USD × 58.76.
+    expect(ct).toContain(
+      'Income Total 340,808.00 DOP Money received outside transfers. With "Adds to budget" checked, it also raises this month\'s budget. Date Description Account Amount Cur. DOP Adds to budget',
+    );
+    expect(els(card, 'table')).toEqual([expect.objectContaining({ style: 'min-width:820px', 'aria-label': 'Income' })]);
+    // Hija directa de la pila de la hoja, como la de envíos y el historial.
+    const before = html.slice(0, html.indexOf(INCOME));
+    expect(before.slice(before.lastIndexOf('<div class="_card_'))).toMatch(/^<div class="_card_\w+"><div class="_header_\w+"><h2 class="_title_\w+"$/);
+    expect(html.indexOf('>Transfers</h2>')).toBeLessThan(html.indexOf(INCOME));
+    expect(html.indexOf(INCOME)).toBeLessThan(html.indexOf(HISTORY));
+  });
+
+  it('fila de agregar: fecha del día, descripción, cuenta por defecto, monto, su moneda y "Adds to budget" marcada', () => {
+    const card = incomeCard(render('2026-10'));
+    const draft = bodyRows(card)[0]!;
+    const inputs = els(draft, 'input');
+    expect(inputs.map((i) => i.type)).toEqual(['date', 'text', 'number', 'checkbox']);
+    expect(inputs[0]).toMatchObject({ value: '2026-10-07', 'aria-label': 'Income date' });
+    expect(inputs[1]).toMatchObject({ value: '', placeholder: 'Salary, payment…', maxLength: '200', 'aria-label': 'Description' });
+    expect(inputs[2]).toMatchObject({ value: '', placeholder: '0.00', 'aria-label': 'Amount' });
+    // En la hoja del mes un ingreso nuevo sube el presupuesto, salvo que se desmarque.
+    expect(inputs[3]).toMatchObject({ 'aria-label': 'The new income adds to the budget' });
+    expect(inputs[3]).toHaveProperty('checked');
+    expect(inputs[3]).not.toHaveProperty('disabled');
+    expect(selected(draft, 'Account')).toBe('dr');
+    expect(selected(draft, 'Currency')).toBe('DOP');
+    expect(buttons(draft)).toEqual(['Add income']);
+  });
+
+  it('la fila de agregar sigue a la cuenta por defecto y a su moneda', () => {
+    const state = seedState();
+    state.defaultAccountId = 'us';
+    const draft = bodyRows(incomeCard(render('2026-10', { state })))[0]!;
+    expect(selected(draft, 'Account')).toBe('us');
+    expect(selected(draft, 'Currency')).toBe('USD');
+  });
+
+  it('cada ingreso del mes se edita en su fila, con su casilla y su ×', () => {
+    const card = incomeCard(render('2026-10'));
+    const rows = bodyRows(card);
+    // La de agregar y el sueldo de octubre.
+    expect(rows).toHaveLength(2);
+    const salary = rows[1]!;
+    expect(els(salary, 'input').map((i) => [i.type, i.value ?? '', i['aria-label']])).toEqual([
+      ['date', '2026-10-01', 'Income date'],
+      ['text', 'Salary', 'Description'],
+      ['number', '5800', 'Amount'],
+      ['checkbox', '', 'Adds to budget: income of 2026-10-01, 5,800.00 USD'],
+    ]);
+    // Los sueldos de ejemplo no suben el presupuesto.
+    expect(els(salary, 'input')[3]).not.toHaveProperty('checked');
+    expect(selected(salary, 'Account')).toBe('us');
+    expect(selected(salary, 'Currency')).toBe('USD');
+    expect(bare(salary).trim()).toBe('340,808.00 ×');
+    expect(els(salary, 'button')).toEqual([expect.objectContaining({ title: 'Delete', 'aria-label': 'Delete income of 2026-10-01: 5,800.00 USD' })]);
+    expect(buttons(card)).toEqual(['Add income', '×']);
+  });
+
+  it('solo los ingresos con fecha en el mes seleccionado, del más reciente al más antiguo', () => {
+    const state = () => {
+      const s = seedState();
+      s.incomes.push(
+        income({ id: 'in-refund', amount: 2500, date: '2026-10-05', desc: 'Refund', budget: true }),
+        income({ id: 'in-sep', amount: 999, date: '2026-09-20', desc: 'September gift' }),
+        income({ id: 'in-nov', amount: 777, date: '2026-11-02', desc: 'November gift' }),
+        income({ id: 'in-last', amount: 100, date: '2026-10-31', desc: 'Last day' }),
+      );
+      return s;
+    };
+    const descriptions = (card: string) =>
+      els(card, 'input')
+        .filter((i) => i['aria-label'] === 'Description')
+        .map((i) => i.value);
+
+    const october = incomeCard(render('2026-10', { state: state() }));
+    // La primera es la fila de agregar.
+    expect(descriptions(october)).toEqual(['', 'Last day', 'Refund', 'Salary']);
+    // El total es el de esos tres: 340,808 + 2,500 + 100.
+    expect(bare(october)).toContain('Income Total 343,408.00 DOP');
+    expect(october).not.toContain('September gift');
+    expect(october).not.toContain('November gift');
+    // La casilla de cada fila dice si ese ingreso sube el presupuesto.
+    const boxes = els(october, 'input').filter((i) => i.type === 'checkbox');
+    expect(boxes.map((b) => [b['aria-label'], 'checked' in b])).toEqual([
+      ['The new income adds to the budget', true],
+      ['Adds to budget: income of 2026-10-31, 100.00 DOP', false],
+      ['Adds to budget: income of 2026-10-05, 2,500.00 DOP', true],
+      ['Adds to budget: income of 2026-10-01, 5,800.00 USD', false],
+    ]);
+
+    // Septiembre (cerrado) enseña los suyos.
+    const september = incomeCard(render('2026-09', { state: state() }));
+    expect(descriptions(september)).toEqual(['September gift', 'Salary']);
+    // Agosto, solo su sueldo.
+    expect(descriptions(incomeCard(render('2026-08', { state: state() })))).toEqual(['Salary']);
+  });
+
+  it('mes sin ingresos: total en cero y solo la fila de agregar', () => {
+    const state = seedState();
+    state.incomes = state.incomes.filter((i) => !i.date.startsWith('2026-10'));
+    const card = incomeCard(render('2026-10', { state }));
+    expect(bare(card)).toContain('Income Total 0.00 DOP');
+    expect(bodyRows(card)).toHaveLength(1);
+    expect(buttons(card)).toEqual(['Add income']);
+  });
+
+  it('mes cerrado: se ven, pero sin fila de agregar, sin × y con todo apagado', () => {
+    const state = seedState();
+    state.incomes.push(income({ id: 'in-sep', amount: 999, date: '2026-09-20', desc: 'September gift', budget: true }));
+    const card = incomeCard(render('2026-09', { state }));
+    expect(bare(card)).toContain('Income Total 340,730.22 DOP');
+    const rows = bodyRows(card);
+    expect(rows).toHaveLength(2);
+    expect(buttons(card)).toEqual([]);
+    expect(card).not.toContain('Add income');
+    expect(card).not.toContain('placeholder=');
+    const inputs = els(card, 'input');
+    const boxes = inputs.filter((i) => i.type === 'checkbox');
+    const fields = inputs.filter((i) => i.type !== 'checkbox');
+    // 2 ingresos × (fecha, descripción, monto), de solo lectura.
+    expect(fields).toHaveLength(2 * 3);
+    expect(fields.every((f) => 'readOnly' in f)).toBe(true);
+    // Las casillas dicen lo que hay, sin poder cambiarlo.
+    expect(boxes.map((b) => ['checked' in b, 'disabled' in b])).toEqual([
+      [true, true],
+      [false, true],
+    ]);
+    expect(els(card, 'select')).toHaveLength(2 * 2);
+    expect(els(card, 'select').every((x) => 'disabled' in x)).toBe(true);
+    // La columna de la acción queda vacía.
+    expect(els(rows[0]!, 'button')).toEqual([]);
+  });
+
+  it('en español y en turco: título, total, nota, columnas y etiquetas', () => {
+    const es = incomeCard(render('2026-10', { lang: 'es' }), 'Ingreso', 'Historial de transacciones');
+    expect(bare(es)).toContain(
+      'Ingreso Total 340,808.00 DOP Dinero recibido fuera de los envíos. Con «Suma al presupuesto» marcado, sube además el presupuesto de este mes. Fecha Descripción Cuenta Monto Mon. DOP Suma al presupuesto',
+    );
+    expect(els(es, 'table')).toEqual([expect.objectContaining({ 'aria-label': 'Ingreso' })]);
+    expect(buttons(es)).toEqual(['Agregar ingreso', '×']);
+    const esLabels = [...els(es, 'input'), ...els(es, 'select'), ...els(es, 'button')].map((e) => e['aria-label']);
+    expect(esLabels).toEqual(
+      expect.arrayContaining([
+        'Fecha del ingreso',
+        'Descripción',
+        'Cuenta',
+        'Monto',
+        'Moneda',
+        'El ingreso nuevo suma al presupuesto',
+        'Suma al presupuesto: ingreso del 2026-10-01, 5,800.00 USD',
+        'Eliminar ingreso del 2026-10-01: 5,800.00 USD',
+      ]),
+    );
+    expect(els(es, 'input').find((i) => i['aria-label'] === 'El ingreso nuevo suma al presupuesto')).toHaveProperty('checked');
+    expect(els(es, 'input')).toContainEqual(expect.objectContaining({ placeholder: 'Sueldo, pago…' }));
+
+    const tr = incomeCard(render('2026-10', { lang: 'tr' }), 'Gelir', 'İşlem geçmişi');
+    expect(bare(tr).replace(/&quot;/g, '"')).toContain(
+      'Gelir Toplam 340,808.00 DOP Transferler dışında alınan para. "Bütçeye eklenir" işaretliyse bu ayın bütçesini de artırır. Tarih Açıklama Hesap Tutar Birim DOP Bütçeye eklenir',
+    );
+    expect(els(tr, 'table')).toEqual([expect.objectContaining({ 'aria-label': 'Gelir' })]);
+    expect(buttons(tr)).toEqual(['Gelir ekle', '×']);
+    expect(els(tr, 'input').find((i) => i['aria-label'] === 'Yeni gelir bütçeye eklenir')).toHaveProperty('checked');
+    expect(els(tr, 'input')).toContainEqual(expect.objectContaining({ 'aria-label': 'Bütçeye eklenir: 2026-10-01 geliri, 5,800.00 USD' }));
+
+    // Cerrado, en los dos: sin el botón de agregar.
+    expect(buttons(incomeCard(render('2026-09', { lang: 'es' }), 'Ingreso', 'Historial de transacciones'))).toEqual([]);
+    expect(buttons(incomeCard(render('2026-09', { lang: 'tr' }), 'Gelir', 'İşlem geçmişi'))).toEqual([]);
+  });
+
+  it('con otra moneda principal, el total y la columna convertida van en ella', () => {
+    const state = seedState();
+    state.mainCurrency = 'USD';
+    state.secondCurrency = 'DOP';
+    const card = incomeCard(render('2026-10', { state }));
+    expect(bare(card)).toContain('Income Total 5,800.00 USD');
+    expect(bare(card)).toContain('Date Description Account Amount Cur. USD Adds to budget');
+    expect(bare(bodyRows(card)[1]!).trim()).toBe('5,800.00 ×');
+  });
+});
+
+describe('métodos de pago en el historial', () => {
+  /** Las opciones (valor y texto) de la lista con esa etiqueta. */
+  const options = (html: string, label: string) => {
+    const m = html.match(new RegExp(`<select\\b[^>]*aria-label="${label}"[^>]*>(.*?)</select>`));
+    expect(m, label).not.toBeNull();
+    return [...m![1]!.matchAll(/<option value="([^"]*)"[^>]*>([^<]*)<\/option>/g)].map((o) => [o[1]!, o[2]!]);
+  };
+  const VALUES = ['Debit card', 'Credit card', 'Transfer', 'Bank app', 'Cash'];
+
+  it('los cinco, en su orden, con la tarjeta de débito elegida en la fila de agregar', () => {
+    const html = render('2026-10');
+    expect(options(html, 'Method of the new transaction')).toEqual(VALUES.map((v) => [v, v]));
+    expect(selected(html, 'Method of the new transaction')).toBe('Debit card');
+    // Las filas ofrecen los mismos; los datos de ejemplo usan la de débito y la app del banco.
+    expect(options(html, 'Method of Coffee')).toEqual(VALUES.map((v) => [v, v]));
+    expect(selected(html, 'Method of Coffee')).toBe('Debit card');
+    expect(selected(html, 'Method of Movies')).toBe('Bank app');
+  });
+
+  it('en español y en turco se ve el nombre traducido y se guarda el mismo valor', () => {
+    const es = render('2026-10', { lang: 'es' });
+    const esNames = ['Tarjeta de débito', 'Tarjeta de crédito', 'Transferencia', 'App del banco', 'Efectivo'];
+    expect(options(es, 'Método de la nueva transacción')).toEqual(VALUES.map((v, i) => [v, esNames[i]]));
+    expect(options(es, 'Método de Coffee')).toEqual(VALUES.map((v, i) => [v, esNames[i]]));
+    expect(selected(es, 'Método de la nueva transacción')).toBe('Debit card');
+
+    const tr = render('2026-10', { lang: 'tr' });
+    const trNames = ['Banka kartı', 'Kredi kartı', 'Havale', 'Banka uygulaması', 'Nakit'];
+    expect(options(tr, 'Yeni işlemin yöntemi')).toEqual(VALUES.map((v, i) => [v, trNames[i]]));
+    expect(options(tr, 'Yöntem: Coffee')).toEqual(VALUES.map((v, i) => [v, trNames[i]]));
+    expect(selected(tr, 'Yeni işlemin yöntemi')).toBe('Debit card');
+  });
+
+  it('una fila con tarjeta de crédito o en efectivo la trae elegida, en cualquier idioma', () => {
+    const state = () => {
+      const s = seedState();
+      s.months['2026-10']!.tx.find((x) => x.desc === 'Coffee')!.method = 'Credit card';
+      s.months['2026-10']!.tx.find((x) => x.desc === 'Gas')!.method = 'Cash';
+      return s;
+    };
+    const en = render('2026-10', { state: state() });
+    expect(selected(en, 'Method of Coffee')).toBe('Credit card');
+    expect(selected(en, 'Method of Gas')).toBe('Cash');
+    // Son de la lista: no se agregan otra vez al final.
+    expect(options(en, 'Method of Coffee')).toHaveLength(5);
+    const es = render('2026-10', { lang: 'es', state: state() });
+    expect(es).toContain('<option value="Credit card" selected="">Tarjeta de crédito</option>');
+    expect(es).toContain('<option value="Cash" selected="">Efectivo</option>');
+    const tr = render('2026-10', { lang: 'tr', state: state() });
+    expect(tr).toContain('<option value="Credit card" selected="">Kredi kartı</option>');
+    expect(tr).toContain('<option value="Cash" selected="">Nakit</option>');
+  });
+
+  it('con el mes cerrado la lista se ve igual, apagada', () => {
+    const html = render('2026-09');
+    expect(options(html, 'Method of Movies')).toEqual(VALUES.map((v) => [v, v]));
+    expect(selected(html, 'Method of Movies')).toBe('Bank app');
+    expect(els(html, 'select').find((x) => x['aria-label'] === 'Method of Movies')).toHaveProperty('disabled');
+  });
+});
+
 describe('en español', () => {
   const html = render('2026-10', { lang: 'es' });
   const t = text(html);
@@ -656,8 +1222,14 @@ describe('en español', () => {
   it('títulos, columnas y metas con sus cifras', () => {
     expect(t).toContain('Gastos mensuales 6 de 11 pagados · total 42,025.57 DOP');
     expect(t).toContain('Pagado Concepto Día Monto Moneda Cuenta DOP USD');
-    expect(t).toContain('Tasas del mes Desde Tasa Hacia 1 USD =');
+    // La nota de las tasas y, en la primera columna, la fecha desde la que vale cada una.
+    expect(t).toContain('Tasas del mes Una tasa nueva vale desde su fecha. Las transacciones anteriores conservan la que tenían. Vigente desde Desde');
+    expect(t).toContain('Tasa Hacia 01/10 1 USD =');
+    expect(els(section(html, 'Tasas del mes', '>Envíos</h2>'), 'th')).toHaveLength(5);
     expect(t).toContain('Envíos Fecha Vía Desde Monto Hacia Tasa Recibido');
+    expect(t).toContain(
+      'Ingreso Total 340,808.00 DOP Dinero recibido fuera de los envíos. Con «Suma al presupuesto» marcado, sube además el presupuesto de este mes. Fecha Descripción Cuenta Monto Mon. DOP Suma al presupuesto',
+    );
     expect(t).toContain('Historial de transacciones 7 transacciones · total 10,845.00 DOP');
     expect(t).toContain('Fecha Nombre Lugar Categoría Método Monto Mon. Cuenta DOP USD Descripción');
     expect(t).toContain(
@@ -669,9 +1241,18 @@ describe('en español', () => {
     const state = seedState();
     Object.assign(state.months['2026-10']!, { rates: [], transfers: [] });
     state.accounts.push(account('tr', 'TR account', 'TRY'));
-    const card = bare(section(render('2026-10', { lang: 'es', state }), 'Tasas del mes', 'Envíos'));
-    expect(card).toContain('1 USD = 58.57 DOP de septiembre 2026');
-    expect(card).toContain('1 USD = 42.00 TRY valor por defecto, aún sin definir');
+    const html = section(render('2026-10', { lang: 'es', state }), 'Tasas del mes', '>Envíos</h2>');
+    const card = bare(html);
+    // Con el mes abierto la cifra va en su celda (58.57, 1.39, 42.00); al lado, de dónde sale.
+    expect(card).toContain('— 1 USD = DOP de septiembre 2026');
+    expect(card).toContain('— 1 USD = TRY valor por defecto, aún sin definir');
+    expect(els(html, 'input').map((i) => [i.value, i['aria-label']])).toEqual([
+      ['58.57', 'Tasa USD → DOP'],
+      ['1.40', 'Tasa TRY → DOP'],
+      ['42.00', 'Tasa USD → TRY'],
+      ['2026-10-01', 'Fecha desde la que vale la tasa nueva'],
+      ['', 'Nueva tasa'],
+    ]);
     expect(text(render('2026-09', { lang: 'es' }))).toContain('1 USD = 58.57 DOP de los envíos de este mes');
   });
 
@@ -689,21 +1270,22 @@ describe('en español', () => {
     const draftRow = section(section(html, 'Historial de transacciones', 'Al cerrar el mes'), '<tbody>', '</tr>');
     expect(draftRow).toContain('<option value="Food" selected="">Comida</option><option value="Groceries">Supermercado</option>');
     expect(draftRow).toContain(
-      '<option value="Card" selected="">Tarjeta</option><option value="Transfer">Transferencia</option><option value="Bank app">App del banco</option>',
+      '<option value="Debit card" selected="">Tarjeta de débito</option><option value="Credit card">Tarjeta de crédito</option><option value="Transfer">Transferencia</option><option value="Bank app">App del banco</option><option value="Cash">Efectivo</option></select>',
     );
     // Ningún nombre traducido se cuela como valor.
     expect(html).not.toContain('value="Comida"');
-    expect(html).not.toContain('value="Tarjeta"');
+    expect(html).not.toContain('value="Tarjeta');
+    expect(html).not.toContain('value="Efectivo"');
   });
 
   it('un valor de fuera de la lista sale tal cual, sin traducir', () => {
     const state = seedState();
     const coffee = state.months['2026-10']!.tx.find((x) => x.desc === 'Coffee')!;
     coffee.cat = 'Pets';
-    coffee.method = 'Cash';
+    coffee.method = 'Cheque';
     const out = render('2026-10', { lang: 'es', state });
     expect(out).toContain('<option value="Other">Otros</option><option value="Pets" selected="">Pets</option></select>');
-    expect(out).toContain('<option value="Bank app">App del banco</option><option value="Cash" selected="">Cash</option></select>');
+    expect(out).toContain('<option value="Cash">Efectivo</option><option value="Cheque" selected="">Cheque</option></select>');
     expect(text(out)).toContain('Pets 385');
   });
 
@@ -719,6 +1301,8 @@ describe('en español', () => {
       '0.00',
       'Remitly',
       '500',
+      'Sueldo, pago…',
+      '0.00',
       'Nueva transacción',
       'Lugar',
       '0.00',
@@ -734,9 +1318,16 @@ describe('en español', () => {
         'Cuenta de Claude',
         'Cuenta del nuevo gasto',
         'Cuenta de la nueva transacción',
-        'Tasa USD → DOP',
-        'Eliminar tasa USD → DOP',
+        'Tasa USD → DOP desde el 01/10',
+        'Tasa USD → DOP desde el 06/10',
+        'Eliminar tasa USD → DOP del 01/10',
+        'Eliminar tasa USD → DOP del 06/10',
+        'Fecha desde la que vale la tasa nueva',
         'Nueva tasa',
+        'Fecha del ingreso',
+        'El ingreso nuevo suma al presupuesto',
+        'Suma al presupuesto: ingreso del 2026-10-01, 5,800.00 USD',
+        'Eliminar ingreso del 2026-10-01: 5,800.00 USD',
         'Cuenta de la que sale el nuevo envío',
         'Cuenta a la que llega el nuevo envío',
         'Monto del nuevo envío',
@@ -752,7 +1343,7 @@ describe('en español', () => {
         'Abrir la descripción de Coffee',
       ]),
     );
-    expect(new Set(buttons(html))).toEqual(new Set(['×', '⋯', 'Agregar', 'Agregar tasa', 'Cerrar Octubre 2026', 'Eliminar mes']));
+    expect(new Set(buttons(html))).toEqual(new Set(['×', '⋯', 'Agregar', 'Agregar tasa', 'Agregar ingreso', 'Cerrar Octubre 2026', 'Eliminar mes']));
     expect(els(html, 'button')).toContainEqual(expect.objectContaining({ title: 'Eliminar' }));
   });
 
@@ -779,7 +1370,10 @@ describe('en turco', () => {
   it('títulos, columnas y metas con sus cifras', () => {
     expect(t).toContain('Aylık giderler 6 / 11 ödendi · toplam 42,025.57 DOP');
     expect(t).toContain('Ödendi Kalem Gün Tutar Para birimi Hesap DOP USD');
-    expect(t).toContain('Ay kurları Nereden Kur Nereye 1 USD =');
+    expect(t).toContain('Ay kurları Yeni kur, tarihinden itibaren geçerlidir. Önceki işlemler kendi kurunu korur. Başlangıç Nereden Kur Nereye 01/10 1 USD =');
+    expect(t.replace(/&quot;/g, '"')).toContain(
+      'Gelir Toplam 340,808.00 DOP Transferler dışında alınan para. "Bütçeye eklenir" işaretliyse bu ayın bütçesini de artırır. Tarih Açıklama Hesap Tutar Birim DOP Bütçeye eklenir',
+    );
     expect(t).toContain('Transferler Tarih Kanal Nereden Tutar Nereye Kur Alınan');
     expect(t).toContain('İşlem geçmişi 7 işlem · toplam 10,845.00 DOP');
     expect(t).toContain('Tarih Ad Yer Kategori Yöntem Tutar Birim Hesap DOP USD Açıklama');
@@ -792,9 +1386,17 @@ describe('en turco', () => {
     const state = seedState();
     Object.assign(state.months['2026-10']!, { rates: [], transfers: [] });
     state.accounts.push(account('tr', 'TR account', 'TRY'));
-    const card = bare(section(render('2026-10', { lang: 'tr', state }), 'Ay kurları', 'Transferler'));
-    expect(card).toContain('1 USD = 58.57 DOP Eylül 2026 ayından');
-    expect(card).toContain('1 USD = 42.00 TRY varsayılan değer, henüz girilmedi');
+    const html = section(render('2026-10', { lang: 'tr', state }), 'Ay kurları', '>Transferler</h2>');
+    const card = bare(html);
+    expect(card).toContain('— 1 USD = DOP Eylül 2026 ayından');
+    expect(card).toContain('— 1 USD = TRY varsayılan değer, henüz girilmedi');
+    expect(els(html, 'input').slice(0, 3).map((i) => [i.value, i['aria-label']])).toEqual([
+      ['58.57', 'Kur USD → DOP'],
+      ['1.40', 'Kur TRY → DOP'],
+      ['42.00', 'Kur USD → TRY'],
+    ]);
+    // Con el mes cerrado la cifra es texto.
+    expect(text(render('2026-09', { lang: 'tr' }))).toContain('— 1 USD = 58.57 DOP bu ayın transferlerinden');
   });
 
   it('una sola transacción: en turco el sustantivo no cambia con el número', () => {
@@ -811,8 +1413,9 @@ describe('en turco', () => {
     const draftRow = section(section(html, 'İşlem geçmişi', 'Ay kapatıldığında'), '<tbody>', '</tr>');
     expect(draftRow).toContain('<option value="Food" selected="">Yemek</option><option value="Groceries">Market</option>');
     expect(draftRow).toContain(
-      '<option value="Card" selected="">Kart</option><option value="Transfer">Havale</option><option value="Bank app">Banka uygulaması</option>',
+      '<option value="Debit card" selected="">Banka kartı</option><option value="Credit card">Kredi kartı</option><option value="Transfer">Havale</option><option value="Bank app">Banka uygulaması</option><option value="Cash">Nakit</option></select>',
     );
+    expect(html).not.toContain('value="Nakit"');
   });
 
   it('etiquetas, botones y números: los números no cambian de formato', () => {
@@ -824,6 +1427,8 @@ describe('en turco', () => {
       '0.00',
       'Remitly',
       '500',
+      'Maaş, ödeme…',
+      '0.00',
       'Yeni işlem',
       'Yer',
       '0.00',
@@ -839,15 +1444,21 @@ describe('en turco', () => {
         'Yeni transferin kanalı',
         'Yeni transferin çıktığı hesap',
         'Hesap: Coffee',
-        'Kur USD → DOP',
+        'Kur USD → DOP, 01/10 tarihinden itibaren',
+        'Kuru sil: USD → DOP, 06/10',
+        'Yeni kurun geçerli olacağı tarih',
         'Yeni kur',
+        'Gelir tarihi',
+        'Yeni gelir bütçeye eklenir',
+        'Bütçeye eklenir: 2026-10-01 geliri, 5,800.00 USD',
+        '2026-10-01 tarihli geliri sil: 5,800.00 USD',
         'Tarih: Coffee',
         'Açıklama: Coffee',
         'Yeni işlemin açıklaması',
         'Coffee açıklamasını aç',
       ]),
     );
-    expect(new Set(buttons(html))).toEqual(new Set(['×', '⋯', 'Ekle', 'Kur ekle', 'Ekim 2026 ayını kapat', 'Ayı sil']));
+    expect(new Set(buttons(html))).toEqual(new Set(['×', '⋯', 'Ekle', 'Kur ekle', 'Gelir ekle', 'Ekim 2026 ayını kapat', 'Ayı sil']));
     expect(t).toContain('88,140.00 DOP');
     expect(t).toContain('6,228.56 106.00');
   });
@@ -877,9 +1488,9 @@ describe('de dónde sale el idioma', () => {
   it('cambiar de idioma no deja textos del anterior', () => {
     // Textos de la interfaz de cada idioma que no coinciden con ningún dato de ejemplo.
     const own: Record<Language, string[]> = {
-      en: ['Monthly expenses', 'By category', 'Transaction history', 'Month rates', 'Closing the month', 'New transaction'],
-      es: ['Gastos mensuales', 'Por categoría', 'Historial de transacciones', 'Tasas del mes', 'Al cerrar el mes', 'Nueva transacción'],
-      tr: ['Aylık giderler', 'Kategoriye göre', 'İşlem geçmişi', 'Ay kurları', 'Ay kapatıldığında', 'Yeni işlem'],
+      en: ['Monthly expenses', 'By category', 'Transaction history', 'Month rates', 'Closing the month', 'New transaction', 'Adds to budget', 'Add income'],
+      es: ['Gastos mensuales', 'Por categoría', 'Historial de transacciones', 'Tasas del mes', 'Al cerrar el mes', 'Nueva transacción', 'Suma al presupuesto', 'Agregar ingreso'],
+      tr: ['Aylık giderler', 'Kategoriye göre', 'İşlem geçmişi', 'Ay kurları', 'Ay kapatıldığında', 'Yeni işlem', 'Bütçeye eklenir', 'Gelir ekle'],
     };
     for (const lang of ['en', 'es', 'tr'] as const) {
       const html = render('2026-10', { lang });

@@ -96,8 +96,9 @@ async function setUp(api: Client): Promise<MonthKey> {
   await ok(api.patch('/api/accounts/cash', { hidden: true }));
 
   await ok(api.patch('/api/settings', { mainCurrency: 'TRY', secondCurrency: 'USD', defaultAccountId: 'tr' }));
-  await ok(api.put(`/api/months/${key}/rates`, { from: 'USD', to: 'DOP', rate: 60 }));
-  await ok(api.put(`/api/months/${key}/rates`, { from: 'USD', to: 'TRY', rate: 40 }));
+  // Las dos tasas del guion valen desde el día 1: todas sus filas se convierten con ellas.
+  await ok(api.put(`/api/months/${key}/rates`, { from: 'USD', to: 'DOP', rate: 60, date: `${key}-01` }));
+  await ok(api.put(`/api/months/${key}/rates`, { from: 'USD', to: 'TRY', rate: 40, date: `${key}-01` }));
   await ok(api.patch(`/api/months/${key}`, { budgets: { dr: 30000, tr: 8000 } }));
   // Con dos tasas escritas, la tercera sale cruzando por USD.
   expect(rateFor(await getState(api), key, 'TRY', 'DOP')).toMatchObject({ rate: expect.closeTo(1.5, 10), source: 'cross', monthKey: key });
@@ -116,7 +117,7 @@ async function movementsByApi(api: Client, key: MonthKey): Promise<void> {
   await ok(api.post('/api/incomes', { date: d('02'), desc: 'Maaş', amount: 12000, cur: 'TRY' }), 201);
   await ok(api.post('/api/incomes', { date: d('03'), desc: 'Gift', accountId: 'dr', amount: 100, cur: 'USD' }), 201);
 
-  const tx = { monthKey: key, cat: 'Food', method: 'Card' };
+  const tx = { monthKey: key, cat: 'Food', method: 'Debit card' };
   await ok(api.post('/api/transactions', { ...tx, date: d('04'), desc: 'Kahve', amount: 400, cur: 'TRY' }), 201);
   await ok(api.post('/api/transactions', { ...tx, date: d('05'), desc: 'Groceries', amount: 3000, cur: 'DOP', accountId: 'dr' }), 201);
   await ok(api.post('/api/transactions', { ...tx, date: d('06'), desc: 'Hosting', amount: 50, cur: 'USD', accountId: 'dr' }), 201);
@@ -147,7 +148,7 @@ async function movementsByMcp(env: Env, api: Client, now: Date, user: string, ke
 
   await say('add_transfer', { from_account: 'US account', to_account: 'DR account', amount: 500, rate: 59, date: d('08') });
   const toUs = await say('add_transfer', { from_account: 'TR account', to_account: 'US account', amount: 4000, date: d('09') });
-  expect(toUs.text).toContain('typed for this month');
+  expect(toUs.text).toContain(`typed on ${key}-01`);
   const toTr = await say('add_transfer', { from_account: 'DR account', to_account: 'TR account', amount: 3000, date: d('10') });
   expect(toTr.text).toContain('crossed through USD');
 
@@ -164,8 +165,8 @@ function expectScriptedMonth(state: AppState, key: MonthKey, asOf: MonthKey = ke
 
   // Tasas: dos escritas a mano. La tercera salía cruzando por USD; el envío dr → tr se guardó con esa misma tasa,
   // y desde entonces el par tiene la de sus propios envíos (el mismo número, otro origen).
-  expect(rateFor(state, key, 'USD', 'DOP')).toEqual({ rate: 60, source: 'month', monthKey: key });
-  expect(rateFor(state, key, 'TRY', 'USD')).toEqual({ rate: 1 / 40, source: 'month', monthKey: key });
+  expect(rateFor(state, key, 'USD', 'DOP')).toEqual({ rate: 60, source: 'month', monthKey: key, date: `${key}-01` });
+  expect(rateFor(state, key, 'TRY', 'USD')).toEqual({ rate: 1 / 40, source: 'month', monthKey: key, date: `${key}-01` });
   expect(rateFor(state, key, 'TRY', 'DOP')).toMatchObject({ rate: expect.closeTo(1.5, 10), source: 'transfers', monthKey: key });
 
   const c = monthCalc(state, key);
@@ -249,11 +250,12 @@ describe('de punta a punta: el mes guionizado', () => {
       ['Claude', 20, 'USD', false, 'us'],
     ]);
     for (const write of [
-      frank.post('/api/transactions', { monthKey: key, date: `${key}-12`, desc: 'x', cat: 'Food', method: 'Card', amount: 1, cur: 'TRY' }),
+      frank.post('/api/transactions', { monthKey: key, date: `${key}-12`, desc: 'x', cat: 'Food', method: 'Debit card', amount: 1, cur: 'TRY' }),
       frank.patch('/api/fixed/net', { paid: true }),
       frank.patch(`/api/months/${key}`, { budgets: { tr: 1 } }),
-      frank.put(`/api/months/${key}/rates`, { from: 'USD', to: 'DOP', rate: 61 }),
-      frank.del(`/api/months/${key}/rates/USD/DOP`),
+      frank.put(`/api/months/${key}/rates`, { from: 'USD', to: 'DOP', rate: 61, date: `${key}-01` }),
+      frank.del(`/api/months/${key}/rates/USD/DOP?date=${key}-01`),
+      frank.post(`/api/months/${key}/budget-log`, { accountId: 'dr', amount: 1 }),
       frank.post('/api/transfers', { monthKey: key, date: `${key}-12`, via: 'x', fromAccountId: 'us', toAccountId: 'dr', amount: 1 }),
     ]) {
       const r = await write;
@@ -263,7 +265,7 @@ describe('de punta a punta: el mes guionizado', () => {
     // Nada se movió: los saldos al final del mes siguiente son los mismos, con las tasas del mes anterior.
     const after = await getState(frank);
     expectScriptedMonth(after, key, next);
-    expect(rateFor(after, next, 'USD', 'TRY')).toEqual({ rate: 40, source: 'previous', monthKey: key });
+    expect(rateFor(after, next, 'USD', 'TRY')).toEqual({ rate: 40, source: 'previous', monthKey: key, date: `${key}-01` });
     expect(monthCalc(after, next)).toMatchObject({ budget: expect.closeTo(32000, 6), used: 0, pending: expect.closeTo(7800, 6), income: 0 });
   });
 
@@ -309,7 +311,7 @@ describe('de punta a punta: el mes guionizado', () => {
       totalMoney: { main: expect.closeTo(143200 + 36500 / 1.5 + 23200, 6) },
     });
     expect(summary.text).toContain('Budget: 32,000.00 TRY');
-    expect(summary.text).toContain('USD to TRY: 40.00 (typed for this month)');
+    expect(summary.text).toContain(`USD to TRY: 40.00 (typed on ${key}-01)`);
 
     // Lo que no puede ser: una cuenta que no existe, la misma cuenta dos veces, un mes cerrado.
     const unknown = await tool(env, now, EDA.id, 'add_transaction', { description: 'x', amount: 1, account: 'Wise' });
@@ -335,7 +337,7 @@ describe('de punta a punta: el mes guionizado', () => {
     // Frank cierra y sigue en el mes siguiente: un gasto, un envío y un fijo pagado mueven sus saldos…
     const next = nextKey(key);
     const closed = await ok(frank.post<CloseResponse>(`/api/months/${key}/close`));
-    await ok(frank.post('/api/transactions', { monthKey: next, date: `${next}-02`, desc: 'Bilet', cat: 'Travel', method: 'Card', amount: 1000, cur: 'TRY' }), 201);
+    await ok(frank.post('/api/transactions', { monthKey: next, date: `${next}-02`, desc: 'Bilet', cat: 'Travel', method: 'Debit card', amount: 1000, cur: 'TRY' }), 201);
     await ok(frank.post('/api/transfers', { monthKey: next, date: `${next}-03`, via: 'Wise', fromAccountId: 'us', toAccountId: 'tr', amount: 100, rate: 41 }), 201);
     await ok(frank.patch(`/api/fixed/${closed.next.fixed.find((f) => f.name === 'Claude')!.id}`, { paid: true }));
     const moved = await getState(frank);
@@ -356,9 +358,9 @@ describe('de punta a punta: el mes guionizado', () => {
     await ok(frank.del(`/api/months/${key}`));
     const empty = await getState(frank);
     const [only] = sortedKeys(empty);
-    expect(empty.months[only!]).toMatchObject({ closed: false, budgets: {}, rates: [], fixed: [], transfers: [], tx: [] });
+    expect(empty.months[only!]).toMatchObject({ closed: false, budgetLog: [], budgets: {}, rates: [], fixed: [], transfers: [], tx: [] });
     expect(empty.incomes).toHaveLength(3);
-    expect(rateFor(empty, only!, 'USD', 'DOP')).toEqual({ rate: 58.76, source: 'default', monthKey: null });
+    expect(rateFor(empty, only!, 'USD', 'DOP')).toEqual({ rate: 58.76, source: 'default', monthKey: null, date: null });
     expect(balanceOf(empty, only!)).toEqual({ us: 4000, dr: expect.closeTo(10000 + 100 * 58.76, 6), tr: 32000, cash: 500 });
 
     // Nada de esto tocó a Eda.
@@ -370,7 +372,7 @@ describe('de punta a punta: el mes guionizado', () => {
     const { frank } = fresh();
     const key = await setUp(frank);
     await movementsByApi(frank, key);
-    const tx = { monthKey: key, date: `${key}-12`, desc: 'x', cat: 'Food', method: 'Card', amount: 1, cur: 'TRY' };
+    const tx = { monthKey: key, date: `${key}-12`, desc: 'x', cat: 'Food', method: 'Debit card', amount: 1, cur: 'TRY' };
     const cases: [Promise<{ status: number; error: { code: string } | undefined }>, number, string][] = [
       [frank.post('/api/transactions', { ...tx, accountId: 'wise' }), 400, 'validation'],
       [frank.post('/api/incomes', { date: `${key}-12`, amount: 1, cur: 'USD', accountId: 'wise' }), 400, 'validation'],
@@ -379,7 +381,7 @@ describe('de punta a punta: el mes guionizado', () => {
       [frank.patch('/api/settings', { secondCurrency: 'TRY' }), 400, 'validation'],
       [frank.patch('/api/settings', { mainCurrency: 'USD', secondCurrency: 'USD' }), 400, 'validation'],
       [frank.patch('/api/settings', { defaultAccountId: 'wise' }), 400, 'validation'],
-      [frank.put(`/api/months/${key}/rates`, { from: 'USD', to: 'USD', rate: 1 }), 400, 'validation'],
+      [frank.put(`/api/months/${key}/rates`, { from: 'USD', to: 'USD', rate: 1, date: `${key}-01` }), 400, 'validation'],
       [frank.del('/api/accounts/tr'), 409, 'conflict'],
       [frank.patch('/api/accounts/tr', { currency: 'USD' }), 409, 'conflict'],
     ];
@@ -455,7 +457,7 @@ describe('de punta a punta: el Excel como resumen del modelo de cuentas', () => 
     const sourceDop = { ...source, mainCurrency: 'DOP' as const, secondCurrency: 'USD' as const };
     expect(monthCalc(dop, key).budget).toBeCloseTo(monthCalc(sourceDop, key).budget, 6);
     // El libro saca su tasa de los envíos del mes (59), no de la escrita (60): lo convertido difiere justo en eso.
-    expect(rateFor(imported, key, 'USD', 'DOP')).toEqual({ rate: 59, source: 'transfers', monthKey: key });
+    expect(rateFor(imported, key, 'USD', 'DOP')).toEqual({ rate: 59, source: 'transfers', monthKey: key, date: null });
     expect(monthCalc(dop, key).income).toBeCloseTo(3400 * 59, 6);
     expect(monthCalc(sourceDop, key).income).toBeCloseTo(3400 * 60, 6);
     // Gastado, en DOP: 600 + 3,000 + 600 + 9,000 en DOP y 70 USD a la tasa de cada uno.

@@ -19,13 +19,14 @@ export interface GoalDialogProps {
 /**
  * Diálogo "New goal" / "Edit goal". El formulario vive aquí hasta que se guarda; qué campo arrastra a cuál y qué
  * se puede guardar lo decide ./goalForm. Enter guarda y Escape cancela (lo pone <Dialog>). Una meta nueva nace en
- * la moneda principal del usuario; los rótulos de los montos llevan el código de la moneda elegida.
+ * la moneda principal del usuario, que es también la de su línea "≈" mientras no se elija otra; los rótulos de
+ * los montos llevan el código de la moneda elegida.
  */
 export function GoalDialog({ goal, onClose }: GoalDialogProps) {
   const { state, today, main, actions } = useFinanzas();
   const { t } = useI18n();
   const s = useStrings(AHORROS);
-  const [form, setForm] = useState(() => (goal ? goalToForm(goal, today) : newGoalForm(today, main)));
+  const [form, setForm] = useState(() => (goal ? goalToForm(goal, today, main) : newGoalForm(today, main)));
   // Los avisos de "falta esto" esperan al primer intento de guardar: un diálogo recién abierto no nace con errores.
   const [tried, setTried] = useState(false);
   const id = useId();
@@ -46,7 +47,7 @@ export function GoalDialog({ goal, onClose }: GoalDialogProps) {
       else if (errors.includes('amount')) targetRef.current?.focus();
       return;
     }
-    const input = formToInput(form);
+    const input = formToInput(form, main);
     if (goal ? actions.patchGoal(goal.id, input) : actions.addGoal(input)) onClose();
     else setTried(true);
   };
@@ -106,9 +107,21 @@ export function GoalDialog({ goal, onClose }: GoalDialogProps) {
           )}
         </Field>
 
-        <Field label={t('currency')} htmlFor={`${id}-cur`}>
-          <Select id={`${id}-cur`} value={form.cur} options={CURRENCIES} onChange={(cur) => setForm((f) => setCur(f, cur))} mono />
-        </Field>
+        {/* La moneda de la meta y, al lado, en cuál se enseña además lo ahorrado (la línea "≈" de la tarjeta). */}
+        <div className={styles.pair}>
+          <Field label={t('currency')} htmlFor={`${id}-cur`}>
+            <Select id={`${id}-cur`} value={form.cur} options={CURRENCIES} onChange={(cur) => setForm((f) => setCur(f, cur))} mono />
+          </Field>
+          <Field label={s('approxCurrency')} htmlFor={`${id}-approx`}>
+            <Select
+              id={`${id}-approx`}
+              value={form.approxCur}
+              options={CURRENCIES}
+              onChange={(approxCur) => setForm((f) => ({ ...f, approxCur }))}
+              mono
+            />
+          </Field>
+        </div>
 
         <CheckField checked={form.planned} onChange={(planned) => setForm((f) => ({ ...f, planned }))}>
           {s('hasTarget')}
@@ -132,7 +145,7 @@ export function GoalDialog({ goal, onClose }: GoalDialogProps) {
                 aria-describedby={`${id}-plan`}
               />
             </Field>
-            <div className={styles.months}>
+            <div className={styles.pair}>
               <Field label={s('startMonth')} htmlFor={`${id}-start`}>
                 <MonthPicker id={`${id}-start`} label={s('startMonth')} value={form.start} onChange={(start) => setForm((f) => setStart(f, start))} />
               </Field>

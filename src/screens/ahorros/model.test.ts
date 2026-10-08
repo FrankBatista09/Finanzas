@@ -9,6 +9,7 @@ import {
   draftInput,
   EMPTY_DRAFT,
   EMPTY_INCOME,
+  EMPTY_MONTH_INCOME,
   goalCard,
   goalCards,
   goalOptions,
@@ -35,7 +36,7 @@ const DEFAULT_RATE_NOTE = { hint: 'default value, not set yet', fallback: true }
 /** Los datos de ejemplo con una tasa escrita en octubre: 1 USD = 40 TRY. */
 function withTRY(): AppState {
   const s = seedState();
-  s.months['2026-10']!.rates.push({ from: 'USD', to: 'TRY', rate: 40 });
+  s.months['2026-10']!.rates.push({ from: 'USD', to: 'TRY', rate: 40, date: '2026-10-01' });
   return s;
 }
 
@@ -77,8 +78,9 @@ describe('tarjetas de metas', () => {
         cur: 'USD',
         kind: 'Variable contributions',
         saved: '1,200.00',
-        savedMain: '70,512', // 1,200 × 58.76, la tasa del mes en curso (escrita a mano: sin nota)
-        mainNote: NO_NOTE,
+        savedApprox: '70,512', // 1,200 × 58.76, la tasa del mes en curso (escrita a mano: sin nota)
+        approxCur: 'DOP',
+        approxNote: NO_NOTE,
         plan: '3 contributions recorded',
         target: null,
       },
@@ -88,8 +90,9 @@ describe('tarjetas de metas', () => {
         cur: 'USD',
         kind: 'Variable contributions',
         saved: '450.00',
-        savedMain: '26,442',
-        mainNote: NO_NOTE,
+        savedApprox: '26,442',
+        approxCur: 'DOP',
+        approxNote: NO_NOTE,
         plan: '2 contributions recorded',
         target: null,
       },
@@ -99,8 +102,9 @@ describe('tarjetas de metas', () => {
         cur: 'USD',
         kind: '3,000 USD / month',
         saved: '9,000.00',
-        savedMain: '528,840',
-        mainNote: NO_NOTE,
+        savedApprox: '528,840',
+        approxCur: 'DOP',
+        approxNote: NO_NOTE,
         plan: '12 contributions left · 3,000 USD per month to get there',
         target: { value: 20, progress: '20% of 45,000 USD', deadline: 'Target: October 2027' },
       },
@@ -116,8 +120,9 @@ describe('tarjetas de metas', () => {
       cur: 'USD',
       kind: '3,000 USD / mes',
       saved: '9,000.00',
-      savedMain: '528,840',
-      mainNote: NO_NOTE,
+      savedApprox: '528,840',
+      approxCur: 'DOP',
+      approxNote: NO_NOTE,
       plan: 'Faltan 12 aportes · 3,000 USD por mes para llegar',
       target: { value: 20, progress: '20% de 45,000 USD', deadline: 'Meta: octubre 2027' },
     });
@@ -132,8 +137,9 @@ describe('tarjetas de metas', () => {
       cur: 'USD',
       kind: '3,000 USD / ay',
       saved: '9,000.00',
-      savedMain: '528,840',
-      mainNote: NO_NOTE,
+      savedApprox: '528,840',
+      approxCur: 'DOP',
+      approxNote: NO_NOTE,
       plan: '12 katkı kaldı · hedefe ulaşmak için ayda 3,000 USD',
       target: { value: 20, progress: '%20 / 45,000 USD', deadline: 'Hedef: Ekim 2027' },
     });
@@ -151,6 +157,8 @@ describe('tarjetas de metas', () => {
     cur: 'USD',
     saved: 0,
     savedMain: 0,
+    approxCur: 'DOP',
+    savedApprox: 0,
     contribCount: 0,
     target: null,
     ...over,
@@ -166,44 +174,44 @@ describe('tarjetas de metas', () => {
   });
 
   it('sin aportes: ceros y plural', () => {
-    expect(goalCard(progress(), 'en', 'DOP')).toMatchObject({ saved: '0.00', savedMain: '0', plan: '0 contributions recorded' });
-    expect(goalCard(progress(), 'es', 'DOP').plan).toBe('0 aportes registrados');
-    expect(goalCard(progress(), 'tr', 'DOP').plan).toBe('0 katkı kaydedildi');
+    expect(goalCard(progress(), 'en')).toMatchObject({ saved: '0.00', savedApprox: '0', approxCur: 'DOP', plan: '0 contributions recorded' });
+    expect(goalCard(progress(), 'es').plan).toBe('0 aportes registrados');
+    expect(goalCard(progress(), 'tr').plan).toBe('0 katkı kaydedildi');
   });
 
   it('un solo aporte va en singular, en cada idioma', () => {
     const one = progress({ contribCount: 1 });
-    expect(goalCard(one, 'en', 'DOP').plan).toBe('1 contribution recorded');
-    expect(goalCard(one, 'es', 'DOP').plan).toBe('1 aporte registrado');
-    expect(goalCard(one, 'tr', 'DOP').plan).toBe('1 katkı kaydedildi');
+    expect(goalCard(one, 'en').plan).toBe('1 contribution recorded');
+    expect(goalCard(one, 'es').plan).toBe('1 aporte registrado');
+    expect(goalCard(one, 'tr').plan).toBe('1 katkı kaydedildi');
 
     const last = progress({ target: target({ left: 1, needPerMonth: 1234.5 }) });
-    expect(goalCard(last, 'en', 'DOP').plan).toBe('1 contribution left · 1,235 USD per month to get there');
-    expect(goalCard(last, 'es', 'DOP').plan).toBe('Falta 1 aporte · 1,235 USD por mes para llegar');
-    expect(goalCard(last, 'tr', 'DOP').plan).toBe('1 katkı kaldı · hedefe ulaşmak için ayda 1,235 USD');
+    expect(goalCard(last, 'en').plan).toBe('1 contribution left · 1,235 USD per month to get there');
+    expect(goalCard(last, 'es').plan).toBe('Falta 1 aporte · 1,235 USD por mes para llegar');
+    expect(goalCard(last, 'tr').plan).toBe('1 katkı kaldı · hedefe ulaşmak için ayda 1,235 USD');
   });
 
   it('el porcentaje se muestra sin decimales y la barra usa el valor sin redondear', () => {
-    const t = goalCard(progress({ target: target({ pct: 33.33333 }) }), 'en', 'DOP').target!;
+    const t = goalCard(progress({ target: target({ pct: 33.33333 }) }), 'en').target!;
     expect(t.progress).toBe('33% of 45,000 USD');
     expect(t.value).toBe(33.33333);
-    expect(goalCard(progress({ target: target({ pct: 99.5 }) }), 'en', 'DOP').target!.progress).toBe('100% of 45,000 USD');
-    expect(goalCard(progress({ target: target({ pct: 100 }) }), 'en', 'DOP').target!.progress).toBe('100% of 45,000 USD');
+    expect(goalCard(progress({ target: target({ pct: 99.5 }) }), 'en').target!.progress).toBe('100% of 45,000 USD');
+    expect(goalCard(progress({ target: target({ pct: 100 }) }), 'en').target!.progress).toBe('100% of 45,000 USD');
   });
 
   it('aporte mensual, objetivo y cuota con separador de miles, igual en los tres idiomas', () => {
     const g = progress({ target: target({ monthly: 1250.4, targetAmount: 1234567.4, end: '2028-01', left: 20, needPerMonth: 61728.37 }) });
-    const en = goalCard(g, 'en', 'DOP');
+    const en = goalCard(g, 'en');
     expect(en.kind).toBe('1,250 USD / month');
     expect(en.target).toMatchObject({ progress: '0% of 1,234,567 USD', deadline: 'Target: January 2028' });
     expect(en.plan).toBe('20 contributions left · 61,728 USD per month to get there');
 
-    const es = goalCard(g, 'es', 'DOP');
+    const es = goalCard(g, 'es');
     expect(es.kind).toBe('1,250 USD / mes');
     expect(es.target).toMatchObject({ progress: '0% de 1,234,567 USD', deadline: 'Meta: enero 2028' });
     expect(es.plan).toBe('Faltan 20 aportes · 61,728 USD por mes para llegar');
 
-    const tr = goalCard(g, 'tr', 'DOP');
+    const tr = goalCard(g, 'tr');
     expect(tr.kind).toBe('1,250 USD / ay');
     expect(tr.target).toMatchObject({ progress: '%0 / 1,234,567 USD', deadline: 'Hedef: Ocak 2028' });
     expect(tr.plan).toBe('20 katkı kaldı · hedefe ulaşmak için ayda 61,728 USD');
@@ -218,33 +226,33 @@ describe('tarjetas de metas', () => {
   describe('meta cumplida o con el mes objetivo pasado', () => {
     it('con el objetivo cubierto dice que se llegó, no "0 USD por mes"', () => {
       const done = progress({ saved: 45000, target: target({ pct: 100, left: 12, needPerMonth: 0 }) });
-      expect(goalCard(done, 'en', 'DOP', '2026-10').plan).toBe('Target reached');
-      expect(goalCard(done, 'es', 'DOP', '2026-10').plan).toBe('Meta alcanzada');
-      expect(goalCard(done, 'tr', 'DOP', '2026-10').plan).toBe('Hedefe ulaşıldı');
+      expect(goalCard(done, 'en', '2026-10').plan).toBe('Target reached');
+      expect(goalCard(done, 'es', '2026-10').plan).toBe('Meta alcanzada');
+      expect(goalCard(done, 'tr', '2026-10').plan).toBe('Hedefe ulaşıldı');
       // La barra, el objetivo y el mes siguen ahí.
-      expect(goalCard(done, 'en', 'DOP', '2026-10').target).toEqual({ value: 100, progress: '100% of 45,000 USD', deadline: 'Target: October 2027' });
+      expect(goalCard(done, 'en', '2026-10').target).toEqual({ value: 100, progress: '100% of 45,000 USD', deadline: 'Target: October 2027' });
       // De más también es llegar, y da igual que el mes objetivo ya haya pasado.
-      expect(goalCard(progress({ saved: 50000, target: target({ pct: 100, left: 1, needPerMonth: 0 }) }), 'en', 'DOP', '2028-01').plan).toBe('Target reached');
+      expect(goalCard(progress({ saved: 50000, target: target({ pct: 100, left: 1, needPerMonth: 0 }) }), 'en', '2028-01').plan).toBe('Target reached');
     });
 
     it('se compara en centavos: 833.33… × 12 cuenta como 10,000', () => {
       const t = target({ monthly: 10000 / 12, targetAmount: (10000 / 12) * 12, pct: 100, left: 1, needPerMonth: 0 });
-      expect(goalCard(progress({ saved: 10000, target: t }), 'en', 'DOP').plan).toBe('Target reached');
-      expect(goalCard(progress({ saved: 10000, target: { ...t, targetAmount: 10000.000000000002 } }), 'en', 'DOP').plan).toBe('Target reached');
-      expect(goalCard(progress({ saved: 9999.99, target: { ...t, needPerMonth: 0.01 } }), 'en', 'DOP').plan).toBe(
+      expect(goalCard(progress({ saved: 10000, target: t }), 'en').plan).toBe('Target reached');
+      expect(goalCard(progress({ saved: 10000, target: { ...t, targetAmount: 10000.000000000002 } }), 'en').plan).toBe('Target reached');
+      expect(goalCard(progress({ saved: 9999.99, target: { ...t, needPerMonth: 0.01 } }), 'en').plan).toBe(
         '1 contribution left · 0.01 USD per month to get there',
       );
     });
 
     it('pasado el mes objetivo sin llegar dice cuánto falta, no una cuota mensual', () => {
       const late = progress({ saved: 9000, target: target({ pct: 20, left: 1, needPerMonth: 36000 }) });
-      expect(goalCard(late, 'en', 'DOP', '2027-11').plan).toBe('Target month passed · 36,000.00 USD to go');
-      expect(goalCard(late, 'es', 'DOP', '2027-11').plan).toBe('El mes objetivo ya pasó · faltan 36,000.00 USD');
-      expect(goalCard(late, 'tr', 'DOP', '2027-11').plan).toBe('Hedef ay geçti · 36,000.00 USD kaldı');
+      expect(goalCard(late, 'en', '2027-11').plan).toBe('Target month passed · 36,000.00 USD to go');
+      expect(goalCard(late, 'es', '2027-11').plan).toBe('El mes objetivo ya pasó · faltan 36,000.00 USD');
+      expect(goalCard(late, 'tr', '2027-11').plan).toBe('Hedef ay geçti · 36,000.00 USD kaldı');
       // En el propio mes objetivo todavía se puede aportar.
-      expect(goalCard(late, 'en', 'DOP', '2027-10').plan).toBe('1 contribution left · 36,000 USD per month to get there');
+      expect(goalCard(late, 'en', '2027-10').plan).toBe('1 contribution left · 36,000 USD per month to get there');
       // Sin meses registrados no hay "mes en curso" con el que comparar.
-      expect(goalCard(late, 'en', 'DOP').plan).toBe('1 contribution left · 36,000 USD per month to get there');
+      expect(goalCard(late, 'en').plan).toBe('1 contribution left · 36,000 USD per month to get there');
     });
 
     it('con el estado completo: el mes en curso es el de shared/calc', () => {
@@ -260,7 +268,7 @@ describe('tarjetas de metas', () => {
 
     it('una cuota de menos de 1 USD conserva los centavos en vez de salir como 0', () => {
       const g = progress({ saved: 44998, target: target({ pct: 99.99, left: 5, needPerMonth: 0.4 }) });
-      expect(goalCard(g, 'en', 'DOP', '2026-10').plan).toBe('5 contributions left · 0.40 USD per month to get there');
+      expect(goalCard(g, 'en', '2026-10').plan).toBe('5 contributions left · 0.40 USD per month to get there');
       expect(wholeAmount(3000)).toBe('3,000');
       expect(wholeAmount(1234.5)).toBe('1,235');
       expect(wholeAmount(0.5)).toBe('1');
@@ -270,38 +278,44 @@ describe('tarjetas de metas', () => {
   });
 
   it('la meta en otra moneda: sus cifras y sus frases llevan ese código', () => {
-    const g = progress({ cur: 'TRY', saved: 126000, savedMain: 176280, target: target({ monthly: 42000, targetAmount: 630000, pct: 20, left: 12, needPerMonth: 42000 }) });
-    expect(goalCard(g, 'en', 'DOP', '2026-10')).toEqual({
+    const g = progress({ cur: 'TRY', saved: 126000, savedMain: 176280, savedApprox: 176280, target: target({ monthly: 42000, targetAmount: 630000, pct: 20, left: 12, needPerMonth: 42000 }) });
+    expect(goalCard(g, 'en', '2026-10')).toEqual({
       id: 'g',
       name: 'Goal',
       cur: 'TRY',
       kind: '42,000 TRY / month',
       saved: '126,000.00',
-      savedMain: '176,280',
-      mainNote: NO_NOTE,
+      savedApprox: '176,280',
+      approxCur: 'DOP',
+      approxNote: NO_NOTE,
       plan: '12 contributions left · 42,000 TRY per month to get there',
       target: { value: 20, progress: '20% of 630,000 TRY', deadline: 'Target: October 2027' },
     });
-    expect(goalCard(g, 'es', 'DOP', '2026-10')).toMatchObject({ kind: '42,000 TRY / mes', plan: 'Faltan 12 aportes · 42,000 TRY por mes para llegar' });
-    expect(goalCard(g, 'tr', 'DOP', '2026-10')).toMatchObject({ kind: '42,000 TRY / ay', target: { progress: '%20 / 630,000 TRY' } });
-    expect(goalCard(g, 'en', 'DOP', '2027-11').plan).toBe('Target month passed · 504,000.00 TRY to go');
-    expect(goalCard(g, 'es', 'DOP', '2027-11').plan).toBe('El mes objetivo ya pasó · faltan 504,000.00 TRY');
-    expect(goalCard(g, 'tr', 'DOP', '2027-11').plan).toBe('Hedef ay geçti · 504,000.00 TRY kaldı');
+    expect(goalCard(g, 'es', '2026-10')).toMatchObject({ kind: '42,000 TRY / mes', plan: 'Faltan 12 aportes · 42,000 TRY por mes para llegar' });
+    expect(goalCard(g, 'tr', '2026-10')).toMatchObject({ kind: '42,000 TRY / ay', target: { progress: '%20 / 630,000 TRY' } });
+    expect(goalCard(g, 'en', '2027-11').plan).toBe('Target month passed · 504,000.00 TRY to go');
+    expect(goalCard(g, 'es', '2027-11').plan).toBe('El mes objetivo ya pasó · faltan 504,000.00 TRY');
+    expect(goalCard(g, 'tr', '2027-11').plan).toBe('Hedef ay geçti · 504,000.00 TRY kaldı');
   });
 
   it('una meta en la moneda principal no lleva línea "≈"', () => {
-    expect(goalCard(progress({ cur: 'DOP', saved: 5000, savedMain: 5000 }), 'en', 'DOP')).toMatchObject({ saved: '5,000.00', savedMain: null });
+    expect(goalCard(progress({ cur: 'DOP', saved: 5000, savedMain: 5000, savedApprox: 5000 }), 'en')).toMatchObject({
+      saved: '5,000.00',
+      savedApprox: null,
+      approxCur: 'DOP',
+    });
     // Aunque se le pase una nota, no hay conversión de la que hablar.
-    expect(goalCard(progress({ cur: 'DOP' }), 'en', 'DOP', null, DEFAULT_RATE_NOTE).mainNote).toBe(NO_NOTE);
+    expect(goalCard(progress({ cur: 'DOP' }), 'en', null, DEFAULT_RATE_NOTE).approxNote).toBe(NO_NOTE);
     const s = seedState();
     s.mainCurrency = 'USD';
     s.secondCurrency = 'DOP';
-    expect(goalCards(s, 'en').map((g) => g.savedMain)).toEqual([null, null, null]);
+    expect(goalCards(s, 'en').map((g) => g.savedApprox)).toEqual([null, null, null]);
+    expect(goalCards(s, 'en').map((g) => g.approxCur)).toEqual(['USD', 'USD', 'USD']);
     expect(goalCards(s, 'en').map((g) => g.saved)).toEqual(['1,200.00', '450.00', '9,000.00']);
   });
 
   it('la línea "≈" lleva la nota de la tasa del mes en curso; con la de respaldo se marca', () => {
-    expect(goalCard(progress(), 'en', 'DOP', '2026-10', FROM_TRANSFERS).mainNote).toEqual(FROM_TRANSFERS);
+    expect(goalCard(progress(), 'en', '2026-10', FROM_TRANSFERS).approxNote).toEqual(FROM_TRANSFERS);
     // Nadie ha escrito una tasa para TRY: 1 USD = 42 TRY y 1 USD = 58.76 DOP son los valores de respaldo.
     const s = seedState();
     Object.assign(s.goals.find((g) => g.id === 'turkey')!, { cur: 'TRY' });
@@ -309,15 +323,66 @@ describe('tarjetas de metas', () => {
       cur: 'TRY',
       kind: '3,000 TRY / month',
       saved: '378,000.00', // 9,000 USD × 42
-      savedMain: '528,840', // 378,000 TRY × 58.76 / 42
-      mainNote: DEFAULT_RATE_NOTE,
+      savedApprox: '528,840', // 378,000 TRY × 58.76 / 42
+      approxCur: 'DOP',
+      approxNote: DEFAULT_RATE_NOTE,
       plan: 'Target reached',
       target: { value: 100, progress: '100% of 45,000 TRY' },
     });
     // Con la tasa escrita la nota desaparece de las metas que no pasan por TRY, y la de TRY → DOP sale cruzada.
     const t = withTRY();
     Object.assign(t.goals.find((g) => g.id === 'turkey')!, { cur: 'TRY' });
-    expect(goalCards(t, 'en').map((g) => g.mainNote)).toEqual([NO_NOTE, NO_NOTE, { hint: 'crossed through USD', fallback: false }]);
+    expect(goalCards(t, 'en').map((g) => g.approxNote)).toEqual([NO_NOTE, NO_NOTE, { hint: 'crossed through USD', fallback: false }]);
+  });
+
+  it('la línea "≈" va en la moneda que diga GoalProgress.approxCur; si es la de la propia meta, no hay línea', () => {
+    const g = progress({ saved: 1200, savedMain: 70512, approxCur: 'TRY', savedApprox: 50400.4 });
+    // Sin decimales, y en la moneda "≈", no en la principal.
+    expect(goalCard(g, 'en', '2026-10', DEFAULT_RATE_NOTE)).toMatchObject({ cur: 'USD', saved: '1,200.00', savedApprox: '50,400', approxCur: 'TRY', approxNote: DEFAULT_RATE_NOTE });
+    // La misma meta eligiendo su propia moneda: la cifra y la nota sobran, aunque lleguen.
+    const own = goalCard({ ...g, approxCur: 'USD', savedApprox: 1200 }, 'en', '2026-10', DEFAULT_RATE_NOTE);
+    expect(own).toMatchObject({ saved: '1,200.00', savedApprox: null, approxCur: 'USD' });
+    expect(own.approxNote).toBe(NO_NOTE);
+    // Con o sin objetivo: la línea no depende del plan.
+    expect(goalCard({ ...g, target: target() }, 'en', '2026-10')).toMatchObject({ savedApprox: '50,400', approxCur: 'TRY', approxNote: NO_NOTE });
+    expect(goalCard({ ...g, approxCur: 'USD', target: target() }, 'en', '2026-10').savedApprox).toBeNull();
+  });
+
+  it('con el estado completo: cada meta en la moneda "≈" que eligió; la que no eligió, en la principal', () => {
+    const s = withTRY();
+    const set = (state: AppState, id: string, approxCur: AppState['goals'][number]['approxCur']) => {
+      state.goals.find((g) => g.id === id)!.approxCur = approxCur;
+    };
+    set(s, 'emergency', 'TRY');
+    set(s, 'personal', 'USD');
+    const cards = goalCards(s, 'en');
+    // 1,200 USD × 40, la tasa escrita en octubre: sin nota. No es ni la principal (DOP) ni la segunda (USD).
+    expect(cards[0]).toMatchObject({ cur: 'USD', saved: '1,200.00', savedApprox: '48,000', approxCur: 'TRY', approxNote: NO_NOTE });
+    // Eligió la suya: sin línea, aunque la principal sea otra.
+    expect(cards[1]).toMatchObject({ cur: 'USD', saved: '450.00', savedApprox: null, approxCur: 'USD', approxNote: NO_NOTE });
+    // No eligió: la principal.
+    expect(cards[2]).toMatchObject({ cur: 'USD', saved: '9,000.00', savedApprox: '528,840', approxCur: 'DOP', approxNote: NO_NOTE });
+
+    // La nota es la de la tasa hacia la moneda "≈", no hacia la principal: sin tasa de TRY escrita, la de respaldo (42).
+    const d = seedState();
+    set(d, 'emergency', 'TRY');
+    expect(goalCards(d, 'en').map((g) => [g.savedApprox, g.approxCur, g.approxNote])).toEqual([
+      ['50,400', 'TRY', DEFAULT_RATE_NOTE],
+      ['26,442', 'DOP', NO_NOTE],
+      ['528,840', 'DOP', NO_NOTE],
+    ]);
+    expect(goalCards(d, 'es')[0]!.approxNote).toEqual({ hint: 'valor por defecto, aún sin definir', fallback: true });
+
+    // Al cambiar la moneda principal, la meta que no eligió la sigue; la que eligió se queda con la suya.
+    const u = seedState();
+    set(u, 'emergency', 'DOP');
+    u.mainCurrency = 'USD';
+    u.secondCurrency = 'DOP';
+    expect(goalCards(u, 'en').map((g) => [g.savedApprox, g.approxCur])).toEqual([
+      ['70,512', 'DOP'],
+      [null, 'USD'],
+      [null, 'USD'],
+    ]);
   });
 
   it('una meta con aporte en DOP suma su equivalente en USD a la tasa del mes del aporte', () => {
@@ -361,7 +426,7 @@ describe('ingresos por mes', () => {
 
   it('el ingreso del mes es la suma de sus ingresos, cada uno por su fecha', () => {
     const s = seedState();
-    s.incomes.push({ id: 'x', date: '2026-10-15', desc: 'Bonus', accountId: 'dr', amount: 10000, cur: 'DOP' });
+    s.incomes.push({ id: 'x', date: '2026-10-15', desc: 'Bonus', accountId: 'dr', amount: 10000, cur: 'DOP', budget: false });
     const rows = incomeRowViews(s, 'en');
     expect(rows[2]).toMatchObject({ income: '350,808.00', saved: '205,660.00', pct: '58.6%' });
     expect(rows[1]!.income).toBe('339,731.22');
@@ -375,7 +440,7 @@ describe('ingresos por mes', () => {
 
   it('se marca el mes en el que algo se convirtió con la tasa de respaldo', () => {
     const s = seedState();
-    s.incomes.push({ id: 'x', date: '2026-09-10', desc: '', accountId: 'dr', amount: 4200, cur: 'TRY' });
+    s.incomes.push({ id: 'x', date: '2026-09-10', desc: '', accountId: 'dr', amount: 4200, cur: 'TRY', budget: false });
     expect(incomeRowViews(s, 'en').map((r) => r.incomeFallback)).toEqual([false, true, false]);
     expect(incomeRowViews(s, 'en').map((r) => r.savedFallback)).toEqual([false, false, false]);
     // 4,200 TRY = 100 USD = 5,876 DOP con los valores de respaldo.
@@ -387,7 +452,7 @@ describe('ingresos por mes', () => {
     expect(incomeRowViews(t, 'en').map((r) => r.incomeFallback)).toEqual([false, false, false]);
     // Con la tasa escrita en el mes ya no es de respaldo.
     const u = withTRY();
-    u.incomes.push({ id: 'x', date: '2026-10-10', desc: '', accountId: 'dr', amount: 4000, cur: 'TRY' });
+    u.incomes.push({ id: 'x', date: '2026-10-10', desc: '', accountId: 'dr', amount: 4000, cur: 'TRY', budget: false });
     expect(incomeRowViews(u, 'en').map((r) => r.incomeFallback)).toEqual([false, false, false]);
   });
 
@@ -405,15 +470,15 @@ describe('ingresos por mes', () => {
 describe('ingresos, uno por uno', () => {
   it('datos de ejemplo: del más reciente al más antiguo, con su equivalente en la moneda principal', () => {
     expect(incomeItems(seedState(), 'en')).toEqual([
-      { id: 'seed-in-3', date: '2026-10-01', desc: 'Salary', accountId: 'us', amount: 5800, amountText: '5,800.00', cur: 'USD', main: '340,808.00', mainNote: NO_NOTE },
-      { id: 'seed-in-2', date: '2026-09-01', desc: 'Salary', accountId: 'us', amount: 5800, amountText: '5,800.00', cur: 'USD', main: '339,731.22', mainNote: FROM_TRANSFERS },
-      { id: 'seed-in-1', date: '2026-08-01', desc: 'Salary', accountId: 'us', amount: 5800, amountText: '5,800.00', cur: 'USD', main: '337,463.33', mainNote: FROM_TRANSFERS },
+      { id: 'seed-in-3', date: '2026-10-01', desc: 'Salary', accountId: 'us', amount: 5800, amountText: '5,800.00', cur: 'USD', budget: false, main: '340,808.00', mainNote: NO_NOTE },
+      { id: 'seed-in-2', date: '2026-09-01', desc: 'Salary', accountId: 'us', amount: 5800, amountText: '5,800.00', cur: 'USD', budget: false, main: '339,731.22', mainNote: FROM_TRANSFERS },
+      { id: 'seed-in-1', date: '2026-08-01', desc: 'Salary', accountId: 'us', amount: 5800, amountText: '5,800.00', cur: 'USD', budget: false, main: '337,463.33', mainNote: FROM_TRANSFERS },
     ]);
   });
 
   it('no reordena el estado, y uno recién agregado queda debajo de los de su mismo día', () => {
     const s = seedState();
-    s.incomes.push({ id: 'nuevo', date: '2026-10-01', desc: 'Gift', accountId: 'dr', amount: 500, cur: 'DOP' });
+    s.incomes.push({ id: 'nuevo', date: '2026-10-01', desc: 'Gift', accountId: 'dr', amount: 500, cur: 'DOP', budget: false });
     const before = s.incomes.map((i) => i.id);
     expect(incomeItems(s, 'en').slice(0, 2).map((r) => r.id)).toEqual(['seed-in-3', 'nuevo']);
     expect(s.incomes.map((i) => i.id)).toEqual(before);
@@ -422,9 +487,9 @@ describe('ingresos, uno por uno', () => {
   it('en la moneda principal no hay conversión; en otra, la tasa es la del mes de su fecha', () => {
     const s = withTRY();
     s.incomes = [
-      { id: 'a', date: '2026-10-10', desc: '', accountId: 'dr', amount: 1234.5, cur: 'DOP' },
-      { id: 'b', date: '2026-10-09', desc: 'Kira', accountId: 'dr', amount: 4000, cur: 'TRY' },
-      { id: 'c', date: '2026-08-09', desc: '', accountId: 'dr', amount: 4200, cur: 'TRY' },
+      { id: 'a', date: '2026-10-10', desc: '', accountId: 'dr', amount: 1234.5, cur: 'DOP', budget: false },
+      { id: 'b', date: '2026-10-09', desc: 'Kira', accountId: 'dr', amount: 4000, cur: 'TRY', budget: false },
+      { id: 'c', date: '2026-08-09', desc: '', accountId: 'dr', amount: 4200, cur: 'TRY', budget: false },
     ];
     const [a, b, c] = incomeItems(s, 'en');
     expect(a).toMatchObject({ amountText: '1,234.50', main: '1,234.50', mainNote: NO_NOTE });
@@ -440,42 +505,158 @@ describe('ingresos, uno por uno', () => {
   });
 });
 
+describe('ingresos: la casilla del presupuesto y el filtro por mes', () => {
+  it('cada ingreso lleva si sube el presupuesto; marcarlo no cambia su cifra convertida', () => {
+    const s = seedState();
+    expect(incomeItems(s, 'en').map((i) => i.budget)).toEqual([false, false, false]);
+    s.incomes.push({ id: 'bono', date: '2026-10-05', desc: 'Bonus', accountId: 'us', amount: 100, cur: 'USD', budget: true });
+    s.incomes.find((i) => i.id === 'seed-in-1')!.budget = true;
+    const rows = incomeItems(s, 'en');
+    expect(rows.map((i) => `${i.id} ${i.budget}`)).toEqual(['bono true', 'seed-in-3 false', 'seed-in-2 false', 'seed-in-1 true']);
+    expect(rows[0]).toMatchObject({ amountText: '100.00', main: '5,876.00', mainNote: NO_NOTE });
+    expect(rows[3]).toMatchObject({ main: '337,463.33', mainNote: FROM_TRANSFERS });
+    // El ingreso del mes es el mismo con la casilla o sin ella: lo que cambia es el presupuesto, que no se ve aquí.
+    expect(incomeRowViews(s, 'en')[0]!.income).toBe('337,463.33');
+  });
+
+  it('con un mes solo salen los ingresos con fecha en él, en el mismo orden y con las mismas cifras', () => {
+    const s = seedState();
+    s.incomes.push({ id: 'bono', date: '2026-10-05', desc: 'Bonus', accountId: 'dr', amount: 500, cur: 'DOP', budget: true });
+    s.incomes.push({ id: 'futuro', date: '2026-11-02', desc: '', accountId: 'dr', amount: 1, cur: 'DOP', budget: false });
+    const all = incomeItems(s, 'en');
+    expect(all.map((i) => i.id)).toEqual(['futuro', 'bono', 'seed-in-3', 'seed-in-2', 'seed-in-1']);
+    expect(incomeItems(s, 'en', undefined)).toEqual(all);
+    expect(incomeItems(s, 'en', '2026-10')).toEqual(all.slice(1, 3));
+    expect(incomeItems(s, 'en', '2026-09')).toEqual([all[3]]);
+    // Cuenta la fecha del ingreso, no que el mes exista: noviembre no está registrado y tiene uno.
+    expect(incomeItems(s, 'en', '2026-11').map((i) => i.id)).toEqual(['futuro']);
+    expect(incomeItems(s, 'en', '2026-12')).toEqual([]);
+    expect(incomeItems(s, 'en', '2025-10')).toEqual([]);
+  });
+});
+
+describe('una fila con fecha se convierte con la tasa vigente ese día', () => {
+  /** Octubre con dos tasas escritas: 58.76 desde el día 1 y 60 desde el día 6. */
+  function twoRates(): AppState {
+    const s = seedState();
+    s.months['2026-10']!.rates = [
+      { from: 'USD', to: 'DOP', rate: 58.76, date: '2026-10-01' },
+      { from: 'USD', to: 'DOP', rate: 60, date: '2026-10-06' },
+    ];
+    return s;
+  }
+
+  it('ingresos: antes del día 6 a 58.76; desde el día 6, a 60', () => {
+    const s = twoRates();
+    s.incomes = [
+      { id: 'c', date: '2026-10-31', desc: '', accountId: 'us', amount: 100, cur: 'USD', budget: false },
+      { id: 'b', date: '2026-10-06', desc: '', accountId: 'us', amount: 100, cur: 'USD', budget: false },
+      { id: 'a', date: '2026-10-05', desc: '', accountId: 'us', amount: 100, cur: 'USD', budget: false },
+      // Septiembre no tiene tasa escrita y la de octubre aún no valía: la de sus envíos.
+      { id: 'z', date: '2026-09-30', desc: '', accountId: 'us', amount: 100, cur: 'USD', budget: false },
+    ];
+    expect(incomeItems(s, 'en').map((i) => [i.id, i.main, i.mainNote])).toEqual([
+      ['c', '6,000.00', NO_NOTE],
+      ['b', '6,000.00', NO_NOTE],
+      ['a', '5,876.00', NO_NOTE],
+      ['z', '5,857.43', FROM_TRANSFERS],
+    ]);
+    // El ingreso del mes suma cada uno con la suya: 6,000 + 6,000 + 5,876.
+    expect(incomeRowViews(s, 'en')[2]!.income).toBe('17,876.00');
+  });
+
+  it('escribir una tasa nueva no cambia lo ya registrado', () => {
+    const before = seedState();
+    const after = twoRates();
+    // Todo lo de los datos de ejemplo tiene fecha anterior al día 6.
+    expect(incomeItems(after, 'en')).toEqual(incomeItems(before, 'en'));
+    expect(contributionRows(after, 'en')).toEqual(contributionRows(before, 'en'));
+    expect(incomeRowViews(after, 'en')).toEqual(incomeRowViews(before, 'en'));
+  });
+
+  it('aportes: las dos columnas convertidas usan la tasa de la fecha del aporte', () => {
+    const s = twoRates();
+    s.contribs = [
+      { id: 'b', goalId: 'emergency', date: '2026-10-07', amount: 6000, cur: 'DOP' },
+      { id: 'a', goalId: 'emergency', date: '2026-10-05', amount: 5876, cur: 'DOP' },
+      { id: 'd', goalId: 'turkey', date: '2026-10-06', amount: 100, cur: 'USD' },
+      { id: 'c', goalId: 'turkey', date: '2026-10-03', amount: 100, cur: 'USD' },
+    ];
+    const rows = contributionRows(s, 'en');
+    expect(rows.map((r) => [r.id, r.inGoal, r.main])).toEqual([
+      ['b', '100.00 USD', '6,000.00'], // 6,000 / 60
+      ['d', '100.00 USD', '6,000.00'], // 100 × 60
+      ['a', '100.00 USD', '5,876.00'], // 5,876 / 58.76
+      ['c', '100.00 USD', '5,876.00'], // 100 × 58.76
+    ]);
+    for (const r of rows) expect([r.goalNote, r.mainNote]).toEqual([NO_NOTE, NO_NOTE]);
+    // Lo ahorrado en el mes: 6,000 + 6,000 + 5,876 + 5,876.
+    expect(incomeRowViews(s, 'en')[2]!.saved).toBe('23,752.00');
+    // La meta suma cada aporte a su tasa (100 + 100 USD); su línea "≈" va a la última tasa del mes en curso.
+    expect(goalCards(s, 'en')[0]).toMatchObject({ saved: '200.00', savedApprox: '12,000', approxCur: 'DOP', approxNote: NO_NOTE });
+  });
+
+  it('la nota también es la de ese día: una tasa escrita después todavía no cuenta', () => {
+    const s = twoRates();
+    s.months['2026-10']!.rates.push({ from: 'USD', to: 'TRY', rate: 40, date: '2026-10-06' });
+    expect(rateNote(s, '2026-10', 'USD', 'DOP', 'en', '2026-10-03')).toBe(NO_NOTE);
+    expect(rateNote(s, '2026-10', 'USD', 'DOP', 'en', '2026-10-06')).toBe(NO_NOTE);
+    // Sin fecha: la última del mes.
+    expect(rateNote(s, '2026-10', 'USD', 'TRY', 'en')).toBe(NO_NOTE);
+    expect(rateNote(s, '2026-10', 'USD', 'TRY', 'en', '2026-10-06')).toBe(NO_NOTE);
+    // El día 5 nadie había escrito aún una tasa de TRY: valor de respaldo.
+    expect(rateNote(s, '2026-10', 'USD', 'TRY', 'en', '2026-10-05')).toEqual(DEFAULT_RATE_NOTE);
+    s.incomes = [
+      { id: 'b', date: '2026-10-06', desc: '', accountId: 'dr', amount: 4000, cur: 'TRY', budget: false },
+      { id: 'a', date: '2026-10-05', desc: '', accountId: 'dr', amount: 4200, cur: 'TRY', budget: false },
+    ];
+    const [b, a] = incomeItems(s, 'en');
+    // 4,000 TRY / 40 × 60, cruzando por USD con las dos tasas vigentes el día 6.
+    expect(b).toMatchObject({ main: '6,000.00', mainNote: { hint: 'crossed through USD', fallback: false } });
+    // 4,200 TRY / 42 × 58.76, los valores de respaldo: se marca.
+    expect(a).toMatchObject({ main: '5,876.00', mainNote: DEFAULT_RATE_NOTE });
+    expect(incomeRowViews(s, 'en')[2]).toMatchObject({ income: '11,876.00', incomeFallback: true });
+    // Un mes posterior sin registrar sigue con la última escrita, y dice de cuándo es.
+    expect(rateNote(s, '2026-11', 'USD', 'DOP', 'en', '2026-11-10')).toEqual({ hint: 'from October 2026', fallback: false });
+  });
+});
+
 describe('fila de agregar un ingreso', () => {
   const state = seedState();
   const draft = (over: Partial<IncomeDraft> = {}): IncomeDraft => ({ ...EMPTY_INCOME, ...over });
 
   it('borrador vacío: hoy, la cuenta por defecto y su moneda, sin monto', () => {
-    expect(resolveIncomeDraft(EMPTY_INCOME, state, TODAY)).toEqual({ date: TODAY, desc: '', accountId: 'dr', amount: 0, cur: 'DOP' });
+    expect(resolveIncomeDraft(EMPTY_INCOME, state, TODAY)).toEqual({ date: TODAY, desc: '', accountId: 'dr', amount: 0, cur: 'DOP', budget: false });
     expect(resolveIncomeDraft(EMPTY_INCOME, state, '2026-10-08').date).toBe('2026-10-08');
     expect(resolveIncomeDraft(draft({ date: '2026-09-30' }), state, '2026-10-08').date).toBe('2026-09-30');
   });
 
   it('la moneda sigue a la cuenta elegida hasta que el usuario elige una', () => {
-    expect(resolveIncomeDraft(draft({ accountId: 'us' }), state, TODAY)).toMatchObject({ accountId: 'us', cur: 'USD' });
-    expect(resolveIncomeDraft(draft({ accountId: 'us', cur: 'TRY' }), state, TODAY)).toMatchObject({ accountId: 'us', cur: 'TRY' });
+    expect(resolveIncomeDraft(draft({ accountId: 'us' }), state, TODAY)).toMatchObject({ accountId: 'us', cur: 'USD', budget: false });
+    expect(resolveIncomeDraft(draft({ accountId: 'us', cur: 'TRY' }), state, TODAY)).toMatchObject({ accountId: 'us', cur: 'TRY', budget: false });
     // Ya elegida, cambiar de cuenta no la mueve.
-    expect(resolveIncomeDraft(draft({ accountId: 'dr', cur: 'TRY' }), state, TODAY)).toMatchObject({ accountId: 'dr', cur: 'TRY' });
+    expect(resolveIncomeDraft(draft({ accountId: 'dr', cur: 'TRY' }), state, TODAY)).toMatchObject({ accountId: 'dr', cur: 'TRY', budget: false });
   });
 
   it('la cuenta por defecto es la de shared/calc: la elegida en Settings o la primera en la moneda principal', () => {
     const s = seedState();
     s.defaultAccountId = 'us';
-    expect(resolveIncomeDraft(EMPTY_INCOME, s, TODAY)).toMatchObject({ accountId: 'us', cur: 'USD' });
+    expect(resolveIncomeDraft(EMPTY_INCOME, s, TODAY)).toMatchObject({ accountId: 'us', cur: 'USD', budget: false });
     s.defaultAccountId = null;
-    expect(resolveIncomeDraft(EMPTY_INCOME, s, TODAY)).toMatchObject({ accountId: 'dr', cur: 'DOP' });
+    expect(resolveIncomeDraft(EMPTY_INCOME, s, TODAY)).toMatchObject({ accountId: 'dr', cur: 'DOP', budget: false });
   });
 
   it('una cuenta que se ocultó o se eliminó se cambia por la de por defecto', () => {
     const s = seedState();
     s.accounts.find((a) => a.id === 'us')!.hidden = true;
-    expect(resolveIncomeDraft(draft({ accountId: 'us' }), s, TODAY)).toMatchObject({ accountId: 'dr', cur: 'DOP' });
-    expect(resolveIncomeDraft(draft({ accountId: 'borrada' }), s, TODAY)).toMatchObject({ accountId: 'dr', cur: 'DOP' });
+    expect(resolveIncomeDraft(draft({ accountId: 'us' }), s, TODAY)).toMatchObject({ accountId: 'dr', cur: 'DOP', budget: false });
+    expect(resolveIncomeDraft(draft({ accountId: 'borrada' }), s, TODAY)).toMatchObject({ accountId: 'dr', cur: 'DOP', budget: false });
   });
 
   it('sin cuentas no hay a dónde entrar: no se agrega', () => {
     const s = seedState();
     s.accounts = [];
-    expect(resolveIncomeDraft(EMPTY_INCOME, s, TODAY)).toMatchObject({ accountId: '', cur: 'DOP' });
+    expect(resolveIncomeDraft(EMPTY_INCOME, s, TODAY)).toMatchObject({ accountId: '', cur: 'DOP', budget: false });
     expect(incomeDraftInput(draft({ amount: 100 }), s, TODAY)).toBeNull();
   });
 
@@ -486,20 +667,52 @@ describe('fila de agregar un ingreso', () => {
     expect(incomeDraftInput(draft({ amount: Number.POSITIVE_INFINITY }), state, TODAY)).toBeNull();
     expect(incomeDraftInput(draft({ amount: 100, date: '2026-02-30' }), state, TODAY)).toBeNull();
     expect(incomeDraftInput(draft({ amount: 100, date: '' }), state, TODAY)).toBeNull();
-    expect(incomeDraftInput(draft({ amount: 0.01 }), state, TODAY)).toEqual({ date: TODAY, desc: '', accountId: 'dr', amount: 0.01, cur: 'DOP' });
+    expect(incomeDraftInput(draft({ amount: 0.01 }), state, TODAY)).toEqual({ date: TODAY, desc: '', accountId: 'dr', amount: 0.01, cur: 'DOP', budget: false });
   });
 
   it('la descripción va sin espacios sobrantes y no puede pasar del largo que admite la API', () => {
     const d = draft({ date: '2026-09-15', desc: '  Salary ', accountId: 'us', amount: 5800 });
-    expect(incomeDraftInput(d, state, TODAY)).toEqual({ date: '2026-09-15', desc: 'Salary', accountId: 'us', amount: 5800, cur: 'USD' });
+    expect(incomeDraftInput(d, state, TODAY)).toEqual({ date: '2026-09-15', desc: 'Salary', accountId: 'us', amount: 5800, cur: 'USD', budget: false });
     expect(incomeDraftInput(draft({ amount: 1, desc: 'x'.repeat(200) }), state, TODAY)).not.toBeNull();
     expect(incomeDraftInput(draft({ amount: 1, desc: 'x'.repeat(201) }), state, TODAY)).toBeNull();
   });
 
   it('después de agregar se limpian la descripción y el monto; fecha, cuenta y moneda se quedan', () => {
-    const d = draft({ date: '2026-09-15', desc: 'Salary', accountId: 'us', amount: 5800, cur: 'USD' });
-    expect(afterIncomeAdd(d)).toEqual({ date: '2026-09-15', desc: '', accountId: 'us', amount: 0, cur: 'USD' });
+    const d = draft({ date: '2026-09-15', desc: 'Salary', accountId: 'us', amount: 5800, cur: 'USD', budget: false });
+    expect(afterIncomeAdd(d)).toEqual({ date: '2026-09-15', desc: '', accountId: 'us', amount: 0, cur: 'USD', budget: false });
     expect(afterIncomeAdd(draft({ desc: 'x', amount: 10 }))).toEqual(EMPTY_INCOME);
+  });
+
+  it('la casilla del presupuesto: desmarcada en Savings, marcada en la hoja del mes', () => {
+    expect(EMPTY_INCOME.budget).toBe(false);
+    expect(EMPTY_MONTH_INCOME).toEqual({ ...EMPTY_INCOME, budget: true });
+    expect(resolveIncomeDraft(EMPTY_INCOME, state, TODAY).budget).toBe(false);
+    expect(resolveIncomeDraft(EMPTY_MONTH_INCOME, state, TODAY)).toEqual({ date: TODAY, desc: '', accountId: 'dr', amount: 0, cur: 'DOP', budget: true });
+    // Se puede cambiar en cualquiera de las dos.
+    expect(resolveIncomeDraft(draft({ budget: true }), state, TODAY).budget).toBe(true);
+    expect(resolveIncomeDraft({ ...EMPTY_MONTH_INCOME, budget: false }, state, TODAY).budget).toBe(false);
+  });
+
+  it('el ingreso que se guarda lleva la casilla tal como quedó; por sí sola no basta para agregar', () => {
+    expect(incomeDraftInput(EMPTY_MONTH_INCOME, state, TODAY)).toBeNull();
+    expect(incomeDraftInput(draft({ budget: true }), state, TODAY)).toBeNull();
+    expect(incomeDraftInput({ ...EMPTY_MONTH_INCOME, amount: 250 }, state, '2026-10-12')).toEqual({
+      date: '2026-10-12',
+      desc: '',
+      accountId: 'dr',
+      amount: 250,
+      cur: 'DOP',
+      budget: true,
+    });
+    expect(incomeDraftInput(draft({ amount: 250 }), state, TODAY)!.budget).toBe(false);
+    expect(incomeDraftInput(draft({ amount: 250, budget: true, accountId: 'us', desc: ' Bonus ' }), state, TODAY)).toMatchObject({ desc: 'Bonus', cur: 'USD', budget: true });
+    expect(incomeDraftInput({ ...EMPTY_MONTH_INCOME, amount: 250, budget: false }, state, TODAY)!.budget).toBe(false);
+  });
+
+  it('después de agregar la casilla se queda como estaba, para el siguiente ingreso', () => {
+    expect(afterIncomeAdd({ ...EMPTY_MONTH_INCOME, desc: 'x', amount: 10 })).toEqual(EMPTY_MONTH_INCOME);
+    expect(afterIncomeAdd(draft({ desc: 'x', amount: 10, budget: true })).budget).toBe(true);
+    expect(afterIncomeAdd({ ...EMPTY_MONTH_INCOME, desc: 'x', amount: 10, budget: false }).budget).toBe(false);
   });
 
   it('el ingreso que sale del borrador es el que entra en la lista y en el mes', () => {
@@ -515,6 +728,7 @@ describe('fila de agregar un ingreso', () => {
       amount: 200,
       amountText: '200.00',
       cur: 'USD',
+      budget: false,
       main: '11,752.00',
       mainNote: NO_NOTE,
     });

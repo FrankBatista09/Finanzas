@@ -7,9 +7,9 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { balances, monthCalc } from '../../shared/calc';
 import { f0, f2 } from '../../shared/format';
-import { seedState } from '../../shared/seed';
+import { seedState, setBudgets } from '../../shared/seed';
 import { THEME_PRESETS } from '../../shared/theme';
-import type { AppState, AppUser, Language, MonthKey } from '../../shared/types';
+import type { AppState, AppUser, BudgetEntry, Income, Language, MonthKey } from '../../shared/types';
 import { I18nProvider } from '../i18n';
 import { buildFinanzas, FinanzasContext, ShellContext } from '../store';
 import type { Actions, Finanzas, Shell } from '../store';
@@ -119,11 +119,29 @@ function tryState(): AppState {
   s.mainCurrency = 'TRY';
   s.secondCurrency = 'USD';
   s.months['2026-10']!.rates = [
-    { from: 'USD', to: 'DOP', rate: 58.76 },
-    { from: 'USD', to: 'TRY', rate: 40 },
+    { from: 'USD', to: 'DOP', rate: 58.76, date: '2026-10-01' },
+    { from: 'USD', to: 'TRY', rate: 40, date: '2026-10-01' },
   ];
   return s;
 }
+
+/** Un movimiento del registro del presupuesto de octubre, en la DR account. */
+const logEntry = (over: Partial<BudgetEntry> & Pick<BudgetEntry, 'id' | 'amount' | 'kind'>): BudgetEntry => ({
+  date: '2026-10-07',
+  accountId: 'dr',
+  note: '',
+  ...over,
+});
+
+/** Un ingreso de octubre con la casilla "Adds to budget", en la DR account. */
+const budgetIncome = (over: Partial<Income> & Pick<Income, 'id' | 'amount'>): Income => ({
+  date: '2026-10-03',
+  desc: 'Refund',
+  accountId: 'dr',
+  cur: 'DOP',
+  budget: true,
+  ...over,
+});
 
 /** Los datos de ejemplo con una tercera cuenta en liras (visible) y una vieja, oculta y sin usar. */
 function manyAccounts(): AppState {
@@ -132,7 +150,7 @@ function manyAccounts(): AppState {
     { id: 'tr', name: 'TR account', currency: 'TRY', opening: 21000, hidden: false, sort: 2 },
     { id: 'old', name: 'Old savings', currency: 'USD', opening: 75, hidden: true, sort: 3 },
   );
-  s.months['2026-10']!.rates.push({ from: 'USD', to: 'TRY', rate: 42 });
+  s.months['2026-10']!.rates.push({ from: 'USD', to: 'TRY', rate: 42, date: '2026-10-01' });
   return s;
 }
 
@@ -169,8 +187,8 @@ describe('SummaryPanel · Month: el presupuesto', () => {
     expect(html).not.toContain('readOnly');
     const rows = [...html.matchAll(/<tr\b[^>]*>(.*?)<\/tr>/g)].map((m) => text(m[1]!).trim());
     expect(rows).toEqual(['DR account DOP ×', 'US account New account… USD Add']);
-    // La × quita la cuenta del presupuesto (deja su parte en 0).
-    expect(buttonTexts(html)).toEqual(['×', 'Add']);
+    // La × quita la cuenta del presupuesto (deja su parte en 0). Debajo de la tabla, el sobrante y el historial.
+    expect(buttonTexts(html)).toEqual(['×', 'Add', 'Add to budget', 'Budget history']);
     has(els(html, 'button'), { 'aria-label': 'Remove DR account from the budget' });
   });
 
@@ -190,17 +208,17 @@ describe('SummaryPanel · Month: el presupuesto', () => {
 
     // Con todas las visibles ya en el presupuesto solo queda "New account…", que lleva a Savings.
     const state = seedState();
-    state.months['2026-10']!.budgets = { us: 200, dr: 58248 };
+    setBudgets(state.months['2026-10']!, { us: 200, dr: 58248 });
     const full = panel({ state });
     // Un select de una sola opción no dispararía nada: ahí va un botón.
     expect(els(full, 'option')).toHaveLength(0);
-    expect(buttonTexts(full)).toEqual(['×', '×', 'New account…', 'Add']);
+    expect(buttonTexts(full)).toEqual(['×', '×', 'New account…', 'Add', 'Add to budget', 'Budget history']);
     has(els(full, 'button'), { 'aria-label': 'Remove US account from the budget' });
   });
 
   it('las partes en otra moneda suman convertidas con la tasa del mes; una cuenta oculta con parte sigue a la vista', () => {
     const state = seedState();
-    state.months['2026-10']!.budgets = { us: 200, dr: 58248 };
+    setBudgets(state.months['2026-10']!, { us: 200, dr: 58248 });
     const c = monthCalc(state, '2026-10');
     expect(text(panel({ state }))).toContain(`Budget ${f2(c.budget)} DOP ≈ ${f2(c.budgetSecond)} USD`);
     expect(f2(c.budget)).toBe('70,000.00');
@@ -215,7 +233,7 @@ describe('SummaryPanel · Month: el presupuesto', () => {
     ]);
     // También la oculta se puede quitar del presupuesto.
     has(els(withPart, 'button'), { 'aria-label': 'Remove US account from the budget' });
-    state.months['2026-10']!.budgets = { dr: 70000 };
+    setBudgets(state.months['2026-10']!, { dr: 70000 });
     const withoutPart = panel({ state });
     expect(els(withoutPart, 'input').map((i) => i['aria-label'])).toEqual(['Budget from DR account, in DOP', 'Amount of the new budget part']);
     // Y, oculta, tampoco se ofrece para agregarla.
@@ -258,14 +276,14 @@ describe('SummaryPanel · Month: el presupuesto', () => {
     // La US account solo tiene campo cuando tiene parte en el presupuesto del mes.
     expect(inputs.map((i) => i['aria-label'])).not.toContain('Presupuesto de US account, en USD');
     const state = seedState();
-    state.months['2026-10']!.budgets = { us: 200, dr: 58248 };
+    setBudgets(state.months['2026-10']!, { us: 200, dr: 58248 });
     has(els(panel({ lang: 'es', state }), 'input'), { 'aria-label': 'Presupuesto de US account, en USD' });
     // Lo nuevo: quitar una cuenta del presupuesto y la fila para sumar otra.
     has(inputs, { 'aria-label': 'Monto de la nueva parte del presupuesto' });
     has(els(html, 'select'), { 'aria-label': 'Cuenta que se suma al presupuesto' });
     has(els(html, 'button'), { 'aria-label': 'Quitar DR account del presupuesto' });
     expect(html).toContain('<option value="__new__">Cuenta nueva…</option>');
-    expect(buttonTexts(html)).toEqual(['×', 'Agregar']);
+    expect(buttonTexts(html)).toEqual(['×', 'Agregar', 'Sumar al presupuesto', 'Historial del presupuesto']);
     has(els(html, 'section'), { 'aria-label': 'Resumen de Octubre 2026' });
     has(els(html, 'svg'), { 'aria-label': 'Presupuesto usado: 49,150 de 70,000 DOP' });
   });
@@ -313,17 +331,144 @@ describe('SummaryPanel · Month: el presupuesto', () => {
     expect(els(html, 'input').map((i) => i['aria-label'])).toEqual(['Budget from DR account, in DOP']);
     expect(els(html, 'input').filter((i) => 'readOnly' in i)).toHaveLength(1);
     expect(els(html, 'select')).toEqual([]);
-    expect(buttonTexts(html)).toEqual([]);
+    // Lo único que se puede pulsar es el historial, que solo se despliega.
+    expect(buttonTexts(html)).toEqual(['Budget history']);
     expect(text(html)).not.toContain('New account…');
     expect(text(html)).toContain('September 2026 Planned budget 70,000.00');
   });
 
   it('pasado de presupuesto, el centro y el disponible van en rojo', () => {
     const state = seedState();
-    state.months['2026-10']!.budgets = { dr: 40000 };
+    setBudgets(state.months['2026-10']!, { dr: 40000 });
     const html = panel({ state });
     expect(text(html)).toContain('Available -9,149.71');
     expect([...html.matchAll(/errorText/g)].length).toBeGreaterThanOrEqual(3);
+  });
+
+  it('la × de una cuenta solo sale si su parte viene del registro: lo que ponen los ingresos no se quita desde aquí', () => {
+    const state = seedState();
+    // Un ingreso que sube el presupuesto y entra a la US account, que no tiene parte en el registro.
+    state.incomes.push(budgetIncome({ id: 'in-us', amount: 50, cur: 'USD', accountId: 'us' }));
+    const html = panel({ state });
+    expect(els(html, 'input').map((i) => [i.value, i['aria-label']])).toEqual([
+      ['50', 'Budget from US account, in USD'],
+      ['70000', 'Budget from DR account, in DOP'],
+      ['', 'Amount of the new budget part'],
+    ]);
+    const rows = [...html.matchAll(/<tr\b[^>]*>(.*?)<\/tr>/g)].map((m) => text(m[1]!).trim());
+    expect(rows.slice(0, 2)).toEqual(['US account USD', 'DR account DOP ×']);
+    expect(els(html, 'button').map((b) => b['aria-label']).filter(Boolean)).toEqual(['Remove DR account from the budget']);
+    // 70,000 + 50 USD × 58.76.
+    expect(text(html)).toContain('Budget 72,938.00 DOP');
+
+    // Con parte en el registro y además un ingreso, la × sigue: quita lo del registro.
+    const both = seedState();
+    both.incomes.push(budgetIncome({ id: 'in-dr', amount: 4000 }));
+    const mixed = panel({ state: both });
+    has(els(mixed, 'input'), { value: '74000', 'aria-label': 'Budget from DR account, in DOP' });
+    has(els(mixed, 'button'), { 'aria-label': 'Remove DR account from the budget' });
+  });
+
+  describe('el sobrante del mes anterior', () => {
+    /** La línea del sobrante: su texto, y los botones que lleva. */
+    const leftover = (opts: Opts = {}) => {
+      const html = panel(opts);
+      const block = /<div class="[^"]*leftover[^"]*">.*?<\/div>/.exec(html)?.[0];
+      return block === undefined ? null : { text: text(block).trim(), buttons: buttonTexts(block), html: block };
+    };
+
+    it('offer: lo que sobró en septiembre, con el botón para sumarlo al presupuesto de octubre', () => {
+      const line = leftover();
+      // 70,000 − 66,636.54.
+      expect(line!.text).toBe('Leftover from last month: 3,363.46 DOP Add to budget');
+      expect(line!.buttons).toEqual(['Add to budget']);
+      has(els(line!.html, 'button'), { type: 'button' });
+      expect(line!.html).toContain('inkText');
+      // Va debajo de la tabla de las cuentas y antes del historial.
+      const html = panel();
+      const order = ['</table>', 'Leftover from last month:', 'Budget history', 'Month income − used'].map((x) => html.indexOf(x));
+      expect(order.every((x) => x >= 0)).toBe(true);
+      expect(order).toEqual([...order].sort((a, b) => a - b));
+    });
+
+    it('added: una vez sumado, en vez del botón dice "added"', () => {
+      const state = seedState();
+      state.months['2026-10']!.budgetLog.push(logEntry({ id: 'bg-left', amount: 3363.46, kind: 'leftover' }));
+      const line = leftover({ state });
+      expect(line!.text).toBe('Leftover from last month: 3,363.46 DOP added');
+      expect(line!.buttons).toEqual([]);
+      // Y el presupuesto ya lo lleva.
+      expect(text(panel({ state }))).toContain('Budget 73,363.46 DOP');
+    });
+
+    it('plain: en un mes cerrado, solo la cifra', () => {
+      // Septiembre enseña lo que sobró en agosto.
+      const avail = monthCalc(seedState(), '2026-08').avail;
+      const line = leftover({ monthKey: '2026-09' });
+      expect(line!.text).toBe(`Leftover from last month: ${f2(avail)} DOP`);
+      expect(line!.buttons).toEqual([]);
+    });
+
+    it('plain: si sobró 0 no hay nada que sumar', () => {
+      const state = seedState();
+      setBudgets(state.months['2026-09']!, { dr: monthCalc(seedState(), '2026-09').used });
+      const line = leftover({ state });
+      expect(line!.text).toBe('Leftover from last month: 0.00 DOP');
+      expect(line!.buttons).toEqual([]);
+    });
+
+    it('sin mes anterior no hay línea', () => {
+      expect(leftover({ monthKey: '2026-08' })).toBeNull();
+      expect(text(panel({ monthKey: '2026-08' }))).not.toContain('Leftover');
+      expect(buttonTexts(panel({ monthKey: '2026-08' }))).toEqual(['Budget history']);
+    });
+
+    it('un sobrante negativo (el mes anterior se pasó) va en rojo y también se puede sumar', () => {
+      const state = seedState();
+      setBudgets(state.months['2026-09']!, { dr: 60000 });
+      const line = leftover({ state });
+      expect(line!.text).toBe('Leftover from last month: -6,636.54 DOP Add to budget');
+      expect(line!.html).toContain('errorText');
+      expect(line!.html).not.toContain('inkText');
+    });
+
+    it('va en la moneda principal del usuario', () => {
+      const state = tryState();
+      const line = leftover({ state });
+      expect(line!.text).toBe(`Leftover from last month: ${f2(monthCalc(tryState(), '2026-09').avail)} TRY Add to budget`);
+    });
+
+    it('en español y en turco', () => {
+      expect(leftover({ lang: 'es' })!.text).toBe('Sobrante del mes pasado: 3,363.46 DOP Sumar al presupuesto');
+      expect(leftover({ lang: 'tr' })!.text).toBe('Geçen aydan kalan: 3,363.46 DOP Bütçeye ekle');
+      const added = () => {
+        const state = seedState();
+        state.months['2026-10']!.budgetLog.push(logEntry({ id: 'bg-left', amount: 3363.46, kind: 'leftover' }));
+        return state;
+      };
+      expect(leftover({ lang: 'es', state: added() })!.text).toBe('Sobrante del mes pasado: 3,363.46 DOP sumado');
+      expect(leftover({ lang: 'tr', state: added() })!.text).toBe('Geçen aydan kalan: 3,363.46 DOP eklendi');
+      expect(leftover({ lang: 'es', monthKey: '2026-09' })!.buttons).toEqual([]);
+      expect(leftover({ lang: 'tr', monthKey: '2026-09' })!.text).toMatch(/^Geçen aydan kalan: [\d,.]+ DOP$/);
+    });
+  });
+
+  it('el historial del presupuesto arranca plegado: solo su botón, sin tabla ni filas', () => {
+    for (const monthKey of ['2026-10', '2026-09']) {
+      const html = panel({ monthKey });
+      const toggle = els(html, 'button').filter((b) => 'aria-expanded' in b);
+      expect(toggle).toEqual([expect.objectContaining({ type: 'button', 'aria-expanded': 'false' })]);
+      // La única tabla es la de las partes por cuenta.
+      expect(els(html, 'table').map((x) => x['aria-label'])).toEqual(['Budget']);
+      const t = text(html);
+      expect(t).toContain('Budget history');
+      expect(t).not.toContain('Initial');
+      expect(t).not.toContain('Adjustment');
+      expect(t).not.toContain('Car repair');
+      expect(t).not.toContain('No budget entries yet.');
+    }
+    expect(buttonTexts(panel({ lang: 'es' })).at(-1)).toBe('Historial del presupuesto');
+    expect(buttonTexts(panel({ lang: 'tr' })).at(-1)).toBe('Bütçe geçmişi');
   });
 
   it('no enseña el dinero total ni los saldos: eso es de Savings', () => {
@@ -603,7 +748,7 @@ describe('TopBar', () => {
     it('cruzada por la tercera moneda: dice por cuál', () => {
       const state = seedState();
       state.secondCurrency = 'TRY';
-      state.months['2026-10']!.rates.push({ from: 'USD', to: 'TRY', rate: 40 });
+      state.months['2026-10']!.rates.push({ from: 'USD', to: 'TRY', rate: 40, date: '2026-10-01' });
       const r = rate({ state });
       // 58.76 DOP por USD / 40 TRY por USD
       expect(r.text).toBe('Month rate 1 TRY = 1.47 DOP crossed through USD');
@@ -894,6 +1039,11 @@ describe('BottomTabs', () => {
 
 describe('CloseMonthModal', () => {
   const open = { closeDialog: { key: '2026-10', busy: false } };
+  /** Las etiquetas de los campos (<Field>): su texto y el id del control al que apuntan. */
+  const fieldLabels = (html: string) => [...html.matchAll(/<label\b[^>]*\bfor="([^"]*)"[^>]*>(.*?)<\/label>/g)].map((m) => [text(m[2]!).trim(), m[1]!]);
+  /** Las casillas con texto (<CheckField>): su texto y si están marcadas. */
+  const checkTexts = (html: string) =>
+    [...html.matchAll(/<label\b[^>]*><input\b([^>]*)\/><span>(.*?)<\/span><\/label>/g)].map((m) => [text(m[2]!).trim(), /\bchecked=""/.test(m[1]!)]);
 
   it('cerrado no pinta nada', () => {
     expect(render(<CloseMonthModal />)).toBe('');
@@ -913,9 +1063,95 @@ describe('CloseMonthModal', () => {
     );
     expect(buttonTexts(html)).toEqual(['Cancel', 'Only on the page', 'Yes, add to Excel']);
     expect(els(html, 'button').every((b) => b.type === 'button')).toBe(true);
+    // Nada apagado: ni los botones ni los campos del presupuesto del mes siguiente.
     expect(html).not.toContain('disabled');
-    // No es un formulario: el diálogo de cierre solo tiene botones.
+    expect(html).not.toContain('aria-invalid');
+    // Sigue sin ser un formulario: cada botón cierra a su manera, no hay un "enviar".
     expect(html).not.toContain('<form');
+  });
+
+  it('pregunta con qué presupuesto arranca el mes siguiente: un campo por cuenta con parte, con la de este mes', () => {
+    const html = render(<CloseMonthModal />, { shell: open });
+    const t = text(html);
+    // Después del texto del Excel, la línea que presenta los campos.
+    expect(t).toContain("will be downloaded. November 2026's budget starts with these amounts per account: Budget from DR account (DOP)");
+    const inputs = els(html, 'input');
+    expect(inputs.map((i) => i.type)).toEqual(['number', 'checkbox']);
+    expect(inputs[0]).toMatchObject({ type: 'number', value: '70000', step: 'any', min: '0', inputMode: 'decimal', placeholder: '0.00', autoComplete: 'off' });
+    // El campo lleva su etiqueta visible, con la cuenta y su moneda.
+    expect(fieldLabels(html)).toEqual([['Budget from DR account (DOP)', inputs[0]!.id]]);
+    // La línea de introducción no es la que describe el diálogo.
+    const [dialog] = els(html, 'div').filter((d) => d.role === 'dialog');
+    const described = new RegExp(`<p[^>]*id="${dialog!['aria-describedby']}"[^>]*>(.*?)</p>`).exec(html)![1]!;
+    expect(described).not.toContain('budget starts');
+  });
+
+  it('la casilla del sobrante: con lo que sobra de este mes, sin marcar', () => {
+    const html = render(<CloseMonthModal />, { shell: open });
+    // Octubre: 70,000 − 49,149.71.
+    expect(checkTexts(html)).toEqual([["Add this month's leftover (20,850.29 DOP) to November 2026's budget", false]]);
+
+    // Si el mes se pasó, lo que se ofrece sumar es negativo.
+    const over = seedState();
+    setBudgets(over.months['2026-10']!, { dr: 40000 });
+    expect(checkTexts(render(<CloseMonthModal />, { shell: open, state: over }))).toEqual([
+      ["Add this month's leftover (-9,149.71 DOP) to November 2026's budget", false],
+    ]);
+  });
+
+  it('si no sobra nada, la casilla no sale; los campos, sí', () => {
+    const state = seedState();
+    setBudgets(state.months['2026-10']!, { dr: monthCalc(seedState(), '2026-10').used });
+    const html = render(<CloseMonthModal />, { shell: open, state });
+    expect(els(html, 'input').map((i) => i.type)).toEqual(['number']);
+    expect(text(html)).not.toContain('leftover');
+    expect(text(html)).toContain("November 2026's budget starts with these amounts per account:");
+  });
+
+  it('varias cuentas con parte: un campo por cada una, en su moneda; lo que suman los ingresos no se hereda', () => {
+    const state = seedState();
+    setBudgets(state.months['2026-10']!, { us: 200, dr: 58248.5 });
+    state.incomes.push(budgetIncome({ id: 'in-dr', amount: 4000 }));
+    const html = render(<CloseMonthModal />, { shell: open, state });
+    const numbers = els(html, 'input').filter((i) => i.type === 'number');
+    expect(numbers.map((i) => i.value)).toEqual(['200', '58248.5']);
+    expect(fieldLabels(html)).toEqual([
+      ['Budget from US account (USD)', numbers[0]!.id],
+      ['Budget from DR account (DOP)', numbers[1]!.id],
+    ]);
+    expect(new Set(numbers.map((i) => i.id)).size).toBe(2);
+  });
+
+  it('sin ninguna parte en el registro no hay campos ni introducción; el sobrante se sigue ofreciendo', () => {
+    const state = seedState();
+    setBudgets(state.months['2026-10']!, {});
+    const html = render(<CloseMonthModal />, { shell: open, state });
+    expect(els(html, 'input').map((i) => i.type)).toEqual(['checkbox']);
+    expect(text(html)).not.toContain('budget starts with these amounts');
+    expect(checkTexts(html)).toEqual([["Add this month's leftover (-49,149.71 DOP) to November 2026's budget", false]]);
+  });
+
+  it('si el mes siguiente ya existe no pregunta por su presupuesto: solo el texto del Excel y los botones', () => {
+    // Se cierra septiembre (reabierto) con octubre ya creado.
+    const state = seedState();
+    state.months['2026-09']!.closed = false;
+    const html = render(<CloseMonthModal />, { monthKey: '2026-09', state, shell: { closeDialog: { key: '2026-09', busy: false } } });
+    const t = text(html);
+    expect(t).toContain('Close September 2026');
+    expect(t).toContain('October 2026 will be created with the same monthly expenses');
+    expect(els(html, 'input')).toEqual([]);
+    expect(els(html, 'label')).toEqual([]);
+    expect(t).not.toContain('budget starts with these amounts');
+    expect(t).not.toContain('leftover');
+    expect(buttonTexts(html)).toEqual(['Cancel', 'Only on the page', 'Yes, add to Excel']);
+    expect(html).not.toContain('disabled');
+  });
+
+  it('los campos son los del mes que se cierra, sea o no el que se está viendo', () => {
+    // Se mira agosto y se cierra octubre.
+    const html = render(<CloseMonthModal />, { monthKey: '2026-08', shell: open });
+    expect(els(html, 'input').filter((i) => i.type === 'number').map((i) => i.value)).toEqual(['70000']);
+    expect(checkTexts(html)[0]![0]).toContain('20,850.29 DOP');
   });
 
   it('en español: el texto del prototipo', () => {
@@ -926,6 +1162,11 @@ describe('CloseMonthModal', () => {
       'Se creará Noviembre 2026 con los mismos gastos mensuales, sin marcar como pagados. ¿Lo agrego también al Excel? Se descargará el archivo con todos los meses, incluido Noviembre 2026.',
     );
     expect(buttonTexts(html)).toEqual(['Cancelar', 'Solo en la página', 'Sí, agregar al Excel']);
+    // El presupuesto del mes siguiente.
+    expect(t).toContain('El presupuesto de Noviembre 2026 arranca con estos montos por cuenta: Presupuesto de DR account (DOP)');
+    expect(fieldLabels(html).map(([label]) => label)).toEqual(['Presupuesto de DR account (DOP)']);
+    expect(checkTexts(html)).toEqual([['Sumar el sobrante de este mes (20,850.29 DOP) al presupuesto de Noviembre 2026', false]]);
+    has(els(html, 'input'), { type: 'number', value: '70000' });
   });
 
   it('en turco', () => {
@@ -933,11 +1174,19 @@ describe('CloseMonthModal', () => {
     expect(text(html)).toContain('Ekim 2026 ayını kapat');
     expect(text(html)).toContain('Kasım 2026');
     expect(buttonTexts(html)).toEqual(['İptal', 'Yalnızca sayfada', "Evet, Excel'e ekle"]);
+    expect(text(html)).toContain('Kasım 2026 bütçesi hesap başına şu tutarlarla başlar: DR account bütçesi (DOP)');
+    expect(fieldLabels(html).map(([label]) => label)).toEqual(['DR account bütçesi (DOP)']);
+    expect(checkTexts(html)).toEqual([['Bu ayın kalanını (20,850.29 DOP) Kasım 2026 bütçesine ekle', false]]);
   });
 
-  it('mientras se cierra, los botones quedan deshabilitados', () => {
+  it('mientras se cierra, los botones y los campos quedan deshabilitados', () => {
     const html = render(<CloseMonthModal />, { shell: { closeDialog: { key: '2026-10', busy: true } } });
     expect(els(html, 'button').filter((b) => 'disabled' in b)).toHaveLength(3);
+    // El campo de la DR account y la casilla del sobrante.
+    expect(els(html, 'input').map((i) => [i.type, 'disabled' in i])).toEqual([
+      ['number', true],
+      ['checkbox', true],
+    ]);
     has(els(html, 'div'), { role: 'dialog', 'aria-busy': 'true' });
   });
 });

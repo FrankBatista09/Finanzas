@@ -21,7 +21,7 @@ export const CATS = [
   'Other',
 ] as const;
 
-export const METHODS = ['Card', 'Transfer', 'Bank app'] as const;
+export const METHODS = ['Debit card', 'Credit card', 'Transfer', 'Bank app', 'Cash'] as const;
 
 /** Sugerencias para la vía de un envío. Es texto libre: se puede escribir cualquier otra. */
 export const VIAS = ['Remitly', 'PayPal'] as const;
@@ -68,6 +68,6 @@ export const DEFAULT_ACCOUNTS: readonly Account[] = [
  * El nombre de una meta es un dato del usuario (lo puede cambiar) y no se traduce.
  */
 export const DEFAULT_GOALS: readonly Goal[] = [
-  { id: 'emergency', name: 'Emergency fund', cur: 'USD', monthly: null, start: null, end: null, sort: 0 },
-  { id: 'personal', name: 'Personal savings', cur: 'USD', monthly: null, start: null, end: null, sort: 1 },
+  { id: 'emergency', name: 'Emergency fund', cur: 'USD', monthly: null, start: null, end: null, approxCur: null, sort: 0 },
+  { id: 'personal', name: 'Personal savings', cur: 'USD', monthly: null, start: null, end: null, approxCur: null, sort: 1 },
 ];

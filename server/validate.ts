@@ -9,6 +9,8 @@ import { en } from 'zod/locales';
 import type {
   AccountCreate,
   AccountPatch,
+  BudgetEntryCreate,
+  CloseRequest,
   ContributionCreate,
   ContributionPatch,
   FixedCreate,
@@ -121,24 +123,43 @@ export const accountPatchSchema = z.strictObject({
 /** Un usuario tiene un puñado de cuentas; el tope solo evita que un cuerpo absurdo se convierta en miles de sentencias. */
 export const MAX_BUDGET_PARTS = 100;
 
-// Partes del presupuesto por cuenta: 0 quita la parte. Que la cuenta exista lo comprueba patchMonth (server/db.ts).
-export const monthPatchSchema = z.strictObject({
-  budgets: z
+const budgetParts = () =>
+  z
     .record(id(), nonNegative(), { error: typed('must be an object of account id → amount') })
-    .refine((parts) => Object.keys(parts).length <= MAX_BUDGET_PARTS, { error: `allows up to ${MAX_BUDGET_PARTS} accounts` })
-    .optional(),
+    .refine((parts) => Object.keys(parts).length <= MAX_BUDGET_PARTS, { error: `allows up to ${MAX_BUDGET_PARTS} accounts` });
+
+// Partes del presupuesto por cuenta: el monto en que queda cada una. Que la cuenta exista lo comprueba patchMonth (server/db.ts).
+export const monthPatchSchema = z.strictObject({
+  budgets: budgetParts().optional(),
 }) satisfies z.ZodType<MonthPatch>;
+
+// Un movimiento del presupuesto: suma o resta, pero no 0 (no cambiaría nada). El sobrante tiene su propia ruta.
+// Que la fecha caiga en el mes y que la cuenta exista lo comprueba addBudgetEntry (server/db.ts).
+export const budgetEntryCreateSchema = z.strictObject({
+  id: id().optional(),
+  date: isoDate().optional(),
+  accountId: id(),
+  amount: anyAmount().refine((n) => n !== 0, { error: 'cannot be 0' }),
+  kind: z.enum(['initial', 'adjust'], { error: 'must be initial or adjust' }).optional(),
+  note: text(MAX_LEN.desc).optional(),
+}) satisfies z.ZodType<BudgetEntryCreate>;
+
+// Cuerpo opcional del cierre de mes: las partes iniciales del mes siguiente y si se le suma el sobrante.
+export const closeRequestSchema = z.strictObject({
+  budgets: budgetParts().optional(),
+  addLeftover: bool().optional(),
+}) satisfies z.ZodType<CloseRequest>;
 
 const DIFFERENT_RATE_CURRENCIES = 'must be different from `from`';
 
-/** Tasa del mes escrita a mano: 1 `from` = `rate` `to`. */
+/** Tasa escrita a mano: 1 `from` = `rate` `to` desde `date`. Que la fecha caiga en el mes lo comprueba setMonthRate (server/db.ts). */
 export const monthRateSchema = z
-  .strictObject({ from: currency(), to: currency(), rate: positive() })
+  .strictObject({ from: currency(), to: currency(), rate: positive(), date: isoDate() })
   .refine((r) => r.from !== r.to, { error: DIFFERENT_RATE_CURRENCIES, path: ['to'] }) satisfies z.ZodType<MonthRate>;
 
-/** El par de DELETE /api/months/:key/rates/:from/:to (viene en la ruta). */
+/** El par y la fecha de DELETE /api/months/:key/rates/:from/:to?date= (vienen en la ruta y en la consulta). */
 export const ratePairSchema = z
-  .strictObject({ from: currency(), to: currency() })
+  .strictObject({ from: currency(), to: currency(), date: isoDate() })
   .refine((r) => r.from !== r.to, { error: DIFFERENT_RATE_CURRENCIES, path: ['to'] });
 
 // ── Gastos fijos ─────────────────────────────────────────────────────────────
@@ -236,6 +257,7 @@ export const incomeCreateSchema = z.strictObject({
   accountId: id().optional(),
   amount: positive(),
   cur: currency(),
+  budget: bool().optional(),
 }) satisfies z.ZodType<IncomeCreate>;
 
 export const incomePatchSchema = z.strictObject({
@@ -244,6 +266,7 @@ export const incomePatchSchema = z.strictObject({
   accountId: id().optional(),
   amount: nonNegative().optional(),
   cur: currency().optional(),
+  budget: bool().optional(),
 }) satisfies z.ZodType<IncomePatch>;
 
 // ── Metas y aportes ──────────────────────────────────────────────────────────
@@ -305,6 +328,7 @@ export const goalCreateSchema = z
     monthly: positive().nullable().optional(),
     start: monthKey().nullable().optional(),
     end: monthKey().nullable().optional(),
+    approxCur: currency().nullable().optional(),
   })
   .superRefine((g, ctx) => wholePlan(ctx, g.monthly, g, 'monthly')) satisfies z.ZodType<GoalCreate>;
 
@@ -317,6 +341,7 @@ export const goalPatchSchema = z
     monthly: positive().nullable().optional(),
     start: monthKey().nullable().optional(),
     end: monthKey().nullable().optional(),
+    approxCur: currency().nullable().optional(),
     sort: sortIndex().optional(),
   })
   .refine((g) => !g.start || !g.end || g.start <= g.end, { error: START_AFTER_END, path: ['end'] }) satisfies z.ZodType<GoalPatch>;

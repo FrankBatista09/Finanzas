@@ -1,7 +1,7 @@
 /* Diálogo de una meta. El panel, los campos y los botones salen de src/ui; aquí va solo lo propio del formulario. */
 
-/* Mes de inicio y mes objetivo, uno al lado del otro; en una pantalla estrecha, uno debajo del otro. */
-.months {
+/* Dos campos uno al lado del otro (moneda y moneda "≈"; mes de inicio y mes objetivo); en una pantalla estrecha, uno debajo del otro. */
+.pair {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: var(--gap-14) var(--gap-12);

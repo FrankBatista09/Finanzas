@@ -1,4 +1,4 @@
-// Hoja "Mes" (prototipo, líneas 336-521): gastos mensuales, categorías, tasas, envíos e historial del mes seleccionado.
+// Hoja "Mes" (prototipo, líneas 336-521): gastos mensuales, categorías, tasas, envíos, ingresos e historial del mes seleccionado.
 // Todo sale de useFinanzas(); el panel resumen de arriba y los diálogos de cerrar y de borrar el mes los pinta App.
 // Los textos están en strings.ts (inglés, español y turco) y salen en el idioma del usuario.
 
@@ -9,6 +9,7 @@ import { CategoriesCard } from './CategoriesCard';
 import { CloseBox } from './CloseBox';
 import { ClosedBanner } from './ClosedBanner';
 import { FixedCard } from './FixedCard';
+import { IncomeCard } from './IncomeCard';
 import styles from './MesScreen.module.css';
 import { RatesCard } from './RatesCard';
 import { TransactionsCard } from './TransactionsCard';
@@ -31,6 +32,8 @@ export function MesScreen() {
       </div>
       {/* Los envíos tienen siete columnas con dos cuentas: van a todo el ancho para que quepan los nombres. */}
       <TransfersCard />
+      {/* El dinero recibido fuera de los envíos: a todo el ancho, encima del historial. */}
+      <IncomeCard />
       <TransactionsCard />
       {!readOnly && <CloseBox />}
       {/* Borrar el mes, abierto o cerrado: discreto y al final. Solo abre el diálogo de confirmación, que vive en App. */}

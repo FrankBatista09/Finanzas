@@ -42,6 +42,7 @@ export const en = {
   saved: 'Saved',
   pctSaved: '% saved',
   deleteMonth: 'Delete month',
+  addsToBudget: 'Adds to budget',
 
   // ── De dónde salió una tasa (useI18n().rateHint) ───────────────────────────
   rateTyped: 'typed for this month',
@@ -116,6 +117,19 @@ export const en = {
   usedSoFar: 'Used so far',
   availableAfterFixed: 'Available after pending fixed',
   usedIn: 'Used in {currency}',
+  
+  // ── Sobrante del mes anterior e historial del presupuesto ──────────────────
+  leftoverFromLast: 'Leftover from last month:',
+  addToBudget: 'Add to budget',
+  leftoverAdded: 'added',
+  budgetHistory: 'Budget history',
+  budgetHistoryEmpty: 'No budget entries yet.',
+  budgetKind: 'Kind',
+  budgetKindInitial: 'Initial',
+  budgetKindAdjust: 'Adjustment',
+  budgetKindLeftover: 'Leftover',
+  budgetKindIncome: 'Income',
+  deleteBudgetEntry: 'Delete {kind} of {date}: {amount} {currency}',
 
   // ── Dinero total y cuentas (panel resumen de Savings) ──────────────────────
   totalMoney: 'Total money',
@@ -140,6 +154,9 @@ export const en = {
     '{next} will be created with the same monthly expenses, not marked as paid. Add it to the Excel too? The file with every month, including {next}, will be downloaded.',
   closeOnlyPage: 'Only on the page',
   closeWithExcel: 'Yes, add to Excel',
+  closeBudgetIntro: "{next}'s budget starts with these amounts per account:",
+  closeBudgetOf: 'Budget from {account} ({currency})',
+  closeAddLeftover: "Add this month's leftover ({amount} {currency}) to {next}'s budget",
 
   // ── Diálogo de borrar mes ──────────────────────────────────────────────────
   deleteMonthTitle: 'Delete {month}?',

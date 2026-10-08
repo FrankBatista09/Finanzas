@@ -11,12 +11,12 @@ import { AHORROS } from './strings';
 type Open = null | 'new' | { id: string };
 
 /**
- * Una tarjeta por meta: lo ahorrado en la moneda de la meta (y, si no es la principal, su equivalente "≈" a la tasa
- * del mes en curso) y, si la meta tiene objetivo, cuánto falta para llegar. Cada una se edita desde su cabecera y,
+ * Una tarjeta por meta: lo ahorrado en la moneda de la meta (y su equivalente "≈" en la moneda que eligió la meta
+ * —por defecto, la principal—, a la tasa del mes en curso, salvo que sea la misma) y, si la meta tiene objetivo, cuánto falta para llegar. Cada una se edita desde su cabecera y,
  * después de la última, la tarjeta punteada crea una nueva.
  */
 export function GoalCards() {
-  const { state, main } = useFinanzas();
+  const { state } = useFinanzas();
   const { t, lang } = useI18n();
   const s = useStrings(AHORROS);
   const [open, setOpen] = useState<Open>(null);
@@ -43,10 +43,10 @@ export function GoalCards() {
               <div className={styles.saved}>
                 {g.saved} <span className={styles.savedUnit}>{g.cur}</span>
               </div>
-              {g.savedMain !== null && (
-                <div className={cx(styles.savedMain, g.mainNote.fallback && styles.fallback)} title={g.mainNote.hint || undefined}>
-                  ≈ {g.savedMain} {main}
-                  {g.mainNote.fallback && '*'}
+              {g.savedApprox !== null && (
+                <div className={cx(styles.savedMain, g.approxNote.fallback && styles.fallback)} title={g.approxNote.hint || undefined}>
+                  ≈ {g.savedApprox} {g.approxCur}
+                  {g.approxNote.fallback && '*'}
                 </div>
               )}
             </div>

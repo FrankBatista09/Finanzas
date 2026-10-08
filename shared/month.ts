@@ -67,6 +67,29 @@ export function monthOf(date: ISODate): MonthKey {
   return date.slice(0, 7);
 }
 
+/** Primer día del mes: '2026-10' → '2026-10-01'. */
+export function firstDay(key: MonthKey): ISODate {
+  return `${key}-01`;
+}
+
+/** Último día del mes: '2026-02' → '2026-02-28'. */
+export function lastDay(key: MonthKey): ISODate {
+  const [y, m] = key.split('-').map(Number) as [number, number];
+  // El día 0 del mes siguiente es el último de este.
+  return `${key}-${String(new Date(Date.UTC(y, m, 0)).getUTCDate()).padStart(2, '0')}`;
+}
+
+/** true si la fecha cae dentro de ese mes. */
+export function inMonth(date: ISODate, key: MonthKey): boolean {
+  return monthOf(date) === key;
+}
+
+/** La fecha si cae en el mes; si es anterior, el primer día del mes; si es posterior, el último. */
+export function clampToMonth(date: ISODate, key: MonthKey): ISODate {
+  const k = monthOf(date);
+  return k === key ? date : k < key ? firstDay(key) : lastDay(key);
+}
+
 /** Meses entre dos claves, ambos incluidos ('2026-08'..'2027-10' → 15). */
 export function monthSpan(start: MonthKey, end: MonthKey): number {
   const [sy, sm] = start.split('-').map(Number) as [number, number];
