@@ -123,8 +123,9 @@
   outline-offset: 1px;
 }
 
-.addAccount {
-  white-space: nowrap;
+/* "+ Add account" / "+ Add account to budget": pegado al marco de su tabla (la celda separa sus piezas 14px). */
+.reveal {
+  margin-top: -6px;
 }
 
 .hidden {

@@ -40,6 +40,15 @@
   color: var(--text-muted);
 }
 
+/* El lado derecho de la cabecera cuando lleva además un control: la meta y, detrás, el "+ Add …". */
+.side {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: baseline;
+  gap: 6px 12px;
+}
+
 /* Aclaración bajo la cabecera: se pega a ella (la cabecera ya deja 12px debajo). */
 .note {
   margin: -6px 0 0;

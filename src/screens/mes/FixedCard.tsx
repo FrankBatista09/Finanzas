@@ -8,6 +8,7 @@ import type { AccountOption, Actions } from '../../store';
 import {
   AddButton,
   AddRow,
+  AddRowButton,
   Card,
   CardHeader,
   CellCheckbox,
@@ -20,6 +21,7 @@ import {
   Td,
   Th,
   Tr,
+  useAddRow,
 } from '../../ui';
 import { canAddFixed, draftAccount, draftCurrency, EMPTY_FIXED, fixedInput } from './drafts';
 import styles from './FixedCard.module.css';
@@ -28,7 +30,8 @@ import { MES } from './strings';
 
 /**
  * "Gastos mensuales": los mismos conceptos cada mes, con su casilla de pagado y la cuenta de la que se pagan.
- * Los importes calculados van en la moneda principal y en la segunda. La fila para agregar va al final.
+ * Los importes calculados van en la moneda principal y en la segunda. La fila para agregar va al final (ahí cae
+ * el gasto nuevo) y la abre el botón de la cabecera.
  */
 export function FixedCard({ className }: { className?: string }) {
   const { state, month, calc, main, second, inBoth, accounts, defaultAccount, accountOptions, readOnly, actions } = useFinanzas();
@@ -36,6 +39,7 @@ export function FixedCard({ className }: { className?: string }) {
   const s = useStrings(MES);
   // App monta la hoja de nuevo al cambiar de usuario o de mes (key): el borrador no pasa de uno a otro.
   const [draft, setDraft] = useState(EMPTY_FIXED);
+  const adding = useAddRow(() => setDraft(EMPTY_FIXED));
   // Las cuentas visibles, la misma lista mientras no cambien las cuentas: accountOptions es nueva en cada cambio
   // de estado y, pasada tal cual, repintaría todas las filas memorizadas con cada tecla.
   const visible = useMemo(() => accountOptions(), [state.accounts]);
@@ -57,6 +61,7 @@ export function FixedCard({ className }: { className?: string }) {
             {s('fixedMeta', { paid: calc.paidCount, total: calc.fixedCount })} <Num tone="ink">{f2(calc.fixedAll)} {main}</Num>
           </>
         }
+        action={!readOnly && <AddRowButton control={adding}>{s('addFixed')}</AddRowButton>}
       />
       <SheetTable label={s('fixedTitle')}>
         <thead>
@@ -92,7 +97,7 @@ export function FixedCard({ className }: { className?: string }) {
             />
           ))}
           {!readOnly && (
-            <AddRow onAdd={add}>
+            <AddRow control={adding} onAdd={add}>
               <Td kind="center" tone="faint">
                 +
               </Td>

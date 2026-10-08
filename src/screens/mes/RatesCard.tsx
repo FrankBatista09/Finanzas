@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { CURRENCIES } from '../../../shared/constants';
 import { useI18n, useStrings } from '../../i18n';
 import { useFinanzas } from '../../store';
-import { AddButton, AddRow, Card, CardHeader, CardNote, CellDate, CellSelect, cx, DeleteButton, SheetTable, Td, Th } from '../../ui';
+import { AddButton, AddRow, AddRowButton, Card, CardHeader, CardNote, CellDate, CellSelect, cx, DeleteButton, SheetTable, Td, Th, useAddRow } from '../../ui';
 import { canAddRate, EMPTY_RATE, pickRateCurrency, rateDate, ratePair } from './drafts';
 import { RateCell } from './RateCell';
 import styles from './RatesCard.module.css';
@@ -14,14 +14,15 @@ import { MES } from './strings';
  * Las escritas a mano van con su fecha (un par puede tener varias: cada una vale desde su fecha hasta la
  * siguiente) y se corrigen o se quitan aquí mismo. De un par sin ninguna escrita en este mes se enseña la vigente
  * y de dónde sale (los envíos del mes, otra moneda, un mes anterior, o el valor fijo de respaldo, que se avisa):
- * ahí no hay nada guardado que quitar, pero escribir en su celda crea la tasa del par. La fila de agregar escribe
- * la de cualquier par, desde la fecha que se elija.
+ * ahí no hay nada guardado que quitar, pero escribir en su celda crea la tasa del par. La fila de agregar (la abre
+ * el botón de la cabecera) escribe la de cualquier par, desde la fecha que se elija.
  */
 export function RatesCard() {
   const { month, monthKey, main, second, rates, visibleAccounts, readOnly, draftDate, actions } = useFinanzas();
   const { t, rateHint } = useI18n();
   const s = useStrings(MES);
   const [draft, setDraft] = useState(EMPTY_RATE);
+  const adding = useAddRow(() => setDraft(EMPTY_RATE));
 
   const shown = shownRates(rates, usedCurrencies(main, second, visibleAccounts, month));
   const rows = rateRows(shown, month.rates, rates, monthKey, draftDate);
@@ -37,7 +38,7 @@ export function RatesCard() {
 
   return (
     <Card>
-      <CardHeader title={t('monthRates')} />
+      <CardHeader title={t('monthRates')} action={!readOnly && <AddRowButton control={adding}>{t('addRate')}</AddRowButton>} />
       <CardNote>{s('ratesNote')}</CardNote>
       <SheetTable label={t('monthRates')}>
         <thead>
@@ -91,7 +92,7 @@ export function RatesCard() {
             );
           })}
           {!readOnly && (
-            <AddRow onAdd={add}>
+            <AddRow control={adding} onAdd={add}>
               <Td kind="edit">
                 <CellDate value={date} onCommit={(next) => setDraft((d) => ({ ...d, date: next }))} label={s('newRateDate')} />
               </Td>
@@ -127,7 +128,7 @@ export function RatesCard() {
                 />
               </Td>
               <Td kind="add">
-                <AddButton>{t('addRate')}</AddButton>
+                <AddButton />
               </Td>
             </AddRow>
           )}

@@ -50,6 +50,8 @@ export const BUDGET_KIND: Record<BudgetHistoryRow['kind'], CoreKey> = {
 };
 
 export interface BudgetHistoryView {
+  /** Única en la lista: un envío sale en dos filas (la de origen y la de destino) con el mismo id. */
+  key: string;
   id: string;
   date: ISODate;
   kind: BudgetHistoryRow['kind'];
@@ -76,6 +78,7 @@ export interface BudgetHistoryView {
 export function budgetHistoryRows(state: AppState, key: MonthKey): BudgetHistoryView[] {
   const open = state.months[key]?.closed === false;
   return budgetHistory(state, key).map((r) => ({
+    key: `${r.kind}:${r.id}${r.side ? `:${r.side}` : ''}`,
     id: r.id,
     date: r.date,
     kind: r.kind,
@@ -131,8 +134,9 @@ const fieldText = (n: number) => String(fieldAmount(n));
 
 /**
  * Lo que pregunta el diálogo de cierre sobre el presupuesto del mes siguiente. Las partes son las del registro
- * (BudgetPart.fromLog): los ingresos y los envíos que subieron el presupuesto de este mes no se heredan, igual que cuando el
- * servidor las copia por su cuenta.
+ * (BudgetPart.fromLog): los ingresos que subieron el presupuesto de este mes y los envíos que lo movieron de una
+ * cuenta a otra no se heredan, igual que cuando el servidor las copia por su cuenta: el mes siguiente arranca
+ * con el reparto escrito, antes de mover nada.
  */
 export function closeBudgetForm(state: AppState, key: MonthKey): CloseBudgetForm {
   const next = nextKey(key);

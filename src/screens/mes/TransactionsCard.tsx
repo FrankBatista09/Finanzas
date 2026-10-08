@@ -1,4 +1,6 @@
 import { memo, useMemo, useState } from 'react';
+import { FEE_CATEGORY, transferFees } from '../../../shared/calc';
+import type { TransferFee } from '../../../shared/calc';
 import { CATS, CURRENCIES, METHODS } from '../../../shared/constants';
 import { f2 } from '../../../shared/format';
 import type { Transaction } from '../../../shared/types';
@@ -8,6 +10,7 @@ import type { AccountOption, Actions } from '../../store';
 import {
   AddButton,
   AddRow,
+  AddRowButton,
   Card,
   CardHeader,
   CellDate,
@@ -21,20 +24,26 @@ import {
   SheetTable,
   Td,
   Th,
+  useAddRow,
 } from '../../ui';
 import { afterTxAdded, canAddTx, draftAccount, draftCurrency, newTxDraft, txInput } from './drafts';
-import { labelled, MAX_LEN, optionsWith, rowAccountOptions, sortTxDesc, withMoney } from './rows';
+import { historyRows, labelled, MAX_LEN, optionsWith, rowAccountOptions, shortDate } from './rows';
 import { MES } from './strings';
+import styles from './TransactionsCard.module.css';
 
 /**
- * "Historial de transacciones": la fila para agregar arriba y, debajo, las transacciones de la más reciente a la
- * más antigua, cada una con la cuenta de la que sale y su importe en la moneda principal y en la segunda.
+ * "Historial de transacciones": la fila para agregar arriba (la abre el botón de la cabecera) y, debajo, las
+ * transacciones de la más reciente a la más antigua, cada una con la cuenta de la que sale y su importe en la
+ * moneda principal y en la segunda. Entre ellas van las comisiones de los envíos del mes: cuentan como una
+ * transacción más (en el número y en el total de la cabecera), pero no son filas guardadas: salen del envío, así
+ * que aquí solo se leen.
  */
 export function TransactionsCard() {
-  const { state, month, calc, main, second, inBoth, accounts, defaultAccount, accountOptions, readOnly, draftDate, actions } = useFinanzas();
+  const { state, monthKey, month, calc, main, second, inBoth, accounts, defaultAccount, accountOptions, readOnly, draftDate, actions } = useFinanzas();
   const { t, catLabel, methodLabel } = useI18n();
   const s = useStrings(MES);
   const [draft, setDraft] = useState(newTxDraft);
+  const adding = useAddRow(() => setDraft(newTxDraft()));
   // La misma lista de cuentas visibles mientras no cambien las cuentas (ver FixedCard).
   const visible = useMemo(() => accountOptions(), [state.accounts]);
   const ctx = { accounts, defaultAccount, main };
@@ -56,6 +65,7 @@ export function TransactionsCard() {
             {s('txMeta', { count: calc.txCount })} <Num tone="ink">{f2(calc.varSpent)} {main}</Num>
           </>
         }
+        action={!readOnly && <AddRowButton control={adding}>{s('addTx')}</AddRowButton>}
       />
       <SheetTable minWidth={1100} label={s('txTitle')}>
         <thead>
@@ -78,7 +88,7 @@ export function TransactionsCard() {
         </thead>
         <tbody>
           {!readOnly && (
-            <AddRow onAdd={add}>
+            <AddRow control={adding} onAdd={add}>
               <Td kind="edit">
                 <CellDate
                   value={draft.date ?? draftDate}
@@ -164,20 +174,71 @@ export function TransactionsCard() {
               </Td>
             </AddRow>
           )}
-          {withMoney(sortTxDesc(month.tx), inBoth).map(({ row, main: inMain, second: inSecond }) => (
-            <TxRow
-              key={row.id}
-              row={row}
-              inMain={inMain}
-              inSecond={inSecond}
-              accounts={rowAccountOptions(visible, accounts, row.accountId)}
-              readOnly={readOnly}
-              actions={actions}
-            />
-          ))}
+          {historyRows(month.tx, transferFees(state, monthKey)).map((r) => {
+            if (r.kind === 'fee') {
+              const money = inBoth(r.fee.amount, r.fee.cur, undefined, r.fee.date);
+              return <FeeRow key={r.key} fee={r.fee} inMain={money.main} inSecond={money.second} />;
+            }
+            // Cada transacción, con la tasa vigente en su fecha.
+            const money = inBoth(r.tx.amount, r.tx.cur, undefined, r.tx.date);
+            return (
+              <TxRow
+                key={r.key}
+                row={r.tx}
+                inMain={money.main}
+                inSecond={money.second}
+                accounts={rowAccountOptions(visible, accounts, r.tx.accountId)}
+                readOnly={readOnly}
+                actions={actions}
+              />
+            );
+          })}
         </tbody>
       </SheetTable>
     </Card>
+  );
+}
+
+/**
+ * La comisión de un envío en el historial: mismas columnas que una transacción, pero en texto, sin campos ni ×.
+ * No es una fila guardada: se cambia (o se quita) en el envío, y la etiqueta junto al nombre lo dice.
+ */
+function FeeRow({ fee, inMain, inSecond }: { fee: TransferFee; inMain: number; inSecond: number }) {
+  const { catLabel } = useI18n();
+  const s = useStrings(MES);
+  const name = s('feeName', { via: fee.via });
+  const from = s('feeFromTransfer', { date: shortDate(fee.date) });
+  return (
+    <tr className={styles.feeRow}>
+      <Td kind="edit">
+        {/* El mismo campo de fecha que las demás filas, de solo lectura: así sale en el mismo formato. */}
+        <CellDate value={fee.date} readOnly tone="soft" label={s('dateOf', { name })} />
+      </Td>
+      <Td nowrap>
+        {name}
+        <span className={styles.feeTag} title={from}>
+          {s('feeTag')}
+        </span>
+      </Td>
+      <Td tone="soft">{fee.via}</Td>
+      <Td>{catLabel(FEE_CATEGORY)}</Td>
+      <Td />
+      <Td kind="num" nowrap>
+        {f2(fee.amount)}
+      </Td>
+      <Td kind="mono">{fee.cur}</Td>
+      <Td tone="soft" className={styles.feeAccount} title={fee.account.name}>
+        {fee.account.name}
+      </Td>
+      <Td kind="num" nowrap medium>
+        {f2(inMain)}
+      </Td>
+      <Td kind="num" nowrap tone="muted">
+        {f2(inSecond)}
+      </Td>
+      <Td />
+      <Td kind="action" />
+    </tr>
   );
 }
 

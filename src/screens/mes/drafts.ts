@@ -118,8 +118,10 @@ export interface TransferDraft {
   amount: number;
   /** null = sin tocar: la tasa del mes para las monedas de las dos cuentas, y las sigue si cambian. */
   rate: number | null;
-  /** La casilla "Adds to budget": marcada de entrada, porque lo que se envía suele ser para gastarlo este mes. */
+  /** La casilla "Moves budget": marcada de entrada, porque lo que se envía suele ser para gastarlo este mes. */
   budget: boolean;
+  /** null = sin tocar: la comisión del último envío por esa vía (TransferContext.lastFee), y la sigue si cambia la vía. */
+  fee: number | null;
 }
 
 export interface TransferContext extends Pick<DraftContext, 'accounts' | 'defaultAccount'> {
@@ -127,6 +129,8 @@ export interface TransferContext extends Pick<DraftContext, 'accounts' | 'defaul
   visible: readonly MoneyAccount[];
   /** La tasa del mes seleccionado para ese par, vigente en la fecha del borrador (useFinanzas().rateOf(from, to, undefined, date).rate). */
   rateOf(from: Currency, to: Currency): number;
+  /** La comisión del envío más reciente por esa vía; 0 si no hay ninguno (rows.ts lastFee). */
+  lastFee(via: string): number;
 }
 
 export interface TransferSides {
@@ -143,7 +147,7 @@ function viaOf(draft: TransferDraft): string {
 }
 
 export function newTransferDraft(): TransferDraft {
-  return { date: null, via: DEFAULT_VIA, fromAccountId: null, toAccountId: null, amount: 0, rate: null, budget: true };
+  return { date: null, via: DEFAULT_VIA, fromAccountId: null, toAccountId: null, amount: 0, rate: null, budget: true, fee: null };
 }
 
 /** Otra cuenta visible distinta de `than`; mejor una de otra moneda, que es lo que suele ser un envío. */
@@ -219,6 +223,11 @@ export function pickTransferAccount(draft: TransferDraft, ctx: TransferContext, 
   return samePair ? next : { ...next, rate: null };
 }
 
+/** La comisión que enseña el campo: la que escribió el usuario; sin tocar, la del último envío por la vía del borrador. */
+export function transferFee(draft: TransferDraft, ctx: Pick<TransferContext, 'lastFee'>): number {
+  return draft.fee ?? ctx.lastFee(viaOf(draft));
+}
+
 /** El borrador después de escribir en la tasa. Vaciar el campo (0) lo devuelve a la tasa del mes. */
 export function typeTransferRate(draft: TransferDraft, rate: number): TransferDraft {
   return { ...draft, rate: rate > 0 ? rate : null };
@@ -242,12 +251,16 @@ export function transferInput(draft: TransferDraft, draftDate: ISODate, ctx: Tra
     amount: draft.amount,
     rate: transferRate(draft, ctx).rate,
     budget: draft.budget,
+    fee: transferFee(draft, ctx),
   };
 }
 
-/** Solo se limpia el monto: fecha, vía, cuentas, tasa y casilla suelen repetirse en el siguiente envío. La vía queda como se guardó. */
+/**
+ * Solo se limpia el monto: fecha, vía, cuentas, tasa y casilla suelen repetirse en el siguiente envío. La vía queda
+ * como se guardó y la comisión vuelve a "sin tocar": propondrá la del envío que se acaba de guardar.
+ */
 export function afterTransferAdded(draft: TransferDraft): TransferDraft {
-  return { ...draft, via: viaOf(draft), amount: 0 };
+  return { ...draft, via: viaOf(draft), amount: 0, fee: null };
 }
 
 // ── Tasa del mes ─────────────────────────────────────────────────────────────

@@ -531,8 +531,10 @@ export interface TransferInput {
    * Entre dos cuentas de la misma moneda es siempre 1, se indique lo que se indique.
    */
   rate?: number;
-  /** true: el envío sube además el presupuesto del mes en la cuenta de destino (Transfer.budget). Sin indicar: false. */
+  /** true: el envío mueve además presupuesto del mes, de la cuenta de origen a la de destino (Transfer.budget). Sin indicar: false. */
   budget?: boolean;
+  /** Comisión, en la moneda de la cuenta de origen (Transfer.fee). Sin indicar: 0. */
+  fee?: number;
 }
 
 export interface IncomeInput {
@@ -626,10 +628,11 @@ function transferRate(state: AppState, monthKey: MonthKey, date: ISODate, fromId
   return positive(given) ? given : null;
 }
 
-/** Vía (texto libre, obligatoria), fecha válida, monto > 0 y dos cuentas distintas que existan. */
+/** Vía (texto libre, obligatoria), fecha válida, monto > 0, comisión >= 0 y dos cuentas distintas que existan. */
 export function newTransfer(state: AppState, monthKey: MonthKey, input: TransferInput, id: string): Transfer | null {
   const via = named(input.via, MAX_LEN.label);
-  if (!via || !state.months[monthKey] || !isISODate(input.date) || !positive(input.amount)) return null;
+  const fee = input.fee ?? 0;
+  if (!via || !state.months[monthKey] || !isISODate(input.date) || !positive(input.amount) || !nonNegative(fee)) return null;
   const rate = transferRate(state, monthKey, input.date, input.fromAccountId, input.toAccountId, input.rate);
   if (rate === null) return null;
   return {
@@ -642,12 +645,13 @@ export function newTransfer(state: AppState, monthKey: MonthKey, input: Transfer
     amount: input.amount,
     rate,
     budget: input.budget === true,
+    fee,
   };
 }
 
 /**
  * Lo que hay que mandar para aplicar `patch` a ese envío; {} si no queda nada que guardar (o el envío no existe).
- * Como en las demás celdas, lo que no vale se ignora: una vía vacía, un monto negativo, una tasa que no sea > 0 o
+ * Como en las demás celdas, lo que no vale se ignora: una vía vacía, un monto o una comisión negativos, una tasa que no sea > 0 o
  * un cambio de cuenta que dejaría el envío con una cuenta que no existe, con una de oro o con la misma en los dos lados.
  * Si el cambio de cuenta cambia las monedas del envío y no viene otra tasa, la tasa pasa a ser la del mes para el
  * par nuevo (1 entre monedas iguales): la anterior era de otras monedas.
@@ -661,6 +665,7 @@ export function transferChange(state: AppState, id: string, patch: TransferPatch
   if (patch.via !== undefined && !isBlank(patch.via) && patch.via.length <= MAX_LEN.label) out.via = patch.via;
   if (patch.amount !== undefined && nonNegative(patch.amount)) out.amount = patch.amount;
   if (typeof patch.budget === 'boolean') out.budget = patch.budget;
+  if (patch.fee !== undefined && nonNegative(patch.fee)) out.fee = patch.fee;
 
   const accounts = accountsById(state);
   let fromId = row.fromAccountId;
@@ -787,11 +792,12 @@ export function openingForBalance(state: AppState, monthKey: MonthKey, accountId
 const openMonth = (state: AppState, key: MonthKey) => state.months[key] !== undefined && !state.months[key].closed;
 
 /**
- * La parte del presupuesto de una cuenta tal como se ve (BudgetPart.amount: su registro más los ingresos y los
- * envíos que suben el presupuesto) pasa a ser `amount`. Lo que se manda es lo que debe sumar su registro: `amount`
- * menos lo que ya ponen esos ingresos y envíos, que no se tocan desde aquí. null si no se puede: mes cerrado,
- * cuenta que no existe, monto que no es un número >= 0, o un monto por debajo de lo que suman los ingresos y los
- * envíos (el registro quedaría en negativo y la API lo rechaza).
+ * La parte del presupuesto de una cuenta tal como se ve (BudgetPart.amount: su registro más los ingresos que
+ * suben el presupuesto y el neto de los envíos que lo mueven) pasa a ser `amount`. Lo que se manda es lo que debe
+ * sumar su registro: `amount` menos lo que ya ponen esos ingresos y envíos (calc.budgetRaised, negativo en la
+ * cuenta de la que sale un envío: ahí el registro suma más de lo que se ve), que no se tocan desde aquí. null si
+ * no se puede: mes cerrado, cuenta que no existe, monto que no es un número >= 0, o un monto por debajo de lo que
+ * ponen los ingresos y los envíos (el registro quedaría en negativo y la API lo rechaza).
  */
 export function budgetPart(state: AppState, key: MonthKey, accountId: string, amount: number): MonthPatch | null {
   if (!openMonth(state, key) || !hasMoneyAccount(state, accountId) || !nonNegative(amount)) return null;

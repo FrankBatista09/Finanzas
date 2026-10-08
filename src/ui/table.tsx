@@ -1,10 +1,10 @@
 // Marcado de tabla del prototipo: <table> real con th scope="col". Las pantallas escriben thead/tbody a mano.
 
-import { useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import type { HTMLAttributes, KeyboardEvent, ReactNode, TdHTMLAttributes, ThHTMLAttributes } from 'react';
 import { useI18n } from '../i18n';
-import { AddRowContext } from './addRowContext';
-import type { AddRowApi } from './addRowContext';
+import { AddRowContext, addRowKeyAction } from './addRowContext';
+import type { AddRowApi, AddRowControl } from './addRowContext';
 import { cx } from './cx';
 import type { Tone } from './cx';
 import styles from './table.module.css';
@@ -127,32 +127,63 @@ export interface AddRowProps extends Omit<HTMLAttributes<HTMLTableRowElement>, '
    * La llaman Enter en cualquier input de la fila y el <AddButton /> que haya dentro.
    */
   onAdd: () => boolean | void;
+  /**
+   * La fila se abre a petición (useAddRow + <AddRowButton>): cerrada no se pinta; al abrirla el foco va a su primer
+   * campo y Esc la cierra. Sin él, la fila está siempre a la vista.
+   */
+  control?: AddRowControl;
+}
+
+/**
+ * El campo en el que se empieza a escribir una fila nueva: el primero que no sea la fecha (ya trae la de hoy) ni
+ * una casilla. Un campo con sugerencias (la vía de un envío) conserva su valor de una fila a la siguiente, así
+ * que tampoco es lo que toca escribir: se salta, salvo que no haya otro. Sin campos de texto, la primera lista.
+ */
+function firstField(row: HTMLTableRowElement | null): HTMLElement | null {
+  const typed = 'input:not([type="date"]):not([type="checkbox"])';
+  return (
+    row?.querySelector<HTMLElement>(`${typed}:not([list])`) ?? row?.querySelector<HTMLElement>(typed) ?? row?.querySelector<HTMLElement>('select') ?? null
+  );
 }
 
 /** Fila para agregar: fondo #f9f8f3 y borde inferior #e3e1d8 en sus celdas. */
-export function AddRow({ onAdd, className, children, ...rest }: AddRowProps) {
+export function AddRow({ control, ...rest }: AddRowProps) {
+  // Cerrada no hay fila. Abrirla la monta de nuevo: de ahí que el foco inicial vaya en un efecto de montaje.
+  if (control && !control.open) return null;
+  return <OpenAddRow control={control} {...rest} />;
+}
+
+function OpenAddRow({ onAdd, control, className, children, ...rest }: AddRowProps) {
   const ref = useRef<HTMLTableRowElement>(null);
 
+  // Solo las filas que se abren a petición piden el foco: es la respuesta al clic en "+ Add …".
+  const closable = control !== undefined;
+  useEffect(() => {
+    if (closable) firstField(ref.current)?.focus();
+  }, [closable]);
+
   const api: AddRowApi = {
-    submit(fromKeyboard) {
-      if (onAdd() === false || !fromKeyboard) return;
+    submit() {
+      if (onAdd() === false) return;
       // Soltar el foco descarta el borrador local de la celda (la pantalla acaba de limpiar el suyo);
-      // después se deja el cursor en el primer campo que no sea la fecha, listo para la siguiente fila.
-      // Un campo con sugerencias (la vía de un envío) conserva su valor de una fila a la siguiente, así que
-      // tampoco es lo que toca escribir: se salta, salvo que no haya otro.
+      // después se deja el cursor en el primer campo, listo para la siguiente fila.
       const active = document.activeElement;
       if (active instanceof HTMLElement) active.blur();
-      const typed = 'input:not([type="date"]):not([type="checkbox"])';
-      const row = ref.current;
-      (row?.querySelector<HTMLInputElement>(`${typed}:not([list])`) ?? row?.querySelector<HTMLInputElement>(typed))?.focus();
+      firstField(ref.current)?.focus();
     },
   };
 
   const onKeyDown = (e: KeyboardEvent<HTMLTableRowElement>) => {
-    // Los select y el botón ya tienen su propio Enter.
-    if (e.key !== 'Enter' || e.nativeEvent.isComposing || !(e.target instanceof HTMLInputElement)) return;
+    const action = addRowKeyAction({
+      key: e.key,
+      isComposing: e.nativeEvent.isComposing,
+      inInput: e.target instanceof HTMLInputElement,
+      closable,
+    });
+    if (!action) return;
     e.preventDefault();
-    api.submit(true);
+    if (action === 'submit') api.submit();
+    else control?.hide();
   };
 
   return (

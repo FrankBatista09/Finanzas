@@ -45,6 +45,8 @@ export const es: Shape<typeof en> = {
   pctSaved: '% ahorro',
   deleteMonth: 'Eliminar mes',
   addsToBudget: 'Suma al presupuesto',
+  movesBudget: 'Mueve presupuesto',
+  fee: 'Comisión',
   budgetShort: 'Presup.',
 
   // ── De dónde salió una tasa ────────────────────────────────────────────────
@@ -108,6 +110,7 @@ export const es: Shape<typeof en> = {
   removeFromBudget: 'Quitar {name} del presupuesto',
   newAccountOption: 'Cuenta nueva…',
   budgetAccount: 'Cuenta que se suma al presupuesto',
+  addBudgetPart: 'Agregar cuenta al presupuesto',
   budgetAmount: 'Monto de la nueva parte del presupuesto',
   incomeMinusUsed: 'Ingreso del mes − usado',
   budgetUsed: 'Presupuesto usado',

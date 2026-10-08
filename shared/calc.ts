@@ -257,6 +257,38 @@ export function transferReceived(t: Pick<Transfer, 'amount' | 'rate'>): number {
   return (t.amount || 0) * (t.rate || 0);
 }
 
+/** La comisión de un envío como gasto del mes: sale de la cuenta de origen, en su moneda, el día del envío. */
+export interface TransferFee {
+  /** Id del envío del que sale: la fila no existe por sí sola, cambia con él. */
+  transferId: string;
+  date: ISODate;
+  /** La vía del envío ("Remitly"): con ella se nombra la fila ("Remitly fee"). */
+  via: string;
+  account: MoneyAccount;
+  /** En la moneda de la cuenta de origen. Mayor que 0. */
+  amount: number;
+  cur: Currency;
+}
+
+/** Categoría (canónica) en la que cuentan las comisiones de los envíos. */
+export const FEE_CATEGORY = 'Other';
+
+/**
+ * Las comisiones de los envíos de ese mes, en el orden de los envíos: una por envío con `fee` > 0. No se guardan
+ * como transacciones: se derivan aquí, y cuentan como una transacción del mes (monthCalc) pagada desde la cuenta
+ * de origen (balances). La de un envío cuya cuenta de origen ya no existe no sale: no se sabe en qué moneda era.
+ */
+export function transferFees(state: AppState, key: MonthKey): TransferFee[] {
+  const byId = accountsById(state);
+  const out: TransferFee[] = [];
+  for (const t of state.months[key]?.transfers ?? []) {
+    const account = byId.get(t.fromAccountId);
+    if (!(t.fee > 0) || !account || !isMoneyAccount(account)) continue;
+    out.push({ transferId: t.id, date: t.date, via: t.via, account, amount: t.fee, cur: account.currency });
+  }
+  return out;
+}
+
 // ── Saldos ───────────────────────────────────────────────────────────────────
 
 export interface AccountBalance {
@@ -287,7 +319,7 @@ export interface Balances {
  * Saldo de cada cuenta al final del mes `asOf`: su saldo inicial más todo lo que la movió hasta ese mes incluido.
  *  + ingresos (por su fecha)          − transacciones pagadas desde ella
  *  + envíos que le entran             − gastos fijos marcados como pagados desde ella
- *                                     − envíos que salen de ella
+ *                                     − envíos que salen de ella, y su comisión
  * Un movimiento en otra moneda entra o sale convertido con la tasa vigente en su fecha (un gasto fijo, que no
  * tiene fecha, con la última de su mes). Los aportes a metas no mueven saldos (son un apartado). Un movimiento
  * cuya cuenta ya no existe se ignora.
@@ -322,7 +354,8 @@ export function balances(state: AppState, asOf: MonthKey): Balances {
     for (const t of m.transfers) {
       const from = byId.get(t.fromAccountId);
       const to = byId.get(t.toAccountId);
-      if (from) sum.set(from.id, sum.get(from.id)! - (t.amount || 0));
+      // La comisión se cobra aparte, de la cuenta de origen y en su moneda: nunca se convierte.
+      if (from) sum.set(from.id, sum.get(from.id)! - (t.amount || 0) - (t.fee || 0));
       if (to) sum.set(to.id, sum.get(to.id)! + transferReceived(t));
     }
   }
@@ -377,13 +410,16 @@ export const FIXED_CATEGORY = 'Fixed expenses';
 
 export interface BudgetPart {
   account: MoneyAccount;
-  /** Parte del presupuesto que sale de esta cuenta, en su moneda: fromLog + fromIncomes + fromTransfers. */
+  /** Parte del presupuesto que sale de esta cuenta, en su moneda: fromLog + fromIncomes + fromTransfers. Puede ser negativa. */
   amount: number;
   /** Lo que viene del registro del presupuesto (Month.budgetLog): es lo que se edita con PATCH { budgets }. */
   fromLog: number;
   /** Lo que suman los ingresos del mes con `budget: true` que entran a esta cuenta, en su moneda. */
   fromIncomes: number;
-  /** Lo que suman los envíos del mes con `budget: true` que llegan a esta cuenta: lo recibido, en su moneda. */
+  /**
+   * El neto de los envíos del mes con `budget: true`, en su moneda: lo recibido de los que llegan a esta cuenta
+   * menos lo enviado por los que salen de ella. Negativo si de ella sale más presupuesto del que le llega.
+   */
   fromTransfers: number;
   /** `amount` en la moneda principal, con la última tasa del mes. */
   inMain: number;
@@ -407,17 +443,18 @@ export interface MonthCalc {
   paidCount: number;
   fixedCount: number;
 
-  /** Σ de las transacciones. */
+  /** Σ de las transacciones, contando como tales las comisiones de los envíos (transferFees). */
   varSpent: number;
+  /** Cuántas son: las transacciones más las comisiones. */
   txCount: number;
 
   /** fijosPagados + transacciones */
   used: number;
   usedSecond: number;
-  /** Presupuesto del mes: Σ de las partes por cuenta (registro + ingresos y envíos que suben el presupuesto). */
+  /** Presupuesto del mes: Σ de las partes por cuenta (registro + ingresos que lo suben + envíos que lo mueven). */
   budget: number;
   budgetSecond: number;
-  /** Una fila por cuenta visible (y por cualquier cuenta oculta que tenga parte), en el orden de las cuentas. */
+  /** Una fila por cuenta visible (y por cualquier cuenta oculta que tenga parte o que toque un envío con `budget`), en el orden de las cuentas. */
   budgetParts: BudgetPart[];
   /** presupuesto − usado */
   avail: number;
@@ -498,7 +535,7 @@ function incomeInAccount(state: AppState, income: MoneyIncome, account: MoneyAcc
 }
 
 /**
- * Los envíos que suben el presupuesto de ese mes: los de `budget: true` de su hoja (Transfer.monthKey, no el
+ * Los envíos que mueven presupuesto en ese mes: los de `budget: true` de su hoja (Transfer.monthKey, no el
  * mes de su fecha: un envío pertenece a un mes, a diferencia de un ingreso).
  */
 export function budgetTransfers(state: AppState, key: MonthKey): Transfer[] {
@@ -506,8 +543,24 @@ export function budgetTransfers(state: AppState, key: MonthKey): Transfer[] {
 }
 
 /**
- * Lo que los ingresos y los envíos con `budget: true` le suman a la parte de una cuenta en ese mes, en la moneda
- * de la cuenta: lo que el cálculo pone encima del registro. Quien fija una parte "en total" se lo resta para
+ * El neto que esos envíos dejan en la parte de una cuenta, en su moneda: un envío con `budget: true` MUEVE
+ * presupuesto, no lo crea. A la parte de la cuenta de destino le suma lo recibido (monto × tasa) y a la de origen
+ * le resta lo enviado (monto). Sumarlo solo en el destino contaba dos veces el dinero: el sueldo presupuestado
+ * en la cuenta de origen y, otra vez, lo que de él se enviaba.
+ */
+function transfersInAccount(moving: readonly Transfer[], accountId: string): number {
+  let net = 0;
+  for (const t of moving) {
+    if (t.toAccountId === accountId) net += transferReceived(t);
+    if (t.fromAccountId === accountId) net -= t.amount || 0;
+  }
+  return net;
+}
+
+/**
+ * Lo que los ingresos y los envíos con `budget: true` le ponen a la parte de una cuenta en ese mes, en la moneda
+ * de la cuenta: lo que el cálculo pone encima del registro (los ingresos suman; los envíos, su neto, que es
+ * negativo en la cuenta de la que sale más de lo que le llega). Quien fija una parte "en total" se lo resta para
  * saber cuánto tiene que sumar el registro (0 si la cuenta no existe o el mes no está registrado).
  */
 export function budgetRaised(state: AppState, key: MonthKey, accountId: string): number {
@@ -516,10 +569,7 @@ export function budgetRaised(state: AppState, key: MonthKey, accountId: string):
   const incomes = budgetIncomes(state, key)
     .filter((i) => i.accountId === accountId)
     .reduce((a, i) => a + incomeInAccount(state, i, account), 0);
-  const transfers = budgetTransfers(state, key)
-    .filter((t) => t.toAccountId === accountId)
-    .reduce((a, t) => a + transferReceived(t), 0);
-  return incomes + transfers;
+  return incomes + transfersInAccount(budgetTransfers(state, key), accountId);
 }
 
 export interface BudgetHistoryRow {
@@ -527,12 +577,17 @@ export interface BudgetHistoryRow {
   kind: BudgetEntryKind | 'income' | 'transfer';
   /** Id del BudgetEntry o, si kind es 'income' o 'transfer', del ingreso o del envío. */
   id: string;
+  /**
+   * Solo en un envío, que sale en dos filas con el mismo id: 'out' la de la cuenta de origen (resta lo enviado) e
+   * 'in' la de la de destino (suma lo recibido).
+   */
+  side?: 'out' | 'in';
   date: ISODate;
-  /** La cuenta del movimiento o del ingreso; en un envío, la de destino. */
+  /** La cuenta del movimiento o del ingreso; en un envío, la de origen o la de destino según `side`. */
   account: MoneyAccount;
   /**
    * En la moneda de la cuenta (un ingreso en otra moneda, ya convertido a la tasa de su fecha; de un envío, lo
-   * recibido: monto × tasa). Puede ser negativo.
+   * enviado en negativo o lo recibido: monto × tasa). Puede ser negativo.
    */
   amount: number;
   /** La nota del movimiento, la descripción del ingreso o la vía del envío. */
@@ -544,10 +599,12 @@ export interface BudgetHistoryRow {
 }
 
 /**
- * La historia del presupuesto del mes en una sola lista cronológica: los movimientos del registro y los ingresos
- * y envíos que lo suben, con el total acumulado en la moneda principal. Con la misma fecha van primero los
- * movimientos del registro, en su orden, después los ingresos y después los envíos. Lo de una cuenta que ya no
- * existe no sale (tampoco cuenta en monthCalc). Un mes sin registrar da una lista vacía.
+ * La historia del presupuesto del mes en una sola lista cronológica: los movimientos del registro, los ingresos
+ * que lo suben y los envíos que lo mueven, con el total acumulado en la moneda principal. Con la misma fecha van
+ * primero los movimientos del registro, en su orden, después los ingresos y después los envíos. Un envío sale en
+ * dos filas seguidas: lo que resta a la cuenta de origen y lo que suma a la de destino (si la tasa del envío es
+ * la del mes, el total vuelve a donde estaba). Lo de una cuenta que ya no existe no sale (tampoco cuenta en
+ * monthCalc). Un mes sin registrar da una lista vacía.
  */
 export function budgetHistory(state: AppState, key: MonthKey): BudgetHistoryRow[] {
   const m = state.months[key];
@@ -564,8 +621,10 @@ export function budgetHistory(state: AppState, key: MonthKey): BudgetHistoryRow[
     if (account) rows.push({ kind: 'income', id: i.id, date: i.date, account, amount: incomeInAccount(state, i, account), note: i.desc });
   }
   for (const t of budgetTransfers(state, key)) {
-    const account = byId.get(t.toAccountId);
-    if (account) rows.push({ kind: 'transfer', id: t.id, date: t.date, account, amount: transferReceived(t), note: t.via });
+    const from = byId.get(t.fromAccountId);
+    const to = byId.get(t.toAccountId);
+    if (from) rows.push({ kind: 'transfer', id: t.id, side: 'out', date: t.date, account: from, amount: -(t.amount || 0), note: t.via });
+    if (to) rows.push({ kind: 'transfer', id: t.id, side: 'in', date: t.date, account: to, amount: transferReceived(t), note: t.via });
   }
   // Orden estable: con la misma fecha se conserva el de arriba.
   rows.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
@@ -627,23 +686,30 @@ export function monthCalc(state: AppState, key: MonthKey): MonthCalc {
     varSpent += v;
     byCat.set(t.cat, (byCat.get(t.cat) ?? 0) + v);
   }
+  // La comisión de un envío es un gasto más del mes: cuenta como una transacción en la moneda de la cuenta de
+  // origen, con la tasa vigente en la fecha del envío.
+  const fees = transferFees(state, key);
+  for (const fee of fees) {
+    const v = convert(state, key, fee.amount, fee.cur, main, fee.date);
+    varSpent += v;
+    byCat.set(FEE_CATEGORY, (byCat.get(FEE_CATEGORY) ?? 0) + v);
+  }
 
   // El registro es la fuente de verdad (no Month.budgets, que es su suma ya hecha).
   const fromLog = budgetsFromLog(m.budgetLog);
   const raising = budgetIncomes(state, key);
-  // Un envío solo sube la parte de la cuenta a la que llega; a la de origen no le resta nada.
-  const arriving = budgetTransfers(state, key);
+  const moving = budgetTransfers(state, key);
   const budgetParts: BudgetPart[] = state.accounts
     .filter(isMoneyAccount)
     .sort((a, b) => a.sort - b.sort)
     .map((account) => {
       const log = fromLog[account.id] ?? 0;
       const incomes = raising.filter((i) => i.accountId === account.id).reduce((a, i) => a + incomeInAccount(state, i, account), 0);
-      const transfers = arriving.filter((t) => t.toAccountId === account.id).reduce((a, t) => a + transferReceived(t), 0);
+      const transfers = transfersInAccount(moving, account.id);
       const amount = log + incomes + transfers;
       return { account, amount, fromLog: log, fromIncomes: incomes, fromTransfers: transfers, inMain: toMain(amount, account.currency) };
     })
-    .filter((p) => !p.account.hidden || p.amount !== 0 || p.fromLog !== 0);
+    .filter((p) => !p.account.hidden || p.amount !== 0 || p.fromLog !== 0 || p.fromTransfers !== 0);
   const budget = budgetParts.reduce((a, p) => a + p.inMain, 0);
 
   const used = fixedPaid + varSpent;
@@ -670,7 +736,7 @@ export function monthCalc(state: AppState, key: MonthKey): MonthCalc {
     paidCount,
     fixedCount: m.fixed.length,
     varSpent,
-    txCount: m.tx.length,
+    txCount: m.tx.length + fees.length,
     used,
     usedSecond: convert(state, key, used, main, second),
     budget,

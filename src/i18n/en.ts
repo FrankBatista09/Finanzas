@@ -43,6 +43,8 @@ export const en = {
   pctSaved: '% saved',
   deleteMonth: 'Delete month',
   addsToBudget: 'Adds to budget',
+  movesBudget: 'Moves budget',
+  fee: 'Fee',
   budgetShort: 'Budget',
 
   // ── De dónde salió una tasa (useI18n().rateHint) ───────────────────────────
@@ -106,6 +108,7 @@ export const en = {
   removeFromBudget: 'Remove {name} from the budget',
   newAccountOption: 'New account…',
   budgetAccount: 'Account to add to the budget',
+  addBudgetPart: 'Add account to budget',
   budgetAmount: 'Amount of the new budget part',
   incomeMinusUsed: 'Month income − used',
   budgetUsed: 'Budget used',

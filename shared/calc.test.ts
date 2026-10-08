@@ -9,6 +9,7 @@ import {
   currentKey,
   defaultAccount,
   donut,
+  FEE_CATEGORY,
   goalsProgress,
   incomeRows,
   leftoverFor,
@@ -17,6 +18,7 @@ import {
   rateFor,
   ring,
   totalSaved,
+  transferFees,
 } from './calc';
 import { f0, f2 } from './format';
 import { clampToMonth, firstDay, inMonth, lastDay } from './month';
@@ -122,7 +124,7 @@ describe('rateFor', () => {
     s.months['2026-10']!.rates = [];
     // 1,500 USD → 88,140 DOP y 58,000 DOP → 1,000 USD: salieron 2,500 USD en total frente a 146,140 DOP.
     s.months['2026-10']!.transfers.push({
-      id: 'back', monthKey: '2026-10', date: '2026-10-09', via: 'Bank', fromAccountId: 'dr', toAccountId: 'us', amount: 58000, rate: 1 / 58, budget: false,
+      id: 'back', monthKey: '2026-10', date: '2026-10-09', via: 'Bank', fromAccountId: 'dr', toAccountId: 'us', amount: 58000, rate: 1 / 58, budget: false, fee: 0,
     });
     expect(rateFor(s, '2026-10', 'USD', 'DOP').rate).toBeCloseTo(146140 / 2500, 8);
   });
@@ -413,60 +415,85 @@ describe('ingresos que suben el presupuesto (Income.budget)', () => {
   });
 });
 
-describe('envíos que suben el presupuesto (Transfer.budget)', () => {
-  it('sube la parte de la cuenta de destino por lo recibido; la de origen y los saldos quedan igual', () => {
-    const plain = seedState();
+describe('envíos que mueven presupuesto (Transfer.budget)', () => {
+  it('lo que sale de la parte de origen entra en la de destino: con la tasa del mes, el total no cambia', () => {
     const s = seedState();
-    // El envío de octubre: 1,500 USD de la US account a la DR account a 58.76 = 88,140 DOP.
+    // El caso de Frank: el sueldo, 2,200 USD, presupuestado en la US account; 1,500 USD de él van a la DR account
+    // a 58.76 (la tasa del mes) = 88,140 DOP.
+    s.months['2026-10']!.budgetLog = [{ id: 'salary', date: '2026-10-01', accountId: 'us', amount: 2200, kind: 'initial', note: '' }];
+    const before = monthCalc(s, '2026-10').budget;
+    expect(before).toBeCloseTo(2200 * 58.76, 8);
     s.months['2026-10']!.transfers[0]!.budget = true;
     const c = monthCalc(s, '2026-10');
-    expect(c.budget).toBe(158140);
-    expect(c.budgetSecond).toBeCloseTo(158140 / 58.76, 8);
-    expect(c.avail - monthCalc(plain, '2026-10').avail).toBeCloseTo(88140, 8);
-    expect(c.budgetParts.map((p) => [p.account.id, p.amount, p.fromLog, p.fromIncomes, p.fromTransfers, p.inMain])).toEqual([
-      // A la cuenta de origen no le resta nada.
-      ['us', 0, 0, 0, 0, 0],
-      ['dr', 158140, 70000, 0, 88140, 158140],
+    expect(c.budgetParts.map((p) => [p.account.id, p.amount, p.fromLog, p.fromIncomes, p.fromTransfers])).toEqual([
+      ['us', 700, 2200, 0, -1500],
+      ['dr', 88140, 0, 0, 88140],
     ]);
+    expect(c.budget).toBeCloseTo(before, 8);
     // Solo su mes: los envíos de septiembre no están marcados.
     expect(monthCalc(s, '2026-09').budget).toBe(70000);
+  });
+
+  it('la parte de origen puede quedar en negativo, y sale aunque la cuenta no tenga registro (u esté oculta)', () => {
+    const plain = seedState();
+    const s = seedState();
+    s.months['2026-10']!.transfers[0]!.budget = true;
+    const c = monthCalc(s, '2026-10');
+    expect(c.budgetParts.map((p) => [p.account.id, p.amount, p.fromLog, p.fromTransfers, p.inMain])).toEqual([
+      ['us', -1500, 0, -1500, -1500 * 58.76],
+      ['dr', 158140, 70000, 88140, 158140],
+    ]);
+    // Con la tasa del mes no crea presupuesto: lo de antes, y lo mismo disponible.
+    expect(c.budget).toBeCloseTo(70000, 8);
+    expect(c.avail).toBeCloseTo(monthCalc(plain, '2026-10').avail, 8);
     // La casilla no mueve dinero: los saldos son los mismos que sin ella, y Month.budgets sigue siendo solo el registro.
     expect(balances(s, '2026-10')).toEqual(balances(plain, '2026-10'));
     expect(s.months['2026-10']!.budgets).toEqual({ dr: 70000 });
+    // Oculta y sin registro, la cuenta de origen sigue saliendo: le quitaron presupuesto.
+    s.accounts.find((a) => a.id === 'us')!.hidden = true;
+    expect(monthCalc(s, '2026-10').budgetParts.map((p) => [p.account.id, p.amount])).toEqual([
+      ['us', -1500],
+      ['dr', 158140],
+    ]);
   });
 
-  it('entre otras monedas: lo recibido va en la moneda de la cuenta de destino y cuenta en el mes de su hoja', () => {
+  it('entre otras monedas: cada lado en la moneda de su cuenta, y cuenta en el mes de su hoja', () => {
     const s = seedState();
     s.accounts.push({ id: 'tr', name: 'TR account', currency: 'TRY', opening: 0, hidden: false, sort: 2 });
     const october = s.months['2026-10']!;
     october.rates.push({ from: 'TRY', to: 'DOP', rate: 1.5, date: '2026-10-01' });
     october.transfers.push(
-      // 100 USD → 4,000 TRY. Su fecha es de septiembre, pero es de la hoja de octubre: sube octubre.
-      { id: 'to-tr', monthKey: '2026-10', date: '2026-09-30', via: 'Wise', fromAccountId: 'us', toAccountId: 'tr', amount: 100, rate: 40, budget: true },
-      // 5,876 DOP → 100 USD: sube la parte de la US account en 100 USD y no baja la de la DR account.
-      { id: 'to-us', monthKey: '2026-10', date: '2026-10-06', via: 'Bank', fromAccountId: 'dr', toAccountId: 'us', amount: 5876, rate: 1 / 58.76, budget: true },
-      // Sin marcar, o hacia una cuenta que ya no existe: no cuentan.
-      { id: 'plain', monthKey: '2026-10', date: '2026-10-06', via: 'Bank', fromAccountId: 'us', toAccountId: 'tr', amount: 10, rate: 40, budget: false },
-      { id: 'ghost', monthKey: '2026-10', date: '2026-10-06', via: 'Bank', fromAccountId: 'us', toAccountId: 'gone', amount: 10, rate: 40, budget: true },
+      // 100 USD → 4,000 TRY. Su fecha es de septiembre, pero es de la hoja de octubre: mueve octubre.
+      { id: 'to-tr', monthKey: '2026-10', date: '2026-09-30', via: 'Wise', fromAccountId: 'us', toAccountId: 'tr', amount: 100, rate: 40, budget: true, fee: 0 },
+      // 5,876 DOP → 100 USD: baja la DR account en 5,876 DOP y sube la US account en 100 USD.
+      { id: 'to-us', monthKey: '2026-10', date: '2026-10-06', via: 'Bank', fromAccountId: 'dr', toAccountId: 'us', amount: 5876, rate: 1 / 58.76, budget: true, fee: 0 },
+      // Sin marcar no cuenta; hacia una cuenta que ya no existe, solo el lado que sí existe.
+      { id: 'plain', monthKey: '2026-10', date: '2026-10-06', via: 'Bank', fromAccountId: 'us', toAccountId: 'tr', amount: 10, rate: 40, budget: false, fee: 0 },
+      { id: 'ghost', monthKey: '2026-10', date: '2026-10-06', via: 'Bank', fromAccountId: 'us', toAccountId: 'gone', amount: 10, rate: 40, budget: true, fee: 0 },
     );
     const c = monthCalc(s, '2026-10');
-    const parts = c.budgetParts.map((p) => [p.account.id, p.fromLog, p.fromTransfers, p.amount] as const);
-    expect(parts[0]![0]).toBe('us');
-    expect(parts[0]![2]).toBeCloseTo(100, 8);
-    expect(parts.slice(1)).toEqual([
-      ['dr', 70000, 0, 70000],
+    const parts = c.budgetParts.map((p) => [p.account.id, p.fromLog, Math.round(p.fromTransfers * 1e6) / 1e6, Math.round(p.amount * 1e6) / 1e6]);
+    expect(parts).toEqual([
+      ['us', 0, -10, -10],
+      ['dr', 70000, -5876, 64124],
       ['tr', 0, 4000, 4000],
     ]);
-    // 70,000 + 100 USD × 58.76 + 4,000 TRY × 1.5
-    expect(c.budget).toBeCloseTo(70000 + 5876 + 6000, 6);
+    // −10 USD × 58.76 + 64,124 DOP + 4,000 TRY × 1.5
+    expect(c.budget).toBeCloseTo(-587.6 + 64124 + 6000, 6);
     expect(monthCalc(s, '2026-09').budget).toBe(70000);
 
+    // Cada envío en dos filas: lo que sale de la cuenta de origen y lo que entra a la de destino.
     const history = budgetHistory(s, '2026-10');
-    expect(history.map((h) => [h.date, h.kind, h.id, h.account.id, Math.round(h.amount * 100) / 100, h.note, Math.round(h.total * 100) / 100])).toEqual([
-      ['2026-09-30', 'transfer', 'to-tr', 'tr', 4000, 'Wise', 6000],
-      ['2026-10-01', 'initial', 'seed-bg-2026-10-1', 'dr', 65000, '', 71000],
-      ['2026-10-05', 'adjust', 'seed-bg-2026-10-2', 'dr', 5000, 'Car repair', 76000],
-      ['2026-10-06', 'transfer', 'to-us', 'us', 100, 'Bank', 81876],
+    expect(
+      history.map((h) => [h.date, h.kind, h.id, h.side, h.account.id, Math.round(h.amount * 100) / 100, h.note, Math.round(h.total * 100) / 100]),
+    ).toEqual([
+      ['2026-09-30', 'transfer', 'to-tr', 'out', 'us', -100, 'Wise', -5876],
+      ['2026-09-30', 'transfer', 'to-tr', 'in', 'tr', 4000, 'Wise', 124],
+      ['2026-10-01', 'initial', 'seed-bg-2026-10-1', undefined, 'dr', 65000, '', 65124],
+      ['2026-10-05', 'adjust', 'seed-bg-2026-10-2', undefined, 'dr', 5000, 'Car repair', 70124],
+      ['2026-10-06', 'transfer', 'to-us', 'out', 'dr', -5876, 'Bank', 64248],
+      ['2026-10-06', 'transfer', 'to-us', 'in', 'us', 100, 'Bank', 70124],
+      ['2026-10-06', 'transfer', 'ghost', 'out', 'us', -10, 'Bank', 69536.4],
     ]);
     expect(history.at(-1)!.total).toBeCloseTo(c.budget, 8);
   });
@@ -474,29 +501,90 @@ describe('envíos que suben el presupuesto (Transfer.budget)', () => {
   it('con la misma fecha: el registro, después los ingresos y después los envíos', () => {
     const s = seedState();
     s.months['2026-10']!.transfers.push({
-      id: 'same-day', monthKey: '2026-10', date: '2026-10-05', via: 'Cash', fromAccountId: 'us', toAccountId: 'dr', amount: 1, rate: 60, budget: true,
+      id: 'same-day', monthKey: '2026-10', date: '2026-10-05', via: 'Cash', fromAccountId: 'us', toAccountId: 'dr', amount: 1, rate: 60, budget: true, fee: 0,
     });
     s.incomes.push({ id: 'gift', date: '2026-10-05', desc: 'Gift', accountId: 'dr', amount: 10, cur: 'DOP', budget: true });
-    expect(budgetHistory(s, '2026-10').map((h) => [h.kind, h.id, h.total])).toEqual([
+    // −1 USD (58.76 DOP) y +60 DOP: un envío a una tasa mejor que la del mes deja la diferencia.
+    expect(budgetHistory(s, '2026-10').map((h) => [h.kind, h.id, Math.round(h.total * 100) / 100])).toEqual([
       ['initial', 'seed-bg-2026-10-1', 65000],
       ['adjust', 'seed-bg-2026-10-2', 70000],
       ['income', 'gift', 70010],
-      ['transfer', 'same-day', 70070],
+      ['transfer', 'same-day', 69951.24],
+      ['transfer', 'same-day', 70011.24],
     ]);
   });
 
-  it('budgetRaised: lo que ingresos y envíos ponen encima del registro de una cuenta, en su moneda', () => {
+  it('budgetRaised: lo que ingresos y envíos ponen encima del registro de una cuenta, en su moneda (el neto de los envíos)', () => {
     const s = seedState();
     s.months['2026-10']!.transfers[0]!.budget = true;
     s.incomes.push({ id: 'gig', date: '2026-10-03', desc: 'Gig', accountId: 'dr', amount: 100, cur: 'USD', budget: true });
     // 88,140 del envío + 100 USD a 58.76.
     expect(budgetRaised(s, '2026-10', 'dr')).toBeCloseTo(88140 + 5876, 8);
-    expect(budgetRaised(s, '2026-10', 'us')).toBe(0);
+    // De la cuenta de origen sale lo enviado.
+    expect(budgetRaised(s, '2026-10', 'us')).toBe(-1500);
     expect(budgetRaised(s, '2026-09', 'dr')).toBe(0);
     expect(budgetRaised(s, '2026-10', 'gone')).toBe(0);
     expect(budgetRaised(s, '2030-01', 'dr')).toBe(0);
-    const part = monthCalc(s, '2026-10').budgetParts.find((p) => p.account.id === 'dr')!;
-    expect(part.amount - part.fromLog).toBeCloseTo(budgetRaised(s, '2026-10', 'dr'), 8);
+    for (const part of monthCalc(s, '2026-10').budgetParts) {
+      expect(part.amount - part.fromLog).toBeCloseTo(budgetRaised(s, '2026-10', part.account.id), 8);
+    }
+  });
+});
+
+describe('comisión de un envío (Transfer.fee)', () => {
+  /** Los datos de ejemplo con 2.99 USD de comisión en el envío de octubre (1,500 USD a la DR account, el día 2). */
+  const withFee = (fee = 2.99) => {
+    const s = seedState();
+    s.months['2026-10']!.transfers[0]!.fee = fee;
+    return s;
+  };
+
+  it('le resta a la cuenta de origen, en su moneda y sin convertir; a la de destino no le toca', () => {
+    const plain = balances(seedState(), '2026-10').accounts;
+    const after = balances(withFee(), '2026-10').accounts;
+    expect(after[0]!.balance).toBeCloseTo(plain[0]!.balance - 2.99, 10);
+    expect(after[1]!.balance).toBe(plain[1]!.balance);
+    // Y sigue restando en los meses de después, no en los de antes.
+    expect(balances(withFee(), '2026-09').accounts[0]!.balance).toBe(balances(seedState(), '2026-09').accounts[0]!.balance);
+  });
+
+  it('cuenta como una transacción del mes: en lo usado, en el número, en "Other" y en lo disponible', () => {
+    const plain = monthCalc(seedState(), '2026-10');
+    const c = monthCalc(withFee(), '2026-10');
+    // Con la tasa vigente el día del envío (58.76).
+    const fee = 2.99 * 58.76;
+    expect(c.varSpent - plain.varSpent).toBeCloseTo(fee, 10);
+    expect(c.used - plain.used).toBeCloseTo(fee, 10);
+    expect(c.avail - plain.avail).toBeCloseTo(-fee, 10);
+    expect(c.txCount).toBe(plain.txCount + 1);
+    expect(c.categories.find((cat) => cat.name === FEE_CATEGORY)!.value).toBeCloseTo(fee, 10);
+    expect(FEE_CATEGORY).toBe('Other');
+    // No toca el presupuesto, ni siquiera si el envío lo mueve: solo se mueve `amount`.
+    expect(c.budget).toBe(plain.budget);
+    const moving = withFee();
+    moving.months['2026-10']!.transfers[0]!.budget = true;
+    expect(monthCalc(moving, '2026-10').budgetParts.find((p) => p.account.id === 'us')!.fromTransfers).toBe(-1500);
+  });
+
+  it('transferFees: una fila por envío con comisión, en la moneda de su cuenta de origen y con su fecha', () => {
+    const s = withFee();
+    s.accounts.push({ id: 'tr', name: 'TR account', currency: 'TRY', opening: 0, hidden: false, sort: 2 });
+    const october = s.months['2026-10']!;
+    october.rates.push({ from: 'TRY', to: 'DOP', rate: 1.5, date: '2026-10-01' });
+    october.transfers.push(
+      { id: 'from-tr', monthKey: '2026-10', date: '2026-10-08', via: 'Wise', fromAccountId: 'tr', toAccountId: 'dr', amount: 1000, rate: 1.5, budget: false, fee: 20 },
+      // Sin comisión, o desde una cuenta que ya no existe (no se sabe en qué moneda era): no salen.
+      { id: 'free', monthKey: '2026-10', date: '2026-10-08', via: 'Cash', fromAccountId: 'us', toAccountId: 'dr', amount: 1, rate: 58, budget: false, fee: 0 },
+      { id: 'ghost', monthKey: '2026-10', date: '2026-10-08', via: 'Cash', fromAccountId: 'gone', toAccountId: 'dr', amount: 1, rate: 58, budget: false, fee: 5 },
+    );
+    expect(transferFees(s, '2026-10').map((f) => [f.transferId, f.date, f.via, f.account.id, f.amount, f.cur])).toEqual([
+      ['seed-tr-2026-10-1', '2026-10-02', 'Remitly', 'us', 2.99, 'USD'],
+      ['from-tr', '2026-10-08', 'Wise', 'tr', 20, 'TRY'],
+    ]);
+    // La de liras, a la tasa de su fecha: 20 × 1.5 DOP.
+    expect(monthCalc(s, '2026-10').varSpent - monthCalc(withFee(), '2026-10').varSpent).toBeCloseTo(30, 10);
+    expect(transferFees(s, '2026-09')).toEqual([]);
+    expect(transferFees(s, '2030-01')).toEqual([]);
   });
 });
 

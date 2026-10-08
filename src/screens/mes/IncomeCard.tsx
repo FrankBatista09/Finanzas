@@ -1,7 +1,7 @@
 import { f2 } from '../../../shared/format';
 import { useI18n, useStrings } from '../../i18n';
 import { useFinanzas } from '../../store';
-import { Card, CardHeader, CardNote, Num } from '../../ui';
+import { AddRowButton, Card, CardHeader, CardNote, Num, useAddRow } from '../../ui';
 import { IncomeTable } from '../ahorros/IncomeTable';
 import { EMPTY_MONTH_INCOME, incomeItems } from '../ahorros/model';
 import { MES } from './strings';
@@ -17,6 +17,7 @@ export function IncomeCard() {
   const { state, monthKey, calc, main, draftDate, readOnly } = useFinanzas();
   const { t, lang } = useI18n();
   const s = useStrings(MES);
+  const adding = useAddRow();
 
   return (
     <Card>
@@ -30,6 +31,7 @@ export function IncomeCard() {
             </Num>
           </>
         }
+        action={!readOnly && <AddRowButton control={adding}>{t('addIncome')}</AddRowButton>}
       />
       <CardNote>{s('incomeNote')}</CardNote>
       <IncomeTable
@@ -37,6 +39,7 @@ export function IncomeCard() {
         rows={incomeItems(state, lang, monthKey)}
         empty={EMPTY_MONTH_INCOME}
         date={draftDate}
+        adding={adding}
         readOnly={readOnly}
         compact
       />

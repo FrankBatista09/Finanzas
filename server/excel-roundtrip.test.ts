@@ -206,7 +206,7 @@ describe('Excel: exportar e importar de verdad', () => {
     october.rates.push({ from: 'USD', to: 'TRY', rate: 40, date: '2026-10-01' });
     setBudgets(october, { dr: 60000, tr: 4000 });
     october.tx.push({ ...october.tx[0]!, id: 'lira', desc: 'Baklava', amount: 1250, cur: 'TRY', accountId: 'tr' });
-    october.transfers.push({ id: 'to-tr', monthKey: '2026-10', date: '2026-10-08', via: 'Wise', fromAccountId: 'us', toAccountId: 'tr', amount: 100, rate: 40, budget: false });
+    october.transfers.push({ id: 'to-tr', monthKey: '2026-10', date: '2026-10-08', via: 'Wise', fromAccountId: 'us', toAccountId: 'tr', amount: 100, rate: 40, budget: false, fee: 0 });
     mine.incomes.push({ id: 'maas', date: '2026-10-15', desc: 'Maaş', accountId: 'tr', amount: 20000, cur: 'TRY', budget: false });
     mine.goals.push({ id: 'flat', name: 'Istanbul flat', cur: 'TRY', monthly: 10000, start: '2026-10', end: '2027-09', approxCur: null, sort: 3 });
     mine.contribs.push({ id: 'c-try', goalId: 'flat', date: '2026-10-09', amount: 4000, cur: 'TRY' });

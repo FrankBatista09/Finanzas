@@ -46,6 +46,8 @@ export const tr: Shape<typeof en> = {
   pctSaved: 'Birikim oranı',
   deleteMonth: 'Ayı sil',
   addsToBudget: 'Bütçeye eklenir',
+  movesBudget: 'Bütçeyi taşır',
+  fee: 'Komisyon',
   budgetShort: 'Bütçe',
 
   // ── De dónde salió una tasa ────────────────────────────────────────────────
@@ -109,6 +111,7 @@ export const tr: Shape<typeof en> = {
   removeFromBudget: '{name} hesabını bütçeden çıkar',
   newAccountOption: 'Yeni hesap…',
   budgetAccount: 'Bütçeye eklenecek hesap',
+  addBudgetPart: 'Bütçeye hesap ekle',
   budgetAmount: 'Yeni bütçe payının tutarı',
   incomeMinusUsed: 'Ay geliri − kullanılan',
   budgetUsed: 'Kullanılan bütçe',

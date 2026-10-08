@@ -97,6 +97,7 @@ describe('budgetHistoryRows: la historia del presupuesto', () => {
     const state = seedState();
     expect(budgetHistoryRows(state, '2026-10')).toEqual([
       {
+        key: 'initial:seed-bg-2026-10-1',
         id: 'seed-bg-2026-10-1',
         date: '2026-10-01',
         kind: 'initial',
@@ -110,6 +111,7 @@ describe('budgetHistoryRows: la historia del presupuesto', () => {
         deletable: true,
       },
       {
+        key: 'adjust:seed-bg-2026-10-2',
         id: 'seed-bg-2026-10-2',
         date: '2026-10-05',
         kind: 'adjust',
@@ -134,7 +136,7 @@ describe('budgetHistoryRows: la historia del presupuesto', () => {
       transfer: 'budgetKindTransfer',
     });
     const state = stateWith((s) => {
-      // El envío del día 2 (1,500 USD a 58.76) marcado para subir el presupuesto.
+      // El envío del día 2 (1,500 USD a 58.76) marcado para mover presupuesto: sale en dos filas.
       s.months['2026-10']!.transfers[0]!.budget = true;
       s.months['2026-10']!.budgetLog.push(entry({ id: 'bg-left', amount: 3363.46, kind: 'leftover' }));
       s.incomes.push(income({ id: 'in-b', amount: 1000, date: '2026-10-09' }));
@@ -143,15 +145,19 @@ describe('budgetHistoryRows: la historia del presupuesto', () => {
     expect(rows.map((r) => [r.kind, r.kindKey])).toEqual([
       ['initial', 'budgetKindInitial'],
       ['transfer', 'budgetKindTransfer'],
+      ['transfer', 'budgetKindTransfer'],
       ['adjust', 'budgetKindAdjust'],
       ['leftover', 'budgetKindLeftover'],
       ['income', 'budgetKindIncome'],
     ]);
     const { t } = createI18n('es');
-    expect(rows.map((r) => t(r.kindKey))).toEqual(['Inicial', 'Envío', 'Ajuste', 'Sobrante', 'Ingreso']);
+    expect(rows.map((r) => t(r.kindKey))).toEqual(['Inicial', 'Envío', 'Envío', 'Ajuste', 'Sobrante', 'Ingreso']);
     expect(rows.map((r) => createI18n('en').t(r.kindKey))[1]).toBe('Transfer');
-    // Lo recibido, en la cuenta de destino; como un ingreso, no se quita desde el historial.
-    expect(rows[1]).toMatchObject({ account: 'DR account', amount: '88,140.00', currency: 'DOP', note: 'Remitly', deletable: false });
+    // Lo enviado, en negativo en la cuenta de origen, y lo recibido en la de destino; como un ingreso, no se quita
+    // desde el historial. Cada fila con su clave: el id es el mismo.
+    expect(rows[1]).toMatchObject({ key: expect.stringMatching(/:out$/), account: 'US account', amount: '-1,500.00', currency: 'USD', negative: true, note: 'Remitly', deletable: false });
+    expect(rows[2]).toMatchObject({ key: expect.stringMatching(/:in$/), account: 'DR account', amount: '88,140.00', currency: 'DOP', negative: false, note: 'Remitly', deletable: false });
+    expect(new Set(rows.map((r) => r.key)).size).toBe(rows.length);
   });
 
   it('los importes van en la moneda de su cuenta; el total, en la principal, y el de la última fila es el presupuesto del mes', () => {
@@ -323,15 +329,32 @@ describe('closeBudgetForm: lo que pregunta el diálogo de cierre', () => {
     expect(closeBudgetForm(state, '2026-10').fields).toEqual([{ accountId: 'dr', name: 'DR account', currency: 'DOP', amount: '70000', exact: 70000 }]);
   });
 
-  it('los envíos que subieron el presupuesto tampoco se heredan, pero sí cuentan en lo que sobra', () => {
+  it('lo que movieron los envíos tampoco se hereda: el mes siguiente arranca con el registro', () => {
+    const state = stateWith((s) => {
+      s.months['2026-10']!.budgetLog.push(entry({ id: 'bg-us', accountId: 'us', amount: 2200, kind: 'initial' }));
+      // 1,500 USD de la US account a la DR account a 58.76, la tasa del mes.
+      s.months['2026-10']!.transfers[0]!.budget = true;
+    });
+    const calc = monthCalc(state, '2026-10');
+    expect(calc.budgetParts.map((p) => [p.account.id, p.amount, p.fromLog])).toEqual([
+      ['us', 700, 2200],
+      ['dr', 158140, 70000],
+    ]);
+    const form = closeBudgetForm(state, '2026-10');
+    expect(form.fields).toEqual([
+      { accountId: 'us', name: 'US account', currency: 'USD', amount: '2200', exact: 2200 },
+      { accountId: 'dr', name: 'DR account', currency: 'DOP', amount: '70000', exact: 70000 },
+    ]);
+    // Mover no crea presupuesto: sobra lo mismo que sin el envío marcado (20,850.29 + los 2,200 USD).
+    expect(form.leftover!).toBeCloseTo(20850.29 + 2200 * 58.76, 2);
+  });
+
+  it('una cuenta con parte en negativo por un envío, sin registro, no se pregunta al cerrar', () => {
     const state = stateWith((s) => {
       s.months['2026-10']!.transfers[0]!.budget = true;
     });
-    const form = closeBudgetForm(state, '2026-10');
-    expect(monthCalc(state, '2026-10').budget).toBe(158140);
-    expect(form.fields).toEqual([{ accountId: 'dr', name: 'DR account', currency: 'DOP', amount: '70000', exact: 70000 }]);
-    // 20,850.29 que sobraban + los 88,140 del envío.
-    expect(f2(form.leftover!)).toBe('108,990.29');
+    expect(monthCalc(state, '2026-10').budgetParts.find((p) => p.account.id === 'us')!.amount).toBe(-1500);
+    expect(closeBudgetForm(state, '2026-10').fields.map((f) => f.accountId)).toEqual(['dr']);
   });
 
   it('el campo enseña dos decimales y guarda la parte exacta', () => {

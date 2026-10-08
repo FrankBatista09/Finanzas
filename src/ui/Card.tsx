@@ -20,6 +20,8 @@ export interface CardHeaderProps {
   title: ReactNode;
   /** Texto a la derecha (12px, atenuado). Las cifras dentro van con <Num tone="ink">. */
   meta?: ReactNode;
+  /** Un control a la derecha del todo, después de `meta`: el "+ Add …" que abre la fila de agregar. */
+  action?: ReactNode;
   /** Permite que título y meta se partan en dos líneas (historial de transacciones). */
   wrap?: boolean;
   /** Para tarjetas `padded`: sin padding propio y con 12px de margen inferior ("Por categoría"). */
@@ -27,11 +29,19 @@ export interface CardHeaderProps {
   className?: string;
 }
 
-export function CardHeader({ title, meta, wrap, inset, className }: CardHeaderProps) {
+export function CardHeader({ title, meta, action, wrap, inset, className }: CardHeaderProps) {
+  const shown = action != null && action !== false;
   return (
     <div className={cx(styles.header, wrap && styles.wrap, inset && styles.inset, className)}>
       <h2 className={styles.title}>{title}</h2>
-      {meta != null && <div className={styles.meta}>{meta}</div>}
+      {shown ? (
+        <div className={styles.side}>
+          {meta != null && <div className={styles.meta}>{meta}</div>}
+          {action}
+        </div>
+      ) : (
+        meta != null && <div className={styles.meta}>{meta}</div>
+      )}
     </div>
   );
 }

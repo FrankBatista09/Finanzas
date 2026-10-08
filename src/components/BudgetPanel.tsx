@@ -3,7 +3,7 @@ import { donut } from '../../shared/calc';
 import { f0, f2 } from '../../shared/format';
 import { useI18n } from '../i18n';
 import { useFinanzas, useShell } from '../store';
-import { AddButton, AddRow, CellNumber, CellSelect, cx, DeleteButton, SheetTable, Td, Th } from '../ui';
+import { AddButton, AddRow, AddRowButton, CellNumber, CellSelect, cx, DeleteButton, SheetTable, Td, Th, useAddRow } from '../ui';
 import { budgetHistoryRows, fieldAmount, leftoverView } from './budgetModel';
 import { Donut, DonutCenter, LegendRow } from './Donut';
 import styles from './SummaryPanel.module.css';
@@ -18,12 +18,17 @@ export function BudgetPanel() {
   const { goToSheet } = useShell();
   const { t, label } = useI18n();
   // Que una cuenta exista en Savings no la mete en el presupuesto: aquí solo salen las que tienen parte este mes,
-  // y las demás se suman con la fila de abajo.
-  const parts = calc.budgetParts.filter((p) => p.amount !== 0 || p.fromLog !== 0);
+  // y las demás se suman con la fila de abajo. También sale la que un envío con "Moves budget" deja en cero o en
+  // negativo: es la cuenta de la que salió el presupuesto.
+  const parts = calc.budgetParts.filter((p) => p.amount !== 0 || p.fromLog !== 0 || p.fromTransfers !== 0);
   const free = visibleAccounts.filter((a) => !parts.some((p) => p.account.id === a.id));
   const NEW = '__new__';
   const [pick, setPick] = useState('');
   const [amount, setAmount] = useState(0);
+  const adding = useAddRow(() => {
+    setPick('');
+    setAmount(0);
+  });
   // El historial se despliega para un mes: al cambiar de mes vuelve a estar plegado.
   const [historyFor, setHistoryFor] = useState<string | null>(null);
   const historyOpen = historyFor === monthKey;
@@ -70,7 +75,7 @@ export function BudgetPanel() {
                       {account.currency}
                     </Td>
                     <Td kind="action" last>
-                      {/* La × deja en cero lo que suma el registro; lo que le ponen los ingresos no se quita desde aquí. */}
+                      {/* La × deja en cero lo que suma el registro; lo que le ponen los ingresos y los envíos no se quita desde aquí. */}
                       {!readOnly && fromLog !== 0 && (
                         <DeleteButton
                           compact
@@ -82,7 +87,7 @@ export function BudgetPanel() {
                   </tr>
                 ))}
                 {!readOnly && (
-                  <AddRow onAdd={add}>
+                  <AddRow control={adding} onAdd={add}>
                     <Td kind="edit">
                       {free.length > 0 ? (
                         <CellSelect
@@ -112,6 +117,11 @@ export function BudgetPanel() {
               </tbody>
             </SheetTable>
           </div>
+          {!readOnly && (
+            <AddRowButton control={adding} variant="link" className={styles.reveal}>
+              {t('addBudgetPart')}
+            </AddRowButton>
+          )}
           <BudgetLeftover />
           <div>
             <button
@@ -216,8 +226,8 @@ function BudgetLeftover() {
 
 /**
  * "Budget history" (plegado al entrar; lo abre el control de la celda del presupuesto): cómo llegó el presupuesto
- * a lo que es (el inicial, los ajustes, el sobrante y los ingresos que lo suben), por fecha y con el total
- * acumulado. Un movimiento del registro se quita con × mientras el mes esté abierto; un ingreso se quita o se
+ * a lo que es (el inicial, los ajustes, el sobrante, los ingresos que lo suben y los envíos que lo mueven de una
+ * cuenta a otra, en dos filas: lo que sale de una y lo que entra a la otra), por fecha y con el total acumulado. Un movimiento del registro se quita con × mientras el mes esté abierto; un ingreso se quita o se
  * desmarca en la tarjeta de ingresos.
  */
 function BudgetHistory({ id }: { id: string }) {
@@ -246,7 +256,7 @@ function BudgetHistory({ id }: { id: string }) {
             </thead>
             <tbody>
               {rows.map((r) => (
-                <tr key={`${r.kind}:${r.id}`}>
+                <tr key={r.key}>
                   <Td kind="mono" nowrap>
                     {r.date.slice(8)}/{r.date.slice(5, 7)}
                   </Td>

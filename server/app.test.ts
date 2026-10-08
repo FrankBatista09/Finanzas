@@ -1237,12 +1237,12 @@ describe('envíos', () => {
     const { api } = await seeded();
     const created = await api.post<Transfer>('/api/transfers', transfer);
     expect(created.status).toBe(201);
-    // Sin `budget` el envío no sube el presupuesto.
-    expect(created.body).toEqual({ id: expect.any(String), ...transfer, budget: false });
+    // Sin `budget` el envío no mueve presupuesto; sin `fee`, no lleva comisión.
+    expect(created.body).toEqual({ id: expect.any(String), ...transfer, budget: false, fee: 0 });
     const id = created.body.id;
 
     const patched = await api.patch<Transfer>(`/api/transfers/${id}`, { date: '2026-10-06', via: 'Remitly', amount: 350.5, rate: 58.1 });
-    expect(patched.body).toEqual({ ...transfer, id, date: '2026-10-06', via: 'Remitly', amount: 350.5, rate: 58.1, budget: false });
+    expect(patched.body).toEqual({ ...transfer, id, date: '2026-10-06', via: 'Remitly', amount: 350.5, rate: 58.1, budget: false, fee: 0 });
     // También las cuentas: en sentido contrario, con su tasa.
     const reversed = await api.patch<Transfer>(`/api/transfers/${id}`, { fromAccountId: 'dr', toAccountId: 'us', amount: 5810, rate: 1 / 58.1 });
     expect(reversed.body).toEqual({ ...patched.body, fromAccountId: 'dr', toAccountId: 'us', amount: 5810, rate: 1 / 58.1 });
@@ -1283,16 +1283,37 @@ describe('envíos', () => {
     expect((await api.post<Transfer>('/api/transfers', { ...noRate, toAccountId: 'pp', rate: 0.97 })).body.rate).toBe(0.97);
   });
 
-  it('con `budget: true` sube el presupuesto del mes en la cuenta de destino, sin escribir en el registro ni cambiar los saldos', async () => {
+  it('`fee`: se guarda y se edita con el envío, le resta a la cuenta de origen y una negativa responde 400', async () => {
+    const { api } = await seeded();
+    const us = await balance(api, 'us');
+    const created = await api.post<Transfer>('/api/transfers', { ...transfer, fee: 2.99 });
+    expect(created.status).toBe(201);
+    expect(created.body.fee).toBe(2.99);
+    expect(await balance(api, 'us')).toBeCloseTo(us - 300 - 2.99, 8);
+    const patched = await api.patch<Transfer>(`/api/transfers/${created.body.id}`, { fee: 0 });
+    expect(patched.body).toEqual({ ...created.body, fee: 0 });
+    expect(await balance(api, 'us')).toBeCloseTo(us - 300, 8);
+    expect((await api.post('/api/transfers', { ...transfer, fee: -1 })).status).toBe(400);
+    expect((await api.patch(`/api/transfers/${created.body.id}`, { fee: -1 })).status).toBe(400);
+    expect((await api.patch(`/api/transfers/${created.body.id}`, { fee: null })).status).toBe(400);
+  });
+
+  it('con `budget: true` mueve presupuesto del mes de la cuenta de origen a la de destino, sin escribir en el registro ni cambiar los saldos', async () => {
     const { api, db } = await seeded();
     const budget = async () => monthCalc(await loadState(db, FRANK.id), '2026-10').budget;
     const [us, dr] = [await balance(api, 'us'), await balance(api, 'dr')];
 
-    // 300 USD a 57.9 = 17,370 DOP encima de los 70,000 del registro.
+    // 300 USD a 57.9: +17,370 DOP en la DR account y −300 USD (17,628 DOP a la tasa del mes, 58.76) en la US account.
+    const moved = 17370 - 300 * 58.76;
     const created = await api.post<Transfer>('/api/transfers', { ...transfer, budget: true });
     expect(created.status).toBe(201);
     expect(created.body.budget).toBe(true);
-    expect(await budget()).toBeCloseTo(87370, 8);
+    expect(await budget()).toBeCloseTo(70000 + moved, 8);
+    const parts = monthCalc(await loadState(db, FRANK.id), '2026-10').budgetParts.map((p) => [p.account.id, p.amount, p.fromTransfers]);
+    expect(parts).toEqual([
+      ['us', -300, -300],
+      ['dr', 87370, 17370],
+    ]);
     const month = (await api.get<Month>('/api/months/2026-10')).body;
     expect(month.budgetLog).toHaveLength(2);
     expect(month.budgets).toEqual({ dr: 70000 });
@@ -1304,7 +1325,7 @@ describe('envíos', () => {
     // PATCH { budgets } fija lo que suma el registro: lo del envío va aparte, igual que lo de un ingreso.
     const patched = await api.patch<Month>('/api/months/2026-10', { budgets: { dr: 72000 } });
     expect(patched.body.budgets).toEqual({ dr: 72000 });
-    expect(await budget()).toBeCloseTo(72000 + 17370, 8);
+    expect(await budget()).toBeCloseTo(72000 + moved, 8);
 
     // La casilla se quita y se pone con PATCH; lo demás de la fila no cambia.
     const off = await api.patch<Transfer>(`/api/transfers/${created.body.id}`, { budget: false });
@@ -1312,7 +1333,7 @@ describe('envíos', () => {
     expect(await budget()).toBe(72000);
     expect((await api.patch<Transfer>(`/api/transfers/${created.body.id}`, { budget: true })).body.budget).toBe(true);
     expect((await api.patch<Transfer>(`/api/transfers/${created.body.id}`, { amount: 100 })).body.budget).toBe(true);
-    expect(await budget()).toBeCloseTo(72000 + 5790, 8);
+    expect(await budget()).toBeCloseTo(72000 + 5790 - 100 * 58.76, 8);
 
     for (const bad of ['yes', 1, null]) {
       expect((await api.post('/api/transfers', { ...transfer, budget: bad })).status, String(bad)).toBe(400);

@@ -13,9 +13,12 @@
 //     <Td kind="action">{!readOnly && <DeleteButton onClick={() => actions.removeFixed(f.id)} label={t('deleteNamed', { name: f.name })} />}</Td>
 //   </Tr>
 //
-// Fila de agregar (el borrador vive en el estado de la pantalla; 0 = monto vacío; Enter o el botón llaman a onAdd):
+// Fila de agregar (el borrador vive en el estado de la pantalla; 0 = monto vacío; Enter o el botón llaman a onAdd).
+// No está a la vista: la abre el "+ Add …" de la cabecera (addRow.tsx) y Esc o ese mismo botón la cierran.
 //
-//   <AddRow onAdd={() => { if (!actions.addFixed(draft)) return false; setDraft(EMPTY); }}>
+//   const adding = useAddRow(() => setDraft(EMPTY));
+//   <CardHeader title={…} action={<AddRowButton control={adding}>{s('addFixed')}</AddRowButton>} />
+//   <AddRow control={adding} onAdd={() => { if (!actions.addFixed(draft)) return false; setDraft(EMPTY); }}>
 //     <Td kind="center" tone="faint">+</Td>
 //     <Td kind="edit"><CellText value={draft.name} onCommit={(name) => setDraft((d) => ({ ...d, name }))} placeholder={s('newExpense')} label={s('newExpense')} /></Td>
 //     <Td kind="edit"><CellNumber value={draft.amount} onCommit={(amount) => setDraft((d) => ({ ...d, amount }))} blankZero placeholder="0.00" label={t('amount')} /></Td>
@@ -24,6 +27,10 @@
 //
 // Diálogos y formularios: Dialog.tsx y form.tsx (cada uno con su ejemplo).
 
+export { AddRowButton, useAddRow } from './addRow';
+export type { AddRowButtonProps } from './addRow';
+export { addRowKeyAction, AddRowsOpenContext } from './addRowContext';
+export type { AddRowControl } from './addRowContext';
 export { AddButton, DeleteButton } from './buttons';
 export type { AddButtonProps, DeleteButtonProps } from './buttons';
 export { Card, CardHeader, CardNote, Stack } from './Card';

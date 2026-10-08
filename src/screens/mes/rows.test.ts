@@ -4,8 +4,11 @@ import { seedState } from '../../../shared/seed';
 import type { AppState, Currency, ISODate, MonthKey } from '../../../shared/types';
 import { createI18n } from '../../i18n';
 import { accountOptions, inBoth, pairRates } from '../../store';
+import type { TransferFee } from '../../../shared/calc';
 import {
   barWidth,
+  historyRows,
+  lastFee,
   labelled,
   newRateDate,
   optionsWith,
@@ -429,6 +432,7 @@ describe('viaSuggestions', () => {
             amount: 100,
             rate: 58,
             budget: false,
+            fee: 0,
           })),
         },
       ]),
@@ -499,5 +503,42 @@ describe('formatos', () => {
     expect(barWidth(38304.71, 38304.71)).toBe('100%');
     expect(barWidth(50, 200)).toBe('25%');
     expect(barWidth(0, 1)).toBe('0%');
+  });
+});
+
+describe('historyRows: transacciones y comisiones de envíos, juntas', () => {
+  it('de la más reciente a la más antigua; con la misma fecha, primero las transacciones', () => {
+    const tx = seedState().months['2026-10']!.tx;
+    const account = seedState().accounts[0]! as TransferFee['account'];
+    const fee = (transferId: string, date: ISODate): TransferFee => ({ transferId, date, via: 'Remitly', account, amount: 2.99, cur: 'USD' });
+    const rows = historyRows(tx, [fee('a', '2026-10-02'), fee('b', '2026-10-07')]);
+    expect(rows).toHaveLength(tx.length + 2);
+    expect(rows.map((r) => r.date)).toEqual([...rows.map((r) => r.date)].sort().reverse());
+    // El 7 hay una transacción (Coffee) y una comisión: la transacción va antes.
+    expect(rows.slice(0, 2).map((r) => [r.kind, r.key])).toEqual([
+      ['tx', tx.find((t) => t.date === '2026-10-07')!.id],
+      ['fee', 'fee:b'],
+    ]);
+    expect(new Set(rows.map((r) => r.key)).size).toBe(rows.length);
+    expect(historyRows([], [])).toEqual([]);
+  });
+});
+
+describe('lastFee: la comisión que se propone para un envío nuevo', () => {
+  const months = () => {
+    const s = seedState();
+    s.months['2026-09']!.transfers.at(-1)!.fee = 2.99;
+    return s.months;
+  };
+
+  it('la del envío más reciente por esa vía, sin distinguir mayúsculas ni espacios, hasta el mes que se mira', () => {
+    expect(lastFee(months(), '2026-10', 'Remitly')).toBe(0);
+    const m = months();
+    m['2026-10']!.transfers = [];
+    expect(lastFee(m, '2026-10', ' REMITLY ')).toBe(2.99);
+    expect(lastFee(months(), '2026-09', 'Remitly')).toBe(2.99);
+    expect(lastFee(months(), '2026-08', 'Remitly')).toBe(0);
+    expect(lastFee(months(), '2026-10', 'Wise')).toBe(0);
+    expect(lastFee({}, '2026-10', 'Remitly')).toBe(0);
   });
 });

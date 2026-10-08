@@ -4,14 +4,15 @@ import { CURRENCIES } from '../../../shared/constants';
 import { f2 } from '../../../shared/format';
 import { useI18n, useStrings } from '../../i18n';
 import { useFinanzas } from '../../store';
-import { AddButton, AddRow, Card, CardHeader, CellDate, CellNumber, CellSelect, DeleteButton, Num, SheetTable, Td, Th } from '../../ui';
+import type { AddRowControl } from '../../ui';
+import { AddButton, AddRow, AddRowButton, Card, CardHeader, CellDate, CellNumber, CellSelect, DeleteButton, Num, SheetTable, Td, Th, useAddRow } from '../../ui';
 import styles from './AhorrosScreen.module.css';
 import { Converted, FallbackNote } from './Converted';
 import { afterAdd, contributionRows, draftInput, EMPTY_DRAFT, goalOptions, goalOptionsFor, resolveDraft } from './model';
 import { AHORROS } from './strings';
 
 /**
- * "Contributions": la fila de agregar arriba y debajo el historial, del más reciente al más antiguo.
+ * "Contributions": la fila de agregar arriba (la abre el botón de la cabecera) y debajo el historial, del más reciente al más antiguo.
  * Los aportes no pertenecen a un mes: se agregan, editan y eliminan aunque el mes seleccionado esté cerrado.
  * Cada uno se ve además en la moneda de su meta y en la principal, con la tasa del mes de su fecha.
  */
@@ -20,6 +21,7 @@ export function ContributionsCard() {
   const { t, lang } = useI18n();
   const s = useStrings(AHORROS);
   const rows = contributionRows(state, lang);
+  const adding = useAddRow();
 
   return (
     <Card className={styles.contribs}>
@@ -34,6 +36,7 @@ export function ContributionsCard() {
             </Num>
           </>
         }
+        action={<AddRowButton control={adding}>{s('addContribution')}</AddRowButton>}
       />
       <SheetTable label={s('contribsTitle')}>
         <thead>
@@ -48,7 +51,8 @@ export function ContributionsCard() {
           </tr>
         </thead>
         <tbody>
-          <ContributionAddRow />
+          {/* Cerrada se desmonta: su borrador se descarta con ella. */}
+          {adding.open && <ContributionAddRow adding={adding} />}
           {rows.map((r) => (
             <tr key={r.id}>
               <Td kind="edit">
@@ -87,7 +91,7 @@ export function ContributionsCard() {
 }
 
 /** Fila de agregar. El borrador vive aquí para que escribir en ella no repinte el historial. */
-function ContributionAddRow() {
+function ContributionAddRow({ adding }: { adding: AddRowControl }) {
   const { state, today, main, actions } = useFinanzas();
   const { t } = useI18n();
   const s = useStrings(AHORROS);
@@ -104,7 +108,7 @@ function ContributionAddRow() {
   // Sin metas no hay a qué aportar: en vez de unos campos que no se podrían usar, la fila dice qué hace falta.
   if (goals.length === 0) {
     return (
-      <AddRow onAdd={() => false}>
+      <AddRow control={adding} onAdd={() => false}>
         <Td colSpan={4} tone="muted">
           {s('noGoals')}
         </Td>
@@ -116,7 +120,7 @@ function ContributionAddRow() {
   }
 
   return (
-    <AddRow onAdd={add}>
+    <AddRow control={adding} onAdd={add}>
       <Td kind="edit">
         <CellDate value={shown.date} onCommit={(date) => setDraft((d) => ({ ...d, date }))} label={s('contribDate')} />
       </Td>

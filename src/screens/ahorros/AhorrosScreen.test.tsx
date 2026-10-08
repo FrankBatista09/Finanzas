@@ -10,6 +10,7 @@ import type { AppState, Goal, Language, MonthKey } from '../../../shared/types';
 import { I18nProvider } from '../../i18n';
 import { buildFinanzas, FinanzasContext } from '../../store';
 import type { Actions } from '../../store';
+import { AddRowsOpenContext } from '../../ui';
 import { AhorrosScreen } from './AhorrosScreen';
 import styles from './AhorrosScreen.module.css';
 import { GoalDialog } from './GoalDialog';
@@ -19,11 +20,17 @@ interface Opts {
   monthKey?: MonthKey;
   /** null = sin <I18nProvider>: manda el idioma del estado. */
   lang?: Language | null;
+  /** Las filas de agregar: abiertas (como tras pulsar su "+ Add …") salvo que se pida false, que es como nace la pantalla. */
+  addRows?: boolean;
 }
 
-function render(node: ReactNode, { state = seedState(), monthKey = '2026-10', lang = 'en' }: Opts = {}): string {
+function render(node: ReactNode, { state = seedState(), monthKey = '2026-10', lang = 'en', addRows = true }: Opts = {}): string {
   const value = buildFinanzas({ user: { id: 'frank', name: 'Frank' }, state, monthKey, today: '2026-10-07', actions: {} as Actions });
-  const tree = <FinanzasContext value={value}>{node}</FinanzasContext>;
+  const tree = (
+    <AddRowsOpenContext value={addRows}>
+      <FinanzasContext value={value}>{node}</FinanzasContext>
+    </AddRowsOpenContext>
+  );
   return renderToStaticMarkup(lang ? <I18nProvider lang={lang}>{tree}</I18nProvider> : tree);
 }
 
@@ -84,7 +91,7 @@ describe('AhorrosScreen (inglés, el idioma por defecto)', () => {
 
   it('cada tarjeta lleva su "Edit" y, después de la última, va la de "Add goal"', () => {
     const buttons = els(html, 'button');
-    expect(inner(html, 'button').slice(0, 5)).toEqual(['Edit', 'Edit', 'Edit', '+ Add goal', 'Add']);
+    expect(inner(html, 'button').slice(0, 5)).toEqual(['Edit', 'Edit', 'Edit', '+ Add goal', 'Cancel']);
     expect(buttons.slice(0, 3).map((b) => b['aria-label'])).toEqual(['Edit Emergency fund', 'Edit Personal savings', 'Edit Trip to Turkey']);
     expect(buttons.slice(0, 4).every((b) => b.type === 'button')).toBe(true);
     expect(buttons[3]!.class).toBe(styles.addGoal);
@@ -175,7 +182,7 @@ describe('AhorrosScreen (inglés, el idioma por defecto)', () => {
   });
 
   it('Income: el ingreso del mes seleccionado, fila de agregar arriba y la lista editable, del más reciente al más antiguo', () => {
-    expect(t).toContain('Income October 2026 340,808.00 DOP Date Description Account Amount Cur. DOP Adds to budget');
+    expect(t).toContain('Income October 2026 340,808.00 DOP Cancel Date Description Account Amount Cur. DOP Adds to budget');
     const tbody = body(html, 'Income');
     const rows = rowsOf(tbody);
     expect(rows).toHaveLength(4);
@@ -196,7 +203,7 @@ describe('AhorrosScreen (inglés, el idioma por defecto)', () => {
     expect(els(add, 'td')).toHaveLength(8);
     expect(els(add, 'td').some((td) => 'colspan' in td)).toBe(false);
     expect(inner(add, 'td')[5]).toBe('');
-    expect(inner(add, 'button')).toEqual(['Add income']);
+    expect(inner(add, 'button')).toEqual(['Add']);
 
     const first = rows[1]!;
     expect(
@@ -262,7 +269,7 @@ describe('AhorrosScreen (inglés, el idioma por defecto)', () => {
 
   it('con un mes cerrado seleccionado solo cambia el ingreso del mes de la cabecera: nada aquí depende del mes', () => {
     const closed = screen({ monthKey: '2026-08' });
-    expect(text(closed)).toContain('Income August 2026 337,463.33 DOP Date');
+    expect(text(closed)).toContain('Income August 2026 337,463.33 DOP Cancel Date');
     // Todo lo anterior a esa cabecera y las tres tablas son iguales, igual de editables.
     const before = (h: string) => h.slice(0, h.lastIndexOf('<h2'));
     expect(before(closed)).toBe(before(html));
@@ -300,7 +307,7 @@ describe('AhorrosScreen (inglés, el idioma por defecto)', () => {
     expect(text(empty)).toContain('October 2026 0.00 205,660.00 —');
     expect(text(empty)).toContain('Income October 2026 0.00 DOP');
     expect(rowsOf(body(empty, 'Income'))).toHaveLength(1);
-    expect(inner(body(empty, 'Income'), 'button')).toEqual(['Add income']);
+    expect(inner(body(empty, 'Income'), 'button')).toEqual(['Add']);
   });
 
   it('meta cumplida o con el mes objetivo pasado: la tarjeta lo dice en vez de pedir "0 USD por mes"', () => {
@@ -318,7 +325,7 @@ describe('AhorrosScreen (inglés, el idioma por defecto)', () => {
     const empty = screen({ state: s });
     expect(inner(empty, 'h2')).toEqual(['Income by month', 'Contributions', 'Income']);
     expect(empty).toContain(`class="${styles.goals}"`);
-    expect(inner(empty, 'button').slice(0, 3)).toEqual(['+ Add goal', 'Add', 'Add income']);
+    expect(inner(empty, 'button').slice(0, 3)).toEqual(['+ Add goal', 'Cancel', 'Add']);
 
     // La fila de agregar no tiene campos: dice qué hace falta, y su botón está apagado.
     const tbody = body(empty, 'Contributions');
@@ -498,13 +505,13 @@ describe('AhorrosScreen en español', () => {
   });
 
   it('los ingresos, uno por uno', () => {
-    expect(t).toContain('Ingresos Octubre 2026 340,808.00 DOP Fecha Descripción Cuenta Monto Mon. DOP Suma al presupuesto');
+    expect(t).toContain('Ingresos Octubre 2026 340,808.00 DOP Cancelar Fecha Descripción Cuenta Monto Mon. DOP Suma al presupuesto');
     const incomes = body(html, 'Ingresos');
     const add = rowsOf(incomes)[0]!;
     expect(els(add, 'input').map((i) => i['aria-label'])).toEqual(['Fecha del ingreso', 'Descripción', 'Monto', 'El ingreso nuevo suma al presupuesto']);
     expect(els(add, 'input')[1]).toMatchObject({ placeholder: 'Sueldo, pago…' });
     expect(els(add, 'select').map((s) => s['aria-label'])).toEqual(['Cuenta', 'Moneda']);
-    expect(inner(add, 'button')).toEqual(['Agregar ingreso']);
+    expect(inner(add, 'button')).toEqual(['Agregar']);
     // La descripción y el nombre de la cuenta son del usuario: salen como los escribió.
     expect(els(rowsOf(incomes)[1]!, 'input')[1]).toMatchObject({ value: 'Salary' });
     expect(els(rowsOf(incomes)[1]!, 'input')[3]).toMatchObject({ type: 'checkbox', 'aria-label': 'Suma al presupuesto: ingreso del 2026-10-01, 5,800.00 USD' });
@@ -518,7 +525,7 @@ describe('AhorrosScreen en español', () => {
   });
 
   it('editar y agregar metas', () => {
-    expect(inner(html, 'button').slice(0, 5)).toEqual(['Editar', 'Editar', 'Editar', '+ Agregar meta', 'Agregar']);
+    expect(inner(html, 'button').slice(0, 5)).toEqual(['Editar', 'Editar', 'Editar', '+ Agregar meta', 'Cancelar']);
     expect(els(html, 'button')[0]!['aria-label']).toBe('Editar Emergency fund');
   });
 
@@ -545,7 +552,7 @@ describe('AhorrosScreen en español', () => {
     s.goals = [];
     s.contribs = [];
     const empty = screen({ state: s, lang: 'es' });
-    expect(inner(empty, 'button').slice(0, 3)).toEqual(['+ Agregar meta', 'Agregar', 'Agregar ingreso']);
+    expect(inner(empty, 'button').slice(0, 3)).toEqual(['+ Agregar meta', 'Cancelar', 'Agregar']);
     expect(text(body(empty, 'Aportes')).trim()).toBe('Agrega primero una meta para registrar aportes. Agregar');
 
     s.incomes.push({ id: 'x', date: '2026-09-10', desc: '', accountId: 'dr', amount: 4200, cur: 'TRY', budget: false });
@@ -578,7 +585,7 @@ describe('AhorrosScreen en turco', () => {
     expect(t).toContain('Ekim 2026 340,808.00 205,660.00 60.3%');
 
     expect(t).toContain('Katkılar Toplam 625,794.00 DOP');
-    expect(inner(html, 'button').slice(0, 5)).toEqual(['Düzenle', 'Düzenle', 'Düzenle', '+ Hedef ekle', 'Ekle']);
+    expect(inner(html, 'button').slice(0, 5)).toEqual(['Düzenle', 'Düzenle', 'Düzenle', '+ Hedef ekle', 'İptal']);
     expect(els(html, 'button')[2]!['aria-label']).toBe('Düzenle: Trip to Turkey');
     const contribs = body(html, 'Katkılar');
     const add = rowsOf(contribs)[0]!;
@@ -590,13 +597,13 @@ describe('AhorrosScreen en turco', () => {
   });
 
   it('los ingresos, uno por uno', () => {
-    expect(t).toContain('Gelirler Ekim 2026 340,808.00 DOP Tarih Açıklama Hesap Tutar Birim DOP Bütçeye eklenir');
+    expect(t).toContain('Gelirler Ekim 2026 340,808.00 DOP İptal Tarih Açıklama Hesap Tutar Birim DOP Bütçeye eklenir');
     const incomes = body(html, 'Gelirler');
     const add = rowsOf(incomes)[0]!;
     expect(els(add, 'input').map((i) => i['aria-label'])).toEqual(['Gelir tarihi', 'Açıklama', 'Tutar', 'Yeni gelir bütçeye eklenir']);
     expect(els(add, 'input')[1]).toMatchObject({ placeholder: 'Maaş, ödeme…' });
     expect(els(add, 'select').map((s) => s['aria-label'])).toEqual(['Hesap', 'Para birimi']);
-    expect(inner(add, 'button')).toEqual(['Gelir ekle']);
+    expect(inner(add, 'button')).toEqual(['Ekle']);
     expect(els(rowsOf(incomes)[1]!, 'input')[3]).toMatchObject({ type: 'checkbox', 'aria-label': 'Bütçeye eklenir: 2026-10-01 geliri, 5,800.00 USD' });
     const deletes = els(incomes, 'button').filter((b) => b.title === 'Sil');
     expect(deletes).toHaveLength(3);
