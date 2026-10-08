@@ -1,5 +1,6 @@
-import { MESES, TIMEZONE } from './constants';
-import type { ISODate, MonthKey } from './types';
+import { TIMEZONE } from './constants';
+import { MONTH_NAMES } from './i18n';
+import type { ISODate, Language, MonthKey } from './types';
 
 const KEY_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
 const DATE_RE = /^(\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
@@ -17,18 +18,25 @@ export function isISODate(v: unknown): v is ISODate {
   return d.getUTCDate() === +m[3]!;
 }
 
-/** '2026-10' → 'Octubre 2026' */
-export function label(key: MonthKey): string {
+/** '2026-10' → 'October 2026' (o 'Octubre 2026', 'Ekim 2026' según el idioma). */
+export function label(key: MonthKey, lang: Language = 'en'): string {
   const [y, m] = key.split('-');
-  return `${MESES[+m! - 1]} ${y}`;
+  return `${MONTH_NAMES[lang][+m! - 1]} ${y}`;
 }
 
-/** 'Octubre 2026' → '2026-10' (nombre de hoja del Excel); null si no es un mes. */
-export function keyFromLabel(name: string): MonthKey | null {
+/**
+ * 'October 2026' → '2026-10' (nombre de hoja del Excel); null si no es un mes.
+ * Sin `months` reconoce el nombre del mes en cualquiera de los idiomas de la app.
+ */
+export function keyFromLabel(name: string, months?: readonly string[]): MonthKey | null {
   const mm = /^(\S+)\s+(\d{4})$/.exec(name.trim());
   if (!mm) return null;
-  const i = (MESES as readonly string[]).indexOf(mm[1]!);
-  return i < 0 ? null : `${mm[2]}-${String(i + 1).padStart(2, '0')}`;
+  const lists = months ? [months] : Object.values(MONTH_NAMES);
+  for (const list of lists) {
+    const i = list.indexOf(mm[1]!);
+    if (i >= 0) return `${mm[2]}-${String(i + 1).padStart(2, '0')}`;
+  }
+  return null;
 }
 
 export function nextKey(key: MonthKey): MonthKey {

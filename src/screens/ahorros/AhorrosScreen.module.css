@@ -1,0 +1,207 @@
+/* Hoja "Savings" (prototipo, líneas 523-621). Las tablas y sus celdas salen de src/ui; aquí va solo lo propio.
+   Los estilos del diálogo de metas están en GoalDialog.module.css. */
+
+/* ── Tarjetas de metas ────────────────────────────────────────────────────── */
+
+.goals {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: var(--gap-20);
+}
+
+.goal {
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-10);
+}
+
+/* Las tres partes de cada tarjeta (cabecera, cifra y progreso) comparten filas con las tarjetas de al lado: si a
+   una se le parte la cabecera en dos líneas, las cifras de todas siguen a la misma altura. Sin subgrid, cada
+   tarjeta se queda con su columna de arriba. */
+@supports (grid-template-rows: subgrid) {
+  .goal {
+    display: grid;
+    grid-template-rows: subgrid;
+    grid-row: span 3;
+  }
+
+  .addGoal {
+    grid-row: span 3;
+  }
+}
+
+/* Nombre a la izquierda; tipo de meta y "Edit" a la derecha. En una tarjeta estrecha el grupo de la derecha
+   baja a una segunda línea en vez de partir el nombre. */
+.goalHead {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 4px var(--gap-10);
+}
+
+.goalName {
+  margin: 0;
+  font-weight: 600;
+  font-size: var(--fs-title);
+}
+
+.goalMeta {
+  margin-left: auto;
+  display: flex;
+  align-items: baseline;
+  gap: var(--gap-12);
+}
+
+.goalKind {
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+
+/* Control secundario: solo texto, atenuado, como "Reset to default" en los ajustes. */
+.goalEdit {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font: 500 11.5px var(--font-ui);
+  cursor: pointer;
+}
+
+.goalEdit:hover {
+  color: var(--ink);
+}
+
+/* "Add goal": ocupa el hueco de una tarjeta más, con el borde punteado de la caja de cerrar mes. Va sobre el fondo
+   de la página (no es una tarjeta), así que usa los colores de página, que siguen al fondo que elija el usuario. */
+.addGoal {
+  min-height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--gap-8);
+  padding: 16px 18px;
+  border: 1px dashed var(--page-border);
+  border-radius: var(--radius-card);
+  background: transparent;
+  color: var(--page-text-muted);
+  font: 500 var(--fs-body) var(--font-ui);
+  cursor: pointer;
+}
+
+.addGoal:hover {
+  color: var(--page-text);
+  border-color: var(--page-text-muted);
+}
+
+.addGoalPlus {
+  font-size: 15px;
+  line-height: 1;
+}
+
+.goalEdit:focus-visible,
+.addGoal:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.saved {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--fs-figure-m);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.savedUnit {
+  font-size: var(--fs-meta);
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.savedMain {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--fs-meta);
+  color: var(--text-muted);
+  margin-top: 3px;
+}
+
+.progress {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-6);
+}
+
+.track {
+  height: 8px;
+  background: var(--track);
+  position: relative;
+}
+
+.fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  background: var(--accent);
+}
+
+.progressText {
+  display: flex;
+  justify-content: space-between;
+  font-size: var(--fs-meta);
+  color: var(--text-soft);
+}
+
+.plan {
+  font-size: var(--fs-meta);
+  color: var(--text-muted);
+}
+
+/* Una cifra convertida con la tasa fija de respaldo (nadie la ha escrito): en rojo, como en las tablas. */
+.fallback {
+  color: var(--error);
+}
+
+/* ── Ingresos por mes y Aportes ───────────────────────────────────────────── */
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--gap-20);
+  align-items: flex-start;
+}
+
+.income {
+  flex: 1 1 440px;
+  min-width: 0;
+}
+
+.contribs {
+  flex: 1 1 480px;
+  min-width: 0;
+}
+
+/* El botón de la fila de agregar, apagado (sin metas no hay a qué aportar). Dos clases para ganarle al :hover del
+   botón sin depender del orden en que se carguen las hojas de estilo. */
+.addOff.addOff:disabled {
+  background: var(--accent);
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* Las cabeceras de estas dos tarjetas no llevan separación entre título y nota, a diferencia de las de la hoja "Mes".
+   Dos clases para ganarle a la de CardHeader sin depender del orden en que se carguen las hojas de estilo. */
+.income > .head,
+.contribs > .head {
+  gap: 0;
+}
+
+/* Pie de una tabla con alguna cifra marcada con *: explica que salió de la tasa de respaldo. */
+.fallbackNote {
+  padding: 8px 12px 10px;
+  font-size: var(--fs-meta);
+  color: var(--error);
+}

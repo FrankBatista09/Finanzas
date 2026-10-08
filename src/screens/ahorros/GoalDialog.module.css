@@ -1,0 +1,47 @@
+/* Diálogo de una meta. El panel, los campos y los botones salen de src/ui; aquí va solo lo propio del formulario. */
+
+/* Mes de inicio y mes objetivo, uno al lado del otro; en una pantalla estrecha, uno debajo del otro. */
+.months {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--gap-14) var(--gap-12);
+}
+
+/* Resumen del plan ("15 months · 3,000 USD / month"). La altura mínima es la de una línea: al aparecer no mueve los botones. */
+.summary,
+.error {
+  min-height: 16px;
+  font-size: var(--fs-meta);
+  line-height: 16px;
+}
+
+.summary {
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.error {
+  color: var(--error);
+}
+
+/* "Delete goal" a la izquierda del pie, con el motivo debajo cuando no se puede. */
+.remove {
+  margin-right: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+
+/* Alineado con el texto del botón, que lleva 14px de padding. */
+.removeHint {
+  padding: 0 14px;
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+
+.actions {
+  margin-left: auto;
+  display: flex;
+  gap: var(--gap-8);
+}

@@ -29,6 +29,11 @@ export function fRate(n: number): string {
   return (Number.isFinite(n) ? n : 0).toFixed(2);
 }
 
+/** Porcentaje con un decimal: 55.1724 → '55.2%' (la columna "% ahorro"). */
+export function fPct(n: number): string {
+  return `${(Number.isFinite(n) ? n : 0).toFixed(1)}%`;
+}
+
 /**
  * Convierte el texto de un input numérico a número. Vacío o inválido → 0.
  * (El prototipo guardaba el string y hacía `+v || 0` al calcular; aquí se normaliza al escribir.)

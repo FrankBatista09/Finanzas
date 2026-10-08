@@ -1,0 +1,4 @@
+/* Cabecera "Moneda": siempre en una línea (en turco, "Para birimi", son dos palabras). */
+.currency {
+  white-space: nowrap;
+}

@@ -1,0 +1,651 @@
+{
+ "months": [
+  {
+   "key": "2026-08",
+   "budget": 70000,
+   "incomeUSD": 5800,
+   "accounts": {
+    "usd": 3900,
+    "dop": 78200
+   },
+   "fixed": [
+    {
+     "name": "Electricity",
+     "day": "",
+     "amount": 1290.4,
+     "cur": "DOP",
+     "paid": true
+    },
+    {
+     "name": "Internet",
+     "day": "",
+     "amount": 2699,
+     "cur": "DOP",
+     "paid": true
+    },
+    {
+     "name": "Health insurance",
+     "day": "",
+     "amount": 5640,
+     "cur": "DOP",
+     "paid": true
+    },
+    {
+     "name": "Fridge payment",
+     "day": "",
+     "amount": 15000,
+     "cur": "DOP",
+     "paid": true
+    },
+    {
+     "name": "Claude",
+     "day": "5",
+     "amount": 106,
+     "cur": "USD",
+     "paid": true
+    },
+    {
+     "name": "Google One",
+     "day": "16",
+     "amount": 121.56,
+     "cur": "DOP",
+     "paid": true
+    },
+    {
+     "name": "iCloud+",
+     "day": "17",
+     "amount": 604,
+     "cur": "DOP",
+     "paid": true
+    },
+    {
+     "name": "Cluely",
+     "day": "",
+     "amount": 308,
+     "cur": "DOP",
+     "paid": true
+    },
+    {
+     "name": "Smartfit",
+     "day": "17",
+     "amount": 1550,
+     "cur": "DOP",
+     "paid": true
+    },
+    {
+     "name": "Netflix",
+     "day": "",
+     "amount": 1137.3,
+     "cur": "DOP",
+     "paid": true
+    },
+    {
+     "name": "Unicaribe",
+     "day": "",
+     "amount": 7400,
+     "cur": "DOP",
+     "paid": true
+    }
+   ],
+   "transfers": [
+    {
+     "date": "2026-08-03",
+     "via": "Remitly",
+     "usd": 1500,
+     "rate": 58.4
+    },
+    {
+     "date": "2026-08-18",
+     "via": "PayPal",
+     "usd": 300,
+     "rate": 57.1
+    }
+   ],
+   "tx": [
+    {
+     "date": "2026-08-02",
+     "desc": "Weekly groceries",
+     "place": "Supermercado Nacional",
+     "cat": "Groceries",
+     "method": "Card",
+     "amount": 5230,
+     "cur": "DOP",
+     "notes": ""
+    },
+    {
+     "date": "2026-08-04",
+     "desc": "Uber",
+     "place": "Uber",
+     "cat": "Transport",
+     "method": "Card",
+     "amount": 410,
+     "cur": "DOP",
+     "notes": ""
+    },
+    {
+     "date": "2026-08-06",
+     "desc": "Lunch",
+     "place": "Adrian Tropical",
+     "cat": "Food",
+     "method": "Card",
+     "amount": 1280,
+     "cur": "DOP",
+     "notes": ""
+    },
+    {
+     "date": "2026-08-09",
+     "desc": "Gas",
+     "place": "Texaco Churchill",
+     "cat": "Transport",
+     "method": "Card",
+     "amount": 2200,
+     "cur": "DOP",
+     "notes": ""
+    },
+    {
+     "date": "2026-08-12",
+     "desc": "Concert",
+     "place": "Teatro Nacional",
+     "cat": "Entertainment",
+     "method": "Bank app",
+     "amount": 2500,
+     "cur": "DOP",
+     "notes": ""
+    },
+    {
+     "date": "2026-08-15",
+     "desc": "Weekly groceries",
+     "place": "Jumbo",
+     "cat": "Groceries",
+     "method": "Card",
+     "amount": 4680,
+     "cur": "DOP",
+     "notes": ""
+    },
+    {
+     "date": "2026-08-18",
+     "desc": "Shirts",
+     "place": "Zara Blue Mall",
+     "cat": "Clothing",
+     "method": "Card",
+     "amount": 3900,
+     "cur": "DOP",
+     "notes": ""
+    },
+    {
+     "date": "2026-08-21",
+     "desc": "Doctor visit",
+     "place": "Centro Médico",
+     "cat": "Health",
+     "method": "Transfer",
+     "amount": 2500,
+     "cur": "DOP",
+     "notes": "Insurance copay"
+    },
+    {
+     "date": "2026-08-24",
+     "desc": "Dinner",
+     "place": "Lulú Tasting Bar",
+     "cat": "Food",
+     "method": "Card",
+     "amount": 3150,
+     "cur": "DOP",
+     "notes": ""
+    },
+    {
+     "date": "2026-08-29",
+     "desc": "Gas",
+     "place": "Shell",
+     "cat": "Transport",
+     "method": "Card",
+     "amount": 2000,
+     "cur": "DOP",
+     "notes": ""
+    }
+   ]
+  },
+  {
+   "key": "2026-09",
+   "budget": 70000,
+   "incomeUSD": 5800,
+   "accounts": {
+    "usd": 4100,
+    "dop": 81500
+   },
+   "fixed": [
+    {
+     "name": "Electricity",
+     "day": "",
+     "amount": 1412.8,
+     "cur": "DOP",
+     "paid": true
+    },
+    {
+     "name": "Internet",
+     "day": "",
+     "amount": 2699,
+     "cur": "DOP",
+     "paid": true
+    },
+    {
+     "name": "Health insurance",
+     "day": "",
+     "amount": 5640,
+     "cur": "DOP",
+     "paid": true
+    },
+    {
+     "name": "Fridge payment",
+     "day": "",
+     "amount": 15000,
+     "cur": "DOP",
+     "paid": true
+    },
+    {
+     "name": "Claude",
+     "day": "5",
+     "amount": 106,
+     "cur": "USD",
+     "paid": true
+    },
+    {
+     "name": "Google One",
+     "day": "16",
+     "amount": 121.56,
+     "cur": "DOP",
+     "paid": true
+    },
+    {
+     "name": "iCloud+",
+     "day": "17",
+     "amount": 604,
+     "cur": "DOP",
+     "paid": true
+    },
+    {
+     "name": "Cluely",
+     "day": "",
+     "amount": 308,
+     "cur": "DOP",
+     "paid": true
+    },
+    {
+     "name": "Smartfit",
+     "day": "17",
+     "amount": 1550,
+     "cur": "DOP",
+     "paid": true
+    },
+    {
+     "name": "Netflix",
+     "day": "",
+     "amount": 1137.3,
+     "cur": "DOP",
+     "paid": true
+    },
+    {
+     "name": "Unicaribe",
+     "day": "",
+     "amount": 7400,
+     "cur": "DOP",
+     "paid": true
+    }
+   ],
+   "transfers": [
+    {
+     "date": "2026-09-02",
+     "via": "Remitly",
+     "usd": 1500,
+     "rate": 58.55
+    },
+    {
+     "date": "2026-09-17",
+     "via": "Remitly",
+     "usd": 800,
+     "rate": 58.62
+    }
+   ],
+   "tx": [
+    {
+     "date": "2026-09-01",
+     "desc": "Weekly groceries",
+     "place": "Supermercado Bravo",
+     "cat": "Groceries",
+     "method": "Card",
+     "amount": 4975,
+     "cur": "DOP",
+     "notes": ""
+    },
+    {
+     "date": "2026-09-03",
+     "desc": "Accounting book",
+     "place": "Librería Cuesta",
+     "cat": "Education",
+     "method": "Card",
+     "amount": 1850,
+     "cur": "DOP",
+     "notes": ""
+    },
+    {
+     "date": "2026-09-05",
+     "desc": "Uber",
+     "place": "Uber",
+     "cat": "Transport",
+     "method": "Card",
+     "amount": 360,
+     "cur": "DOP",
+     "notes": ""
+    },
+    {
+     "date": "2026-09-08",
+     "desc": "Lunch",
+     "place": "El Conuco",
+     "cat": "Food",
+     "method": "Card",
+     "amount": 1420,
+     "cur": "DOP",
+     "notes": ""
+    },
+    {
+     "date": "2026-09-11",
+     "desc": "Gas",
+     "place": "Texaco",
+     "cat": "Transport",
+     "method": "Card",
+     "amount": 2100,
+     "cur": "DOP",
+     "notes": ""
+    },
+    {
+     "date": "2026-09-14",
+     "desc": "Movies",
+     "place": "Caribbean Cinemas",
+     "cat": "Entertainment",
+     "method": "Bank app",
+     "amount": 850,
+     "cur": "DOP",
+     "notes": ""
+    },
+    {
+     "date": "2026-09-16",
+     "desc": "Weekly groceries",
+     "place": "Jumbo",
+     "cat": "Groceries",
+     "method": "Card",
+     "amount": 5320,
+     "cur": "DOP",
+     "notes": ""
+    },
+    {
+     "date": "2026-09-19",
+     "desc": "Pharmacy",
+     "place": "Farmacia Carol",
+     "cat": "Health",
+     "method": "Card",
+     "amount": 980,
+     "cur": "DOP",
+     "notes": ""
+    },
+    {
+     "date": "2026-09-23",
+     "desc": "Istanbul hotel booking",
+     "place": "Booking",
+     "cat": "Travel",
+     "method": "Card",
+     "amount": 4800,
+     "cur": "DOP",
+     "notes": "Deposit"
+    },
+    {
+     "date": "2026-09-28",
+     "desc": "Gas",
+     "place": "Shell",
+     "cat": "Transport",
+     "method": "Card",
+     "amount": 1900,
+     "cur": "DOP",
+     "notes": ""
+    }
+   ]
+  },
+  {
+   "key": "2026-10",
+   "budget": 70000,
+   "incomeUSD": 5800,
+   "accounts": {
+    "usd": 4320,
+    "dop": 86400
+   },
+   "fixed": [
+    {
+     "name": "Electricity",
+     "day": "",
+     "amount": 1337.15,
+     "cur": "DOP",
+     "paid": true
+    },
+    {
+     "name": "Internet",
+     "day": "",
+     "amount": 2699,
+     "cur": "DOP",
+     "paid": true
+    },
+    {
+     "name": "Health insurance",
+     "day": "",
+     "amount": 5640,
+     "cur": "DOP",
+     "paid": true
+    },
+    {
+     "name": "Fridge payment",
+     "day": "",
+     "amount": 15000,
+     "cur": "DOP",
+     "paid": true
+    },
+    {
+     "name": "Claude",
+     "day": "5",
+     "amount": 106,
+     "cur": "USD",
+     "paid": true
+    },
+    {
+     "name": "Google One",
+     "day": "16",
+     "amount": 121.56,
+     "cur": "DOP",
+     "paid": false
+    },
+    {
+     "name": "iCloud+",
+     "day": "17",
+     "amount": 604,
+     "cur": "DOP",
+     "paid": false
+    },
+    {
+     "name": "Cluely",
+     "day": "",
+     "amount": 308,
+     "cur": "DOP",
+     "paid": false
+    },
+    {
+     "name": "Smartfit",
+     "day": "17",
+     "amount": 1550,
+     "cur": "DOP",
+     "paid": false
+    },
+    {
+     "name": "Netflix",
+     "day": "",
+     "amount": 1137.3,
+     "cur": "DOP",
+     "paid": false
+    },
+    {
+     "name": "Unicaribe",
+     "day": "",
+     "amount": 7400,
+     "cur": "DOP",
+     "paid": true
+    }
+   ],
+   "transfers": [
+    {
+     "date": "2026-10-02",
+     "via": "Remitly",
+     "usd": 1500,
+     "rate": 58.76
+    }
+   ],
+   "tx": [
+    {
+     "date": "2026-10-01",
+     "desc": "Weekly groceries",
+     "place": "Supermercado Nacional",
+     "cat": "Groceries",
+     "method": "Card",
+     "amount": 4850,
+     "cur": "DOP",
+     "notes": ""
+    },
+    {
+     "date": "2026-10-02",
+     "desc": "Uber to work",
+     "place": "Uber",
+     "cat": "Transport",
+     "method": "Card",
+     "amount": 320,
+     "cur": "DOP",
+     "notes": ""
+    },
+    {
+     "date": "2026-10-03",
+     "desc": "Lunch",
+     "place": "Adrian Tropical",
+     "cat": "Food",
+     "method": "Card",
+     "amount": 1150,
+     "cur": "DOP",
+     "notes": ""
+    },
+    {
+     "date": "2026-10-04",
+     "desc": "Movies",
+     "place": "Caribbean Cinemas",
+     "cat": "Entertainment",
+     "method": "Bank app",
+     "amount": 900,
+     "cur": "DOP",
+     "notes": ""
+    },
+    {
+     "date": "2026-10-05",
+     "desc": "Pharmacy",
+     "place": "Farmacia Carol",
+     "cat": "Health",
+     "method": "Card",
+     "amount": 1240,
+     "cur": "DOP",
+     "notes": ""
+    },
+    {
+     "date": "2026-10-06",
+     "desc": "Gas",
+     "place": "Texaco",
+     "cat": "Transport",
+     "method": "Card",
+     "amount": 2000,
+     "cur": "DOP",
+     "notes": ""
+    },
+    {
+     "date": "2026-10-07",
+     "desc": "Coffee",
+     "place": "Starbucks Ágora",
+     "cat": "Food",
+     "method": "Card",
+     "amount": 385,
+     "cur": "DOP",
+     "notes": ""
+    }
+   ]
+  }
+ ],
+ "contribs": [
+  {
+   "date": "2026-08-03",
+   "goalName": "Trip to Turkey",
+   "amount": 3000,
+   "cur": "USD"
+  },
+  {
+   "date": "2026-08-03",
+   "goalName": "Emergency fund",
+   "amount": 400,
+   "cur": "USD"
+  },
+  {
+   "date": "2026-08-20",
+   "goalName": "Personal savings",
+   "amount": 250,
+   "cur": "USD"
+  },
+  {
+   "date": "2026-09-02",
+   "goalName": "Trip to Turkey",
+   "amount": 3000,
+   "cur": "USD"
+  },
+  {
+   "date": "2026-09-02",
+   "goalName": "Emergency fund",
+   "amount": 300,
+   "cur": "USD"
+  },
+  {
+   "date": "2026-09-18",
+   "goalName": "Personal savings",
+   "amount": 200,
+   "cur": "USD"
+  },
+  {
+   "date": "2026-10-03",
+   "goalName": "Trip to Turkey",
+   "amount": 3000,
+   "cur": "USD"
+  },
+  {
+   "date": "2026-10-03",
+   "goalName": "Emergency fund",
+   "amount": 500,
+   "cur": "USD"
+  }
+ ],
+ "goals": [
+  {
+   "name": "Emergency fund",
+   "monthlyUSD": null,
+   "start": null,
+   "end": null
+  },
+  {
+   "name": "Personal savings",
+   "monthlyUSD": null,
+   "start": null,
+   "end": null
+  },
+  {
+   "name": "Trip to Turkey",
+   "monthlyUSD": 3000,
+   "start": "2026-08",
+   "end": "2027-10"
+  }
+ ],
+ "defaultRate": 58.76
+}

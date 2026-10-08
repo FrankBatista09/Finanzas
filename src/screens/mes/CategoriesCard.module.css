@@ -1,0 +1,50 @@
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+/* Nombre (110px, se recorta con puntos suspensivos), barra y cifra. */
+.row {
+  display: grid;
+  grid-template-columns: 110px 1fr auto;
+  align-items: center;
+  gap: var(--gap-10);
+  font-size: var(--fs-num);
+}
+
+.name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.track {
+  height: 8px;
+  background: var(--track);
+  position: relative;
+}
+
+.bar {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  background: var(--accent);
+}
+
+/* "Gastos fijos": el mismo tono oscuro que su segmento de la dona. */
+.barFixed {
+  background: var(--donut-fixed);
+}
+
+.value {
+  font-size: var(--fs-meta);
+  min-width: 76px;
+  text-align: right;
+}
+
+.empty {
+  font-size: var(--fs-num);
+  color: var(--text-muted);
+}

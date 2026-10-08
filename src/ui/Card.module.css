@@ -1,0 +1,47 @@
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+}
+
+/* Tarjeta sin tabla ("Por categoría"): el contenido lleva el padding. */
+.padded {
+  padding: 14px 16px 16px;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  padding: 14px 16px 12px;
+}
+
+/* Cabecera que puede partirse en dos líneas (historial). */
+.wrap {
+  flex-wrap: wrap;
+  gap: 6px 16px;
+}
+
+/* Cabecera dentro de una tarjeta con padding. */
+.inset {
+  padding: 0;
+  margin-bottom: 12px;
+}
+
+.title {
+  margin: 0;
+  font-weight: 600;
+  font-size: var(--fs-title);
+}
+
+.meta {
+  font-size: var(--fs-meta);
+  color: var(--text-muted);
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-20);
+}

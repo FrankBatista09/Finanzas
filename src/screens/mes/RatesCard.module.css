@@ -1,0 +1,17 @@
+/* Código de la moneda de destino: "1 USD = 58.76 DOP". */
+.code {
+  font: var(--fs-meta) var(--font-mono);
+}
+
+/* De dónde sale la tasa cuando no es la escrita para el mes: un apunte atenuado detrás del código. */
+.hint {
+  margin-left: 8px;
+  font-size: var(--fs-meta);
+  color: var(--text-muted);
+}
+
+/* El valor fijo de respaldo: nadie ha escrito esa tasa. Va después de .hint para ganarle el color. */
+.warn {
+  color: var(--error);
+  font-weight: 600;
+}

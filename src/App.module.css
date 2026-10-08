@@ -1,0 +1,87 @@
+.app {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.main {
+  flex: 1;
+  width: 100%;
+  max-width: var(--content-max);
+  margin: 0 auto;
+  padding: 20px 24px 90px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-20);
+}
+
+/* ── Carga y error de conexión (no están en el prototipo): la misma barra y una tarjeta sobria ─────────────── */
+
+.bootBar {
+  background: var(--bar);
+  color: var(--bar-text);
+  padding: 10px 24px;
+  /* Misma altura que la barra completa (su control más alto mide 32px): al llegar los datos nada salta. */
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+}
+
+.bootTitle {
+  margin: 0;
+  font-weight: 700;
+  font-size: var(--fs-brand);
+  letter-spacing: -0.01em;
+}
+
+.bootCard {
+  align-self: flex-start;
+  max-width: 440px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: var(--fs-body);
+}
+
+.bootHeading {
+  margin: 0;
+  font-weight: 600;
+  font-size: var(--fs-title);
+}
+
+.bootText {
+  margin: 0;
+  line-height: 1.5;
+  color: var(--text-soft);
+}
+
+.bootMuted {
+  font-size: var(--fs-body);
+  color: var(--page-text-muted);
+}
+
+.retry {
+  height: 28px;
+  padding: 0 12px;
+  border: 0;
+  background: var(--accent);
+  color: var(--on-accent);
+  border-radius: var(--radius);
+  font: 500 var(--fs-num) var(--font-ui);
+  cursor: pointer;
+}
+
+.retry:hover:enabled {
+  background: var(--accent-hover);
+}
+
+.retry:disabled {
+  cursor: default;
+  opacity: 0.6;
+}

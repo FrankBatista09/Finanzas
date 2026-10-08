@@ -1,0 +1,95 @@
+/* Campos de formulario (diálogo de metas, panel de ajustes): etiqueta encima y control con borde, con el mismo
+   foco que las celdas. */
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-6);
+  min-width: 0;
+}
+
+.fieldLabel {
+  font-size: var(--fs-meta);
+  font-weight: 500;
+  color: var(--text-soft);
+}
+
+.control {
+  height: 32px;
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--border-dashed);
+  border-radius: var(--radius);
+  background: var(--focus-bg);
+  padding: 0 10px;
+  font: var(--fs-body) var(--font-ui);
+  color: var(--ink);
+  outline: none;
+}
+
+/* Borde más anillo interior de 1px: los mismos 2px de acento que el foco de una celda. */
+.control:focus {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.control:disabled {
+  background: var(--th-bg);
+  color: var(--text-muted);
+}
+
+select.control {
+  cursor: pointer;
+}
+
+select.control:disabled {
+  cursor: default;
+}
+
+/* Cifras: derecha y monoespaciado, como las celdas numéricas. */
+.mono {
+  text-align: right;
+  font: var(--fs-num) var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Lista de códigos (monedas). */
+.selectMono {
+  font: var(--fs-meta) var(--font-mono);
+}
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-8);
+  font-size: var(--fs-body);
+  cursor: pointer;
+}
+
+.checkbox {
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  flex: none;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.checkbox:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* Mes y año, uno al lado del otro; el mes se lleva el ancho que sobre. */
+.monthPicker {
+  display: flex;
+  gap: var(--gap-8);
+}
+
+.monthPicker > :first-child {
+  flex: 1 1 auto;
+}
+
+.monthPicker > :last-child {
+  flex: 0 0 92px;
+}

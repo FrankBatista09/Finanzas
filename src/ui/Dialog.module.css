@@ -1,0 +1,127 @@
+/* Diálogo modal: el único elemento de la app con sombra. */
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  background: var(--overlay);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.dialog {
+  width: 100%;
+  max-width: 440px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-modal);
+}
+
+/* Un formulario largo en una pantalla baja se desplaza dentro del panel en vez de salirse de la vista
+   (48px = el padding del fondo, 2px = el borde del panel). */
+.form {
+  max-height: calc(100vh - 50px);
+  overflow: auto;
+}
+
+.title {
+  margin: 0;
+  padding: 20px 22px 6px;
+  font-weight: 600;
+  font-size: var(--fs-brand);
+}
+
+/* Cuerpo de texto. */
+.text {
+  margin: 0;
+  padding: 0 22px 18px;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--text-soft);
+  text-wrap: pretty;
+}
+
+/* Cuerpo de formulario: una columna de campos. */
+.fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-14);
+  padding: 10px 22px 20px;
+}
+
+.footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 14px 22px;
+  border-top: 1px solid var(--border-row);
+  background: var(--add-row);
+}
+
+.button {
+  height: 34px;
+  padding: 0 14px;
+  border-radius: var(--radius);
+  font: 500 var(--fs-body) var(--font-ui);
+  cursor: pointer;
+}
+
+.button:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+/* Al principio del pie, separado del resto ("Delete goal"). */
+.start {
+  margin-right: auto;
+}
+
+.quiet,
+.danger {
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+}
+
+.quiet:hover:enabled {
+  color: var(--ink);
+}
+
+.danger:hover:enabled {
+  color: var(--error);
+}
+
+.secondary {
+  border: 1px solid var(--border-dashed);
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.secondary:hover:enabled {
+  background: var(--track);
+}
+
+.primary {
+  border: 0;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-weight: 600;
+}
+
+.primary:hover:enabled {
+  background: var(--accent-hover);
+}
+
+.destructive {
+  border: 0;
+  background: var(--error);
+  color: var(--on-error);
+  font-weight: 600;
+}
+
+.destructive:hover:enabled {
+  background: var(--error-hover);
+}

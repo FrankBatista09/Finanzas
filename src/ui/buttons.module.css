@@ -1,0 +1,33 @@
+.add {
+  height: 28px;
+  padding: 0 12px;
+  border: 0;
+  background: var(--accent);
+  color: var(--on-accent);
+  border-radius: var(--radius);
+  font: 500 var(--fs-num) var(--font-ui);
+  cursor: pointer;
+}
+
+.add:hover {
+  background: var(--accent-hover);
+}
+
+/* La × usa la fuente por defecto de los botones del navegador: el prototipo no le pone familia. */
+.delete {
+  border: 0;
+  background: transparent;
+  color: var(--text-faint);
+  cursor: pointer;
+  font-size: 15px;
+  padding: 4px 8px;
+}
+
+/* Tablas estrechas (envíos, aportes). */
+.compact {
+  padding: 4px 6px;
+}
+
+.delete:hover {
+  color: var(--error);
+}
