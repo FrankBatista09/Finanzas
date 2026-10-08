@@ -88,8 +88,13 @@ describe('español: los textos de la versión 1', () => {
       'Aún no hay gastos este mes.',
       'Mes cerrado. Los registros quedan de solo lectura.',
       'Reabrir mes',
-      'Notas (opcional)',
+      'Descripción (opcional)',
     ]);
+    // En el historial, la columna del nombre de la transacción y la de su descripción (antes "Descripción" y "Notas").
+    expect([es('description'), es('notes')]).toEqual(['Nombre', 'Descripción']);
+    expect(es('notesOf', { name: 'Luz' })).toBe('Descripción de Luz');
+    expect(es('openNotes', { name: 'Luz' })).toBe('Abrir la descripción de Luz');
+    expect(es('closeNotes')).toBe('Cerrar');
   });
 });
 
@@ -115,7 +120,10 @@ describe('turco', () => {
 
   it('usa los términos acordados', () => {
     const keys = ['fixedTitle', 'paid', 'description', 'place', 'category', 'method', 'notes', 'reopen'] as const;
-    expect(keys.map((key) => tr(key))).toEqual(['Aylık giderler', 'Ödendi', 'Açıklama', 'Yer', 'Kategori', 'Yöntem', 'Notlar', 'Ayı yeniden aç']);
+    expect(keys.map((key) => tr(key))).toEqual(['Aylık giderler', 'Ödendi', 'Ad', 'Yer', 'Kategori', 'Yöntem', 'Açıklama', 'Ayı yeniden aç']);
+    expect(tr('notesOptional')).toBe('Açıklama (isteğe bağlı)');
+    expect(tr('openNotes', { name: 'Netflix' })).toBe('Netflix açıklamasını aç');
+    expect(tr('closeNotes')).toBe('Kapat');
     expect(tr('transfersTitle')).toBe('Transferler');
     expect(tr('accountOf', { name: 'Netflix' })).toBe('Hesap: Netflix');
     expect(tr('pairRate', { from: 'USD', to: 'TRY' })).toBe('Kur USD → TRY');

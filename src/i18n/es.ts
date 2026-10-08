@@ -101,6 +101,10 @@ export const es: Shape<typeof en> = {
   // ── Panel resumen ──────────────────────────────────────────────────────────
   summaryOf: 'Resumen de {month}',
   budgetOf: 'Presupuesto de {account}, en {currency}',
+  removeFromBudget: 'Quitar {name} del presupuesto',
+  newAccountOption: 'Cuenta nueva…',
+  budgetAccount: 'Cuenta que se suma al presupuesto',
+  budgetAmount: 'Monto de la nueva parte del presupuesto',
   incomeMinusUsed: 'Ingreso del mes − usado',
   budgetUsed: 'Presupuesto usado',
   budgetUsedOf: 'Presupuesto usado: {used} de {budget} {currency}',

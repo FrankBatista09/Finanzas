@@ -7,7 +7,7 @@ import type { Currency } from '../../shared/types';
 import { useI18n } from '../i18n';
 import { canHideAccount, canRemoveAccount, useFinanzas } from '../store';
 import { ringShades } from '../theme';
-import { AddButton, AddRow, CellNumber, CellSelect, CellText, cx, SheetTable, Td } from '../ui';
+import { AddButton, AddRow, CellNumber, CellSelect, CellText, cx, SheetTable, Td, DeleteButton } from '../ui';
 import { Donut, DonutCenter, LegendRow } from './Donut';
 import styles from './SummaryPanel.module.css';
 
@@ -133,6 +133,10 @@ function AccountsTable({ rows }: { rows: readonly AccountBalance[] }) {
                   >
                     {t('hide')}
                   </button>
+                )}
+                {/* Una cuenta que nada usa se puede eliminar directamente; con movimientos solo se oculta. */}
+                {canRemoveAccount(state, account.id) && (
+                  <DeleteButton compact onClick={() => actions.removeAccount(account.id)} label={t('deleteNamed', { name: account.name })} />
                 )}
               </Td>
             </tr>

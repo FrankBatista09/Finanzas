@@ -102,6 +102,10 @@ export const tr: Shape<typeof en> = {
   // ── Panel resumen ──────────────────────────────────────────────────────────
   summaryOf: '{month} özeti',
   budgetOf: '{account} bütçesi, {currency} cinsinden',
+  removeFromBudget: '{name} hesabını bütçeden çıkar',
+  newAccountOption: 'Yeni hesap…',
+  budgetAccount: 'Bütçeye eklenecek hesap',
+  budgetAmount: 'Yeni bütçe payının tutarı',
   incomeMinusUsed: 'Ay geliri − kullanılan',
   budgetUsed: 'Kullanılan bütçe',
   budgetUsedOf: 'Kullanılan bütçe: {budget} {currency} içinden {used}',

@@ -99,6 +99,10 @@ export const en = {
   // ── Panel resumen ──────────────────────────────────────────────────────────
   summaryOf: '{month} summary',
   budgetOf: 'Budget from {account}, in {currency}',
+  removeFromBudget: 'Remove {name} from the budget',
+  newAccountOption: 'New account…',
+  budgetAccount: 'Account to add to the budget',
+  budgetAmount: 'Amount of the new budget part',
   incomeMinusUsed: 'Month income − used',
   budgetUsed: 'Budget used',
   budgetUsedOf: 'Budget used: {used} of {budget} {currency}',
