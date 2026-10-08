@@ -4,9 +4,9 @@
 import type { IngestResponse, IngestTransaction } from '../shared/api';
 import { CATS, METHODS } from '../shared/constants';
 import { canonicalCat, canonicalMethod } from '../shared/i18n';
-import { monthOf, todayISO } from '../shared/month';
+import { currentMonthKey, label, monthOf, monthSpan, todayISO } from '../shared/month';
 import type { Account, AppUser } from '../shared/types';
-import { createTransaction, ensureMonth, userAccounts } from './db';
+import { createTransaction, ensureMonth, getMonth, userAccounts } from './db';
 import { invalidData, monthClosedError, noAccountsError, validationError } from './errors';
 import { userFromBody } from './users';
 import { ingestSchema, parse } from './validate';
@@ -102,6 +102,15 @@ export async function ingestTransaction(
   const { accounts, defaultAccount } = await userAccounts(db, user.id);
   const account = data.account === undefined ? defaultAccount : matchAccount(accounts, data.account);
   if (!account) throw noAccountsError();
+
+  // Un año mal puesto dejaría un mes fantasma: solo se crea un mes cercano a hoy (6 atrás, 1 adelante).
+  // A un mes que ya existe se puede escribir sea cual sea su fecha.
+  const offset = monthSpan(currentMonthKey(now), monthKey) - 1;
+  if ((offset < -6 || offset > 1) && !(await getMonth(db, user.id, monthKey))) {
+    throw validationError(
+      `The date ${date} falls in ${label(monthKey)}, a month that does not exist for ${user.name} and is far from today (${todayISO(now)}). Check the year of the date.`,
+    );
+  }
 
   const { month, created } = await ensureMonth(db, user.id, monthKey);
   if (month.closed) throw monthClosedError(monthKey);

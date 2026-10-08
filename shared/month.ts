@@ -14,6 +14,9 @@ export function isISODate(v: unknown): v is ISODate {
   if (typeof v !== 'string') return false;
   const m = DATE_RE.exec(v);
   if (!m) return false;
+  // Un año de dos cifras tecleado en una celda (0026) o absurdo no es una fecha de estas finanzas, y Excel
+  // no sabe representar nada anterior a 1900.
+  if (+m[1]! < 1900 || +m[1]! > 2100) return false;
   const d = new Date(Date.UTC(+m[1]!, +m[2]! - 1, +m[3]!));
   return d.getUTCDate() === +m[3]!;
 }

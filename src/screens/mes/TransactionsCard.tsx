@@ -204,6 +204,7 @@ const TxRow = memo(function TxRow({ row: tx, inMain, inSecond, accounts, readOnl
         <CellText
           value={tx.desc}
           onCommit={(desc) => actions.patchTx(tx.id, { desc })}
+          commitOn="blur"
           readOnly={readOnly}
           maxLength={MAX_LEN.desc}
           label={s('description')}

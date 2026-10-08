@@ -45,6 +45,8 @@ export interface CellTextProps extends InputBase {
   maxLength?: number;
   /** Valores que el navegador ofrece al escribir (un <datalist>). El campo sigue siendo texto libre: la vía de un envío. */
   suggestions?: readonly string[];
+  /** 'blur' para textos obligatorios: lo borrado a medias nunca se guarda (ni "N" al vaciar "Netflix"). */
+  commitOn?: CommitOn;
 }
 
 export function CellText({
@@ -59,9 +61,10 @@ export function CellText({
   small,
   maxLength,
   suggestions,
+  commitOn,
   className,
 }: CellTextProps) {
-  const draft = useDraft({ value, format: same, parse: same, onCommit });
+  const draft = useDraft({ value, format: same, parse: same, onCommit, commitOn });
   const listId = useId();
   const offers = suggestions && suggestions.length > 0 && !readOnly;
   return (
@@ -74,6 +77,9 @@ export function CellText({
         value={draft.value}
         onChange={draft.onChange}
         onBlur={draft.onBlur}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') draft.commitNow();
+        }}
         readOnly={readOnly}
         placeholder={placeholder}
         maxLength={maxLength}

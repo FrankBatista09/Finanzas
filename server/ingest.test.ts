@@ -271,17 +271,17 @@ describe('POST /api/ingest/transaction', () => {
   it('crea el mes de la fecha copiando los fijos del mes anterior más cercano de ese usuario', async () => {
     const { api, db } = await seeded();
     await createFixed(db, F, { monthKey: '2026-10', name: 'Solo de Frank', amount: 1, cur: 'DOP' });
-    const r = await api.post<IngestResponse>(PATH, { user: 'frank', description: 'Regalo', amount: 1500, date: '2026-12-24' }, AUTH);
+    const r = await api.post<IngestResponse>(PATH, { user: 'frank', description: 'Regalo', amount: 1500, date: '2026-11-24' }, AUTH);
     expect(r.status).toBe(201);
     expect(r.body.monthCreated).toBe(true);
-    expect(r.body.transaction.monthKey).toBe('2026-12');
+    expect(r.body.transaction.monthKey).toBe('2026-11');
 
-    const december = (await getMonth(db, F, '2026-12'))!;
+    const december = (await getMonth(db, F, '2026-11'))!;
     expect(december).toMatchObject({ closed: false, budgets: { dr: 70000 }, rates: [] });
     expect(december.fixed).toHaveLength(12);
     expect(december.fixed.every((f) => !f.paid)).toBe(true);
     expect(december.tx).toEqual([r.body.transaction]);
-    expect(Object.keys((await loadState(db, F)).months)).toEqual(['2026-08', '2026-09', '2026-10', '2026-12']);
+    expect(Object.keys((await loadState(db, F)).months)).toEqual(['2026-08', '2026-09', '2026-10', '2026-11']);
   });
 
   it('409 month_closed si el mes de la fecha está cerrado para ese usuario, y no guarda nada', async () => {
