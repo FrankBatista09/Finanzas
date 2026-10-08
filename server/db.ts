@@ -159,6 +159,7 @@ interface TransferRow {
   to_account_id: string;
   amount: number;
   rate: number;
+  budget: number;
 }
 
 interface IncomeRow {
@@ -241,6 +242,7 @@ function toTransfer(r: TransferRow): Transfer {
     toAccountId: r.to_account_id,
     amount: r.amount,
     rate: r.rate,
+    budget: r.budget === 1,
   };
 }
 
@@ -310,7 +312,7 @@ const MONTH_INSERT = ['user_id', 'key', 'closed', 'closed_at'];
 const BUDGET_LOG_INSERT = ['user_id', 'id', 'month_key', 'date', 'account_id', 'amount', 'kind', 'note'];
 const RATE_INSERT = ['user_id', 'month_key', 'from_currency', 'to_currency', 'date', 'rate'];
 const FIXED_INSERT = ['user_id', 'id', 'month_key', 'name', 'day', 'amount', 'currency', 'paid', 'account_id', 'sort'];
-const TRANSFER_INSERT = ['user_id', 'id', 'month_key', 'date', 'via', 'from_account_id', 'to_account_id', 'amount', 'rate'];
+const TRANSFER_INSERT = ['user_id', 'id', 'month_key', 'date', 'via', 'from_account_id', 'to_account_id', 'amount', 'rate', 'budget'];
 const TX_INSERT = [
   'user_id',
   'id',
@@ -974,7 +976,8 @@ const LOG_SUM = 'COALESCE((SELECT SUM(amount) FROM month_budget_log WHERE user_i
  * diferencia, nada. El movimiento es 'initial' si la cuenta no tenía ninguno en el mes y 'adjust' si ya tenía,
  * con fecha de hoy llevada al mes. La diferencia se calcula dentro del propio INSERT, no con una lectura previa:
  * dos guardados seguidos del mismo monto no lo suman dos veces. Toda cuenta nombrada tiene que ser del usuario
- * (400). Los ingresos que suben el presupuesto no entran en esta cuenta: se fija lo que suma el registro.
+ * (400). Los ingresos y los envíos que suben el presupuesto no entran en esta cuenta: se fija lo que suma el
+ * registro.
  */
 export async function patchMonth(db: D1Database, userId: string, key: MonthKey, patch: MonthPatch, now: Date = new Date()): Promise<Month> {
   const parts = Object.entries(patch.budgets ?? {});
@@ -1436,6 +1439,7 @@ const TRANSFER_PATCH = {
   toAccountId: 'to_account_id',
   amount: 'amount',
   rate: 'rate',
+  budget: 'budget',
 } as const;
 const NO_TRANSFER = 'Transfer not found.';
 
@@ -1459,7 +1463,9 @@ async function monthTransferRate(db: D1Database, userId: string, input: Transfer
 
 /**
  * Mueve `amount` (en la moneda de la cuenta de origen) de una cuenta a otra distinta; a la de destino le entra
- * amount × rate. Sin `rate` se usa la tasa vigente en su fecha para las monedas de las dos cuentas.
+ * amount × rate. Sin `rate` se usa la tasa vigente en su fecha para las monedas de las dos cuentas. Con
+ * `budget: true` sube además el presupuesto de su mes en la cuenta de destino: como con los ingresos, no se
+ * escribe nada en el registro, lo suma shared/calc.ts al calcular.
  */
 export async function createTransfer(db: D1Database, userId: string, input: TransferCreate): Promise<Transfer> {
   if (input.fromAccountId === input.toAccountId) throw sameAccountError();
@@ -1467,15 +1473,26 @@ export async function createTransfer(db: D1Database, userId: string, input: Tran
   const row = await firstOrConflict<TransferRow>(
     db
       .prepare(
-        `INSERT INTO transfers (user_id, id, month_key, date, via, from_account_id, to_account_id, amount, rate)
-         SELECT m.user_id, ?2, m.key, ?4, ?5, f.id, t.id, ?8, ?9
+        `INSERT INTO transfers (user_id, id, month_key, date, via, from_account_id, to_account_id, amount, rate, budget)
+         SELECT m.user_id, ?2, m.key, ?4, ?5, f.id, t.id, ?8, ?9, ?10
          FROM months m
          JOIN accounts f ON f.user_id = m.user_id AND f.id = ?6
          JOIN accounts t ON t.user_id = m.user_id AND t.id = ?7
          WHERE m.user_id = ?1 AND m.key = ?3 AND m.closed = 0
          RETURNING *`,
       )
-      .bind(userId, input.id ?? newId(), input.monthKey, input.date, input.via, input.fromAccountId, input.toAccountId, input.amount, rate),
+      .bind(
+        userId,
+        input.id ?? newId(),
+        input.monthKey,
+        input.date,
+        input.via,
+        input.fromAccountId,
+        input.toAccountId,
+        input.amount,
+        rate,
+        input.budget ? 1 : 0,
+      ),
   );
   if (!row) throw await createError(db, userId, input.monthKey, [input.fromAccountId, input.toAccountId]);
   return toTransfer(row);
@@ -1828,7 +1845,7 @@ function dataStatements(db: D1Database, userId: string, state: UserData, stamp: 
       db,
       'transfers',
       TRANSFER_INSERT,
-      months.flatMap((m) => m.transfers.map((t) => [userId, t.id, m.key, t.date, t.via, t.fromAccountId, t.toAccountId, t.amount, t.rate])),
+      months.flatMap((m) => m.transfers.map((t) => [userId, t.id, m.key, t.date, t.via, t.fromAccountId, t.toAccountId, t.amount, t.rate, t.budget ? 1 : 0])),
     ),
     ...insertMany(
       db,

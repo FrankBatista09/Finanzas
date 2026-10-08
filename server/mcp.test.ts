@@ -887,7 +887,8 @@ describe('/mcp: tools/list', () => {
     expect(byName.month_summary.required).toEqual(['user']);
 
     const transfer = byName.add_transfer;
-    expect(Object.keys(transfer.properties)).toEqual(['user', 'from_account', 'to_account', 'amount', 'rate', 'via', 'date']);
+    expect(Object.keys(transfer.properties)).toEqual(['user', 'from_account', 'to_account', 'amount', 'rate', 'via', 'date', 'add_to_budget']);
+    expect(transfer.properties.add_to_budget).toMatchObject({ type: 'boolean', default: false });
     // La tasa es opcional: sin ella vale la del mes.
     expect(transfer.required).toEqual(['user', 'from_account', 'to_account', 'amount']);
     expect(transfer.properties.from_account).toMatchObject({ type: 'string', minLength: 1, maxLength: 120 });
@@ -1589,7 +1590,7 @@ describe('month_summary', () => {
       secondCurrency: 'USD',
       budget: 70000,
       budgetSecond: near(70000 / 58.76),
-      budgetParts: [{ accountId: 'dr', name: 'DR account', currency: 'DOP', amount: 70000, fromLog: 70000, fromIncomes: 0, inMain: 70000 }],
+      budgetParts: [{ accountId: 'dr', name: 'DR account', currency: 'DOP', amount: 70000, fromLog: 70000, fromIncomes: 0, fromTransfers: 0, inMain: 70000 }],
       budgetHistory: [
         { kind: 'initial', id: 'seed-bg-2026-10-1', date: '2026-10-01', accountId: 'dr', account: 'DR account', amount: 65000, currency: 'DOP', note: '', inMain: 65000, total: 65000 },
         { kind: 'adjust', id: 'seed-bg-2026-10-2', date: '2026-10-05', accountId: 'dr', account: 'DR account', amount: 5000, currency: 'DOP', note: 'Car repair', inMain: 5000, total: 70000 },
@@ -1743,6 +1744,7 @@ describe('add_transfer', () => {
       toAccountId: 'dr',
       amount: 500,
       rate: 59.4,
+      budget: false,
     } satisfies Record<keyof Transfer, unknown>);
     expect(r.data).toEqual({
       user: FRANK,
@@ -1752,8 +1754,11 @@ describe('add_transfer', () => {
       sent: { amount: 500, currency: 'USD' },
       received: { amount: 29700, currency: 'DOP' },
       rateSource: 'given',
+      // Sin add_to_budget el presupuesto del mes sigue en sus 70,000.
+      month: { key: '2026-10', label: 'October 2026', currency: 'DOP', budget: 70000 },
       monthCreated: false,
     });
+    expect(r.text).not.toContain('budget');
     expect(r.data!.from.balance).toBeCloseTo(12982, 8);
     expect(r.data!.to.balance).toBeCloseTo(250341.93, 6);
     // No es un gasto: el usado del mes no cambia (octubre tiene su tasa escrita, que manda sobre la de los envíos).
@@ -2576,6 +2581,30 @@ describe('presupuesto con historia, sobrante e ingresos que lo suben', () => {
     expect(await fails(env, 'add_income', { amount: 100, add_to_budget: 'yes' })).toBe('Invalid data: add_to_budget: must be true or false');
   });
 
+  it('add_transfer con add_to_budget: lo que llega sube el presupuesto del mes en la cuenta de destino, y month_summary lo cuenta', async () => {
+    const { env, db } = await seeded();
+    const r = await call(env, 'add_transfer', { from_account: 'US account', to_account: 'DR account', amount: 100, rate: 59, add_to_budget: true });
+    expect(r.isError).toBe(false);
+    expect(r.text).toContain('5,900.00 DOP was also added to the budget of October 2026, now 75,900.00 DOP.');
+    expect(r.data!.transfer).toMatchObject({ amount: 100, rate: 59, budget: true });
+    expect(r.data!.month).toEqual({ key: '2026-10', label: 'October 2026', currency: 'DOP', budget: 75900 });
+    // No se escribe en el registro: lo suma el cálculo.
+    expect((await getMonth(db, F, '2026-10'))!.budgetLog).toHaveLength(2);
+    expect(monthCalc(await loadState(db, F), '2026-10').budget).toBe(75900);
+
+    const summary = await call(env, 'month_summary');
+    expect(summary.text.split('\n')[2]).toBe(
+      'Budget history: 2026-10-01 initial DR account +65,000.00 DOP; 2026-10-05 adjustment DR account +5,000.00 DOP (Car repair); 2026-10-07 transfer DR account +5,900.00 DOP (Remitly)',
+    );
+    expect(summary.data!.budgetHistory.at(-1)).toMatchObject({ kind: 'transfer', id: r.data!.transfer.id, accountId: 'dr', amount: 5900, currency: 'DOP', total: 75900 });
+    expect(summary.data!.budgetParts).toEqual([
+      { accountId: 'dr', name: 'DR account', currency: 'DOP', amount: 75900, fromLog: 70000, fromIncomes: 0, fromTransfers: 5900, inMain: 75900 },
+    ]);
+    expect(await fails(env, 'add_transfer', { from_account: 'US account', to_account: 'DR account', amount: 1, add_to_budget: 'yes' })).toBe(
+      'Invalid data: add_to_budget: must be true or false',
+    );
+  });
+
   it('add_income con add_to_budget en otra moneda: sube lo que vale en la moneda de la cuenta, a la tasa de su fecha', async () => {
     const { env, db } = await seeded();
     // 100 USD a la DR account el día 7: 5,876 DOP.
@@ -2620,7 +2649,7 @@ describe('presupuesto con historia, sobrante e ingresos que lo suben', () => {
       ['leftover', 78039.46],
     ]);
     expect(r.data!.budgetParts).toEqual([
-      { accountId: 'dr', name: 'DR account', currency: 'DOP', amount: expect.closeTo(78039.46, 2), fromLog: expect.closeTo(72163.46, 2), fromIncomes: 5876, inMain: expect.closeTo(78039.46, 2) },
+      { accountId: 'dr', name: 'DR account', currency: 'DOP', amount: expect.closeTo(78039.46, 2), fromLog: expect.closeTo(72163.46, 2), fromIncomes: 5876, fromTransfers: 0, inMain: expect.closeTo(78039.46, 2) },
     ]);
     expect(r.data!.budget).toBe(monthCalc(await loadState(db, F), '2026-10').budget);
   });

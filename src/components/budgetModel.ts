@@ -46,6 +46,7 @@ export const BUDGET_KIND: Record<BudgetHistoryRow['kind'], CoreKey> = {
   adjust: 'budgetKindAdjust',
   leftover: 'budgetKindLeftover',
   income: 'budgetKindIncome',
+  transfer: 'budgetKindTransfer',
 };
 
 export interface BudgetHistoryView {
@@ -62,11 +63,11 @@ export interface BudgetHistoryView {
   negative: boolean;
   /** Presupuesto acumulado hasta esta fila, en la moneda principal. */
   total: string;
-  /** La nota del movimiento o la descripción del ingreso; '' si no hay. */
+  /** La nota del movimiento, la descripción del ingreso o la vía del envío; '' si no hay. */
   note: string;
   /**
-   * Se puede quitar con ×: un movimiento del registro (no un ingreso, que se quita o se desmarca como ingreso) de
-   * un mes abierto y que ya tiene su id del servidor.
+   * Se puede quitar con ×: un movimiento del registro (no un ingreso ni un envío, que se quitan o se desmarcan en
+   * su propia tabla) de un mes abierto y que ya tiene su id del servidor.
    */
   deletable: boolean;
 }
@@ -85,7 +86,7 @@ export function budgetHistoryRows(state: AppState, key: MonthKey): BudgetHistory
     negative: r.amount < 0,
     total: f2(r.total),
     note: r.note,
-    deletable: open && r.kind !== 'income' && !isLocalEntry(r.id),
+    deletable: open && r.kind !== 'income' && r.kind !== 'transfer' && !isLocalEntry(r.id),
   }));
 }
 
@@ -130,7 +131,7 @@ const fieldText = (n: number) => String(fieldAmount(n));
 
 /**
  * Lo que pregunta el diálogo de cierre sobre el presupuesto del mes siguiente. Las partes son las del registro
- * (BudgetPart.fromLog): los ingresos que subieron el presupuesto de este mes no se heredan, igual que cuando el
+ * (BudgetPart.fromLog): los ingresos y los envíos que subieron el presupuesto de este mes no se heredan, igual que cuando el
  * servidor las copia por su cuenta.
  */
 export function closeBudgetForm(state: AppState, key: MonthKey): CloseBudgetForm {

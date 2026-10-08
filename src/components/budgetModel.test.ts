@@ -125,26 +125,33 @@ describe('budgetHistoryRows: la historia del presupuesto', () => {
     ]);
   });
 
-  it('cada clase de movimiento tiene su texto, y son los cuatro del diccionario', () => {
+  it('cada clase de movimiento tiene su texto, y son los cinco del diccionario', () => {
     expect(BUDGET_KIND).toEqual({
       initial: 'budgetKindInitial',
       adjust: 'budgetKindAdjust',
       leftover: 'budgetKindLeftover',
       income: 'budgetKindIncome',
+      transfer: 'budgetKindTransfer',
     });
     const state = stateWith((s) => {
+      // El envío del día 2 (1,500 USD a 58.76) marcado para subir el presupuesto.
+      s.months['2026-10']!.transfers[0]!.budget = true;
       s.months['2026-10']!.budgetLog.push(entry({ id: 'bg-left', amount: 3363.46, kind: 'leftover' }));
       s.incomes.push(income({ id: 'in-b', amount: 1000, date: '2026-10-09' }));
     });
     const rows = budgetHistoryRows(state, '2026-10');
     expect(rows.map((r) => [r.kind, r.kindKey])).toEqual([
       ['initial', 'budgetKindInitial'],
+      ['transfer', 'budgetKindTransfer'],
       ['adjust', 'budgetKindAdjust'],
       ['leftover', 'budgetKindLeftover'],
       ['income', 'budgetKindIncome'],
     ]);
     const { t } = createI18n('es');
-    expect(rows.map((r) => t(r.kindKey))).toEqual(['Inicial', 'Ajuste', 'Sobrante', 'Ingreso']);
+    expect(rows.map((r) => t(r.kindKey))).toEqual(['Inicial', 'Envío', 'Ajuste', 'Sobrante', 'Ingreso']);
+    expect(rows.map((r) => createI18n('en').t(r.kindKey))[1]).toBe('Transfer');
+    // Lo recibido, en la cuenta de destino; como un ingreso, no se quita desde el historial.
+    expect(rows[1]).toMatchObject({ account: 'DR account', amount: '88,140.00', currency: 'DOP', note: 'Remitly', deletable: false });
   });
 
   it('los importes van en la moneda de su cuenta; el total, en la principal, y el de la última fila es el presupuesto del mes', () => {
@@ -314,6 +321,17 @@ describe('closeBudgetForm: lo que pregunta el diálogo de cierre', () => {
     ]);
     // La US account solo tiene lo del ingreso: sin campo. La DR account, sus 70,000 del registro.
     expect(closeBudgetForm(state, '2026-10').fields).toEqual([{ accountId: 'dr', name: 'DR account', currency: 'DOP', amount: '70000', exact: 70000 }]);
+  });
+
+  it('los envíos que subieron el presupuesto tampoco se heredan, pero sí cuentan en lo que sobra', () => {
+    const state = stateWith((s) => {
+      s.months['2026-10']!.transfers[0]!.budget = true;
+    });
+    const form = closeBudgetForm(state, '2026-10');
+    expect(monthCalc(state, '2026-10').budget).toBe(158140);
+    expect(form.fields).toEqual([{ accountId: 'dr', name: 'DR account', currency: 'DOP', amount: '70000', exact: 70000 }]);
+    // 20,850.29 que sobraban + los 88,140 del envío.
+    expect(f2(form.leftover!)).toBe('108,990.29');
   });
 
   it('el campo enseña dos decimales y guarda la parte exacta', () => {

@@ -487,6 +487,7 @@ describe('acciones', () => {
       toAccountId: 'dr',
       amount: 200,
       rate: 57.5,
+      budget: false,
     });
     expect(h.view().contribs.at(-1)).toEqual({ id: 'id-2', goalId: 'personal', date: '2026-10-08', amount: 100, cur: 'USD' });
   });

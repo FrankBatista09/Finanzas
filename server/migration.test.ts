@@ -1,6 +1,7 @@
 // La migración 0002 sobre una base que se quedó en 0001 y ya tiene datos, como la de producción: nada se pierde
 // y lo que cambia de forma (tasas, presupuesto) dice lo mismo que antes.
 // La 0003 solo renombra un valor: el método 'Card' de las transacciones pasa a ser 'Debit card'.
+// La 0004 añade transfers.budget en 0: los envíos que ya había no suben el presupuesto de ningún mes.
 
 import { describe, expect, it } from 'vitest';
 import { monthCalc, rateFor } from '../shared/calc';
@@ -72,6 +73,8 @@ describe('migración 0002 sobre una base con datos de 0001', () => {
     applyMigrations(db, LATER);
     // De las transacciones solo cambia el nombre del método con tarjeta (0003).
     before.transactions = before.transactions!.map((row) => (row.method === 'Card' ? { ...row, method: 'Debit card' } : row));
+    // Y a los envíos solo se les añade la columna `budget`, en 0 (0004).
+    before.transfers = before.transfers!.map((row) => ({ ...row, budget: 0 }));
     for (const table of UNTOUCHED) expect(dump(db, table), table).toEqual(before[table]);
     // Y la base queda coherente: ninguna clave foránea rota.
     expect(db.sqlite.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
@@ -195,6 +198,55 @@ describe('migración 0002 sobre una base con datos de 0001', () => {
     applyMigrations(stepwise, LATER);
     const schema = (db: NodeD1Database) => db.sqlite.prepare("SELECT type, name, tbl_name FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY name").all();
     expect(schema(stepwise)).toEqual(schema(createTestDb()));
+  });
+});
+
+describe('migración 0004: transfers.budget', () => {
+  const FILE = '0004_transfer_budget.sql';
+  const BEFORE = LATER.slice(0, LATER.indexOf(FILE));
+
+  /** La base de producción antes de 0004. */
+  function db0003(): NodeD1Database {
+    const db = legacyDb();
+    applyMigrations(db, BEFORE);
+    return db;
+  }
+
+  it('es la migración que sigue a la 0003', () => {
+    expect(BEFORE).toEqual(['0002_dated_rates_budget_log.sql', '0003_debit_card_method.sql']);
+  });
+
+  it('los envíos que ya había quedan sin marcar y el resto de cada fila, y de la base, igual', () => {
+    const db = db0003();
+    const tables = db.sqlite
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE 'd1_%' ORDER BY name")
+      .all()
+      .map((row) => String(row.name));
+    const before = Object.fromEntries(tables.map((t) => [t, dump(db, t)]));
+    expect(before.transfers).toHaveLength(2);
+    applyMigrations(db, [FILE]);
+    before.transfers = before.transfers!.map((row) => ({ ...row, budget: 0 }));
+    for (const table of tables) expect(dump(db, table), table).toEqual(before[table]);
+    expect(db.sqlite.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
+  });
+
+  it('el presupuesto de los meses pasados no cambia, y un envío nuevo sin `budget` nace en 0', async () => {
+    const sqlite = db0003();
+    applyMigrations(sqlite, [FILE]);
+    const state = await loadState(asD1(sqlite), 'frank');
+    expect(state.months['2026-09']!.transfers.map((t) => [t.id, t.budget])).toEqual([['x1', false]]);
+    // Los mismos presupuestos que dejó la 0002: 65,000 en septiembre y 70,000 + 150.5 USD en octubre.
+    expect(monthCalc(state, '2026-09').budget).toBe(65000);
+    expect(monthCalc(state, '2026-10').budget).toBeCloseTo(70000 + 150.5 * 58.76, 8);
+    for (const key of ['2026-09', '2026-10']) expect(monthCalc(state, key).budgetParts.every((p) => p.fromTransfers === 0)).toBe(true);
+
+    // El DEFAULT de la columna cubre un INSERT que no la nombra (el de una versión anterior del servidor).
+    sqlite.sqlite.exec(`
+      INSERT INTO transfers (user_id, id, month_key, date, via, from_account_id, to_account_id, amount, rate)
+      VALUES ('frank', 'x2', '2026-10', '2026-10-04', 'Remitly', 'us', 'dr', 100, 58.76)
+    `);
+    expect(sqlite.sqlite.prepare("SELECT budget FROM transfers WHERE id = 'x2'").get()).toEqual({ budget: 0 });
+    expect(() => sqlite.sqlite.exec("UPDATE transfers SET budget = NULL WHERE id = 'x2'")).toThrow();
   });
 });
 

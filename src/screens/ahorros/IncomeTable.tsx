@@ -20,6 +20,11 @@ export interface IncomeTableProps {
   date: ISODate;
   /** La hoja de un mes cerrado: se ve, pero no se agrega, edita ni elimina desde ahí (sí desde Savings). */
   readOnly?: boolean;
+  /**
+   * La tarjeta de la hoja del mes, que ocupa media fila: sin la columna del equivalente en la moneda principal y
+   * con la casilla bajo un encabezado corto, para caber sin scroll horizontal.
+   */
+  compact?: boolean;
 }
 
 /**
@@ -28,28 +33,34 @@ export interface IncomeTableProps {
  * "Adds to budget" sube además el presupuesto del mes de su fecha. No pertenecen a un mes: en Savings se agregan,
  * editan y eliminan aunque el mes seleccionado esté cerrado.
  */
-export function IncomeTable({ label, rows, empty, date, readOnly = false }: IncomeTableProps) {
+export function IncomeTable({ label, rows, empty, date, readOnly = false, compact = false }: IncomeTableProps) {
   const { main, accountOptions, actions } = useFinanzas();
   const { t } = useI18n();
   const s = useStrings(AHORROS);
 
   return (
     <>
-      <SheetTable label={label} minWidth={820}>
+      <SheetTable label={label} minWidth={compact ? 560 : 820}>
         <thead>
           <tr>
-            <Th width={128}>{t('date')}</Th>
+            <Th width={compact ? 104 : 128}>{t('date')}</Th>
             <Th>{t('description')}</Th>
             <Th>{t('account')}</Th>
             <Th align="right">{t('amount')}</Th>
-            <Th width={60}>{t('currencyShort')}</Th>
-            <Th align="right">{main}</Th>
-            <Th align="center">{t('addsToBudget')}</Th>
+            <Th width={compact ? 44 : 60}>{t('currencyShort')}</Th>
+            {!compact && <Th align="right">{main}</Th>}
+            {compact ? (
+              <Th align="center" title={t('addsToBudget')} aria-label={t('addsToBudget')}>
+                {t('budgetShort')}
+              </Th>
+            ) : (
+              <Th align="center">{t('addsToBudget')}</Th>
+            )}
             <Th blank width={28} />
           </tr>
         </thead>
         <tbody>
-          {!readOnly && <IncomeAddRow empty={empty} date={date} />}
+          {!readOnly && <IncomeAddRow empty={empty} date={date} compact={compact} />}
           {rows.map((r) => {
             const named = { date: r.date, amount: r.amountText, cur: r.cur };
             return (
@@ -62,7 +73,7 @@ export function IncomeTable({ label, rows, empty, date, readOnly = false }: Inco
                     value={r.desc}
                     onCommit={(desc) => actions.patchIncome(r.id, { desc })}
                     readOnly={readOnly}
-                    minWidth={140}
+                    minWidth={compact ? 96 : 140}
                     maxLength={MAX_LEN.desc}
                     label={t('description')}
                   />
@@ -73,6 +84,7 @@ export function IncomeTable({ label, rows, empty, date, readOnly = false }: Inco
                     options={accountOptions(r.accountId)}
                     onCommit={(accountId) => actions.patchIncome(r.id, { accountId })}
                     disabled={readOnly}
+                    minWidth={compact ? 108 : undefined}
                     label={t('account')}
                   />
                 </Td>
@@ -90,7 +102,7 @@ export function IncomeTable({ label, rows, empty, date, readOnly = false }: Inco
                     label={t('currency')}
                   />
                 </Td>
-                <Converted value={r.main} note={r.mainNote} />
+                {!compact && <Converted value={r.main} note={r.mainNote} />}
                 <Td kind="center">
                   <CellCheckbox
                     checked={r.budget}
@@ -107,13 +119,14 @@ export function IncomeTable({ label, rows, empty, date, readOnly = false }: Inco
           })}
         </tbody>
       </SheetTable>
-      <FallbackNote show={rows.some((r) => r.mainNote.fallback)} />
+      {/* El asterisco que explica va en la columna convertida: sin ella no hay nada que explicar. */}
+      <FallbackNote show={!compact && rows.some((r) => r.mainNote.fallback)} />
     </>
   );
 }
 
 /** Fila de agregar. El borrador vive aquí para que escribir en ella no repinte la lista. */
-function IncomeAddRow({ empty, date }: Pick<IncomeTableProps, 'empty' | 'date'>) {
+function IncomeAddRow({ empty, date, compact }: Pick<IncomeTableProps, 'empty' | 'date' | 'compact'>) {
   const { state, accountOptions, actions } = useFinanzas();
   const { t } = useI18n();
   const s = useStrings(AHORROS);
@@ -136,7 +149,7 @@ function IncomeAddRow({ empty, date }: Pick<IncomeTableProps, 'empty' | 'date'>)
           value={shown.desc}
           onCommit={(desc) => setDraft((d) => ({ ...d, desc }))}
           placeholder={s('incomeDescPlaceholder')}
-          minWidth={140}
+          minWidth={compact ? 96 : 140}
           maxLength={MAX_LEN.desc}
           label={t('description')}
         />
@@ -146,6 +159,7 @@ function IncomeAddRow({ empty, date }: Pick<IncomeTableProps, 'empty' | 'date'>)
           value={shown.accountId}
           options={accountOptions(shown.accountId)}
           onCommit={(accountId) => setDraft((d) => ({ ...d, accountId }))}
+          minWidth={compact ? 108 : undefined}
           label={t('account')}
         />
       </Td>
@@ -163,12 +177,13 @@ function IncomeAddRow({ empty, date }: Pick<IncomeTableProps, 'empty' | 'date'>)
         <CellSelect value={shown.cur} options={CURRENCIES} onCommit={(cur) => setDraft((d) => ({ ...d, cur }))} mono dense label={t('currency')} />
       </Td>
       {/* La columna de la cifra convertida queda vacía: todavía no hay ingreso que convertir. */}
-      <Td />
+      {!compact && <Td />}
       <Td kind="center">
         <CellCheckbox checked={shown.budget} onCommit={(budget) => setDraft((d) => ({ ...d, budget }))} label={s('newIncomeBudget')} />
       </Td>
       <Td kind="add">
-        <AddButton>{t('addIncome')}</AddButton>
+        {/* En media tarjeta el botón largo ensancharía la columna de la ×: va el "Add" corto. */}
+        {compact ? <AddButton aria-label={t('addIncome')} /> : <AddButton>{t('addIncome')}</AddButton>}
       </Td>
     </AddRow>
   );

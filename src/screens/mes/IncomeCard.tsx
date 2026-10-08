@@ -32,7 +32,14 @@ export function IncomeCard() {
         }
       />
       <CardNote>{s('incomeNote')}</CardNote>
-      <IncomeTable label={t('income')} rows={incomeItems(state, lang, monthKey)} empty={EMPTY_MONTH_INCOME} date={draftDate} readOnly={readOnly} />
+      <IncomeTable
+        label={t('income')}
+        rows={incomeItems(state, lang, monthKey)}
+        empty={EMPTY_MONTH_INCOME}
+        date={draftDate}
+        readOnly={readOnly}
+        compact
+      />
     </Card>
   );
 }

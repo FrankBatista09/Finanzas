@@ -45,6 +45,7 @@ export const es: Shape<typeof en> = {
   pctSaved: '% ahorro',
   deleteMonth: 'Eliminar mes',
   addsToBudget: 'Suma al presupuesto',
+  budgetShort: 'Presup.',
 
   // ── De dónde salió una tasa ────────────────────────────────────────────────
   rateTyped: 'escrita para este mes',
@@ -130,6 +131,7 @@ export const es: Shape<typeof en> = {
   budgetKindAdjust: 'Ajuste',
   budgetKindLeftover: 'Sobrante',
   budgetKindIncome: 'Ingreso',
+  budgetKindTransfer: 'Envío',
   deleteBudgetEntry: 'Eliminar {kind} del {date}: {amount} {currency}',
 
   // ── Dinero total y cuentas ─────────────────────────────────────────────────

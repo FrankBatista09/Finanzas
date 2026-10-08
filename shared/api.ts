@@ -99,7 +99,9 @@
 //     fila se convierte con la tasa vigente en su fecha (shared/calc.ts rateFor), así que escribir una tasa con
 //     fecha de hoy no cambia lo registrado antes. DELETE exige ?date= (sin él, 400).
 //   · Presupuesto: el del mes es la suma de su registro (Month.budgetLog) más los ingresos del mes con
-//     `budget: true`. Month.budgets es la suma del registro por cuenta, ya hecha (sin los ingresos); nunca se
+//     `budget: true` y los envíos del mes con `budget: true` (estos suben la parte de la cuenta de destino por
+//     lo recibido, amount × rate; a la de origen no le restan). Month.budgets es la suma del registro por
+//     cuenta, ya hecha (sin los ingresos ni los envíos); nunca se
 //     guarda. PATCH { budgets: { cuenta: monto } } sigue significando "la parte de esta cuenta es este monto":
 //     el servidor añade un movimiento con la diferencia respecto a la suma del registro de esa cuenta (tipo
 //     'initial' si la cuenta no tenía movimientos en el mes, si no 'adjust'; ninguno si la diferencia es 0), con
@@ -220,8 +222,8 @@ export interface MonthSummary {
 export interface MonthPatch {
   /**
    * Partes del presupuesto que cambian: accountId → monto en la moneda de esa cuenta (>= 0). Es el monto en que
-   * debe quedar la suma del registro de esa cuenta (BudgetPart.fromLog, sin los ingresos que suben el
-   * presupuesto): el servidor añade un movimiento con la diferencia. Las cuentas que no vengan no cambian.
+   * debe quedar la suma del registro de esa cuenta (BudgetPart.fromLog, sin los ingresos ni los envíos que suben
+   * el presupuesto): el servidor añade un movimiento con la diferencia. Las cuentas que no vengan no cambian.
    */
   budgets?: Record<string, number>;
 }
@@ -301,8 +303,10 @@ export interface TransferCreate {
   amount: number;
   /** 1 moneda de origen = rate moneda de destino. Si falta: la tasa vigente en `date` para ese par. */
   rate?: number;
+  /** true: el envío sube además el presupuesto de su mes en la cuenta de destino, por lo recibido (Transfer.budget). Por defecto false. */
+  budget?: boolean;
 }
-export type TransferPatch = Partial<Pick<Transfer, 'date' | 'via' | 'fromAccountId' | 'toAccountId' | 'amount' | 'rate'>>;
+export type TransferPatch = Partial<Pick<Transfer, 'date' | 'via' | 'fromAccountId' | 'toAccountId' | 'amount' | 'rate' | 'budget'>>;
 
 export interface IncomeCreate {
   id?: string;

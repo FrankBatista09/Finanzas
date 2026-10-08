@@ -23,7 +23,7 @@ import type {
   TransferPatch,
   TxPatch,
 } from '../../shared/api';
-import { accountsById, budgetsFromLog, convert, defaultAccount, leftoverFor, monthCalc, openingFor, rateFor, sortedKeys } from '../../shared/calc';
+import { accountsById, budgetRaised, budgetsFromLog, convert, defaultAccount, leftoverFor, openingFor, rateFor, sortedKeys } from '../../shared/calc';
 import { CURRENCIES, MAX_LEN } from '../../shared/constants';
 import { clampToMonth, firstDay, inMonth, isISODate, isMonthKey } from '../../shared/month';
 import type {
@@ -476,6 +476,8 @@ export interface TransferInput {
    * Entre dos cuentas de la misma moneda es siempre 1, se indique lo que se indique.
    */
   rate?: number;
+  /** true: el envío sube además el presupuesto del mes en la cuenta de destino (Transfer.budget). Sin indicar: false. */
+  budget?: boolean;
 }
 
 export interface IncomeInput {
@@ -571,7 +573,17 @@ export function newTransfer(state: AppState, monthKey: MonthKey, input: Transfer
   if (!via || !state.months[monthKey] || !isISODate(input.date) || !positive(input.amount)) return null;
   const rate = transferRate(state, monthKey, input.date, input.fromAccountId, input.toAccountId, input.rate);
   if (rate === null) return null;
-  return { id, monthKey, date: input.date, via, fromAccountId: input.fromAccountId, toAccountId: input.toAccountId, amount: input.amount, rate };
+  return {
+    id,
+    monthKey,
+    date: input.date,
+    via,
+    fromAccountId: input.fromAccountId,
+    toAccountId: input.toAccountId,
+    amount: input.amount,
+    rate,
+    budget: input.budget === true,
+  };
 }
 
 /**
@@ -589,6 +601,7 @@ export function transferChange(state: AppState, id: string, patch: TransferPatch
   if (patch.date !== undefined && isISODate(patch.date)) out.date = patch.date;
   if (patch.via !== undefined && !isBlank(patch.via) && patch.via.length <= MAX_LEN.label) out.via = patch.via;
   if (patch.amount !== undefined && nonNegative(patch.amount)) out.amount = patch.amount;
+  if (typeof patch.budget === 'boolean') out.budget = patch.budget;
 
   const accounts = accountsById(state);
   let fromId = row.fromAccountId;
@@ -689,16 +702,15 @@ export function openingForBalance(state: AppState, monthKey: MonthKey, accountId
 const openMonth = (state: AppState, key: MonthKey) => state.months[key] !== undefined && !state.months[key].closed;
 
 /**
- * La parte del presupuesto de una cuenta tal como se ve (BudgetPart.amount: su registro más los ingresos que suben
- * el presupuesto) pasa a ser `amount`. Lo que se manda es lo que debe sumar su registro: `amount` menos lo que ya
- * ponen esos ingresos, que no se tocan desde aquí. null si no se puede: mes cerrado, cuenta que no existe, monto
- * que no es un número >= 0, o un monto por debajo de lo que suman los ingresos (el registro quedaría en negativo
- * y la API lo rechaza).
+ * La parte del presupuesto de una cuenta tal como se ve (BudgetPart.amount: su registro más los ingresos y los
+ * envíos que suben el presupuesto) pasa a ser `amount`. Lo que se manda es lo que debe sumar su registro: `amount`
+ * menos lo que ya ponen esos ingresos y envíos, que no se tocan desde aquí. null si no se puede: mes cerrado,
+ * cuenta que no existe, monto que no es un número >= 0, o un monto por debajo de lo que suman los ingresos y los
+ * envíos (el registro quedaría en negativo y la API lo rechaza).
  */
 export function budgetPart(state: AppState, key: MonthKey, accountId: string, amount: number): MonthPatch | null {
   if (!openMonth(state, key) || !hasAccount(state, accountId) || !nonNegative(amount)) return null;
-  const fromIncomes = monthCalc(state, key).budgetParts.find((p) => p.account.id === accountId)?.fromIncomes ?? 0;
-  const fromLog = round6(amount - fromIncomes);
+  const fromLog = round6(amount - budgetRaised(state, key, accountId));
   return fromLog >= 0 ? { budgets: { [accountId]: fromLog } } : null;
 }
 

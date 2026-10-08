@@ -726,7 +726,9 @@ describe('filas nuevas: validación del contrato', () => {
 
   it('envío: vía, fecha, monto > 0 y dos cuentas distintas que existan', () => {
     const ok = { date: '2026-10-07', via: 'Remitly', fromAccountId: 'us', toAccountId: 'dr', amount: 500, rate: 58.7 };
-    expect(newTransfer(s, OCT, ok, 'x')).toEqual({ id: 'x', monthKey: OCT, ...ok });
+    // Sin `budget` el envío no sube el presupuesto.
+    expect(newTransfer(s, OCT, ok, 'x')).toEqual({ id: 'x', monthKey: OCT, ...ok, budget: false });
+    expect(newTransfer(s, OCT, { ...ok, budget: true }, 'x')).toMatchObject({ budget: true });
     expect(newTransfer(s, OCT, { ...ok, amount: 0 }, 'x')).toBeNull();
     expect(newTransfer(s, OCT, { ...ok, rate: 0 }, 'x')).toBeNull();
     expect(newTransfer(s, OCT, { ...ok, rate: -1 }, 'x')).toBeNull();
@@ -1007,6 +1009,33 @@ describe('cuentas: reglas', () => {
     expect(partOf(next, 'dr')).toMatchObject({ amount: 85000, fromLog: 75000, fromIncomes: 10000 });
     // El ingreso es de la DR account: la parte de la otra cuenta no lo descuenta.
     expect(budgetPart(raised, OCT, 'us', 200)).toEqual({ budgets: { us: 200 } });
+  });
+
+  it('budgetPart: lo que suma un envío marcado se descuenta igual que lo de un ingreso', () => {
+    // Además del ingreso de 10,000, el envío de octubre (88,140 DOP recibidos) sube la parte de la DR account.
+    const raised = reduce(withBudgetIncome(), { type: 'transfer/patch', id: 'seed-tr-2026-10-1', patch: { budget: true } });
+    expect(partOf(raised, 'dr')).toMatchObject({ amount: 168140, fromLog: 70000, fromIncomes: 10000, fromTransfers: 88140 });
+    expect(budgetPart(raised, OCT, 'dr', 170000)).toEqual({ budgets: { dr: 71860 } });
+    expect(budgetPart(raised, OCT, 'dr', 168140)).toEqual({ budgets: { dr: 70000 } });
+    // Por debajo de lo que ya suman el ingreso y el envío el registro quedaría en negativo: no se puede.
+    expect(budgetPart(raised, OCT, 'dr', 98139)).toBeNull();
+    expect(budgetPart(raised, OCT, 'dr', 98140)).toEqual({ budgets: { dr: 0 } });
+    // La cuenta de origen no descuenta nada.
+    expect(budgetPart(raised, OCT, 'us', 200)).toEqual({ budgets: { us: 200 } });
+    const next = reduce(raised, { type: 'month/patch', key: OCT, patch: budgetPart(raised, OCT, 'dr', 170000)! });
+    expect(partOf(next, 'dr')).toMatchObject({ amount: 170000, fromLog: 71860, fromTransfers: 88140 });
+  });
+
+  it('transferChange: la casilla del presupuesto se manda tal cual, marcada o desmarcada', () => {
+    const s = seedState();
+    const id = s.months[OCT]!.transfers[0]!.id;
+    expect(transferChange(s, id, { budget: true })).toEqual({ budget: true });
+    expect(transferChange(s, id, { budget: false, amount: 900 })).toEqual({ budget: false, amount: 900 });
+    expect(transferChange(s, id, { budget: 'yes' as unknown as boolean })).toEqual({});
+    // Marcarla sube el presupuesto y no mueve los saldos.
+    const on = reduce(s, { type: 'transfer/patch', id, patch: transferChange(s, id, { budget: true }) });
+    expect(monthCalc(on, OCT).budget).toBe(158140);
+    expect(balances(on, OCT)).toEqual(balances(s, OCT));
   });
 
   it('budgetPart: por debajo de lo que ya suman los ingresos no se puede (el registro quedaría en negativo)', () => {

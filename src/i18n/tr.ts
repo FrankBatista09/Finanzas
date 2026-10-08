@@ -46,6 +46,7 @@ export const tr: Shape<typeof en> = {
   pctSaved: 'Birikim oranı',
   deleteMonth: 'Ayı sil',
   addsToBudget: 'Bütçeye eklenir',
+  budgetShort: 'Bütçe',
 
   // ── De dónde salió una tasa ────────────────────────────────────────────────
   rateTyped: 'bu ay için girildi',
@@ -131,6 +132,7 @@ export const tr: Shape<typeof en> = {
   budgetKindAdjust: 'Düzeltme',
   budgetKindLeftover: 'Devreden',
   budgetKindIncome: 'Gelir',
+  budgetKindTransfer: 'Transfer',
   deleteBudgetEntry: 'Sil: {kind}, {date}, {amount} {currency}',
 
   // ── Dinero total y cuentas ─────────────────────────────────────────────────

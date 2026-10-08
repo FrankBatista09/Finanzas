@@ -23,7 +23,7 @@ import {
 } from '../calc';
 import { f2 } from '../format';
 import { firstDay, monthOf } from '../month';
-import type { Account, AppState, Contribution, Currency, Goal, Income, Month, MonthKey } from '../types';
+import type { Account, AppState, Contribution, Currency, Goal, Income, Month, MonthKey, Transfer } from '../types';
 import { LEGACY_GOALS } from './import';
 import type { ExportData, ExportMonth } from './types';
 
@@ -92,7 +92,7 @@ function exportMonth(state: AppState, accounts: ReadonlyMap<string, Account>, ke
  * (el generador traduce los valores canónicos).
  *
  * Por cada mes, con las tasas de ese mes:
- *  · budget: el presupuesto total (la suma de las partes por cuenta: su registro más los ingresos que lo suben) en DOP.
+ *  · budget: el presupuesto total (la suma de las partes por cuenta: su registro más los ingresos y envíos que lo suben) en DOP.
  *  · incomeUSD: los ingresos con fecha en el mes, en USD.
  *  · accounts.dop: la suma de los saldos de las cuentas visibles en DOP al final del mes.
  *    accounts.usd: la suma de los saldos de las demás cuentas visibles (USD y TRY), en USD.
@@ -155,8 +155,22 @@ const foldName = (name: string) => name.normalize('NFC').toLowerCase();
  */
 const FORMER_GOAL_NAME: ReadonlyMap<string, string> = new Map(LEGACY_GOALS.map(([before, now]) => [now, before]));
 
-function importedMonth(m: ImportMonth, before: Month | undefined, usd: Account, dop: Account, newId: () => string): Month {
+/**
+ * `raising`: los envíos USD → DOP con `budget: true` que el mes tenía antes de importarlo. El libro no guarda esa
+ * marca: el envío importado que coincide con uno de ellos (fecha, vía, monto y tasa) la conserva, para que
+ * exportar y volver a cargar no la pierda. Cada uno vale para un solo envío del libro.
+ */
+function importedMonth(m: ImportMonth, before: Month | undefined, raising: readonly Transfer[], usd: Account, dop: Account, newId: () => string): Month {
   const paidFrom = (cur: Currency) => (cur === 'USD' ? usd.id : dop.id);
+  const pending = [...raising];
+  const raisesBudget = (t: ImportMonth['transfers'][number]): boolean => {
+    const i = pending.findIndex(
+      (b) => b.date === t.date && b.via === t.via && Math.abs(b.amount - t.usd) < HALF_CENT && Math.abs(b.rate - t.rate) < 1e-6,
+    );
+    if (i < 0) return false;
+    pending.splice(i, 1);
+    return true;
+  };
   return {
     key: m.key,
     closed: m.closed,
@@ -186,6 +200,7 @@ function importedMonth(m: ImportMonth, before: Month | undefined, usd: Account, 
       toAccountId: dop.id,
       amount: t.usd,
       rate: t.rate,
+      budget: raisesBudget(t),
     })),
     tx: m.tx.map((t) => ({
       id: newId(),
@@ -266,7 +281,8 @@ function importedSavings(
  *    Queda cerrado o abierto como diga el archivo, sin tasas escritas a mano y con todo el presupuesto en la
  *    cuenta en DOP, como un solo movimiento 'initial' del primer día del mes (menos lo que ya le suban al
  *    presupuesto los ingresos con `budget: true` que el usuario conserve en ese mes). Sus fijos y transacciones se pagan desde la cuenta en USD si su moneda es USD y desde la de
- *    DOP si no (las transacciones, con source 'import'); cada envío va de la cuenta en USD a la de DOP.
+ *    DOP si no (las transacciones, con source 'import'); cada envío va de la cuenta en USD a la de DOP (y conserva su `budget` si
+ *    coincide con uno USD → DOP que el mes ya tenía marcado: el libro no guarda esa marca).
  *  · El ingreso del mes del libro es el total del mes. Los ingresos que el usuario ya tiene registrados con
  *    fecha en ese mes no se tocan; lo que le falte al total (en USD, con las tasas del mes ya importado) pasa a
  *    ser un ingreso en USD el día 1 de ese mes, a la cuenta en USD, con la descripción IMPORTED_INCOME.
@@ -319,7 +335,13 @@ export function applyImportToState(base: AppState, payload: ImportPayload, newId
     const dop = bookAccount('DOP');
 
     const months = { ...base.months };
-    for (const key of keys) months[key] = importedMonth(file.get(key)!, base.months[key], usd, dop, newId);
+    const currencyOf = new Map(base.accounts.map((a) => [a.id, a.currency]));
+    for (const key of keys) {
+      const raising = (base.months[key]?.transfers ?? []).filter(
+        (t) => t.budget && currencyOf.get(t.fromAccountId) === 'USD' && currencyOf.get(t.toAccountId) === 'DOP',
+      );
+      months[key] = importedMonth(file.get(key)!, base.months[key], raising, usd, dop, newId);
+    }
 
     const wasImported = (i: Income) => i.desc === IMPORTED_INCOME && file.has(monthOf(i.date));
     const previous = new Map<MonthKey, Income>();
@@ -336,11 +358,14 @@ export function applyImportToState(base: AppState, payload: ImportPayload, newId
     }
 
     // El presupuesto del libro es el total del mes: lo que ya le suben los ingresos con `budget` (que se
-    // conservan) no se cuenta dos veces. El resto es un solo movimiento 'initial' en la cuenta en DOP. Su id no
+    // conservan) y los envíos importados que conservan la suya no se cuenta dos veces. El resto es un solo movimiento 'initial' en la cuenta en DOP. Su id no
     // sale de newId: es fijo por mes (el mes se sustituye entero), así reimportar no lo cambia.
     const withIncomes: AppState = { ...base, accounts, months, incomes };
     for (const key of keys) {
-      const raised = monthCalc(withIncomes, key).budgetParts.reduce((a, p) => a + convert(withIncomes, key, p.fromIncomes, p.account.currency, 'DOP'), 0);
+      const raised = monthCalc(withIncomes, key).budgetParts.reduce(
+        (a, p) => a + convert(withIncomes, key, p.fromIncomes + p.fromTransfers, p.account.currency, 'DOP'),
+        0,
+      );
       const amount = file.get(key)!.budget - raised;
       if (Math.abs(amount) < HALF_CENT) continue;
       const budgetLog = [{ id: `imported-budget-${key}`, date: firstDay(key), accountId: dop.id, amount, kind: 'initial' as const, note: '' }];

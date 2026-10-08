@@ -1,3 +1,43 @@
+/* Origen → destino en una sola celda. Si las dos listas no caben en una línea, el destino baja a la segunda y la
+   flecha se queda arriba, junto al origen. */
+.route {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  min-width: 124px;
+}
+
+/* La tarjeta mide su propio hueco: con la tarjeta a todo el ancho (apilada, o en una pantalla muy ancha) las dos
+   listas van en una sola línea. */
+.fit {
+  container-type: inline-size;
+}
+
+@container (min-width: 760px) {
+  .route {
+    min-width: 236px;
+  }
+}
+
+.origin {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+}
+
+/* Ancha para un nombre corriente ("US account") sin recortarlo; crece si sobra sitio. */
+.route .account {
+  flex: 1 1 104px;
+  width: auto;
+  min-width: 104px;
+}
+
+.arrow {
+  flex: none;
+  padding-right: 4px;
+  color: var(--text-muted);
+}
+
 /* Monto de un envío: el campo y, pegado a su derecha, el código de la moneda de la cuenta de origen. */
 .withCode {
   display: flex;
@@ -10,8 +50,27 @@
   color: var(--text-muted);
 }
 
-/* Código de moneda detrás de una cifra calculada ("Recibido"). */
-.unit {
-  font-size: var(--fs-label);
+/* Lo recibido (monto × tasa), bajo el monto: una cifra calculada, atenuada. */
+.received {
+  padding: 0 8px 6px 2px;
+  text-align: right;
+  white-space: nowrap;
+  font: var(--fs-label) var(--font-mono);
+  font-variant-numeric: tabular-nums;
   color: var(--text-muted);
+}
+
+/* La tarjeta ocupa media fila: la columna de la casilla y la del botón van justas para dejarle el ancho a las cuentas. */
+.budgetTh {
+  padding-left: 6px;
+  padding-right: 6px;
+}
+
+.addCell {
+  padding: 4px;
+}
+
+.addButton {
+  padding-left: 8px;
+  padding-right: 8px;
 }

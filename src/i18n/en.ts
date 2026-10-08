@@ -43,6 +43,7 @@ export const en = {
   pctSaved: '% saved',
   deleteMonth: 'Delete month',
   addsToBudget: 'Adds to budget',
+  budgetShort: 'Budget',
 
   // ── De dónde salió una tasa (useI18n().rateHint) ───────────────────────────
   rateTyped: 'typed for this month',
@@ -129,6 +130,7 @@ export const en = {
   budgetKindAdjust: 'Adjustment',
   budgetKindLeftover: 'Leftover',
   budgetKindIncome: 'Income',
+  budgetKindTransfer: 'Transfer',
   deleteBudgetEntry: 'Delete {kind} of {date}: {amount} {currency}',
 
   // ── Dinero total y cuentas (panel resumen de Savings) ──────────────────────

@@ -49,6 +49,9 @@ export const MES = defineStrings({
     fromOf: 'Account {name} leaves from',
     toOf: 'Account {name} goes to',
     rateOf: 'Rate of {name}',
+    transferBudgetOf: 'Adds to budget: {name}',
+    newTransferBudget: 'The new transfer adds to the budget',
+    transfersNote: 'Money moved between your accounts. With "Adds to budget" checked, what arrives also raises this month\'s budget.',
 
     // Tasas del mes
     pairRate: 'Rate {from} → {to}',
@@ -133,6 +136,9 @@ export const MES = defineStrings({
     fromOf: 'Cuenta de la que sale {name}',
     toOf: 'Cuenta a la que llega {name}',
     rateOf: 'Tasa de {name}',
+    transferBudgetOf: 'Suma al presupuesto: {name}',
+    newTransferBudget: 'El nuevo envío suma al presupuesto',
+    transfersNote: 'Dinero que pasa de una cuenta tuya a otra. Con «Suma al presupuesto» marcado, lo que llega sube además el presupuesto de este mes.',
 
     pairRate: 'Tasa {from} → {to}',
     newRateFrom: 'Moneda de origen de la nueva tasa',
@@ -213,6 +219,9 @@ export const MES = defineStrings({
     fromOf: 'Çıkış hesabı: {name}',
     toOf: 'Varış hesabı: {name}',
     rateOf: 'Kur: {name}',
+    transferBudgetOf: 'Bütçeye eklenir: {name}',
+    newTransferBudget: 'Yeni transfer bütçeye eklenir',
+    transfersNote: 'Hesaplarınız arasında aktarılan para. "Bütçeye eklenir" işaretliyse gelen tutar bu ayın bütçesini de artırır.',
 
     pairRate: 'Kur {from} → {to}',
     newRateFrom: 'Yeni kurun kaynak para birimi',
