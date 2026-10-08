@@ -12,6 +12,7 @@ export function newUserState(current: MonthKey = '2026-10'): AppState {
     secondCurrency: DEFAULT_SECOND_CURRENCY,
     defaultAccountId: null,
     defaultRate: DEFAULT_RATE,
+    goldPrice: null,
     theme: null,
     language: 'en',
     accounts: DEFAULT_ACCOUNTS.map((a) => ({ ...a })),

@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { ring } from '../../shared/calc';
 import type { AccountBalance } from '../../shared/calc';
-import { CURRENCIES, MAX_LEN } from '../../shared/constants';
-import { f0, f2 } from '../../shared/format';
-import type { Currency } from '../../shared/types';
+import { ACCOUNT_CURRENCIES, CURRENCIES, GOLD_DECIMALS, GOLD_UNIT, isGold, MAX_LEN } from '../../shared/constants';
+import { f0, f2, fGrams } from '../../shared/format';
+import type { AccountCurrency, Currency } from '../../shared/types';
 import { useI18n } from '../i18n';
 import { canHideAccount, canRemoveAccount, useFinanzas } from '../store';
 import { ringShades } from '../theme';
@@ -17,6 +17,12 @@ import styles from './SummaryPanel.module.css';
  */
 const cents = (n: number) => Math.round(n * 100) / 100;
 
+/** Lo mismo para los gramos de una cuenta de oro, que admiten un decimal más. */
+const milligrams = (n: number) => Math.round(n * 10 ** GOLD_DECIMALS) / 10 ** GOLD_DECIMALS;
+
+/** El saldo de una cuenta con su unidad: "1,250.00 USD"; de una de oro, sus gramos: "125.50 g". */
+const withUnit = (balance: number, currency: AccountCurrency) => (isGold(currency) ? `${fGrams(balance)} ${GOLD_UNIT}` : `${f2(balance)} ${currency}`);
+
 /**
  * Panel resumen de la hoja "Savings": el dinero total con el saldo de cada cuenta (aquí se renombran, se ocultan,
  * se agregan y se les corrige el saldo) y la dona del dinero por cuenta. Los saldos son los del final del mes
@@ -28,8 +34,9 @@ export function MoneyPanel() {
   const visible = balances.accounts.filter((b) => !b.account.hidden);
   const hidden = balances.accounts.filter((b) => b.account.hidden);
 
-  // Un segmento por cuenta visible con dinero; una en cero o en negativo no ocupa nada en la dona.
-  const funded = visible.filter((b) => b.inMain > 0);
+  // Un segmento por cuenta visible con dinero; una en cero o en negativo no ocupa nada en la dona, y una de oro
+  // sin precio tampoco: no se sabe cuánto vale.
+  const funded = visible.filter((b) => b.valued && b.inMain > 0);
   const shades = ringShades(state.theme, funded.length);
   const segments = ring(funded.map((b) => b.inMain));
   const colorOf = (b: AccountBalance) => shades[funded.indexOf(b)];
@@ -45,6 +52,7 @@ export function MoneyPanel() {
           <div className={styles.totalSecond}>
             ≈ {f2(balances.totalSecond)} {second}
           </div>
+          {balances.goldExcluded && <div className={styles.totalNote}>{t('goldNotIncluded')}</div>}
         </div>
         {/* key: al cambiar de mes los campos se montan de nuevo y no arrastran un borrador a medias. */}
         <AccountsTable key={monthKey} rows={visible} />
@@ -66,7 +74,7 @@ export function MoneyPanel() {
               color={colorOf(b) ?? 'var(--donut-free)'}
               outlined={colorOf(b) === undefined}
               name={b.account.name}
-              value={f2(b.inMain)}
+              value={b.valued ? f2(b.inMain) : withUnit(b.balance, b.account.currency)}
             />
           ))}
         </div>
@@ -87,7 +95,10 @@ function AccountsTable({ rows }: { rows: readonly AccountBalance[] }) {
   const { t } = useI18n();
   const [draft, setDraft] = useState(NEW_ACCOUNT);
   // La moneda de la cuenta nueva arranca en la principal; null = el usuario no la ha tocado.
-  const [currency, setCurrency] = useState<Currency | null>(null);
+  const [currency, setCurrency] = useState<AccountCurrency | null>(null);
+  // Solo aquí se ofrece el oro: una cuenta es lo único que puede estar en gramos.
+  const currencyOptions = ACCOUNT_CURRENCIES.map((c) => (isGold(c) ? { value: c, label: t('goldGrams') } : c));
+  const hasGold = state.accounts.some((a) => isGold(a.currency));
 
   const add = () => {
     if (!actions.addAccount({ ...draft, currency: currency ?? main })) return false;
@@ -99,7 +110,9 @@ function AccountsTable({ rows }: { rows: readonly AccountBalance[] }) {
     <div className={styles.accounts}>
       <SheetTable label={t('accounts')}>
         <tbody>
-          {rows.map(({ account, balance }) => (
+          {rows.map(({ account, balance }) => {
+            const gold = isGold(account.currency);
+            return (
             <tr key={account.id}>
               <Td kind="edit">
                 <CellText
@@ -113,15 +126,15 @@ function AccountsTable({ rows }: { rows: readonly AccountBalance[] }) {
               <Td kind="edit" className={styles.amountCol}>
                 {/* Escribir aquí corrige el saldo. Solo en el último mes: los saldos de meses pasados son historia. */}
                 <CellNumber
-                  value={cents(balance)}
+                  value={gold ? milligrams(balance) : cents(balance)}
                   onCommit={(value) => actions.setAccountBalance(account.id, value)}
                   readOnly={!latestMonth}
                   minWidth={BALANCE_MIN_WIDTH}
-                  label={t('balanceOf', { account: account.name, currency: account.currency })}
+                  label={gold ? t('balanceOfGold', { account: account.name }) : t('balanceOf', { account: account.name, currency: account.currency })}
                 />
               </Td>
-              <Td kind="mono" tone="muted">
-                {account.currency}
+              <Td kind="mono" tone="muted" title={gold ? t('gold') : undefined}>
+                {gold ? GOLD_UNIT : account.currency}
               </Td>
               <Td kind="action" className={styles.linkCol}>
                 {canHideAccount(state, account.id) && (
@@ -140,7 +153,9 @@ function AccountsTable({ rows }: { rows: readonly AccountBalance[] }) {
                 )}
               </Td>
             </tr>
-          ))}
+            );
+          })}
+          {hasGold && <GoldPriceRow />}
           <AddRow onAdd={add}>
             <Td kind="edit">
               <CellText
@@ -163,7 +178,7 @@ function AccountsTable({ rows }: { rows: readonly AccountBalance[] }) {
               />
             </Td>
             <Td kind="edit">
-              <CellSelect value={currency ?? main} options={CURRENCIES} onCommit={setCurrency} mono dense label={t('newAccountCurrency')} />
+              <CellSelect value={currency ?? main} options={currencyOptions} onCommit={setCurrency} mono dense label={t('newAccountCurrency')} />
             </Td>
             <Td kind="add">
               <AddButton className={styles.addAccount}>{t('addAccount')}</AddButton>
@@ -172,6 +187,50 @@ function AccountsTable({ rows }: { rows: readonly AccountBalance[] }) {
         </tbody>
       </SheetTable>
     </div>
+  );
+}
+
+/**
+ * El precio del oro, junto a las cuentas: lo que vale 1 gramo, escrito a mano en la moneda que se elija. Con él
+ * las cuentas de oro suman al dinero total; vacío, se ven solo en gramos. Solo sale si el usuario tiene alguna
+ * cuenta de oro.
+ */
+function GoldPriceRow() {
+  const { state, main, actions } = useFinanzas();
+  const { t } = useI18n();
+  const price = state.goldPrice;
+  // Mientras no haya precio, la moneda elegida vive aquí: no hay nada que guardar todavía.
+  const [picked, setPicked] = useState<Currency | null>(null);
+  const currency = price?.currency ?? picked ?? main;
+
+  return (
+    <tr>
+      <Td tone="muted">{t('goldPriceLabel', { unit: GOLD_UNIT })}</Td>
+      <Td kind="edit" className={styles.amountCol}>
+        <CellNumber
+          value={price?.amount ?? 0}
+          onCommit={(amount) => actions.setGoldPrice(amount, currency)}
+          blankZero
+          minWidth={BALANCE_MIN_WIDTH}
+          placeholder="0.00"
+          label={t('goldPriceAmount')}
+        />
+      </Td>
+      <Td kind="edit">
+        <CellSelect
+          value={currency}
+          options={CURRENCIES}
+          onCommit={(next) => {
+            setPicked(next);
+            if (price) actions.setGoldPrice(price.amount, next);
+          }}
+          mono
+          dense
+          label={t('goldPriceCurrency')}
+        />
+      </Td>
+      <Td />
+    </tr>
   );
 }
 
@@ -191,9 +250,7 @@ function HiddenAccounts({ rows }: { rows: readonly AccountBalance[] }) {
           {rows.map(({ account, balance }) => (
             <li key={account.id} className={styles.hiddenRow}>
               <span className={styles.hiddenName}>{account.name}</span>
-              <span className={styles.mono}>
-                {f2(balance)} {account.currency}
-              </span>
+              <span className={styles.mono}>{withUnit(balance, account.currency)}</span>
               <button
                 type="button"
                 className={styles.link}

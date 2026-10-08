@@ -21,7 +21,7 @@
 // el resto de sus fallos son errores JSON-RPC (server/mcp.ts).
 //
 // Dinero (shared/types.ts y shared/calc.ts): tres monedas (DOP, USD, TRY); cada usuario tiene su moneda principal,
-// su segunda moneda y sus cuentas. El servidor guarda montos y monedas originales y nunca cifras convertidas ni
+// su segunda moneda y sus cuentas. Una cuenta puede estar además en oro ('XAU', en gramos): ver "Oro" más abajo. El servidor guarda montos y monedas originales y nunca cifras convertidas ni
 // saldos: los saldos, el ingreso del mes y los totales se calculan del estado (shared/calc.ts), igual en la web,
 // en el servidor y en el MCP.
 //
@@ -121,6 +121,13 @@
 //     ingreso falta `accountId`, se usa la cuenta por defecto (defaultAccount en shared/calc.ts). Un envío necesita
 //     dos cuentas distintas; si falta `rate` se usa la tasa del mes para ese par (1 entre cuentas de igual moneda).
 //   · Monedas: mainCurrency y secondCurrency deben ser distintas.
+//   · Oro: 'XAU' (gramos) solo vale como `currency` de una cuenta y como `cur` de un ingreso a una cuenta de oro
+//     (que entonces es obligatorio: sus gramos, y nunca con `budget: true`). No es moneda principal ni segunda, ni
+//     de metas, aportes, gastos, transacciones o tasas (400 validation). Una cuenta de oro no puede llevar parte
+//     del presupuesto, pagar gastos fijos ni transacciones, ser origen o destino de un envío, ni ser la cuenta por
+//     defecto (400 validation, "… is a gold account …"). Su saldo son gramos: saldo inicial más ingresos.
+//     `goldPrice` (PATCH /api/settings) es lo que vale 1 gramo en una moneda normal, escrito a mano; null = sin
+//     precio: las cuentas de oro no tienen valor en dinero y no suman al dinero total (shared/calc.ts balances).
 //   · Metas: con plan van juntos monthly > 0, start y end (start <= end); sin plan, los tres null. Mandar solo una
 //     parte → 400 validation. El monto objetivo no viaja: es monthly × meses (shared/types.ts Goal).
 //
@@ -133,12 +140,14 @@
 
 import type {
   Account,
+  AccountCurrency,
   AppState,
   AppUser,
   Contribution,
   Currency,
   FixedExpense,
   Goal,
+  GoldPrice,
   Income,
   ISODate,
   Language,
@@ -187,8 +196,10 @@ export interface SettingsUpdate {
   /** Deben quedar distintas; para intercambiarlas se mandan las dos en la misma petición. */
   mainCurrency?: Currency;
   secondCurrency?: Currency;
-  /** Una cuenta existente del usuario, o null para la automática. */
+  /** Una cuenta de dinero existente del usuario (no de oro), o null para la automática. */
   defaultAccountId?: string | null;
+  /** Lo que vale 1 gramo de oro, en una moneda normal; null quita el precio. */
+  goldPrice?: GoldPrice | null;
 }
 
 export interface SettingsResponse {
@@ -197,13 +208,15 @@ export interface SettingsResponse {
   mainCurrency: Currency;
   secondCurrency: Currency;
   defaultAccountId: string | null;
+  goldPrice: GoldPrice | null;
 }
 
 export interface AccountCreate {
   id?: string;
   name: string;
-  currency: Currency;
-  /** Saldo inicial en la moneda de la cuenta; por defecto 0. */
+  /** Una moneda, o 'XAU' para una cuenta de oro (en gramos). */
+  currency: AccountCurrency;
+  /** Saldo inicial en la moneda de la cuenta (gramos si es de oro); por defecto 0. */
   opening?: number;
 }
 export type AccountPatch = Partial<Pick<Account, 'name' | 'currency' | 'opening' | 'hidden' | 'sort'>>;
@@ -314,8 +327,9 @@ export interface IncomeCreate {
   desc?: string;
   accountId?: string;
   amount: number;
-  cur: Currency;
-  /** true: el ingreso sube además el presupuesto del mes de su fecha (Income.budget). Por defecto false. */
+  /** 'XAU' si y solo si la cuenta es de oro: entonces `amount` son gramos. */
+  cur: AccountCurrency;
+  /** true: el ingreso sube además el presupuesto del mes de su fecha (Income.budget). Por defecto false. Nunca en una cuenta de oro. */
   budget?: boolean;
 }
 export type IncomePatch = Partial<Pick<Income, 'date' | 'desc' | 'accountId' | 'amount' | 'cur' | 'budget'>>;

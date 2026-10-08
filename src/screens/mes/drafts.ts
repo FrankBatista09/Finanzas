@@ -5,6 +5,8 @@
 // null significa "sin tocar": el campo enseña lo que toca en ese momento (la cuenta por defecto, la moneda de la
 // cuenta, la tasa del mes) y lo sigue si eso cambia, hasta que el usuario elige otra cosa.
 
+import { isMoneyAccount } from '../../../shared/calc';
+import type { MoneyAccount } from '../../../shared/calc';
 import { CATS, METHODS, VIAS } from '../../../shared/constants';
 import { fRate } from '../../../shared/format';
 import type { Account, Currency, ISODate, MonthKey } from '../../../shared/types';
@@ -17,7 +19,7 @@ import { newRateDate } from './rows';
 export interface DraftContext {
   /** Todas las cuentas, también las ocultas. */
   accounts: readonly Account[];
-  defaultAccount: Account | null;
+  defaultAccount: MoneyAccount | null;
   main: Currency;
 }
 
@@ -28,9 +30,9 @@ interface Paying {
   cur: Currency | null;
 }
 
-/** La cuenta de la que saldrá el gasto: la elegida si sigue existiendo; si no, la de por defecto. */
-export function draftAccount(draft: Pick<Paying, 'accountId'>, ctx: DraftContext): Account | null {
-  return ctx.accounts.find((a) => a.id === draft.accountId) ?? ctx.defaultAccount;
+/** La cuenta de la que saldrá el gasto: la elegida si sigue existiendo (y es de dinero: una de oro no paga nada); si no, la de por defecto. */
+export function draftAccount(draft: Pick<Paying, 'accountId'>, ctx: DraftContext): MoneyAccount | null {
+  return ctx.accounts.filter(isMoneyAccount).find((a) => a.id === draft.accountId) ?? ctx.defaultAccount;
 }
 
 /** La moneda del gasto: la elegida o, mientras no se toque, la de su cuenta (la principal si no hay cuentas). */
@@ -121,15 +123,15 @@ export interface TransferDraft {
 }
 
 export interface TransferContext extends Pick<DraftContext, 'accounts' | 'defaultAccount'> {
-  /** Las cuentas que se ofrecen, en su orden. */
-  visible: readonly Account[];
+  /** Las cuentas que se ofrecen, en su orden: las visibles de dinero. */
+  visible: readonly MoneyAccount[];
   /** La tasa del mes seleccionado para ese par, vigente en la fecha del borrador (useFinanzas().rateOf(from, to, undefined, date).rate). */
   rateOf(from: Currency, to: Currency): number;
 }
 
 export interface TransferSides {
-  from: Account | null;
-  to: Account | null;
+  from: MoneyAccount | null;
+  to: MoneyAccount | null;
 }
 
 /** La vía con la que arranca el borrador, y la que se usa si el campo se deja vacío (un envío sin vía no vale). */
@@ -145,7 +147,7 @@ export function newTransferDraft(): TransferDraft {
 }
 
 /** Otra cuenta visible distinta de `than`; mejor una de otra moneda, que es lo que suele ser un envío. */
-function another(visible: readonly Account[], than: Account | null): Account | null {
+function another(visible: readonly MoneyAccount[], than: MoneyAccount | null): MoneyAccount | null {
   const rest = visible.filter((a) => a.id !== than?.id);
   return rest.find((a) => a.currency !== than?.currency) ?? rest[0] ?? null;
 }
@@ -156,7 +158,7 @@ function another(visible: readonly Account[], than: Account | null): Account | n
  * cuenta falta uno de los lados y el envío no se puede agregar.
  */
 export function transferSides(draft: Pick<TransferDraft, 'fromAccountId' | 'toAccountId'>, ctx: TransferContext): TransferSides {
-  const chosen = (id: string | null) => ctx.accounts.find((a) => a.id === id) ?? null;
+  const chosen = (id: string | null) => ctx.accounts.filter(isMoneyAccount).find((a) => a.id === id) ?? null;
   const from = chosen(draft.fromAccountId);
   let to = chosen(draft.toAccountId);
   if (to && to.id === from?.id) to = null;

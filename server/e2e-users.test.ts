@@ -119,7 +119,7 @@ async function twoUsers() {
   expect((await eda.post('/api/dev/seed')).status).toBe(200);
 
   const settings = await eda.patch<SettingsResponse>('/api/settings', { language: 'tr', theme: OCEAN });
-  expect(settings.body).toEqual({ language: 'tr', theme: OCEAN, mainCurrency: 'DOP', secondCurrency: 'USD', defaultAccountId: 'dr' });
+  expect(settings.body).toEqual({ language: 'tr', theme: OCEAN, mainCurrency: 'DOP', secondCurrency: 'USD', defaultAccountId: 'dr', goldPrice: null });
   const tx = await eda.post<Transaction>('/api/transactions', {
     monthKey: '2026-10',
     date: '2026-10-07',

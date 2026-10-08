@@ -84,7 +84,7 @@ export function rowAccountOptions(base: readonly AccountOption[], accounts: read
 export function usedCurrencies(
   main: Currency,
   second: Currency,
-  visible: readonly Pick<Account, 'currency'>[],
+  visible: readonly { currency: Currency }[],
   month: { fixed: readonly { cur: Currency }[]; tx: readonly { cur: Currency }[] },
 ): Currency[] {
   const used = new Set<Currency>([main, second, ...visible.map((a) => a.currency), ...month.fixed.map((f) => f.cur), ...month.tx.map((t) => t.cur)]);

@@ -24,6 +24,14 @@ export function f0(n: number): string {
   return fixed(Math.round(Number.isFinite(n) ? n : 0), 0);
 }
 
+/**
+ * Gramos de oro: dos decimales, o tres si el tercero cuenta (125.5 → '125.50', 1.234 → '1.234'). Sin la unidad.
+ */
+export function fGrams(n: number): string {
+  const three = fixed(n, 3);
+  return three.endsWith('0') ? three.slice(0, -1) : three;
+}
+
 /** Tasa con dos decimales, sin separador de miles: 58.7612 → '58.76'. */
 export function fRate(n: number): string {
   return (Number.isFinite(n) ? n : 0).toFixed(2);

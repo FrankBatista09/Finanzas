@@ -264,7 +264,7 @@ describe('cuentas e ingresos', () => {
     expect(parse(accountCreateSchema, { name: 'x'.repeat(120), currency: 'DOP' }).name).toHaveLength(120);
     expect(messageOf(() => parse(accountCreateSchema, { name: '  ', currency: 'USD' }))).toBe('Invalid data: name: cannot be empty');
     expect(messageOf(() => parse(accountCreateSchema, { name: 'x'.repeat(121), currency: 'USD' }))).toBe('Invalid data: name: allows up to 120 characters');
-    expect(messageOf(() => parse(accountCreateSchema, { name: 'x' }))).toBe('Invalid data: currency: must be DOP, USD or TRY');
+    expect(messageOf(() => parse(accountCreateSchema, { name: 'x' }))).toBe('Invalid data: currency: must be DOP, USD, TRY or XAU (gold, in grams)');
     expect(messageOf(() => parse(accountCreateSchema, { name: 'x', currency: 'USD', opening: 1e13 }))).toBe('Invalid data: opening: is too large');
     // Oculta y orden no se eligen al crear, y el saldo no viaja: se calcula.
     for (const extra of [{ hidden: true }, { sort: 3 }, { balance: 100 }]) {
@@ -385,7 +385,7 @@ describe('ajustes (PATCH /api/settings)', () => {
   it('solo cambia lo que viene: tiene que venir algo, y nada desconocido', () => {
     expect(parse(settingsUpdateSchema, { language: 'tr', theme: null })).toEqual({ language: 'tr', theme: null });
     expect(messageOf(() => parse(settingsUpdateSchema, {}))).toBe(
-      'Invalid data: nothing to change: send theme, language, mainCurrency, secondCurrency or defaultAccountId',
+      'Invalid data: nothing to change: send theme, language, mainCurrency, secondCurrency, defaultAccountId or goldPrice',
     );
     expect(messageOf(() => parse(settingsUpdateSchema, { defaultRate: 60 }))).toContain('Unrecognized key: "defaultRate"');
     expect(messageOf(() => parse(settingsUpdateSchema, { language: 'es', initialized: false }))).toContain('Unrecognized key: "initialized"');

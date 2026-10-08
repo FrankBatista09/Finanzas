@@ -14,6 +14,23 @@
 
 export type Currency = 'DOP' | 'USD' | 'TRY';
 
+/**
+ * Oro, medido en gramos. No es una moneda más: solo puede ser la "moneda" de una cuenta (y de los ingresos que le
+ * entran). Por eso tiene su propio tipo: lo que es dinero (presupuesto, gastos, envíos, tasas, metas) sigue
+ * tipado con Currency y el compilador no deja que el oro se cuele ahí.
+ */
+export type Gold = 'XAU';
+
+/** En qué puede estar una cuenta: una moneda o gramos de oro. */
+export type AccountCurrency = Currency | Gold;
+
+/** Lo que vale 1 gramo de oro, escrito a mano por el usuario en una moneda normal. */
+export interface GoldPrice {
+  /** Mayor que 0. */
+  amount: number;
+  currency: Currency;
+}
+
 /** 'YYYY-MM' */
 export type MonthKey = string;
 
@@ -50,7 +67,7 @@ export interface ThemeColors {
 export interface Account {
   id: string;
   name: string;
-  currency: Currency;
+  currency: AccountCurrency;
   /**
    * Saldo inicial, en la moneda de la cuenta: lo que tenía antes del primer movimiento registrado.
    * "Corregir el saldo" de una cuenta es ajustar este número (shared/calc.ts openingFor).
@@ -156,12 +173,15 @@ export interface Income {
   desc: string;
   accountId: string;
   amount: number;
-  /** Moneda en la que se cobró; a la cuenta entra convertido a su moneda con la tasa vigente en `date`. */
-  cur: Currency;
+  /**
+   * Moneda en la que se cobró; a la cuenta entra convertido a su moneda con la tasa vigente en `date`.
+   * 'XAU' si y solo si la cuenta es de oro: entonces `amount` son gramos y no se convierte.
+   */
+  cur: AccountCurrency;
   /**
    * true: además de entrar a la cuenta, sube el presupuesto del mes de `date`, en la parte de su cuenta, por su
    * monto convertido a la moneda de la cuenta con la tasa vigente en `date`. No genera ningún BudgetEntry: lo
-   * suma shared/calc.ts (monthCalc, budgetHistory).
+   * suma shared/calc.ts (monthCalc, budgetHistory). Siempre false en un ingreso a una cuenta de oro.
    */
   budget: boolean;
 }
@@ -238,6 +258,11 @@ export interface AppState {
   defaultAccountId: string | null;
   /** Tasa USD→DOP de respaldo cuando ningún mes la tiene (settings.default_rate). */
   defaultRate: number;
+  /**
+   * Precio del oro: lo que vale 1 gramo. null = sin precio: las cuentas de oro se ven solo en gramos y no suman
+   * al dinero total (shared/calc.ts balances).
+   */
+  goldPrice: GoldPrice | null;
 
   /** Colores elegidos por el usuario; null = la paleta original (shared/theme.ts DEFAULT_THEME). */
   theme: ThemeColors | null;

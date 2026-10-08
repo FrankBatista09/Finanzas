@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { defaultAccount, rateFor, visibleAccounts } from '../../../shared/calc';
+import { defaultAccount, moneyAccounts, rateFor } from '../../../shared/calc';
 import { seedState } from '../../../shared/seed';
 import type { Account, AppState, Currency, MonthKey } from '../../../shared/types';
 import { pairRates } from '../../store';
@@ -45,7 +45,7 @@ const context = (state: AppState): DraftContext => ({ accounts: state.accounts, 
 
 const transferContext = (state: AppState, key: MonthKey = '2026-10'): TransferContext => ({
   accounts: state.accounts,
-  visible: visibleAccounts(state),
+  visible: moneyAccounts(state),
   defaultAccount: defaultAccount(state),
   rateOf: (from, to) => rateFor(state, key, from, to).rate,
 });

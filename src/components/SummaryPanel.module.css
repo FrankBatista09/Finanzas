@@ -59,6 +59,13 @@
   margin-top: 4px;
 }
 
+/* Aviso bajo el total: el oro no entra en él mientras no tenga precio. */
+.totalNote {
+  font-size: var(--fs-meta);
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
 /* Tabla de cuentas: una tabla de src/ui dentro de su propio marco (las partes del presupuesto, los saldos). */
 .accounts {
   border: 1px solid var(--border);

@@ -48,6 +48,8 @@ import {
   DEFAULT_MAIN_CURRENCY,
   DEFAULT_RATE,
   DEFAULT_SECOND_CURRENCY,
+  GOLD,
+  isGold,
 } from '../shared/constants';
 import { applyImportToState } from '../shared/excel/data';
 import { DEFAULT_LANGUAGE, isLanguage } from '../shared/i18n';
@@ -55,12 +57,14 @@ import { clampToMonth, currentMonthKey, firstDay, inMonth, isMonthKey, nextKey, 
 import { isDefaultTheme, normalizeTheme } from '../shared/theme';
 import type {
   Account,
+  AccountCurrency,
   AppState,
   BudgetEntryKind,
   Contribution,
   Currency,
   FixedExpense,
   Goal,
+  GoldPrice,
   Income,
   ISODate,
   Language,
@@ -75,6 +79,7 @@ import type {
 import type { ApiError } from './errors';
 import {
   conflictError,
+  goldAccountError,
   invalidData,
   monthClosedError,
   monthNotFoundError,
@@ -98,7 +103,7 @@ interface MonthRow {
 interface AccountRow {
   id: string;
   name: string;
-  currency: Currency;
+  currency: AccountCurrency;
   opening: number;
   hidden: number;
   sort: number;
@@ -168,7 +173,7 @@ interface IncomeRow {
   description: string;
   account_id: string;
   amount: number;
-  currency: Currency;
+  currency: AccountCurrency;
   budget: number;
 }
 
@@ -405,17 +410,20 @@ function setClause<P extends object>(map: { readonly [K in keyof P]-?: string },
 const foldName = (name: string) => name.normalize('NFC').toLowerCase();
 const sameName = (a: string, b: string) => foldName(a) === foldName(b);
 
-/** Las cuentas que una escritura nombra tienen que ser del usuario; devuelve el error de la primera que no lo sea. */
+/**
+ * Las cuentas que nombra una escritura de dinero (presupuesto, fijo, transacción, envío) tienen que ser del
+ * usuario y no ser de oro; devuelve el error de la primera que no cumpla.
+ */
 async function accountError(db: D1Database, userId: string, accountIds: readonly string[]): Promise<ApiError | null> {
   if (accountIds.length === 0) return null;
-  const known = await accountIdsOf(db, userId);
-  const missing = accountIds.find((id) => !known.has(id));
-  return missing === undefined ? null : unknownAccountError(missing);
-}
-
-async function accountIdsOf(db: D1Database, userId: string): Promise<Set<string>> {
-  const res = await db.prepare('SELECT id FROM accounts WHERE user_id = ?').bind(userId).all<{ id: string }>();
-  return new Set(res.results.map((r) => r.id));
+  const res = await db.prepare('SELECT id, name, currency FROM accounts WHERE user_id = ?').bind(userId).all<AccountRow>();
+  const known = new Map(res.results.map((r) => [r.id, r]));
+  for (const id of accountIds) {
+    const account = known.get(id);
+    if (!account) return unknownAccountError(id);
+    if (isGold(account.currency)) return goldAccountError(account.name);
+  }
+  return null;
 }
 
 /** Una escritura condicionada a "el mes está abierto" no tocó nada: averigua por qué. */
@@ -454,8 +462,14 @@ async function rowWriteError(
 /** Los meses abiertos del usuario. Lleva un parámetro: su id. */
 const OPEN_MONTHS = '(SELECT key FROM months WHERE user_id = ? AND closed = 0)';
 
-/** Condición "esa cuenta es del usuario". Lleva dos parámetros: el usuario y la cuenta. */
-const ACCOUNT_EXISTS = 'EXISTS (SELECT 1 FROM accounts WHERE user_id = ? AND id = ?)';
+/**
+ * Condición "esa cuenta es del usuario y es de dinero" (no de oro). Lleva dos parámetros: el usuario y la cuenta.
+ * Es la de todo lo que cuelga de un mes: un fijo, una transacción o un envío no pueden nombrar una cuenta de oro.
+ */
+const ACCOUNT_EXISTS = `EXISTS (SELECT 1 FROM accounts WHERE user_id = ? AND id = ? AND currency <> '${GOLD}')`;
+
+/** Lo mismo dentro de un JOIN con la tabla de cuentas: `alias` es el de esa tabla. */
+const moneyOnly = (alias: string) => `AND ${alias}.currency <> '${GOLD}'`;
 
 /**
  * Edita una fila de un mes abierto. `accountIds` son las cuentas que el patch nombra (tienen que existir) y
@@ -499,10 +513,19 @@ async function deleteInMonth(db: D1Database, userId: string, table: MonthTable, 
 
 // ── Ajustes del usuario ──────────────────────────────────────────────────────
 // Tabla clave/valor por usuario: 'default_rate', 'theme' (JSON de ThemeColors; NULL = paleta original),
-// 'language', 'main_currency', 'second_currency', 'default_account' (NULL = la automática) e 'initialized'
-// (ya se le crearon las cuentas y metas iniciales).
+// 'language', 'main_currency', 'second_currency', 'default_account' (NULL = la automática), 'gold_price' (JSON de
+// GoldPrice: lo que vale 1 gramo de oro; NULL o sin fila = sin precio) e 'initialized' (ya se le crearon las
+// cuentas y metas iniciales).
 
-type SettingKey = 'default_rate' | 'theme' | 'language' | 'main_currency' | 'second_currency' | 'default_account' | 'initialized';
+type SettingKey =
+  | 'default_rate'
+  | 'theme'
+  | 'language'
+  | 'main_currency'
+  | 'second_currency'
+  | 'default_account'
+  | 'gold_price'
+  | 'initialized';
 
 interface Settings {
   defaultRate: number;
@@ -512,6 +535,7 @@ interface Settings {
   secondCurrency: Currency;
   /** Tal como está guardada: puede nombrar una cuenta que ya no existe (ver knownAccount). */
   defaultAccountId: string | null;
+  goldPrice: GoldPrice | null;
   initialized: boolean;
 }
 
@@ -534,6 +558,23 @@ function themeValue(theme: ThemeColors | null): string | null {
   return JSON.stringify({ accent: theme.accent, header: theme.header, background: theme.background });
 }
 
+/** Un precio del oro guardado que no se puede leer (JSON roto, monto que no es mayor que 0, otra moneda) es como no tenerlo. */
+function readGoldPrice(value: string | null | undefined): GoldPrice | null {
+  if (!value) return null;
+  try {
+    const price = JSON.parse(value) as { amount?: unknown; currency?: unknown } | null;
+    const amount = price?.amount;
+    const currency = price?.currency;
+    return typeof amount === 'number' && Number.isFinite(amount) && amount > 0 && isCurrency(currency) ? { amount, currency } : null;
+  } catch {
+    return null;
+  }
+}
+
+function goldPriceValue(price: GoldPrice | null): string | null {
+  return price ? JSON.stringify({ amount: price.amount, currency: price.currency }) : null;
+}
+
 function toSettings(list: SettingRow[]): Settings {
   const map = new Map(list.map((r) => [r.key, r.value]));
   const rate = Number(map.get('default_rate'));
@@ -553,11 +594,15 @@ function toSettings(list: SettingRow[]): Settings {
     mainCurrency,
     secondCurrency,
     defaultAccountId: map.get('default_account') || null,
+    goldPrice: readGoldPrice(map.get('gold_price')),
     initialized: map.has('initialized'),
   };
 }
 
-/** La cuenta por defecto guardada solo vale si sigue existiendo; si no, null (la automática de shared/calc). */
+/**
+ * La cuenta por defecto guardada solo vale si sigue existiendo y es de dinero (`accountIds` son las que pueden
+ * serlo: una que pasó a ser de oro ya no cuenta); si no, null (la automática de shared/calc).
+ */
 function knownAccount(id: string | null, accountIds: ReadonlySet<string>): string | null {
   return id !== null && accountIds.has(id) ? id : null;
 }
@@ -579,20 +624,25 @@ function setSettingIfMissing(db: D1Database, userId: string, key: SettingKey, va
 
 /** Las dos lecturas con las que se arman los ajustes: lo guardado y las cuentas que existen. */
 function settingsStatements(db: D1Database, userId: string): D1PreparedStatement[] {
-  return [db.prepare(SELECT_SETTINGS).bind(userId), db.prepare('SELECT id FROM accounts WHERE user_id = ?').bind(userId)];
+  return [db.prepare(SELECT_SETTINGS).bind(userId), db.prepare('SELECT id, name, currency FROM accounts WHERE user_id = ?').bind(userId)];
 }
+
+type AccountRef = Pick<AccountRow, 'id' | 'name' | 'currency'>;
+
+const moneyIds = (accounts: readonly Pick<AccountRow, 'id' | 'currency'>[]) => new Set(accounts.filter((a) => !isGold(a.currency)).map((a) => a.id));
 
 function settingsFrom(settings: D1Result<unknown> | undefined, accounts: D1Result<unknown> | undefined) {
   const stored = toSettings(rows<SettingRow>(settings));
-  const accountIds = new Set(rows<{ id: string }>(accounts).map((r) => r.id));
+  const accountList = rows<AccountRef>(accounts);
   const response: SettingsResponse = {
     theme: stored.theme,
     language: stored.language,
     mainCurrency: stored.mainCurrency,
     secondCurrency: stored.secondCurrency,
-    defaultAccountId: knownAccount(stored.defaultAccountId, accountIds),
+    defaultAccountId: knownAccount(stored.defaultAccountId, moneyIds(accountList)),
+    goldPrice: stored.goldPrice,
   };
-  return { response, accountIds };
+  return { response, accounts: new Map(accountList.map((a) => [a.id, a])) };
 }
 
 /**
@@ -607,20 +657,21 @@ export async function getSettings(db: D1Database, userId: string): Promise<Setti
 /**
  * Cambia solo lo que venga en `update` (ya validado) y devuelve cómo quedan los ajustes. Las dos monedas se
  * comprueban sobre el par resultante (lo que hay más lo que cambia): mandar las dos intercambiadas vale; mandar
- * una igual a la otra que ya tiene, no (400). La cuenta por defecto tiene que ser una del usuario (400) o null.
- * Si algo no cumple no se guarda nada.
+ * una igual a la otra que ya tiene, no (400). La cuenta por defecto tiene que ser una del usuario y de dinero,
+ * no de oro (400), o null. Si algo no cumple no se guarda nada.
  */
 export async function updateSettings(db: D1Database, userId: string, update: SettingsUpdate): Promise<SettingsResponse> {
   const stmts: D1PreparedStatement[] = [];
   if (update.theme !== undefined) stmts.push(setSetting(db, userId, 'theme', themeValue(update.theme)));
   if (update.language !== undefined) stmts.push(setSetting(db, userId, 'language', update.language));
+  if (update.goldPrice !== undefined) stmts.push(setSetting(db, userId, 'gold_price', goldPriceValue(update.goldPrice)));
 
   const currencies = update.mainCurrency !== undefined || update.secondCurrency !== undefined;
   const account = update.defaultAccountId;
   if (currencies || account != null) {
     // Lo que hay ahora, para comprobar el resultado antes de escribir nada.
     const [settings, accounts] = await db.batch(settingsStatements(db, userId));
-    const { response: current, accountIds } = settingsFrom(settings, accounts);
+    const { response: current, accounts: known } = settingsFrom(settings, accounts);
     if (currencies) {
       const main = update.mainCurrency ?? current.mainCurrency;
       const second = update.secondCurrency ?? current.secondCurrency;
@@ -629,13 +680,15 @@ export async function updateSettings(db: D1Database, userId: string, update: Set
       stmts.push(setSetting(db, userId, 'main_currency', main), setSetting(db, userId, 'second_currency', second));
     }
     if (account != null) {
-      if (!accountIds.has(account)) throw unknownAccountError(account);
+      const chosen = known.get(account);
+      if (!chosen) throw unknownAccountError(account);
+      if (isGold(chosen.currency)) throw goldAccountError(chosen.name);
       // La fila sale de las cuentas del usuario: si la cuenta se borró entre la lectura y esto, no se guarda.
       stmts.push(
         db
           .prepare(
             `INSERT INTO settings (user_id, key, value)
-             SELECT a.user_id, 'default_account', a.id FROM accounts a WHERE a.user_id = ?1 AND a.id = ?2
+             SELECT a.user_id, 'default_account', a.id FROM accounts a WHERE a.user_id = ?1 AND a.id = ?2 ${moneyOnly('a')}
              ON CONFLICT(user_id, key) DO UPDATE SET value = excluded.value`,
           )
           .bind(userId, account),
@@ -682,8 +735,9 @@ async function readState(db: D1Database, userId: string): Promise<{ state: AppSt
       contribs: rows<ContributionRow>(contribs).map(toContribution),
       mainCurrency: stored.mainCurrency,
       secondCurrency: stored.secondCurrency,
-      defaultAccountId: knownAccount(stored.defaultAccountId, new Set(accountList.map((a) => a.id))),
+      defaultAccountId: knownAccount(stored.defaultAccountId, moneyIds(accountList)),
       defaultRate: stored.defaultRate,
+      goldPrice: stored.goldPrice,
       theme: stored.theme,
       language: stored.language,
     },
@@ -912,15 +966,18 @@ export async function patchAccount(db: D1Database, userId: string, id: string, p
 
 /**
  * Borra una cuenta que nada usa. Si algo la usa (un fijo, una transacción, un envío, un ingreso o una parte
- * del presupuesto) responde 409: esa cuenta se oculta, no se borra. Tampoco se puede borrar la última: el
- * usuario siempre tiene al menos una en la que registrar. Si era su cuenta por defecto, vuelve a la automática.
+ * del presupuesto) responde 409: esa cuenta se oculta, no se borra. Tampoco se puede borrar la última, ni la
+ * última de dinero aunque queden cuentas de oro: el usuario siempre tiene al menos una de la que pagar. Si era
+ * su cuenta por defecto, vuelve a la automática.
  */
 export async function deleteAccount(db: D1Database, userId: string, id: string): Promise<void> {
   const [deleted] = await db.batch([
     db
       .prepare(
         `DELETE FROM accounts WHERE user_id = ?1 AND id = ?2 AND NOT ${ACCOUNT_IN_USE}
-         AND (SELECT COUNT(*) FROM accounts WHERE user_id = ?1) > 1 RETURNING id`,
+         AND (SELECT COUNT(*) FROM accounts WHERE user_id = ?1) > 1
+         AND (currency = '${GOLD}' OR (SELECT COUNT(*) FROM accounts WHERE user_id = ?1 AND currency <> '${GOLD}') > 1)
+         RETURNING id`,
       )
       .bind(userId, id),
     db
@@ -998,7 +1055,7 @@ export async function patchMonth(db: D1Database, userId: string, key: MonthKey, 
            SELECT m.user_id, ?4, m.key, ?5, a.id, ROUND(?6 - ${LOG_SUM}, 6),
                   CASE WHEN EXISTS (SELECT 1 FROM month_budget_log WHERE user_id = ?1 AND month_key = ?2 AND account_id = ?3)
                        THEN 'adjust' ELSE 'initial' END, ''
-           FROM months m JOIN accounts a ON a.user_id = m.user_id AND a.id = ?3
+           FROM months m JOIN accounts a ON a.user_id = m.user_id AND a.id = ?3 ${moneyOnly('a')}
            WHERE m.user_id = ?1 AND m.key = ?2 AND m.closed = 0 AND ROUND(?6 - ${LOG_SUM}, 6) <> 0`,
         )
         .bind(userId, key, accountId, newId(), date, amount),
@@ -1034,7 +1091,7 @@ export async function addBudgetEntry(
         .prepare(
           `INSERT INTO month_budget_log (user_id, id, month_key, date, account_id, amount, kind, note)
            SELECT m.user_id, ?3, m.key, ?4, a.id, ?6, ?7, ?8
-           FROM months m JOIN accounts a ON a.user_id = m.user_id AND a.id = ?5
+           FROM months m JOIN accounts a ON a.user_id = m.user_id AND a.id = ?5 ${moneyOnly('a')}
            WHERE m.user_id = ?1 AND m.key = ?2 AND m.closed = 0 RETURNING id`,
         )
         .bind(userId, key, input.id ?? newId(), input.date ?? entryDate(key, now), input.accountId, input.amount, input.kind ?? 'adjust', input.note ?? ''),
@@ -1069,7 +1126,7 @@ function leftoverStatement(db: D1Database, userId: string, key: MonthKey, accoun
     .prepare(
       `INSERT INTO month_budget_log (user_id, id, month_key, date, account_id, amount, kind, note)
        SELECT m.user_id, ?3, m.key, ?4, a.id, ?6, 'leftover', ''
-       FROM months m JOIN accounts a ON a.user_id = m.user_id AND a.id = ?5
+       FROM months m JOIN accounts a ON a.user_id = m.user_id AND a.id = ?5 ${moneyOnly('a')}
        WHERE m.user_id = ?1 AND m.key = ?2 AND m.closed = 0
          AND NOT EXISTS (SELECT 1 FROM month_budget_log WHERE user_id = ?1 AND month_key = ?2 AND kind = 'leftover')
        RETURNING id`,
@@ -1348,7 +1405,7 @@ export async function createFixed(db: D1Database, userId: string, input: FixedCr
         `INSERT INTO fixed_expenses (user_id, id, month_key, name, day, amount, currency, paid, account_id, sort)
          SELECT m.user_id, ?2, m.key, ?4, ?5, ?6, ?7, ?8, a.id,
                 COALESCE((SELECT MAX(sort) FROM fixed_expenses WHERE user_id = m.user_id AND month_key = m.key), -1) + 1
-         FROM months m JOIN accounts a ON a.user_id = m.user_id AND a.id = ?9
+         FROM months m JOIN accounts a ON a.user_id = m.user_id AND a.id = ?9 ${moneyOnly('a')}
          WHERE m.user_id = ?1 AND m.key = ?3 AND m.closed = 0
          RETURNING *`,
       )
@@ -1396,7 +1453,7 @@ export async function createTransaction(
       .prepare(
         `INSERT INTO transactions (${TX_INSERT.join(', ')})
          SELECT m.user_id, ?2, m.key, ?4, ?5, ?6, ?7, ?8, ?9, ?10, a.id, ?12, ?13, ?14
-         FROM months m JOIN accounts a ON a.user_id = m.user_id AND a.id = ?11
+         FROM months m JOIN accounts a ON a.user_id = m.user_id AND a.id = ?11 ${moneyOnly('a')}
          WHERE m.user_id = ?1 AND m.key = ?3 AND m.closed = 0
          RETURNING *`,
       )
@@ -1458,6 +1515,8 @@ async function monthTransferRate(db: D1Database, userId: string, input: Transfer
   const to = accounts.get(input.toAccountId);
   if (!from) throw unknownAccountError(input.fromAccountId);
   if (!to) throw unknownAccountError(input.toAccountId);
+  if (isGold(from.currency)) throw goldAccountError(from.name);
+  if (isGold(to.currency)) throw goldAccountError(to.name);
   return rateFor(state, input.monthKey, from.currency, to.currency, input.date).rate;
 }
 
@@ -1476,8 +1535,8 @@ export async function createTransfer(db: D1Database, userId: string, input: Tran
         `INSERT INTO transfers (user_id, id, month_key, date, via, from_account_id, to_account_id, amount, rate, budget)
          SELECT m.user_id, ?2, m.key, ?4, ?5, f.id, t.id, ?8, ?9, ?10
          FROM months m
-         JOIN accounts f ON f.user_id = m.user_id AND f.id = ?6
-         JOIN accounts t ON t.user_id = m.user_id AND t.id = ?7
+         JOIN accounts f ON f.user_id = m.user_id AND f.id = ?6 ${moneyOnly('f')}
+         JOIN accounts t ON t.user_id = m.user_id AND t.id = ?7 ${moneyOnly('t')}
          WHERE m.user_id = ?1 AND m.key = ?3 AND m.closed = 0
          RETURNING *`,
       )
@@ -1536,6 +1595,33 @@ const INCOME_PATCH = {
 } as const;
 const NO_INCOME = 'Income not found.';
 
+/**
+ * Condición de un ingreso sobre su cuenta `a`: gramos de oro (XAU) si y solo si la cuenta es de oro, y un
+ * ingreso a una cuenta de oro nunca sube el presupuesto. `cur` y `budget` son las expresiones SQL de esos dos datos.
+ */
+const incomeFits = (cur: string, budget: string) =>
+  `((a.currency = '${GOLD}') = (${cur} = '${GOLD}')) AND NOT (a.currency = '${GOLD}' AND ${budget} = 1)`;
+
+/** Por qué un ingreso no se puede guardar en esa cuenta (ver incomeFits), o null si sí se puede. */
+async function incomeAccountError(
+  db: D1Database,
+  userId: string,
+  accountId: string,
+  cur: AccountCurrency,
+  budget: boolean,
+): Promise<ApiError | null> {
+  const account = await db.prepare('SELECT id, name, currency FROM accounts WHERE user_id = ? AND id = ?').bind(userId, accountId).first<AccountRef>();
+  if (!account) return unknownAccountError(accountId);
+  const name = account.name.slice(0, 64);
+  if (isGold(account.currency)) {
+    if (!isGold(cur)) return validationError(invalidData(`cur: must be ${GOLD} (grams) because "${name}" is a gold account`));
+    if (budget) return validationError(invalidData(`budget: an income into a gold account cannot add to the budget ("${name}" holds grams of gold)`));
+  } else if (isGold(cur)) {
+    return validationError(invalidData(`cur: ${GOLD} (grams of gold) is only valid for an income into a gold account, and "${name}" is not one`));
+  }
+  return null;
+}
+
 export async function listIncomes(db: D1Database, userId: string): Promise<Income[]> {
   const res = await db.prepare('SELECT * FROM incomes WHERE user_id = ? ORDER BY rowid').bind(userId).all<IncomeRow>();
   return res.results.map(toIncome);
@@ -1544,6 +1630,7 @@ export async function listIncomes(db: D1Database, userId: string): Promise<Incom
 /**
  * Sin `accountId` el ingreso entra a la cuenta por defecto del usuario. Con `budget: true` sube además el
  * presupuesto del mes de su fecha: no se escribe nada en el registro, lo suma shared/calc.ts al calcular.
+ * A una cuenta de oro le entran gramos: `cur` tiene que ser XAU (y solo ahí) y nunca lleva `budget` (400).
  */
 export async function createIncome(db: D1Database, userId: string, input: IncomeCreate): Promise<Income> {
   const accountId = input.accountId ?? (await defaultAccountId(db, userId));
@@ -1552,12 +1639,18 @@ export async function createIncome(db: D1Database, userId: string, input: Income
     db
       .prepare(
         `INSERT INTO incomes (user_id, id, date, description, account_id, amount, currency, budget)
-         SELECT a.user_id, ?2, ?3, ?4, a.id, ?6, ?7, ?8 FROM accounts a WHERE a.user_id = ?1 AND a.id = ?5
+         SELECT a.user_id, ?2, ?3, ?4, a.id, ?6, ?7, ?8 FROM accounts a
+         WHERE a.user_id = ?1 AND a.id = ?5 AND ${incomeFits('?7', '?8')}
          RETURNING *`,
       )
       .bind(userId, input.id ?? newId(), input.date, input.desc ?? '', accountId, input.amount, input.cur, input.budget ? 1 : 0),
   );
-  if (!row) throw unknownAccountError(accountId);
+  if (!row) {
+    throw (
+      (await incomeAccountError(db, userId, accountId, input.cur, input.budget ?? false)) ??
+      conflictError('The account changed while the income was being saved. Try again.')
+    );
+  }
   return toIncome(row);
 }
 
@@ -1566,18 +1659,29 @@ export async function patchIncome(db: D1Database, userId: string, id: string, pa
   let stmt: D1PreparedStatement;
   if (sets.columns.length === 0) {
     stmt = db.prepare('SELECT * FROM incomes WHERE user_id = ? AND id = ?').bind(userId, id);
-  } else if (patch.accountId === undefined) {
-    stmt = db.prepare(`UPDATE incomes SET ${sets.sql} WHERE user_id = ? AND id = ? RETURNING *`).bind(...sets.values, userId, id);
   } else {
+    // La regla se comprueba dentro del UPDATE sobre el ingreso resultante (lo que hay más lo que cambia): la
+    // cuenta tiene que existir y cuadrar con la moneda y con `budget` (incomeFits).
+    const budget = patch.budget === undefined ? null : patch.budget ? 1 : 0;
     stmt = db
-      .prepare(`UPDATE incomes SET ${sets.sql} WHERE user_id = ? AND id = ? AND ${ACCOUNT_EXISTS} RETURNING *`)
-      .bind(...sets.values, userId, id, userId, patch.accountId);
+      .prepare(
+        `UPDATE incomes SET ${sets.sql}
+         WHERE user_id = ? AND id = ?
+           AND EXISTS (SELECT 1 FROM accounts a WHERE a.user_id = incomes.user_id AND a.id = COALESCE(?, incomes.account_id)
+                       AND ${incomeFits('COALESCE(?, incomes.currency)', 'COALESCE(?, incomes.budget)')})
+         RETURNING *`,
+      )
+      .bind(...sets.values, userId, id, patch.accountId ?? null, patch.cur ?? null, budget);
   }
   const row = await stmt.first<IncomeRow>();
   if (row) return toIncome(row);
-  const exists = await db.prepare('SELECT 1 AS found FROM incomes WHERE user_id = ? AND id = ?').bind(userId, id).first();
-  // Si el ingreso existe, lo único que pudo frenar la escritura es la cuenta.
-  throw exists && patch.accountId !== undefined ? unknownAccountError(patch.accountId) : notFoundError(NO_INCOME);
+  const current = await db.prepare('SELECT * FROM incomes WHERE user_id = ? AND id = ?').bind(userId, id).first<IncomeRow>();
+  if (!current) throw notFoundError(NO_INCOME);
+  // El ingreso existe: lo único que pudo frenar la escritura es su cuenta.
+  throw (
+    (await incomeAccountError(db, userId, patch.accountId ?? current.account_id, patch.cur ?? current.currency, patch.budget ?? current.budget === 1)) ??
+    conflictError('The income changed while it was being saved. Try again.')
+  );
 }
 
 export async function deleteIncome(db: D1Database, userId: string, id: string): Promise<void> {
@@ -1898,6 +2002,7 @@ export async function replaceAll(db: D1Database, userId: string, state: AppState
     setSetting(db, userId, 'main_currency', state.mainCurrency),
     setSetting(db, userId, 'second_currency', state.secondCurrency),
     setSetting(db, userId, 'default_account', state.defaultAccountId),
+    setSetting(db, userId, 'gold_price', goldPriceValue(state.goldPrice)),
     // Ya tiene sus cuentas y sus metas (las de `state`): la primera visita no debe añadirle las iniciales.
     setSettingIfMissing(db, userId, 'initialized', '1'),
     ...dataStatements(db, userId, state, now.toISOString()),

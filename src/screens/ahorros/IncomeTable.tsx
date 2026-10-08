@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { CURRENCIES, MAX_LEN } from '../../../shared/constants';
+import { CURRENCIES, GOLD_UNIT, isGold, MAX_LEN } from '../../../shared/constants';
 import type { ISODate } from '../../../shared/types';
 import { useI18n, useStrings } from '../../i18n';
 import { useFinanzas } from '../../store';
@@ -25,6 +25,11 @@ export interface IncomeTableProps {
    * con la casilla bajo un encabezado corto, para caber sin scroll horizontal.
    */
   compact?: boolean;
+  /**
+   * Savings: se ofrecen también las cuentas de oro. Un ingreso a una de ellas son gramos: sin moneda que elegir,
+   * sin equivalente y sin casilla de presupuesto. En la hoja del mes el oro no aparece.
+   */
+  gold?: boolean;
 }
 
 /**
@@ -33,8 +38,9 @@ export interface IncomeTableProps {
  * "Adds to budget" sube además el presupuesto del mes de su fecha. No pertenecen a un mes: en Savings se agregan,
  * editan y eliminan aunque el mes seleccionado esté cerrado.
  */
-export function IncomeTable({ label, rows, empty, date, readOnly = false, compact = false }: IncomeTableProps) {
-  const { main, accountOptions, actions } = useFinanzas();
+export function IncomeTable({ label, rows, empty, date, readOnly = false, compact = false, gold = false }: IncomeTableProps) {
+  const { main, accountOptions: moneyOptions, incomeAccountOptions, actions } = useFinanzas();
+  const accountOptions = gold ? incomeAccountOptions : moneyOptions;
   const { t } = useI18n();
   const s = useStrings(AHORROS);
 
@@ -60,9 +66,10 @@ export function IncomeTable({ label, rows, empty, date, readOnly = false, compac
           </tr>
         </thead>
         <tbody>
-          {!readOnly && <IncomeAddRow empty={empty} date={date} compact={compact} />}
+          {!readOnly && <IncomeAddRow empty={empty} date={date} compact={compact} gold={gold} />}
           {rows.map((r) => {
-            const named = { date: r.date, amount: r.amountText, cur: r.cur };
+            const grams = isGold(r.cur);
+            const named = { date: r.date, amount: r.amountText, cur: grams ? GOLD_UNIT : r.cur };
             return (
               <tr key={r.id}>
                 <Td kind="edit">
@@ -91,23 +98,29 @@ export function IncomeTable({ label, rows, empty, date, readOnly = false, compac
                 <Td kind="edit">
                   <CellNumber value={r.amount} onCommit={(amount) => actions.patchIncome(r.id, { amount })} readOnly={readOnly} minWidth={70} label={t('amount')} />
                 </Td>
-                <Td kind="edit">
-                  <CellSelect
-                    value={r.cur}
-                    options={CURRENCIES}
-                    onCommit={(cur) => actions.patchIncome(r.id, { cur })}
-                    disabled={readOnly}
-                    mono
-                    dense
-                    label={t('currency')}
-                  />
-                </Td>
+                {isGold(r.cur) ? (
+                  <Td kind="mono" tone="muted" title={t('gold')}>
+                    {GOLD_UNIT}
+                  </Td>
+                ) : (
+                  <Td kind="edit">
+                    <CellSelect
+                      value={r.cur}
+                      options={CURRENCIES}
+                      onCommit={(cur) => actions.patchIncome(r.id, { cur })}
+                      disabled={readOnly}
+                      mono
+                      dense
+                      label={t('currency')}
+                    />
+                  </Td>
+                )}
                 {!compact && <Converted value={r.main} note={r.mainNote} />}
                 <Td kind="center">
                   <CellCheckbox
                     checked={r.budget}
                     onCommit={(budget) => actions.patchIncome(r.id, { budget })}
-                    disabled={readOnly}
+                    disabled={readOnly || grams}
                     label={s('incomeBudgetOf', named)}
                   />
                 </Td>
@@ -126,15 +139,17 @@ export function IncomeTable({ label, rows, empty, date, readOnly = false, compac
 }
 
 /** Fila de agregar. El borrador vive aquí para que escribir en ella no repinte la lista. */
-function IncomeAddRow({ empty, date, compact }: Pick<IncomeTableProps, 'empty' | 'date' | 'compact'>) {
-  const { state, accountOptions, actions } = useFinanzas();
+function IncomeAddRow({ empty, date, compact, gold }: Pick<IncomeTableProps, 'empty' | 'date' | 'compact' | 'gold'>) {
+  const { state, accountOptions: moneyOptions, incomeAccountOptions, actions } = useFinanzas();
+  const accountOptions = gold ? incomeAccountOptions : moneyOptions;
   const { t } = useI18n();
   const s = useStrings(AHORROS);
   const [draft, setDraft] = useState(empty);
-  const shown = resolveIncomeDraft(draft, state, date);
+  const shown = resolveIncomeDraft(draft, state, date, gold);
+  const grams = isGold(shown.cur);
 
   const add = () => {
-    const input = incomeDraftInput(draft, state, date);
+    const input = incomeDraftInput(draft, state, date, gold);
     if (!input || !actions.addIncome(input)) return false;
     setDraft(afterIncomeAdd);
   };
@@ -173,13 +188,19 @@ function IncomeAddRow({ empty, date, compact }: Pick<IncomeTableProps, 'empty' |
           label={t('amount')}
         />
       </Td>
-      <Td kind="edit">
-        <CellSelect value={shown.cur} options={CURRENCIES} onCommit={(cur) => setDraft((d) => ({ ...d, cur }))} mono dense label={t('currency')} />
-      </Td>
+      {isGold(shown.cur) ? (
+        <Td kind="mono" tone="muted" title={t('gold')}>
+          {GOLD_UNIT}
+        </Td>
+      ) : (
+        <Td kind="edit">
+          <CellSelect value={shown.cur} options={CURRENCIES} onCommit={(cur) => setDraft((d) => ({ ...d, cur }))} mono dense label={t('currency')} />
+        </Td>
+      )}
       {/* La columna de la cifra convertida queda vacía: todavía no hay ingreso que convertir. */}
       {!compact && <Td />}
       <Td kind="center">
-        <CellCheckbox checked={shown.budget} onCommit={(budget) => setDraft((d) => ({ ...d, budget }))} label={s('newIncomeBudget')} />
+        <CellCheckbox checked={shown.budget} onCommit={(budget) => setDraft((d) => ({ ...d, budget }))} disabled={grams} label={s('newIncomeBudget')} />
       </Td>
       <Td kind="add">
         {/* En media tarjeta el botón largo ensancharía la columna de la ×: va el "Add" corto. */}

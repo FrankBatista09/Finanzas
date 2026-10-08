@@ -1,5 +1,5 @@
 import type { SettingsUpdate } from '../../shared/api';
-import { visibleAccounts } from '../../shared/calc';
+import { moneyAccounts } from '../../shared/calc';
 import { isLanguage } from '../../shared/i18n';
 import { clampToMonth, todayISO } from '../../shared/month';
 import { isDefaultTheme, normalizeTheme } from '../../shared/theme';
@@ -16,6 +16,7 @@ import {
   currencyChange,
   fixedChange,
   goalChange,
+  goldPriceChange,
   incomeChange,
   leftoverEntry,
   LOCAL_ENTRY,
@@ -81,7 +82,13 @@ export function createActions(
     setDefaultAccount(accountId) {
       const state = store.state;
       if (!state || state.defaultAccountId === accountId) return;
-      if (accountId === null || visibleAccounts(state).some((a) => a.id === accountId)) settings({ defaultAccountId: accountId });
+      if (accountId === null || moneyAccounts(state).some((a) => a.id === accountId)) settings({ defaultAccountId: accountId });
+    },
+    setGoldPrice(amount, currency) {
+      const patch = store.state ? goldPriceChange(store.state, amount, currency) : null;
+      if (!patch) return false;
+      settings(patch);
+      return true;
     },
 
     addAccount(input) {
@@ -206,7 +213,7 @@ export function createActions(
       return true;
     },
     patchIncome(id, patch) {
-      if (store.state) store.dispatch({ type: 'income/patch', id, patch: incomeChange(store.state, patch) });
+      if (store.state) store.dispatch({ type: 'income/patch', id, patch: incomeChange(store.state, id, patch) });
     },
     removeIncome: (id) => store.dispatch({ type: 'income/remove', id }),
 

@@ -2,11 +2,11 @@
 // no hay cuentas propias, solo se junta lo que cada pantalla pediría por su lado (saldos, tasas, conversiones).
 // Funciones puras: sirven igual en el proveedor que en una prueba o en el modelo de una pantalla.
 
-import { balances, convert, defaultAccount, leftoverFor, monthCalc, rateFor, visibleAccounts } from '../../shared/calc';
+import { balances, convert, defaultAccount, leftoverFor, moneyAccounts, monthCalc, rateFor, visibleAccounts } from '../../shared/calc';
 import type { RateInfo } from '../../shared/calc';
 import { CURRENCIES } from '../../shared/constants';
 import { monthOf } from '../../shared/month';
-import type { AppState, AppUser, Currency, ISODate, MonthKey } from '../../shared/types';
+import type { Account, AppState, AppUser, Currency, ISODate, MonthKey } from '../../shared/types';
 import type { Actions, Finanzas } from './context';
 import { latestKey } from './reducers';
 
@@ -66,17 +66,27 @@ export interface AccountOption {
   label: string;
 }
 
-/**
- * Opciones de un selector de cuenta: las visibles, en su orden, y detrás las de `include` que no estén entre ellas
- * (la cuenta de una fila que después se ocultó tiene que seguir viéndose con su nombre, no cambiarse sola por otra).
- */
-export function accountOptions(state: AppState, ...include: (string | null | undefined)[]): AccountOption[] {
-  const options = visibleAccounts(state).map((a) => ({ value: a.id, label: a.name }));
+function optionsOf(state: AppState, offered: readonly Account[], include: readonly (string | null | undefined)[]): AccountOption[] {
+  const options = offered.map((a) => ({ value: a.id, label: a.name }));
   for (const id of include) {
     if (!id || options.some((o) => o.value === id)) continue;
     options.push({ value: id, label: state.accounts.find((a) => a.id === id)?.name ?? '—' });
   }
   return options;
+}
+
+/**
+ * Opciones de un selector de cuenta para lo que es dinero (un gasto, un envío): las visibles que no son de oro,
+ * en su orden, y detrás las de `include` que no estén entre ellas (la cuenta de una fila que después se ocultó
+ * tiene que seguir viéndose con su nombre, no cambiarse sola por otra).
+ */
+export function accountOptions(state: AppState, ...include: (string | null | undefined)[]): AccountOption[] {
+  return optionsOf(state, moneyAccounts(state), include);
+}
+
+/** Como accountOptions, con las cuentas de oro: un ingreso sí puede entrar a una (en gramos). */
+export function incomeAccountOptions(state: AppState, ...include: (string | null | undefined)[]): AccountOption[] {
+  return optionsOf(state, visibleAccounts(state), include);
 }
 
 export interface FinanzasInput {
@@ -105,9 +115,10 @@ export function buildFinanzas({ user, state, monthKey, today, actions }: Finanza
     main: calc.main,
     second: calc.second,
     accounts: [...state.accounts].sort((a, b) => a.sort - b.sort),
-    visibleAccounts: visibleAccounts(state),
+    visibleAccounts: moneyAccounts(state),
     defaultAccount: defaultAccount(state),
     accountOptions: (...include) => accountOptions(state, ...include),
+    incomeAccountOptions: (...include) => incomeAccountOptions(state, ...include),
     balances: balances(state, monthKey),
     latestMonth: latestKey(state) === monthKey,
     inBoth: (amount, cur, key = monthKey, date) => inBoth(state, key, amount, cur, date),
