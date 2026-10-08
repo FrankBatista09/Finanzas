@@ -72,6 +72,8 @@ export const tr: Shape<typeof en> = {
   excelLoaded: 'Yüklendi: {file}',
   excelFailed: 'Dosya okunamadı',
   downloadExcel: 'Excel indir',
+  allMonths: 'Tüm aylar',
+  downloadMonths: 'İndir ({count})',
   excel: 'Excel',
   excelNote: 'Excel dosyası, yeniden tasarlanana kadar USD ve DOP cinsinden, iki hesaplı bir özettir.',
   monthRate: 'Ay kuru',

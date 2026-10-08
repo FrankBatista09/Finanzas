@@ -71,6 +71,8 @@ export const es: Shape<typeof en> = {
   excelLoaded: 'Cargado: {file}',
   excelFailed: 'No se pudo leer el archivo',
   downloadExcel: 'Descargar Excel',
+  allMonths: 'Todos los meses',
+  downloadMonths: 'Descargar ({count})',
   excel: 'Excel',
   excelNote: 'El Excel es un resumen en USD y DOP, con dos cuentas, hasta que se rediseñe.',
   monthRate: 'Tasa del mes',

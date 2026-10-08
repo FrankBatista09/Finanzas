@@ -11,6 +11,7 @@ import { keyFromLabel } from '../month';
 import type { Language } from '../types';
 import { CONFIG_SHEET, EXCEL_EN, EXCEL_ES, EXCEL_LOCALES, EXCEL_TR, buildFinanzasXlsx, excelLocale } from './export';
 import type { ExcelLocale } from './export';
+import { parseFinanzasXlsx } from './import';
 import {
   bookFormulas,
   formulaLiterals,
@@ -25,6 +26,12 @@ import * as localeModule from './locale';
 import type { ExportData } from './types';
 
 const LANGS: Language[] = ['en', 'es', 'tr'];
+
+/**
+ * Las categorías que lista el libro (Config y "Por categoría"): las diez del diseño original, para que el libro
+ * en español siga saliendo byte a byte como el de referencia. "Other", la undécima, no está en esas listas.
+ */
+const LISTED_CATS = 10;
 
 /** Frases de fórmula: listas de trozos de texto, alguno de los cuales puede ir vacío. */
 const PHRASES = [
@@ -85,6 +92,8 @@ function sampleData(): ExportData {
     { date: '2026-10-08', desc: 'Compra semanal', place: 'Veterinaria', cat: 'Mascotas', method: 'Efectivo', amount: 950, cur: 'DOP', notes: 'Comida del perro' },
     // 'Comida' es la categoría Food en español, pero no es el valor canónico: es texto del usuario y no se traduce.
     { date: '2026-10-09', desc: 'Almuerzo', place: 'Adrian Tropical', cat: 'Comida', method: 'Tarjeta', amount: 1150, cur: 'DOP', notes: '' },
+    // "Other" es una categoría de la app que el libro no lista en Config: su fila se escribe traducida igualmente.
+    { date: '2026-10-10', desc: 'Regalo', place: 'Librería Cuesta', cat: 'Other', method: 'Card', amount: 500, cur: 'DOP', notes: '' },
   );
   data.goals.push(
     { name: 'Ahorros', monthlyUSD: null, start: null, end: null },
@@ -185,7 +194,8 @@ describe('ExcelLocale', () => {
     expect(lists(EXCEL_TR)).toEqual(lists(EXCEL_ES));
     expect([...lists(EXCEL_ES).keys()].sort()).toEqual([...PHRASES, ...LISTS].sort());
     expect(lists(EXCEL_ES).get('months')).toBe(12);
-    expect(lists(EXCEL_ES).get('cats')).toBe(CATS.length);
+    expect(lists(EXCEL_ES).get('cats')).toBe(LISTED_CATS);
+    expect(CATS).toHaveLength(LISTED_CATS + 1);
     expect(lists(EXCEL_ES).get('methods')).toBe(METHODS.length);
   });
 
@@ -205,7 +215,8 @@ describe('ExcelLocale', () => {
   it.each(LANGS)('%s: meses, categorías y métodos son los de shared/i18n', (lang) => {
     const L = EXCEL_LOCALES[lang];
     expect(L.months).toBe(MONTH_NAMES[lang]);
-    expect(L.cats).toBe(CAT_NAMES[lang]);
+    expect(L.cats).toEqual(CAT_NAMES[lang].slice(0, LISTED_CATS));
+    expect(CATS[LISTED_CATS]).toBe('Other');
     expect(L.methods).toBe(METHOD_NAMES[lang]);
     expect(L.month.fixedCategory).toBe(FIXED_CATEGORY_NAMES[lang]);
   });
@@ -379,10 +390,10 @@ describe.each(LANGS)('libro en %s', (lang) => {
 
   it('categorías y métodos se escriben traducidos; lo que no está en las listas, tal cual', () => {
     // Listas de Config y filas de "Por categoría".
-    expect(CATS.map((_, i) => config.cells.get(`E${4 + i}`)?.value)).toEqual([...CAT_NAMES[lang]]);
+    expect(L.cats.map((_, i) => config.cells.get(`E${4 + i}`)?.value)).toEqual(CAT_NAMES[lang].slice(0, LISTED_CATS));
     expect(METHODS.map((_, i) => config.cells.get(`F${4 + i}`)?.value)).toEqual([...METHOD_NAMES[lang]]);
     expect(oct.cells.get('M15')?.value).toBe(FIXED_CATEGORY_NAMES[lang]);
-    expect(CATS.map((_, i) => oct.cells.get(`M${16 + i}`)?.value)).toEqual([...CAT_NAMES[lang]]);
+    expect(L.cats.map((_, i) => oct.cells.get(`M${16 + i}`)?.value)).toEqual(CAT_NAMES[lang].slice(0, LISTED_CATS));
 
     // Historial de octubre: el encabezado está donde diga la columna Descripción.
     const head = [...oct.cells.values()].find((c) => c.ref.startsWith('C') && c.value === L.cols.description)!;
@@ -394,10 +405,28 @@ describe.each(LANGS)('libro en %s', (lang) => {
     expect(row(3)).toEqual(['Movies', 'Caribbean Cinemas', cat('Entertainment'), method('Bank app'), null]);
     expect(row(7)).toEqual(['Compra semanal', 'Veterinaria', 'Mascotas', 'Efectivo', 'Comida del perro']);
     expect(row(8)).toEqual(['Almuerzo', 'Adrian Tropical', 'Comida', 'Tarjeta', null]);
+    expect(row(9)).toEqual(['Regalo', 'Librería Cuesta', cat('Other'), method('Card'), null]);
 
     // El método Transfer (agosto) también.
     const aug = book.sheet(`${L.months[7]} 2026`);
     expect([...aug.cells.values()].some((c) => c.ref.startsWith('F') && c.value === method('Transfer'))).toBe(true);
+  });
+
+  it('"Other" no está en la lista de Config, pero su fila sale traducida y vuelve como "Other" al importar', () => {
+    const other = CAT_NAMES[lang][CATS.indexOf('Other')]!;
+    expect(other).toBe({ en: 'Other', es: 'Otros', tr: 'Diğer' }[lang]);
+    // Config y "Por categoría" terminan en la décima categoría; el desplegable del historial apunta a esas diez.
+    expect(config.cells.get(`E${3 + LISTED_CATS}`)?.value).toBe(CAT_NAMES[lang][LISTED_CATS - 1]);
+    expect(config.cells.get(`E${4 + LISTED_CATS}`)?.value ?? null).toBeNull();
+    expect(oct.cells.get(`M${16 + LISTED_CATS}`)?.value ?? null).toBeNull();
+    expect(oct.validations.map((v) => v.formula)).toContain(`Config!$E$4:$E$${3 + LISTED_CATS}`);
+    expect([...config.cells.values()].some((c) => c.value === other)).toBe(false);
+    // La fila del historial lleva el nombre en el idioma del libro…
+    expect([...oct.cells.values()].filter((c) => c.ref.startsWith('E') && c.value === other)).toHaveLength(1);
+    // …y el lector la devuelve con su nombre canónico, sea cual sea el idioma.
+    const read = parseFinanzasXlsx(bytes).months.find((m) => m.key === '2026-10')!;
+    expect(read.tx.find((x) => x.desc === 'Regalo')).toMatchObject({ cat: 'Other', method: 'Card', amount: 500 });
+    expect(read.tx.find((x) => x.desc === 'Movies')).toMatchObject({ cat: 'Entertainment' });
   });
 
   it('la columna "Pagado" lleva los valores de ese idioma, también en su lista y en su formato', () => {

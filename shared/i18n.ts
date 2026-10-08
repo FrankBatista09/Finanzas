@@ -32,8 +32,8 @@ export const MONTH_NAMES: Record<Language, readonly string[]> = {
 /** Nombres de las categorías en cada idioma, en el mismo orden que CATS. */
 export const CAT_NAMES: Record<Language, readonly string[]> = {
   en: CATS,
-  es: ['Comida', 'Supermercado', 'Transporte', 'Entretenimiento', 'Salud', 'Ropa', 'Hogar', 'Suscripciones', 'Educación', 'Viajes'],
-  tr: ['Yemek', 'Market', 'Ulaşım', 'Eğlence', 'Sağlık', 'Giyim', 'Ev', 'Abonelikler', 'Eğitim', 'Seyahat'],
+  es: ['Comida', 'Supermercado', 'Transporte', 'Entretenimiento', 'Salud', 'Ropa', 'Hogar', 'Suscripciones', 'Educación', 'Viajes', 'Otros'],
+  tr: ['Yemek', 'Market', 'Ulaşım', 'Eğlence', 'Sağlık', 'Giyim', 'Ev', 'Abonelikler', 'Eğitim', 'Seyahat', 'Diğer'],
 };
 
 /** Nombres de los métodos de pago en cada idioma, en el mismo orden que METHODS. */

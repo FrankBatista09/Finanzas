@@ -7,7 +7,9 @@ import type { ExcelLocale } from './locale';
 export const EXCEL_ES: ExcelLocale = {
   lang: 'es',
   months: MONTH_NAMES.es,
-  cats: CAT_NAMES.es,
+  // La lista del libro son las diez categorías del diseño original; 'Other' se escribe en las filas pero no entra
+  // en la lista de la hoja Config (cambiaría el libro de referencia).
+  cats: CAT_NAMES.es.slice(0, 10),
   methods: METHOD_NAMES.es,
   yes: 'Sí',
   no: 'No',

@@ -265,7 +265,10 @@ describe.skipIf(!SOFFICE)('el libro recalculado por LibreOffice', () => {
         expect(String(sh.cells.get('H14')?.value)).toContain(`${before}${c.paidCount}${mid}${c.fixedCount}${total}`);
         // Por categoría: la lista traducida casa con la categoría traducida de cada fila del historial.
         expect(num(sh, 'Q15')).toBeCloseTo(c.fixedPaid, 6);
-        CATS.forEach((cat, i) => {
+        // El libro lista las diez categorías del diseño original (L.cats); "Other", la undécima, no tiene fila.
+        expect(L.cats).toHaveLength(10);
+        CATS.slice(0, L.cats.length).forEach((cat, i) => {
+          expect(L.cats[i]).toBe(catLabel(cat, lang));
           expect(sh.cells.get(`M${16 + i}`)?.value).toBe(catLabel(cat, lang));
           expect(num(sh, `Q${16 + i}`), cat).toBeCloseTo(c.categories.find((x) => x.name === cat)?.value ?? 0, 6);
         });

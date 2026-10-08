@@ -18,6 +18,7 @@ export const CATS = [
   'Subscriptions',
   'Education',
   'Travel',
+  'Other',
 ] as const;
 
 export const METHODS = ['Card', 'Transfer', 'Bank app'] as const;

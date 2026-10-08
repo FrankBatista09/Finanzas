@@ -42,7 +42,7 @@ import { DeleteMonthModal } from './DeleteMonthModal';
 import { Notices } from './Notices';
 import { SettingsPanel } from './SettingsPanel';
 import { SummaryPanel } from './SummaryPanel';
-import { TopBar } from './TopBar';
+import { DownloadExcelDialog, toggleMonth, TopBar } from './TopBar';
 
 const FRANK: AppUser = { id: 'frank', name: 'Frank' };
 const EDA: AppUser = { id: 'eda', name: 'Eda' };
@@ -673,6 +673,83 @@ describe('TopBar', () => {
     expect(buttonTexts(html)).toEqual(['‹', '›', 'Excel indir', 'Ayarlar']);
     expect(text(render(<TopBar />, { lang: 'tr', monthKey: '2026-08' }))).toContain('FE Finance Ay özeti');
     expect(text(render(<TopBar />, { lang: 'tr', shell: { sheet: 'ahorros' } }))).toContain('FE Finance Birikimler');
+  });
+});
+
+describe('DownloadExcelDialog', () => {
+  const KEYS: MonthKey[] = ['2026-08', '2026-09', '2026-10'];
+  const noop = () => {};
+  /** Las casillas del diálogo, en orden: su texto y si están marcadas. */
+  const checks = (html: string) =>
+    [...html.matchAll(/<label\b[^>]*><input\b([^>]*)\/><span>(.*?)<\/span><\/label>/g)].map((m) => [text(m[2]!).trim(), /\bchecked=""/.test(m[1]!)]);
+
+  it('la barra no lo pinta hasta que se pulsa "Download Excel"', () => {
+    const html = render(<TopBar />);
+    expect(html).not.toContain('role="dialog"');
+    expect(html).not.toContain('type="checkbox"');
+    expect(text(html)).not.toContain('All months');
+  });
+
+  it('abierto: una casilla por mes, del más reciente al más antiguo, todas marcadas, y "Download (3)"', () => {
+    const html = render(<DownloadExcelDialog months={KEYS} onCancel={noop} onDownload={noop} />);
+    const [dialog] = els(html, 'div').filter((d) => d.role === 'dialog');
+    expect(dialog).toMatchObject({ 'aria-modal': 'true' });
+    has(els(html, 'h2'), { id: dialog!['aria-labelledby']! });
+    expect(text(html)).toContain('Download Excel');
+    expect(checks(html)).toEqual([
+      ['All months', true],
+      ['October 2026', true],
+      ['September 2026', true],
+      ['August 2026', true],
+    ]);
+    expect(els(html, 'input').every((i) => i.type === 'checkbox')).toBe(true);
+    // Es un formulario: Enter o el botón principal descargan.
+    expect(html).toContain('<form');
+    expect(buttonTexts(html)).toEqual(['Cancel', 'Download (3)']);
+    expect(els(html, 'button').map((b) => b.type)).toEqual(['button', 'submit']);
+    expect(html).not.toContain('disabled');
+  });
+
+  it('con algunos meses: "All months" queda sin marcar y el botón cuenta los elegidos', () => {
+    const html = render(<DownloadExcelDialog months={KEYS} initial={['2026-08', '2026-10']} onCancel={noop} onDownload={noop} />);
+    expect(checks(html)).toEqual([
+      ['All months', false],
+      ['October 2026', true],
+      ['September 2026', false],
+      ['August 2026', true],
+    ]);
+    expect(buttonTexts(html)).toEqual(['Cancel', 'Download (2)']);
+    expect(html).not.toContain('disabled');
+  });
+
+  it('sin ningún mes no se puede descargar', () => {
+    const html = render(<DownloadExcelDialog months={KEYS} initial={[]} onCancel={noop} onDownload={noop} />);
+    expect(checks(html).map(([, on]) => on)).toEqual([false, false, false, false]);
+    expect(buttonTexts(html)).toEqual(['Cancel', 'Download (0)']);
+    const [cancel, download] = els(html, 'button');
+    expect(cancel).not.toHaveProperty('disabled');
+    expect(download).toHaveProperty('disabled');
+  });
+
+  it('en español y en turco', () => {
+    const es = render(<DownloadExcelDialog months={KEYS} initial={['2026-10']} onCancel={noop} onDownload={noop} />, { lang: 'es' });
+    expect(checks(es).map(([name]) => name)).toEqual(['Todos los meses', 'Octubre 2026', 'Septiembre 2026', 'Agosto 2026']);
+    expect(buttonTexts(es)).toEqual(['Cancelar', 'Descargar (1)']);
+    expect(text(es)).toContain('Descargar Excel');
+    const tr = render(<DownloadExcelDialog months={KEYS} onCancel={noop} onDownload={noop} />, { lang: 'tr' });
+    expect(checks(tr).map(([name]) => name)).toEqual(['Tüm aylar', 'Ekim 2026', 'Eylül 2026', 'Ağustos 2026']);
+    expect(buttonTexts(tr).at(-1)).toBe('İndir (3)');
+    expect(text(tr)).toContain('Excel indir');
+  });
+
+  it('toggleMonth: marca y desmarca un mes, siempre en el orden de la lista', () => {
+    expect(toggleMonth(KEYS, KEYS, '2026-09', false)).toEqual(['2026-08', '2026-10']);
+    expect(toggleMonth(KEYS, ['2026-10'], '2026-08', true)).toEqual(['2026-08', '2026-10']);
+    expect(toggleMonth(KEYS, ['2026-08', '2026-10'], '2026-09', true)).toEqual(KEYS);
+    // Marcar uno ya marcado o desmarcar uno que no lo estaba no cambia nada.
+    expect(toggleMonth(KEYS, ['2026-10'], '2026-10', true)).toEqual(['2026-10']);
+    expect(toggleMonth(KEYS, ['2026-10'], '2026-08', false)).toEqual(['2026-10']);
+    expect(toggleMonth(KEYS, ['2026-10'], '2026-10', false)).toEqual([]);
   });
 });
 

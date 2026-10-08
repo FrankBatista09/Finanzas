@@ -1,4 +1,4 @@
-/* Gastos mensuales a la izquierda; categorías, tasas y envíos a la derecha. Cuando no caben, se apilan (flex-wrap). */
+/* Gastos mensuales a la izquierda; categorías y tasas a la derecha (los envíos van debajo, a todo el ancho). Cuando no caben, se apilan (flex-wrap). */
 .columns {
   display: flex;
   flex-wrap: wrap;

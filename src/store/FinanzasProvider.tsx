@@ -182,14 +182,14 @@ export function FinanzasProvider({ stores, api, children }: FinanzasProviderProp
 
   const fail = useCallback((key: CoreKey, e: unknown) => notify(`${t(key)} ${describeError(e, t)}`), [notify, t]);
 
-  const downloadExcel = useCallback(async () => {
+  const downloadExcel = useCallback(async (months?: readonly MonthKey[]) => {
     if (!store) return;
     try {
       await store.settle();
       // El libro sale de lo que tiene el servidor en este momento (incluye lo que Claude haya registrado
       // desde el chat), no de la caché; se arma aquí, en el navegador, en el idioma del usuario.
       const fresh = await store.api.getState();
-      saveBlob(excelBlob(fresh.state), excelFilename(fresh.user));
+      saveBlob(excelBlob(fresh.state, months), excelFilename(fresh.user));
     } catch (e) {
       fail('downloadFailed', e);
     }

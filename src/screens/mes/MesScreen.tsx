@@ -27,9 +27,10 @@ export function MesScreen() {
         <div className={styles.side}>
           <CategoriesCard />
           <RatesCard />
-          <TransfersCard />
         </div>
       </div>
+      {/* Los envíos tienen siete columnas con dos cuentas: van a todo el ancho para que quepan los nombres. */}
+      <TransfersCard />
       <TransactionsCard />
       {!readOnly && <CloseBox />}
       {/* Borrar el mes, abierto o cerrado: discreto y al final. Solo abre el diálogo de confirmación, que vive en App. */}
