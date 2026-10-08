@@ -322,7 +322,7 @@ describe('ingresos que suben el presupuesto, por la API', () => {
 
     const r = await api.post<Income>('/api/incomes', { id: 'bonus', date: '2026-10-07', desc: 'Bonus', accountId: 'dr', amount: 2500, cur: 'DOP', budget: true });
     expect(r.status).toBe(201);
-    expect(r.body).toEqual({ id: 'bonus', date: '2026-10-07', desc: 'Bonus', accountId: 'dr', amount: 2500, cur: 'DOP', budget: true });
+    expect(r.body).toEqual({ id: 'bonus', date: '2026-10-07', desc: 'Bonus', accountId: 'dr', amount: 2500, cur: 'DOP', budget: true, rate: null, recurring: false });
     let state = await stateOf(api);
     expect(monthCalc(state, '2026-10').budget).toBe(72500);
     expect(monthCalc(state, '2026-10').budgetParts.find((p) => p.account.id === 'dr')).toMatchObject({ amount: 72500, fromLog: 70000, fromIncomes: 2500 });

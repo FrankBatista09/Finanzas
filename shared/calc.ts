@@ -242,6 +242,31 @@ export function convertOn(state: AppState, date: ISODate, amount: number, from: 
 }
 
 /**
+ * La tasa propia de una fila (ingreso o aporte) si cuenta: escrita (> 0) y con la moneda de la fila distinta de
+ * la principal. Es moneda principal por 1 de la moneda de la fila. Si no, null: vale la automática (rateFor).
+ */
+export function ownRate(state: Pick<AppState, 'mainCurrency'>, row: { cur: AccountCurrency; rate?: number | null }): number | null {
+  return row.rate != null && row.rate > 0 && row.cur !== state.mainCurrency && !isGold(row.cur) ? row.rate : null;
+}
+
+/**
+ * Como `convertOn`, pero respetando la tasa propia de la fila. Solo gobierna la conversión moneda de la fila →
+ * moneda PRINCIPAL; cualquier otro destino (la moneda de una cuenta o de una meta distinta de la principal) sigue
+ * por la tasa vigente en la fecha, porque lo que el usuario fijó es a cuánto cambió ese dinero a la principal.
+ */
+function convertRow(
+  state: AppState,
+  date: ISODate,
+  amount: number,
+  from: Currency,
+  to: Currency,
+  rate: number | null | undefined,
+): number {
+  const own = to === state.mainCurrency ? ownRate(state, { cur: from, rate }) : null;
+  return own && from !== to ? (amount || 0) * own : convertOn(state, date, amount, from, to);
+}
+
+/**
  * Gramos de oro expresados en `to`, con el precio escrito por el usuario (AppState.goldPrice): gramos × precio,
  * y de la moneda del precio a `to` con la conversión de siempre (la última tasa del mes `key`). null sin precio:
  * el oro no tiene valor en dinero hasta que alguien lo escribe (no hay precio por defecto).
@@ -320,8 +345,9 @@ export interface Balances {
  *  + ingresos (por su fecha)          − transacciones pagadas desde ella
  *  + envíos que le entran             − gastos fijos marcados como pagados desde ella
  *                                     − envíos que salen de ella, y su comisión
+ *                                     − aportes a metas que dicen salir de ella (Contribution.accountId)
  * Un movimiento en otra moneda entra o sale convertido con la tasa vigente en su fecha (un gasto fijo, que no
- * tiene fecha, con la última de su mes). Los aportes a metas no mueven saldos (son un apartado). Un movimiento
+ * tiene fecha, con la última de su mes). Un aporte a una meta solo mueve un saldo si indica su cuenta (en la moneda de la cuenta, con contribIn). Un movimiento
  * cuya cuenta ya no existe se ignora.
  * Una cuenta de oro lleva gramos: su saldo inicial más los ingresos en gramos que le entran. En dinero vale lo
  * que diga el precio del oro (goldValue); sin precio no tiene valor y no suma al total.
@@ -345,6 +371,11 @@ export function balances(state: AppState, asOf: MonthKey): Balances {
   for (const inc of state.incomes) {
     const k = monthOf(inc.date);
     if (k <= asOf) move(inc.accountId, k, inc.amount, inc.cur, 1, inc.date);
+  }
+  for (const c of state.contribs) {
+    const acc = c.accountId ? byId.get(c.accountId) : undefined;
+    // Un aporte es siempre dinero: una cuenta de oro no puede ser su origen (la API lo rechaza).
+    if (acc && !isGold(acc.currency) && monthOf(c.date) <= asOf) sum.set(acc.id, sum.get(acc.id)! - contribIn(state, c, acc.currency));
   }
   for (const key of sortedKeys(state)) {
     if (key > asOf) break;
@@ -494,14 +525,14 @@ export function incomeInMonth(state: AppState, key: MonthKey, to: Currency = sta
   return state.incomes
     .filter(isMoneyIncome)
     .filter((i) => monthOf(i.date) === key)
-    .reduce((a, i) => a + convert(state, key, i.amount, i.cur, to, i.date), 0);
+    .reduce((a, i) => a + convertRow(state, i.date, i.amount, i.cur, to, i.rate), 0);
 }
 
 /** Aportes a metas con fecha en ese mes, sumados en `to`, cada uno con la tasa vigente en su fecha. */
 export function savedInMonth(state: AppState, key: MonthKey, to: Currency = state.mainCurrency): number {
   return state.contribs
     .filter((c) => monthOf(c.date) === key)
-    .reduce((a, c) => a + convert(state, key, c.amount, c.cur, to, c.date), 0);
+    .reduce((a, c) => a + contribIn(state, c, to), 0);
 }
 
 // ── Presupuesto ──────────────────────────────────────────────────────────────
@@ -795,9 +826,17 @@ export function donut(
 
 // ── Ahorros ──────────────────────────────────────────────────────────────────
 
-/** Aporte expresado en `to` (la moneda de su meta se pasa aparte), con la tasa vigente en su fecha. */
-export function contribIn(state: AppState, c: Pick<Contribution, 'amount' | 'cur' | 'date'>, to: Currency): number {
-  return convertOn(state, c.date, c.amount, c.cur, to);
+/**
+ * Aporte expresado en `to` (la moneda de su meta se pasa aparte), con la tasa vigente en su fecha o, hacia la
+ * moneda principal, con la propia del aporte si la tiene (convertRow).
+ */
+export function contribIn(state: AppState, c: Pick<Contribution, 'amount' | 'cur' | 'date'> & { rate?: number | null }, to: Currency): number {
+  return convertRow(state, c.date, c.amount, c.cur, to, c.rate);
+}
+
+/** Un ingreso (de dinero) expresado en `to`: igual que contribIn, con la tasa propia hacia la principal. */
+export function incomeIn(state: AppState, i: Pick<Income, 'amount' | 'date'> & { cur: Currency; rate?: number | null }, to: Currency): number {
+  return convertRow(state, i.date, i.amount, i.cur, to, i.rate);
 }
 
 export interface GoalTarget {
@@ -836,8 +875,19 @@ export function goalProgress(state: AppState, goal: Goal): GoalProgress {
   const mine = state.contribs.filter((c) => c.goalId === goal.id);
   const saved = mine.reduce((a, c) => a + contribIn(state, c, goal.cur), 0);
   const approxCur = goal.approxCur ?? state.mainCurrency;
+  // Aportes con tasa propia en una meta que NO está en la principal: `saved` los cuenta como siempre (moneda del
+  // aporte → moneda de la meta, tasa de su fecha), pero su valor en la principal es el que fijó el usuario y no
+  // se recalcula con la tasa del mes en curso. Los demás siguen por `saved` convertido a la tasa de hoy. Con la
+  // meta en la principal contribIn ya aplicó la tasa propia, y sin tasas propias esto es igual que antes.
+  const fixed = goal.cur === state.mainCurrency ? [] : mine.filter((c) => ownRate(state, c));
+  const fixedMain = fixed.reduce((a, c) => a + c.amount * ownRate(state, c)!, 0);
+  const fixedSaved = fixed.reduce((a, c) => a + contribIn(state, c, goal.cur), 0);
   // Sin ningún mes no hay con qué convertir: queda la cifra tal cual, como siempre.
-  const inCur = (to: Currency) => (cur ? convert(state, cur, saved, goal.cur, to) : saved);
+  const inCur = (to: Currency) => {
+    if (!cur) return saved;
+    const rest = convert(state, cur, saved - fixedSaved, goal.cur, to);
+    return fixed.length ? rest + convert(state, cur, fixedMain, state.mainCurrency, to) : rest;
+  };
   const base = {
     id: goal.id,
     name: goal.name,

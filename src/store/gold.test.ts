@@ -103,6 +103,8 @@ describe('ingresos en gramos', () => {
       amount: 2.125,
       cur: 'XAU',
       budget: false,
+      rate: null,
+      recurring: false,
     });
     // Menos de un miligramo no es nada.
     expect(newIncome(s, { date: '2026-10-07', accountId: 'gold', amount: 0.0004, cur: 'XAU' }, 'x')).toBeNull();

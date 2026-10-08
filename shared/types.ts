@@ -190,6 +190,15 @@ export interface Income {
    * suma shared/calc.ts (monthCalc, budgetHistory). Siempre false en un ingreso a una cuenta de oro.
    */
   budget: boolean;
+  /**
+   * Tasa propia de este ingreso: cantidad de moneda PRINCIPAL por 1 de `cur` (como MonthRate.rate), para cuando
+   * el dinero se cambió a otro precio que el del mes. null = automática (la tasa vigente en `date`). Solo cuenta
+   * si `cur` no es la principal (ni XAU) y solo en la conversión a la moneda principal (shared/calc.ts incomeIn).
+   * Opcional: ausente = null (lo mismo), para no tocar cada fila que se arma a mano; el servidor siempre la manda.
+   */
+  rate?: number | null;
+  /** true: al crearse un mes nuevo se copia este ingreso a él (server/db.ts recurringIncomeStatement). */
+  recurring?: boolean;
 }
 
 export interface Month {
@@ -243,6 +252,13 @@ export interface Contribution {
   amount: number;
   /** Moneda del aporte; se convierte a la de la meta con la tasa vigente en su fecha. */
   cur: Currency;
+  /** Como Income.rate: moneda principal por 1 de `cur`; null = automática. Ver shared/calc.ts contribIn. */
+  rate?: number | null;
+  /**
+   * Cuenta de dinero de la que sale el aporte: le resta a su saldo el monto en la moneda de la cuenta (shared/calc.ts
+   * balances). null/ausente = ninguna, el aporte no mueve saldos. No cambia presupuestos ni el mes.
+   */
+  accountId?: string | null;
 }
 
 /**

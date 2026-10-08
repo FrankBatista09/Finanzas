@@ -76,6 +76,8 @@ describe('migración 0002 sobre una base con datos de 0001', () => {
     before.transactions = before.transactions!.map((row) => (row.method === 'Card' ? { ...row, method: 'Debit card' } : row));
     // Y a los envíos solo se les añaden las columnas `budget` (0004) y `fee` (0006), en 0.
     before.transfers = before.transfers!.map((row) => ({ ...row, budget: 0, fee: 0 }));
+    // Y a los aportes, las columnas `rate` y `account_id` (0007), vacías.
+    before.contributions = before.contributions!.map((row) => ({ ...row, rate: null, account_id: null }));
     for (const table of UNTOUCHED) expect(dump(db, table), table).toEqual(before[table]);
     // Y la base queda coherente: ninguna clave foránea rota.
     expect(db.sqlite.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
@@ -114,7 +116,7 @@ describe('migración 0002 sobre una base con datos de 0001', () => {
     const incomes = dump(db, 'incomes');
     const goals = dump(db, 'goals');
     applyMigrations(db, LATER);
-    expect(dump(db, 'incomes')).toEqual(incomes.map((row) => ({ ...row, budget: 0 })));
+    expect(dump(db, 'incomes')).toEqual(incomes.map((row) => ({ ...row, budget: 0, rate: null, recurring: 0 })));
     expect(dump(db, 'goals')).toEqual(goals.map((row) => ({ ...row, approx_currency: null })));
   });
 
@@ -134,7 +136,7 @@ describe('migración 0002 sobre una base con datos de 0001', () => {
       { from: 'USD', to: 'DOP', rate: 58.76, date: '2026-10-01' },
       { from: 'TRY', to: 'USD', rate: 0.025, date: '2026-10-01' },
     ]);
-    expect(frank.incomes).toEqual([{ id: 'i1', date: '2026-10-01', desc: 'Salary', accountId: 'us', amount: 5800, cur: 'USD', budget: false }]);
+    expect(frank.incomes).toEqual([{ id: 'i1', date: '2026-10-01', desc: 'Salary', accountId: 'us', amount: 5800, cur: 'USD', budget: false, rate: null, recurring: false }]);
     expect(frank.goals.map((g) => [g.id, g.approxCur])).toEqual([
       ['g1', null],
       ['g2', null],
@@ -265,7 +267,7 @@ describe('migración 0006: transfers.fee', () => {
 
   it('es la migración que sigue a la 0005', () => {
     expect(BEFORE.at(-1)).toBe('0005_gold_accounts.sql');
-    expect(LATER.at(-1)).toBe(FILE);
+    expect(LATER[LATER.indexOf(FILE) + 1]).toBe('0007_row_rate_recurring.sql');
   });
 
   it('los envíos que ya había quedan sin comisión; el resto de cada fila, y de la base, igual', () => {
@@ -439,13 +441,17 @@ describe("migración 0005: cuentas e ingresos admiten el oro ('XAU')", () => {
     expect(await loadState(db, 'eda')).toEqual(before.eda);
     expect(before.frank.goldPrice).toBeNull();
     expect(before.frank.accounts.map((a) => a.id)).toEqual(['us', 'pp', 'dr', 'tr', 'old']);
+    // Para escribir hace falta el esquema de hoy: las migraciones que vienen después de la 0005.
+    applyMigrations(sqlite, LATER.slice(LATER.indexOf(FILE) + 1));
 
     const gold = await createAccount(db, 'frank', { name: 'Gold', currency: 'XAU', opening: 10 });
     await createIncome(db, 'frank', { date: '2026-10-08', accountId: gold.id, amount: 2.5, cur: 'XAU' });
     const after = await loadState(db, 'frank');
     expect(after.accounts.at(-1)).toMatchObject({ name: 'Gold', currency: 'XAU', opening: 10, sort: 8 });
     expect(after.incomes.at(-1)).toMatchObject({ accountId: gold.id, amount: 2.5, cur: 'XAU', budget: false });
-    expect(await loadState(db, 'eda')).toEqual(before.eda);
+    // Escribir en una cuenta de Frank no toca a Eda.
+    const eda = await loadState(db, 'eda');
+    expect([eda.accounts, eda.incomes]).toEqual([before.eda.accounts, before.eda.incomes]);
   });
 
   it('una base vacía migra igual', () => {
@@ -548,5 +554,29 @@ describe("migración 0003: el método 'Card' pasa a ser 'Debit card'", () => {
     const once = dump(db, 'transactions');
     applyMigrations(db, [FILE]);
     expect(dump(db, 'transactions')).toEqual(once);
+  });
+});
+
+describe('migración 0007: tasa propia, ingresos recurrentes y cuenta de un aporte', () => {
+  const FILE = '0007_row_rate_recurring.sql';
+  const BEFORE = LATER.slice(0, LATER.indexOf(FILE));
+
+  it('es la última y las columnas nuevas nacen vacías: ninguna fila existente cambia', async () => {
+    expect(LATER.at(-1)).toBe(FILE);
+    const db = legacyDb();
+    applyMigrations(db, BEFORE);
+    const incomes = dump(db, 'incomes');
+    const contributions = dump(db, 'contributions');
+    applyMigrations(db, [FILE]);
+    expect(dump(db, 'incomes')).toEqual(incomes.map((row) => ({ ...row, rate: null, recurring: 0 })));
+    expect(dump(db, 'contributions')).toEqual(contributions.map((row) => ({ ...row, rate: null, account_id: null })));
+    expect(db.sqlite.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
+    // El servidor lee lo de antes con tasa automática, sin recurrencia y sin cuenta de origen.
+    const state = await loadState(asD1(db), 'frank');
+    expect(state.incomes.map((i) => [i.rate, i.recurring])).toEqual([[null, false]]);
+    expect(state.contribs.map((c) => [c.rate, c.accountId])).toEqual([[null, null]]);
+    // `recurring` no admite NULL; `rate` y `account_id` sí.
+    expect(() => db.sqlite.exec("UPDATE incomes SET recurring = NULL")).toThrow();
+    db.sqlite.exec("UPDATE incomes SET rate = 61.5; UPDATE contributions SET rate = 60, account_id = 'dr'");
   });
 });

@@ -53,7 +53,7 @@ import {
 } from '../shared/constants';
 import { applyImportToState } from '../shared/excel/data';
 import { DEFAULT_LANGUAGE, isLanguage } from '../shared/i18n';
-import { clampToMonth, currentMonthKey, firstDay, inMonth, isMonthKey, nextKey, todayISO } from '../shared/month';
+import { clampToMonth, currentMonthKey, firstDay, inMonth, isMonthKey, lastDay, nextKey, todayISO } from '../shared/month';
 import { isDefaultTheme, normalizeTheme } from '../shared/theme';
 import type {
   Account,
@@ -176,6 +176,8 @@ interface IncomeRow {
   amount: number;
   currency: AccountCurrency;
   budget: number;
+  rate: number | null;
+  recurring: number;
 }
 
 interface GoalRow {
@@ -195,6 +197,8 @@ interface ContributionRow {
   date: string;
   amount: number;
   currency: Currency;
+  rate: number | null;
+  account_id: string | null;
 }
 
 interface SettingRow {
@@ -254,7 +258,7 @@ function toTransfer(r: TransferRow): Transfer {
 }
 
 function toIncome(r: IncomeRow): Income {
-  return { id: r.id, date: r.date, desc: r.description, accountId: r.account_id, amount: r.amount, cur: r.currency, budget: r.budget === 1 };
+  return { id: r.id, date: r.date, desc: r.description, accountId: r.account_id, amount: r.amount, cur: r.currency, budget: r.budget === 1, rate: r.rate ?? null, recurring: r.recurring === 1 };
 }
 
 function toGoal(r: GoalRow): Goal {
@@ -271,7 +275,7 @@ function toGoal(r: GoalRow): Goal {
 }
 
 function toContribution(r: ContributionRow): Contribution {
-  return { id: r.id, goalId: r.goal_id, date: r.date, amount: r.amount, cur: r.currency };
+  return { id: r.id, goalId: r.goal_id, date: r.date, amount: r.amount, cur: r.currency, rate: r.rate ?? null, accountId: r.account_id ?? null };
 }
 
 /** Las filas que cuelgan de los meses, de uno o de todos. */
@@ -336,9 +340,9 @@ const TX_INSERT = [
   'source',
   'created_at',
 ];
-const INCOME_INSERT = ['user_id', 'id', 'date', 'description', 'account_id', 'amount', 'currency', 'budget'];
+const INCOME_INSERT = ['user_id', 'id', 'date', 'description', 'account_id', 'amount', 'currency', 'budget', 'rate', 'recurring'];
 const GOAL_INSERT = ['user_id', 'id', 'name', 'currency', 'monthly', 'start_month', 'end_month', 'approx_currency', 'sort'];
-const CONTRIBUTION_INSERT = ['user_id', 'id', 'goal_id', 'date', 'amount', 'currency'];
+const CONTRIBUTION_INSERT = ['user_id', 'id', 'goal_id', 'date', 'amount', 'currency', 'rate', 'account_id'];
 
 export function newId(): string {
   return crypto.randomUUID();
@@ -896,13 +900,14 @@ const NO_ACCOUNT = 'Account not found.';
 
 /**
  * "Algo usa la cuenta": un gasto fijo, una transacción, un envío (de salida o de llegada), un ingreso o un
- * movimiento del presupuesto de algún mes. ?1 es el usuario y ?2, la cuenta.
+ * movimiento del presupuesto de algún mes, o un aporte a una meta. ?1 es el usuario y ?2, la cuenta.
  */
 const ACCOUNT_IN_USE = `(
   EXISTS (SELECT 1 FROM fixed_expenses WHERE user_id = ?1 AND account_id = ?2)
   OR EXISTS (SELECT 1 FROM transactions WHERE user_id = ?1 AND account_id = ?2)
   OR EXISTS (SELECT 1 FROM transfers WHERE user_id = ?1 AND (from_account_id = ?2 OR to_account_id = ?2))
   OR EXISTS (SELECT 1 FROM incomes WHERE user_id = ?1 AND account_id = ?2)
+  OR EXISTS (SELECT 1 FROM contributions WHERE user_id = ?1 AND account_id = ?2)
   OR EXISTS (SELECT 1 FROM month_budget_log WHERE user_id = ?1 AND account_id = ?2))`;
 
 function accountNameTaken(): ApiError {
@@ -1236,6 +1241,33 @@ export async function deleteMonthRate(
 const PREVIOUS_MONTH = '(SELECT MAX(key) FROM months WHERE user_id = ?1 AND key < ?2)';
 
 /**
+ * Copia a `key` los ingresos recurrentes del mes registrado anterior más cercano (el mismo que usan los fijos y
+ * el presupuesto), dentro del batch que crea el mes: o se crea el mes con sus copias o no se crea nada, y como el
+ * INSERT del mes falla si ya existe, abrirlo otra vez o correr el flujo dos veces no copia de nuevo. La copia
+ * lleva la misma descripción, cuenta, monto, moneda y casilla de presupuesto, sigue siendo recurrente (así la
+ * cadena continúa), cae el mismo día del mes recortado al largo del nuevo, y su tasa vuelve a ser automática
+ * porque la manual era de aquella operación. Si el mes nuevo ya tiene un ingreso con la misma descripción, cuenta,
+ * monto y moneda (lo cargó el usuario o Claude antes de que el mes existiera), no se duplica. Dos recurrentes
+ * idénticos del mes anterior sí se copian los dos: la comparación es contra lo que ya había, no contra la copia.
+ */
+function recurringIncomesStatement(db: D1Database, userId: string, key: MonthKey): D1PreparedStatement {
+  const last = Number(lastDay(key).slice(8));
+  return db
+    .prepare(
+      `INSERT INTO incomes (user_id, id, date, description, account_id, amount, currency, budget, rate, recurring)
+       SELECT ?1, lower(hex(randomblob(16))), ?2 || '-' || printf('%02d', MIN(CAST(substr(i.date, 9, 2) AS INTEGER), ?3)),
+              i.description, i.account_id, i.amount, i.currency, i.budget, NULL, 1
+       FROM incomes i
+       WHERE i.user_id = ?1 AND i.recurring = 1 AND substr(i.date, 1, 7) = ${PREVIOUS_MONTH}
+         AND NOT EXISTS (
+           SELECT 1 FROM incomes n WHERE n.user_id = ?1 AND substr(n.date, 1, 7) = ?2 AND n.description = i.description
+             AND n.account_id = i.account_id AND n.amount = i.amount AND n.currency = i.currency)
+       ORDER BY i.rowid`,
+    )
+    .bind(userId, key, last);
+}
+
+/**
  * Sentencias que crean `key` con los fijos del mes anterior más cercano del usuario (sin pagar, con su cuenta
  * y con ids nuevos); si no hay mes anterior, queda sin fijos. Las tasas no se copian: la última escrita sigue
  * vigente hasta que se escriba otra (rateFor). Todo en SQL para que la copia sea atómica dentro del batch.
@@ -1244,6 +1276,7 @@ const PREVIOUS_MONTH = '(SELECT MAX(key) FROM months WHERE user_id = ?1 AND key 
 function createMonthStatements(db: D1Database, userId: string, key: MonthKey): D1PreparedStatement[] {
   return [
     db.prepare('INSERT INTO months (user_id, key) VALUES (?1, ?2)').bind(userId, key),
+    recurringIncomesStatement(db, userId, key),
     db
       .prepare(
         `INSERT INTO fixed_expenses (user_id, id, month_key, name, day, amount, currency, paid, account_id, sort)
@@ -1597,6 +1630,8 @@ const INCOME_PATCH = {
   amount: 'amount',
   cur: 'currency',
   budget: 'budget',
+  rate: 'rate',
+  recurring: 'recurring',
 } as const;
 const NO_INCOME = 'Income not found.';
 
@@ -1643,12 +1678,12 @@ export async function createIncome(db: D1Database, userId: string, input: Income
   const row = await firstOrConflict<IncomeRow>(
     db
       .prepare(
-        `INSERT INTO incomes (user_id, id, date, description, account_id, amount, currency, budget)
-         SELECT a.user_id, ?2, ?3, ?4, a.id, ?6, ?7, ?8 FROM accounts a
+        `INSERT INTO incomes (user_id, id, date, description, account_id, amount, currency, budget, rate, recurring)
+         SELECT a.user_id, ?2, ?3, ?4, a.id, ?6, ?7, ?8, ?9, ?10 FROM accounts a
          WHERE a.user_id = ?1 AND a.id = ?5 AND ${incomeFits('?7', '?8')}
          RETURNING *`,
       )
-      .bind(userId, input.id ?? newId(), input.date, input.desc ?? '', accountId, input.amount, input.cur, input.budget ? 1 : 0),
+      .bind(userId, input.id ?? newId(), input.date, input.desc ?? '', accountId, input.amount, input.cur, input.budget ? 1 : 0, input.rate ?? null, input.recurring ? 1 : 0),
   );
   if (!row) {
     throw (
@@ -1804,7 +1839,7 @@ export async function deleteGoal(db: D1Database, userId: string, id: string): Pr
 // ── Aportes ──────────────────────────────────────────────────────────────────
 // Son un apartado, no un movimiento: no llevan cuenta y no cambian ningún saldo.
 
-const CONTRIBUTION_PATCH = { goalId: 'goal_id', date: 'date', amount: 'amount', cur: 'currency' } as const;
+const CONTRIBUTION_PATCH = { goalId: 'goal_id', date: 'date', amount: 'amount', cur: 'currency', rate: 'rate', accountId: 'account_id' } as const;
 const NO_CONTRIBUTION = 'Contribution not found.';
 
 export async function listContributions(db: D1Database, userId: string): Promise<Contribution[]> {
@@ -1816,15 +1851,18 @@ export async function listContributions(db: D1Database, userId: string): Promise
 }
 
 export async function createContribution(db: D1Database, userId: string, input: ContributionCreate): Promise<Contribution> {
+  // La cuenta de origen: del usuario y de dinero (una de oro, o una que no existe, es 400).
+  const bad = input.accountId ? await accountError(db, userId, [input.accountId]) : null;
+  if (bad) throw bad;
   // La fila sale de las metas del usuario: una meta de otro usuario es como una que no existe.
   const row = await firstOrConflict<ContributionRow>(
     db
       .prepare(
-        `INSERT INTO contributions (user_id, id, goal_id, date, amount, currency)
-         SELECT g.user_id, ?2, g.id, ?4, ?5, ?6 FROM goals g WHERE g.user_id = ?1 AND g.id = ?3
+        `INSERT INTO contributions (user_id, id, goal_id, date, amount, currency, rate, account_id)
+         SELECT g.user_id, ?2, g.id, ?4, ?5, ?6, ?7, ?8 FROM goals g WHERE g.user_id = ?1 AND g.id = ?3
          RETURNING *`,
       )
-      .bind(userId, input.id ?? newId(), input.goalId, input.date, input.amount, input.cur),
+      .bind(userId, input.id ?? newId(), input.goalId, input.date, input.amount, input.cur, input.rate ?? null, input.accountId ?? null),
   );
   if (!row) throw notFoundError(NO_GOAL);
   return toContribution(row);
@@ -1836,6 +1874,8 @@ export async function patchContribution(
   id: string,
   patch: ContributionPatch,
 ): Promise<Contribution> {
+  const bad = patch.accountId ? await accountError(db, userId, [patch.accountId]) : null;
+  if (bad) throw bad;
   const sets = setClause<ContributionPatch>(CONTRIBUTION_PATCH, patch);
   let stmt: D1PreparedStatement;
   if (sets.columns.length === 0) {
@@ -1983,13 +2023,13 @@ function dataStatements(db: D1Database, userId: string, state: UserData, stamp: 
       db,
       'incomes',
       INCOME_INSERT,
-      state.incomes.map((i) => [userId, i.id, i.date, i.desc, i.accountId, i.amount, i.cur, i.budget ? 1 : 0]),
+      state.incomes.map((i) => [userId, i.id, i.date, i.desc, i.accountId, i.amount, i.cur, i.budget ? 1 : 0, i.rate ?? null, i.recurring ? 1 : 0]),
     ),
     ...insertMany(
       db,
       'contributions',
       CONTRIBUTION_INSERT,
-      state.contribs.map((c) => [userId, c.id, c.goalId, c.date, c.amount, c.cur]),
+      state.contribs.map((c) => [userId, c.id, c.goalId, c.date, c.amount, c.cur, c.rate ?? null, c.accountId ?? null]),
     ),
   ];
 }

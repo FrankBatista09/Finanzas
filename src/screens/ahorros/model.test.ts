@@ -470,9 +470,9 @@ describe('ingresos por mes', () => {
 describe('ingresos, uno por uno', () => {
   it('datos de ejemplo: del más reciente al más antiguo, con su equivalente en la moneda principal', () => {
     expect(incomeItems(seedState(), 'en')).toEqual([
-      { id: 'seed-in-3', date: '2026-10-01', desc: 'Salary', accountId: 'us', amount: 5800, amountText: '5,800.00', cur: 'USD', budget: false, main: '340,808.00', mainNote: NO_NOTE },
-      { id: 'seed-in-2', date: '2026-09-01', desc: 'Salary', accountId: 'us', amount: 5800, amountText: '5,800.00', cur: 'USD', budget: false, main: '339,731.22', mainNote: FROM_TRANSFERS },
-      { id: 'seed-in-1', date: '2026-08-01', desc: 'Salary', accountId: 'us', amount: 5800, amountText: '5,800.00', cur: 'USD', budget: false, main: '337,463.33', mainNote: FROM_TRANSFERS },
+      { id: 'seed-in-3', date: '2026-10-01', desc: 'Salary', accountId: 'us', amount: 5800, amountText: '5,800.00', cur: 'USD', budget: false, rate: null, rateAuto: expect.any(Number), recurring: false, main: '340,808.00', mainNote: NO_NOTE },
+      { id: 'seed-in-2', date: '2026-09-01', desc: 'Salary', accountId: 'us', amount: 5800, amountText: '5,800.00', cur: 'USD', budget: false, rate: null, rateAuto: expect.any(Number), recurring: false, main: '339,731.22', mainNote: FROM_TRANSFERS },
+      { id: 'seed-in-1', date: '2026-08-01', desc: 'Salary', accountId: 'us', amount: 5800, amountText: '5,800.00', cur: 'USD', budget: false, rate: null, rateAuto: expect.any(Number), recurring: false, main: '337,463.33', mainNote: FROM_TRANSFERS },
     ]);
   });
 
@@ -626,37 +626,37 @@ describe('fila de agregar un ingreso', () => {
   const draft = (over: Partial<IncomeDraft> = {}): IncomeDraft => ({ ...EMPTY_INCOME, ...over });
 
   it('borrador vacío: hoy, la cuenta por defecto y su moneda, sin monto', () => {
-    expect(resolveIncomeDraft(EMPTY_INCOME, state, TODAY)).toEqual({ date: TODAY, desc: '', accountId: 'dr', amount: 0, cur: 'DOP', budget: false });
+    expect(resolveIncomeDraft(EMPTY_INCOME, state, TODAY)).toEqual({ date: TODAY, desc: '', accountId: 'dr', amount: 0, cur: 'DOP', budget: false, rate: null, recurring: false });
     expect(resolveIncomeDraft(EMPTY_INCOME, state, '2026-10-08').date).toBe('2026-10-08');
     expect(resolveIncomeDraft(draft({ date: '2026-09-30' }), state, '2026-10-08').date).toBe('2026-09-30');
   });
 
   it('la moneda sigue a la cuenta elegida hasta que el usuario elige una', () => {
-    expect(resolveIncomeDraft(draft({ accountId: 'us' }), state, TODAY)).toMatchObject({ accountId: 'us', cur: 'USD', budget: false });
-    expect(resolveIncomeDraft(draft({ accountId: 'us', cur: 'TRY' }), state, TODAY)).toMatchObject({ accountId: 'us', cur: 'TRY', budget: false });
+    expect(resolveIncomeDraft(draft({ accountId: 'us' }), state, TODAY)).toMatchObject({ accountId: 'us', cur: 'USD', budget: false, rate: null, recurring: false });
+    expect(resolveIncomeDraft(draft({ accountId: 'us', cur: 'TRY' }), state, TODAY)).toMatchObject({ accountId: 'us', cur: 'TRY', budget: false, rate: null, recurring: false });
     // Ya elegida, cambiar de cuenta no la mueve.
-    expect(resolveIncomeDraft(draft({ accountId: 'dr', cur: 'TRY' }), state, TODAY)).toMatchObject({ accountId: 'dr', cur: 'TRY', budget: false });
+    expect(resolveIncomeDraft(draft({ accountId: 'dr', cur: 'TRY' }), state, TODAY)).toMatchObject({ accountId: 'dr', cur: 'TRY', budget: false, rate: null, recurring: false });
   });
 
   it('la cuenta por defecto es la de shared/calc: la elegida en Settings o la primera en la moneda principal', () => {
     const s = seedState();
     s.defaultAccountId = 'us';
-    expect(resolveIncomeDraft(EMPTY_INCOME, s, TODAY)).toMatchObject({ accountId: 'us', cur: 'USD', budget: false });
+    expect(resolveIncomeDraft(EMPTY_INCOME, s, TODAY)).toMatchObject({ accountId: 'us', cur: 'USD', budget: false, rate: null, recurring: false });
     s.defaultAccountId = null;
-    expect(resolveIncomeDraft(EMPTY_INCOME, s, TODAY)).toMatchObject({ accountId: 'dr', cur: 'DOP', budget: false });
+    expect(resolveIncomeDraft(EMPTY_INCOME, s, TODAY)).toMatchObject({ accountId: 'dr', cur: 'DOP', budget: false, rate: null, recurring: false });
   });
 
   it('una cuenta que se ocultó o se eliminó se cambia por la de por defecto', () => {
     const s = seedState();
     s.accounts.find((a) => a.id === 'us')!.hidden = true;
-    expect(resolveIncomeDraft(draft({ accountId: 'us' }), s, TODAY)).toMatchObject({ accountId: 'dr', cur: 'DOP', budget: false });
-    expect(resolveIncomeDraft(draft({ accountId: 'borrada' }), s, TODAY)).toMatchObject({ accountId: 'dr', cur: 'DOP', budget: false });
+    expect(resolveIncomeDraft(draft({ accountId: 'us' }), s, TODAY)).toMatchObject({ accountId: 'dr', cur: 'DOP', budget: false, rate: null, recurring: false });
+    expect(resolveIncomeDraft(draft({ accountId: 'borrada' }), s, TODAY)).toMatchObject({ accountId: 'dr', cur: 'DOP', budget: false, rate: null, recurring: false });
   });
 
   it('sin cuentas no hay a dónde entrar: no se agrega', () => {
     const s = seedState();
     s.accounts = [];
-    expect(resolveIncomeDraft(EMPTY_INCOME, s, TODAY)).toMatchObject({ accountId: '', cur: 'DOP', budget: false });
+    expect(resolveIncomeDraft(EMPTY_INCOME, s, TODAY)).toMatchObject({ accountId: '', cur: 'DOP', budget: false, rate: null, recurring: false });
     expect(incomeDraftInput(draft({ amount: 100 }), s, TODAY)).toBeNull();
   });
 
@@ -667,27 +667,27 @@ describe('fila de agregar un ingreso', () => {
     expect(incomeDraftInput(draft({ amount: Number.POSITIVE_INFINITY }), state, TODAY)).toBeNull();
     expect(incomeDraftInput(draft({ amount: 100, date: '2026-02-30' }), state, TODAY)).toBeNull();
     expect(incomeDraftInput(draft({ amount: 100, date: '' }), state, TODAY)).toBeNull();
-    expect(incomeDraftInput(draft({ amount: 0.01 }), state, TODAY)).toEqual({ date: TODAY, desc: '', accountId: 'dr', amount: 0.01, cur: 'DOP', budget: false });
+    expect(incomeDraftInput(draft({ amount: 0.01 }), state, TODAY)).toEqual({ date: TODAY, desc: '', accountId: 'dr', amount: 0.01, cur: 'DOP', budget: false, rate: null, recurring: false });
   });
 
   it('la descripción va sin espacios sobrantes y no puede pasar del largo que admite la API', () => {
     const d = draft({ date: '2026-09-15', desc: '  Salary ', accountId: 'us', amount: 5800 });
-    expect(incomeDraftInput(d, state, TODAY)).toEqual({ date: '2026-09-15', desc: 'Salary', accountId: 'us', amount: 5800, cur: 'USD', budget: false });
+    expect(incomeDraftInput(d, state, TODAY)).toEqual({ date: '2026-09-15', desc: 'Salary', accountId: 'us', amount: 5800, cur: 'USD', budget: false, rate: null, recurring: false });
     expect(incomeDraftInput(draft({ amount: 1, desc: 'x'.repeat(200) }), state, TODAY)).not.toBeNull();
     expect(incomeDraftInput(draft({ amount: 1, desc: 'x'.repeat(201) }), state, TODAY)).toBeNull();
   });
 
   it('después de agregar se limpian la descripción y el monto; fecha, cuenta y moneda se quedan', () => {
-    const d = draft({ date: '2026-09-15', desc: 'Salary', accountId: 'us', amount: 5800, cur: 'USD', budget: false });
-    expect(afterIncomeAdd(d)).toEqual({ date: '2026-09-15', desc: '', accountId: 'us', amount: 0, cur: 'USD', budget: false });
+    const d = draft({ date: '2026-09-15', desc: 'Salary', accountId: 'us', amount: 5800, cur: 'USD', budget: false, rate: null, recurring: false });
+    expect(afterIncomeAdd(d)).toEqual({ date: '2026-09-15', desc: '', accountId: 'us', amount: 0, cur: 'USD', budget: false, rate: null, recurring: false });
     expect(afterIncomeAdd(draft({ desc: 'x', amount: 10 }))).toEqual(EMPTY_INCOME);
   });
 
   it('la casilla del presupuesto: desmarcada en Savings, marcada en la hoja del mes', () => {
     expect(EMPTY_INCOME.budget).toBe(false);
-    expect(EMPTY_MONTH_INCOME).toEqual({ ...EMPTY_INCOME, budget: true });
+    expect(EMPTY_MONTH_INCOME).toEqual({ ...EMPTY_INCOME, budget: true, rate: null, recurring: false });
     expect(resolveIncomeDraft(EMPTY_INCOME, state, TODAY).budget).toBe(false);
-    expect(resolveIncomeDraft(EMPTY_MONTH_INCOME, state, TODAY)).toEqual({ date: TODAY, desc: '', accountId: 'dr', amount: 0, cur: 'DOP', budget: true });
+    expect(resolveIncomeDraft(EMPTY_MONTH_INCOME, state, TODAY)).toEqual({ date: TODAY, desc: '', accountId: 'dr', amount: 0, cur: 'DOP', budget: true, rate: null, recurring: false });
     // Se puede cambiar en cualquiera de las dos.
     expect(resolveIncomeDraft(draft({ budget: true }), state, TODAY).budget).toBe(true);
     expect(resolveIncomeDraft({ ...EMPTY_MONTH_INCOME, budget: false }, state, TODAY).budget).toBe(false);
@@ -703,9 +703,11 @@ describe('fila de agregar un ingreso', () => {
       amount: 250,
       cur: 'DOP',
       budget: true,
+      rate: null,
+      recurring: false,
     });
     expect(incomeDraftInput(draft({ amount: 250 }), state, TODAY)!.budget).toBe(false);
-    expect(incomeDraftInput(draft({ amount: 250, budget: true, accountId: 'us', desc: ' Bonus ' }), state, TODAY)).toMatchObject({ desc: 'Bonus', cur: 'USD', budget: true });
+    expect(incomeDraftInput(draft({ amount: 250, budget: true, accountId: 'us', desc: ' Bonus ' }), state, TODAY)).toMatchObject({ desc: 'Bonus', cur: 'USD', budget: true, rate: null, recurring: false });
     expect(incomeDraftInput({ ...EMPTY_MONTH_INCOME, amount: 250, budget: false }, state, TODAY)!.budget).toBe(false);
   });
 
@@ -729,6 +731,9 @@ describe('fila de agregar un ingreso', () => {
       amountText: '200.00',
       cur: 'USD',
       budget: false,
+      rate: null,
+      rateAuto: expect.any(Number),
+      recurring: false,
       main: '11,752.00',
       mainNote: NO_NOTE,
     });
@@ -757,6 +762,9 @@ describe('aportes', () => {
       amount: 3000,
       amountText: '3,000.00',
       cur: 'USD',
+      rate: null,
+      rateAuto: 58.76,
+      accountId: '',
       inGoal: '3,000.00 USD',
       goalNote: NO_NOTE,
       main: '176,280.00', // 3,000 × 58.76
@@ -792,6 +800,9 @@ describe('aportes', () => {
         amount: 5876,
         amountText: '5,876.00',
         cur: 'DOP',
+        rate: null,
+        rateAuto: null,
+        accountId: '',
         inGoal: '100.00 USD',
         goalNote: NO_NOTE,
         main: '5,876.00',
@@ -860,7 +871,7 @@ describe('fila de agregar un aporte', () => {
 
   it('borrador vacío: hoy, la primera meta y su moneda, sin monto', () => {
     expect(EMPTY_DRAFT.cur).toBeNull();
-    expect(resolveDraft(EMPTY_DRAFT, goals, TODAY)).toEqual({ goalId: 'emergency', date: TODAY, amount: 0, cur: 'USD' });
+    expect(resolveDraft(EMPTY_DRAFT, goals, TODAY)).toEqual({ goalId: 'emergency', date: TODAY, amount: 0, cur: 'USD', rate: null, accountId: null });
   });
 
   it('la moneda sigue a la meta elegida hasta que el usuario elige una', () => {
@@ -889,13 +900,13 @@ describe('fila de agregar un aporte', () => {
     expect(draftInput(draft({ amount: -5 }), goals, TODAY)).toBeNull();
     expect(draftInput(draft({ amount: Number.NaN }), goals, TODAY)).toBeNull();
     expect(draftInput(draft({ amount: Number.POSITIVE_INFINITY }), goals, TODAY)).toBeNull();
-    expect(draftInput(draft({ amount: 0.01 }), goals, TODAY)).toEqual({ goalId: 'emergency', date: TODAY, amount: 0.01, cur: 'USD' });
+    expect(draftInput(draft({ amount: 0.01 }), goals, TODAY)).toEqual({ goalId: 'emergency', date: TODAY, amount: 0.01, cur: 'USD', rate: null, accountId: null });
   });
 
   it('con todo lleno devuelve el aporte tal cual, en cualquiera de las tres monedas', () => {
     for (const cur of ['DOP', 'USD', 'TRY'] as const) {
       const d = draft({ date: '2026-09-15', goalId: 'personal', amount: 2500, cur });
-      expect(draftInput(d, goals, TODAY)).toEqual({ goalId: 'personal', date: '2026-09-15', amount: 2500, cur });
+      expect(draftInput(d, goals, TODAY)).toEqual({ goalId: 'personal', date: '2026-09-15', amount: 2500, cur, rate: null, accountId: null });
     }
   });
 
@@ -907,7 +918,7 @@ describe('fila de agregar un aporte', () => {
 
   it('después de agregar solo se limpia el monto', () => {
     const d = draft({ date: '2026-09-15', goalId: 'personal', amount: 2500, cur: 'DOP' });
-    expect(afterAdd(d)).toEqual({ date: '2026-09-15', goalId: 'personal', amount: 0, cur: 'DOP' });
+    expect(afterAdd(d)).toEqual({ date: '2026-09-15', goalId: 'personal', amount: 0, cur: 'DOP', rate: null, accountId: null });
     expect(afterAdd(draft({ amount: 10 }))).toEqual(EMPTY_DRAFT);
   });
 

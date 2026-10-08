@@ -8,7 +8,8 @@ import type { AddRowControl } from '../../ui';
 import { AddButton, AddRow, AddRowButton, Card, CardHeader, CellDate, CellNumber, CellSelect, DeleteButton, Num, SheetTable, Td, Th, useAddRow } from '../../ui';
 import styles from './AhorrosScreen.module.css';
 import { Converted, FallbackNote } from './Converted';
-import { afterAdd, contributionRows, draftInput, EMPTY_DRAFT, goalOptions, goalOptionsFor, resolveDraft } from './model';
+import { RateCell } from './RateCell';
+import { afterAdd, autoRate, contributionRows, draftInput, EMPTY_DRAFT, goalOptions, goalOptionsFor, resolveDraft } from './model';
 import { AHORROS } from './strings';
 
 /**
@@ -17,10 +18,11 @@ import { AHORROS } from './strings';
  * Cada uno se ve además en la moneda de su meta y en la principal, con la tasa del mes de su fecha.
  */
 export function ContributionsCard() {
-  const { state, main, actions } = useFinanzas();
+  const { state, main, accountOptions, actions } = useFinanzas();
   const { t, lang } = useI18n();
   const s = useStrings(AHORROS);
   const rows = contributionRows(state, lang);
+  const fromOptions = (current: string) => [{ value: '', label: s('noAccount') }, ...accountOptions(current || undefined)];
   const adding = useAddRow();
 
   return (
@@ -41,10 +43,12 @@ export function ContributionsCard() {
       <SheetTable label={s('contribsTitle')}>
         <thead>
           <tr>
-            <Th width={128}>{t('date')}</Th>
+            <Th width={116}>{t('date')}</Th>
             <Th>{t('goal')}</Th>
             <Th align="right">{t('amount')}</Th>
             <Th width={60}>{t('currencyShort')}</Th>
+            <Th>{t('rate')}</Th>
+            <Th>{s('fromAccount')}</Th>
             <Th align="right">{s('inGoal')}</Th>
             <Th align="right">{main}</Th>
             <Th blank width={28} />
@@ -63,6 +67,7 @@ export function ContributionsCard() {
                   value={r.goalId}
                   options={goalOptionsFor(state.goals, r.goalId)}
                   onCommit={(goalId) => actions.patchContribution(r.id, { goalId })}
+                  minWidth={96}
                   label={t('goal')}
                 />
               </Td>
@@ -71,6 +76,15 @@ export function ContributionsCard() {
               </Td>
               <Td kind="edit">
                 <CellSelect value={r.cur} options={CURRENCIES} onCommit={(cur) => actions.patchContribution(r.id, { cur })} mono dense label={t('currency')} />
+              </Td>
+              <RateCell cur={r.cur} main={main} rate={r.rate} auto={r.rateAuto} onCommit={(rate) => actions.patchContribution(r.id, { rate })} />
+              <Td kind="edit">
+                <CellSelect
+                  value={r.accountId}
+                  options={fromOptions(r.accountId)}
+                  onCommit={(accountId) => actions.patchContribution(r.id, { accountId: accountId || null })}
+                  label={s('fromAccount')}
+                />
               </Td>
               <Converted value={r.inGoal} note={r.goalNote} />
               <Converted value={r.main} note={r.mainNote} tone="muted" />
@@ -92,7 +106,7 @@ export function ContributionsCard() {
 
 /** Fila de agregar. El borrador vive aquí para que escribir en ella no repinte el historial. */
 function ContributionAddRow({ adding }: { adding: AddRowControl }) {
-  const { state, today, main, actions } = useFinanzas();
+  const { state, today, main, accountOptions, actions } = useFinanzas();
   const { t } = useI18n();
   const s = useStrings(AHORROS);
   const [draft, setDraft] = useState(EMPTY_DRAFT);
@@ -100,7 +114,7 @@ function ContributionAddRow({ adding }: { adding: AddRowControl }) {
   const goals = goalOptions(state.goals);
 
   const add = () => {
-    const input = draftInput(draft, state.goals, today);
+    const input = draftInput(draft, state.goals, today, main);
     if (!input || !actions.addContribution(input)) return false;
     setDraft(afterAdd);
   };
@@ -112,7 +126,7 @@ function ContributionAddRow({ adding }: { adding: AddRowControl }) {
         <Td colSpan={4} tone="muted">
           {s('noGoals')}
         </Td>
-        <Td kind="add" colSpan={3}>
+        <Td kind="add" colSpan={5}>
           <AddButton disabled className={styles.addOff} />
         </Td>
       </AddRow>
@@ -139,6 +153,21 @@ function ContributionAddRow({ adding }: { adding: AddRowControl }) {
       </Td>
       <Td kind="edit">
         <CellSelect value={shown.cur} options={CURRENCIES} onCommit={(cur) => setDraft((d) => ({ ...d, cur }))} mono dense label={t('currency')} />
+      </Td>
+      <RateCell
+        cur={shown.cur}
+        main={main}
+        rate={shown.rate ?? null}
+        auto={autoRate(state, shown.date, shown.cur)}
+        onCommit={(rate) => setDraft((d) => ({ ...d, rate }))}
+      />
+      <Td kind="edit">
+        <CellSelect
+          value={shown.accountId ?? ''}
+          options={[{ value: '', label: s('noAccount') }, ...accountOptions(shown.accountId ?? undefined)]}
+          onCommit={(accountId) => setDraft((d) => ({ ...d, accountId: accountId || null }))}
+          label={s('fromAccount')}
+        />
       </Td>
       <Td kind="add" colSpan={3}>
         <AddButton />

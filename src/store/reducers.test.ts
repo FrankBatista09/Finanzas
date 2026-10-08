@@ -492,7 +492,7 @@ describe('reduce · ingresos', () => {
   it('agrega, edita y elimina: el ingreso del mes es la suma de los suyos y entra a su cuenta', () => {
     const s = frozen();
     const row = newIncome(s, { date: '2026-10-15', desc: ' Bonus ', accountId: 'us', amount: 1000, cur: 'USD' }, 'in-new')!;
-    expect(row).toEqual({ id: 'in-new', date: '2026-10-15', desc: 'Bonus', accountId: 'us', amount: 1000, cur: 'USD', budget: false });
+    expect(row).toEqual({ id: 'in-new', date: '2026-10-15', desc: 'Bonus', accountId: 'us', amount: 1000, cur: 'USD', budget: false, rate: null, recurring: false });
 
     let next = reduce(s, { type: 'income/add', row });
     expect(next.incomes).toHaveLength(4);
@@ -773,10 +773,10 @@ describe('filas nuevas: validación del contrato', () => {
 
   it('ingreso: fecha válida, monto > 0 y una cuenta que exista; no pertenece a un mes', () => {
     const ok = { date: '2026-10-01', desc: 'Salary', accountId: 'us', amount: 5800, cur: 'USD' as const };
-    expect(newIncome(s, ok, 'x')).toEqual({ id: 'x', ...ok, budget: false });
+    expect(newIncome(s, ok, 'x')).toEqual({ id: 'x', ...ok, budget: false, rate: null, recurring: false });
     expect(newIncome(s, { ...ok, desc: undefined }, 'x')!.desc).toBe('');
     // Sube el presupuesto solo si se marca.
-    expect(newIncome(s, { ...ok, budget: true }, 'x')).toEqual({ id: 'x', ...ok, budget: true });
+    expect(newIncome(s, { ...ok, budget: true }, 'x')).toEqual({ id: 'x', ...ok, budget: true, rate: null, recurring: false });
     expect(newIncome(s, { ...ok, budget: false }, 'x')!.budget).toBe(false);
     expect(newIncome(s, { ...ok, budget: undefined }, 'x')!.budget).toBe(false);
     expect(newIncome(s, { ...ok, budget: 'yes' as unknown as boolean }, 'x')!.budget).toBe(false);
@@ -793,7 +793,7 @@ describe('filas nuevas: validación del contrato', () => {
 
   it('aporte: monto > 0 y una meta que exista', () => {
     const ok = { goalId: 'turkey', date: '2026-10-07', amount: 3000, cur: 'USD' as const };
-    expect(newContribution(s, ok, 'x')).toEqual({ id: 'x', ...ok });
+    expect(newContribution(s, ok, 'x')).toEqual({ id: 'x', ...ok, rate: null, accountId: null });
     expect(newContribution(s, { ...ok, cur: 'TRY' }, 'x')).toMatchObject({ cur: 'TRY' });
     expect(newContribution(s, { ...ok, amount: 0 }, 'x')).toBeNull();
     expect(newContribution(s, { ...ok, goalId: 'marte' }, 'x')).toBeNull();

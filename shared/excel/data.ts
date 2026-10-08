@@ -258,12 +258,17 @@ function importedSavings(
   /** Lo que el archivo dice de cada meta, por id; de las que no nombra no hay nada y se quedan como estén. */
   const fromFile = new Map<string, ImportGoal>();
   for (const g of payload.goals ?? []) fromFile.set(goalNamed(g.name).id, g);
+  // El libro no trae la tasa propia ni la cuenta de origen de un aporte: un aporte que ya existía igual (meta, fecha,
+  // monto y moneda) las conserva; uno nuevo nace sin ellas. Cada aporte existente se usa una sola vez.
+  const unclaimed = [...base.contribs];
   const contribs: Contribution[] | null =
     payload.contribs &&
     payload.contribs.map((c) => {
       // Primero la meta (si hay que crearla, su id va antes que el del aporte).
       const goalId = goalNamed(c.goalName).id;
-      return { id: newId(), goalId, date: c.date, amount: c.amount, cur: c.cur };
+      const at = unclaimed.findIndex((o) => o.goalId === goalId && o.date === c.date && o.amount === c.amount && o.cur === c.cur);
+      const same = at >= 0 ? unclaimed.splice(at, 1)[0] : undefined;
+      return { id: newId(), goalId, date: c.date, amount: c.amount, cur: c.cur, rate: same?.rate ?? null, accountId: same?.accountId ?? null };
     });
 
   const withPlan = (goal: Goal): Goal => {
@@ -362,7 +367,7 @@ export function applyImportToState(base: AppState, payload: ImportPayload, newId
       const amount = file.get(key)!.incomeUSD - incomeInMonth(withOwn, key, 'USD');
       if (!(amount >= HALF_CENT)) continue;
       const before = previous.get(key);
-      incomes.push({ id: before?.id ?? newId(), date: `${key}-01`, desc: IMPORTED_INCOME, accountId: usd.id, amount, cur: 'USD', budget: before?.budget ?? false });
+      incomes.push({ id: before?.id ?? newId(), date: `${key}-01`, desc: IMPORTED_INCOME, accountId: usd.id, amount, cur: 'USD', budget: before?.budget ?? false, rate: null, recurring: false });
     }
 
     // El presupuesto del libro es el total del mes: lo que ya le suben los ingresos con `budget` (que se

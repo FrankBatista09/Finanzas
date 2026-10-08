@@ -490,7 +490,7 @@ describe('acciones', () => {
       budget: false,
       fee: 0,
     });
-    expect(h.view().contribs.at(-1)).toEqual({ id: 'id-2', goalId: 'personal', date: '2026-10-08', amount: 100, cur: 'USD' });
+    expect(h.view().contribs.at(-1)).toEqual({ id: 'id-2', goalId: 'personal', date: '2026-10-08', amount: 100, cur: 'USD', rate: null, accountId: null });
   });
 
   it('por defecto genera un UUID', () => {
@@ -1603,18 +1603,18 @@ describe('ingresos', () => {
   it('addIncome registra el ingreso en el acto, con un id del cliente, y lo manda', () => {
     const actions = createActions(h.store, OCT, flows, () => 'in-new');
     expect(actions.addIncome({ date: '2026-10-15', desc: ' Bonus ', accountId: 'us', amount: 1000, cur: 'USD' })).toBe(true);
-    expect(h.view().incomes.at(-1)).toEqual({ id: 'in-new', date: '2026-10-15', desc: 'Bonus', accountId: 'us', amount: 1000, cur: 'USD', budget: false });
+    expect(h.view().incomes.at(-1)).toEqual({ id: 'in-new', date: '2026-10-15', desc: 'Bonus', accountId: 'us', amount: 1000, cur: 'USD', budget: false, rate: null, recurring: false });
     expect(monthCalc(h.view(), OCT).income).toBeCloseTo(6800 * 58.76, 6);
     expect(h.calls).toHaveLength(1);
     expect(h.calls[0]).toMatchObject({ method: 'POST', path: '/api/incomes', user: 'frank' });
-    expect(h.calls[0]!.body).toEqual({ id: 'in-new', date: '2026-10-15', desc: 'Bonus', accountId: 'us', amount: 1000, cur: 'USD', budget: false });
+    expect(h.calls[0]!.body).toEqual({ id: 'in-new', date: '2026-10-15', desc: 'Bonus', accountId: 'us', amount: 1000, cur: 'USD', budget: false, rate: null, recurring: false });
   });
 
   it('addIncome con budget: true lo manda marcado y sube el presupuesto del mes de su fecha en el acto', () => {
     const actions = createActions(h.store, OCT, flows, () => 'in-new');
     expect(actions.addIncome({ date: '2026-10-15', desc: 'Freelance', accountId: 'dr', amount: 100, cur: 'USD', budget: true })).toBe(true);
     expect(h.view().incomes.at(-1)).toMatchObject({ id: 'in-new', budget: true });
-    expect(h.calls[0]!.body).toEqual({ id: 'in-new', date: '2026-10-15', desc: 'Freelance', accountId: 'dr', amount: 100, cur: 'USD', budget: true });
+    expect(h.calls[0]!.body).toEqual({ id: 'in-new', date: '2026-10-15', desc: 'Freelance', accountId: 'dr', amount: 100, cur: 'USD', budget: true, rate: null, recurring: false });
     // 100 USD a la tasa de su fecha, en la parte de la DR account; el registro del mes no cambia.
     expect(monthCalc(h.view(), OCT).budget).toBeCloseTo(70000 + 5876, 8);
     expect(h.view().months[OCT]!.budgetLog).toEqual(seedState().months[OCT]!.budgetLog);

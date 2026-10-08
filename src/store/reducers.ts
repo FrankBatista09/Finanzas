@@ -413,6 +413,10 @@ function accountFor(state: AppState, accountId: string | undefined): string | nu
   return defaultAccount(state)?.id ?? null;
 }
 
+/** Una tasa propia es null (automática) o un número finito > 0. */
+const notRate = (rate: number | null) => rate !== null && !(Number.isFinite(rate) && rate > 0);
+const validRate = (rate: number | null | undefined): number | null => (rate != null && !notRate(rate) ? rate : null);
+
 /**
  * Lo que se puede guardar de la edición de una celda: los campos que no pasan su comprobación se quitan y el resto
  * se guarda. Mientras la celda tenga un valor que el servidor no admite (un concepto vacío a media reescritura, un
@@ -464,6 +468,8 @@ export function incomeChange(state: AppState, id: string, patch: IncomePatch): I
     cur: (cur) => !isAccountCurrency(cur),
     accountId: (accountId) => !hasAccount(state, accountId),
     budget: (budget) => typeof budget !== 'boolean',
+    rate: notRate,
+    recurring: (recurring) => typeof recurring !== 'boolean',
   });
   const account = accountsById(state).get(out.accountId ?? row.accountId);
   if (!account) return out;
@@ -489,6 +495,8 @@ export function contributionChange(state: AppState, patch: ContributionPatch): C
     date: notDate,
     amount: notAmount,
     cur: notCurrency,
+    rate: notRate,
+    accountId: (id) => id !== null && !hasMoneyAccount(state, id),
   });
 }
 
@@ -548,6 +556,10 @@ export interface IncomeInput {
   cur: AccountCurrency;
   /** true: el ingreso sube además el presupuesto del mes de su fecha (Income.budget). Sin indicar: false. Nunca en una cuenta de oro. */
   budget?: boolean;
+  /** Tasa propia (Income.rate). Sin indicar o null: automática. */
+  rate?: number | null;
+  /** Se copia a cada mes nuevo (Income.recurring). Sin indicar: false. */
+  recurring?: boolean;
 }
 
 export interface ContributionInput {
@@ -555,6 +567,10 @@ export interface ContributionInput {
   date: ISODate;
   amount: number;
   cur: Currency;
+  /** Tasa propia (Contribution.rate). Sin indicar o null: automática. */
+  rate?: number | null;
+  /** Cuenta de dinero de la que sale (Contribution.accountId). Sin indicar o null: ninguna. */
+  accountId?: string | null;
 }
 
 export interface AccountInput {
@@ -706,19 +722,22 @@ export function newIncome(state: AppState, input: IncomeInput, id: string): Inco
   const desc = (input.desc ?? '').trim();
   const account = input.accountId === undefined ? defaultAccount(state) : (accountsById(state).get(input.accountId) ?? null);
   if (!account || !isISODate(input.date) || !positive(input.amount) || desc.length > MAX_LEN.desc) return null;
-  const base = { id, date: input.date, desc, accountId: account.id };
+  const recurring = input.recurring === true;
+  const base = { id, date: input.date, desc, accountId: account.id, recurring };
   if (isGold(account.currency)) {
     const amount = grams(input.amount);
-    return positive(amount) ? { ...base, amount, cur: GOLD, budget: false } : null;
+    return positive(amount) ? { ...base, amount, cur: GOLD, budget: false, rate: null } : null;
   }
   if (!isCurrency(input.cur)) return null;
-  return { ...base, amount: input.amount, cur: input.cur, budget: input.budget === true };
+  return { ...base, amount: input.amount, cur: input.cur, budget: input.budget === true, rate: validRate(input.rate) };
 }
 
 /** Monto > 0, fecha válida y una meta que exista. */
 export function newContribution(state: AppState, input: ContributionInput, id: string): Contribution | null {
   if (!state.goals.some((g) => g.id === input.goalId) || !isISODate(input.date) || !positive(input.amount) || !isCurrency(input.cur)) return null;
-  return { id, goalId: input.goalId, date: input.date, amount: input.amount, cur: input.cur };
+  // Una cuenta que no existe o es de oro no se guarda: el aporte queda sin cuenta.
+  const accountId = input.accountId && hasMoneyAccount(state, input.accountId) ? input.accountId : null;
+  return { id, goalId: input.goalId, date: input.date, amount: input.amount, cur: input.cur, rate: validRate(input.rate), accountId };
 }
 
 // ── Cuentas ──────────────────────────────────────────────────────────────────
@@ -741,9 +760,10 @@ export function accountName(state: AppState, id: string, name: string): string |
   return hasAccount(state, id) && !isBlank(name) && name.length <= MAX_LEN.name ? name : null;
 }
 
-/** true si algo nombra esa cuenta: un gasto fijo, una transacción, un envío, un ingreso o un movimiento del presupuesto de cualquier mes. */
+/** true si algo nombra esa cuenta: un gasto fijo, una transacción, un envío, un ingreso, un aporte o un movimiento del presupuesto de cualquier mes. */
 export function accountInUse(state: AppState, id: string): boolean {
   if (state.incomes.some((i) => i.accountId === id)) return true;
+  if (state.contribs.some((c) => c.accountId === id)) return true;
   return Object.values(state.months).some(
     (m) =>
       m.budgetLog.some((e) => e.accountId === id) ||
