@@ -1,0 +1,41 @@
+{
+  "name": "finanzas-personales",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "mkdir -p dist && concurrently -k -n web,api -c green,blue \"vite\" \"wrangler pages dev dist --port 8788\"",
+    "dev:web": "vite",
+    "dev:api": "mkdir -p dist && wrangler pages dev dist --port 8788",
+    "build": "npm run typecheck && vite build",
+    "preview": "npm run build && wrangler pages dev dist --port 8788",
+    "typecheck": "tsc -p tsconfig.app.json && tsc -p tsconfig.functions.json && tsc -p tsconfig.node.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "db:migrate:local": "wrangler d1 migrations apply finanzas --local",
+    "db:migrate:remote": "wrangler d1 migrations apply finanzas --remote",
+    "deploy": "npm run build && wrangler pages deploy"
+  },
+  "dependencies": {
+    "@fontsource-variable/jetbrains-mono": "^5.3.0",
+    "@fontsource-variable/schibsted-grotesk": "^5.3.0",
+    "@tanstack/react-query": "^5.104.1",
+    "fflate": "^0.8.3",
+    "hono": "^4.13.13",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261008.1",
+    "@types/node": "^26.6.4",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "concurrently": "^10.0.5",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.3",
+    "vitest": "^5.0.3",
+    "wrangler": "^4.148.0"
+  }
+}

@@ -1,0 +1,927 @@
+<!DOCTYPE html>
+<html><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="4aae0f18-8dfa-4fbc-94f7-89bf1e8247fa"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<style>/* cyrillic-ext */
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("4a4fa2cd-e97f-4921-8ae6-a8504dcf731d") format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("0b7f83c3-4e0c-4a9c-b3ec-bbde47113f0b") format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* greek */
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("92bb7afd-0bea-4f59-910b-a97dcac05435") format('woff2');
+  unicode-range: U+0370-0377, U+037A-037F, U+0384-038A, U+038C, U+038E-03A1, U+03A3-03FF;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("dd95d692-d1f6-46f7-8b62-8e31bed29df1") format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("5c1ba89e-d21a-4b17-91c0-210b7aed1f6e") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("3bdf6dcc-4b6d-4be4-be1f-eb7cfa9a2324") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("4a4fa2cd-e97f-4921-8ae6-a8504dcf731d") format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("0b7f83c3-4e0c-4a9c-b3ec-bbde47113f0b") format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* greek */
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("92bb7afd-0bea-4f59-910b-a97dcac05435") format('woff2');
+  unicode-range: U+0370-0377, U+037A-037F, U+0384-038A, U+038C, U+038E-03A1, U+03A3-03FF;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("dd95d692-d1f6-46f7-8b62-8e31bed29df1") format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("5c1ba89e-d21a-4b17-91c0-210b7aed1f6e") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("3bdf6dcc-4b6d-4be4-be1f-eb7cfa9a2324") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("4a4fa2cd-e97f-4921-8ae6-a8504dcf731d") format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("0b7f83c3-4e0c-4a9c-b3ec-bbde47113f0b") format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* greek */
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("92bb7afd-0bea-4f59-910b-a97dcac05435") format('woff2');
+  unicode-range: U+0370-0377, U+037A-037F, U+0384-038A, U+038C, U+038E-03A1, U+03A3-03FF;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("dd95d692-d1f6-46f7-8b62-8e31bed29df1") format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("5c1ba89e-d21a-4b17-91c0-210b7aed1f6e") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("3bdf6dcc-4b6d-4be4-be1f-eb7cfa9a2324") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Schibsted Grotesk';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("30a5ba03-c54d-4b40-aa54-e5ea32475324") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Schibsted Grotesk';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("98087c8f-58ec-4a14-93bd-a3478cc1ae76") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Schibsted Grotesk';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("30a5ba03-c54d-4b40-aa54-e5ea32475324") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Schibsted Grotesk';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("98087c8f-58ec-4a14-93bd-a3478cc1ae76") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Schibsted Grotesk';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("30a5ba03-c54d-4b40-aa54-e5ea32475324") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Schibsted Grotesk';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("98087c8f-58ec-4a14-93bd-a3478cc1ae76") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Schibsted Grotesk';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("30a5ba03-c54d-4b40-aa54-e5ea32475324") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Schibsted Grotesk';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("98087c8f-58ec-4a14-93bd-a3478cc1ae76") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+</style>
+
+<style>
+body{margin:0;background:#efeee8;color:#1d1f1c;font-family:'Schibsted Grotesk',system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+a{color:#23613f}a:hover{color:#1d1f1c}
+input[type=number]::-webkit-inner-spin-button{opacity:.3}
+select{appearance:none;-webkit-appearance:none}
+</style>
+<script src="146cec2e-f0e1-47cc-9eb9-124715a744d3"></script>
+</helmet>
+<div style="min-height:100vh;display:flex;flex-direction:column">
+  <header style="position:sticky;top:0;z-index:5;background:#1d1f1c;color:#f4f3ee;display:flex;flex-wrap:wrap;align-items:center;gap:12px 20px;padding:10px 24px">
+    <div style="display:flex;align-items:baseline;gap:10px;flex:1 1 auto">
+      <div style="font-weight:700;font-size:16px;letter-spacing:-.01em">Finanzas personales</div>
+      <div style="font-size:12px;color:#a9aba3">{{ sheetTitle }}</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:6px">
+      <button sc-camel-on-click="{{ prevMonth }}" style="width:30px;height:30px;border:1px solid #3a3d38;background:transparent;color:#f4f3ee;border-radius:3px;cursor:pointer;font-size:15px" style-hover="background:#2b2e29">‹</button>
+      <sc-raw-select value="{{ month }}" sc-camel-on-change="{{ onMonth }}" style="height:30px;padding:0 30px 0 12px;border:1px solid #3a3d38;background:#2b2e29;color:#f4f3ee;border-radius:3px;font:500 13px 'Schibsted Grotesk';cursor:pointer;min-width:190px">
+        <sc-for list="{{ monthOptions }}" as="o" hint-placeholder-count="3"><option value="{{ o.key }}">{{ o.label }}</option></sc-for>
+      </sc-raw-select>
+      <button sc-camel-on-click="{{ nextMonth }}" style="width:30px;height:30px;border:1px solid #3a3d38;background:transparent;color:#f4f3ee;border-radius:3px;cursor:pointer;font-size:15px" style-hover="background:#2b2e29">›</button>
+    </div>
+    <label style="display:flex;align-items:center;gap:8px;height:30px;padding:0 12px;border:1px solid #3a3d38;border-radius:3px;font:500 12.5px 'Schibsted Grotesk';color:#f4f3ee;cursor:pointer" style-hover="background:#2b2e29">
+      <input type="file" accept=".xlsx" sc-camel-on-change="{{ onExcel }}" style="display:none">
+      <span>{{ excelLabel }}</span>
+    </label>
+    <button sc-camel-on-click="{{ downloadExcel }}" style="height:30px;padding:0 12px;border:0;background:#2f7d52;color:#fff;border-radius:3px;font:500 12.5px 'Schibsted Grotesk';cursor:pointer" style-hover="background:#23613f">Descargar Excel</button>
+    <div style="display:flex;align-items:center;gap:8px;font-size:12px;color:#a9aba3">
+      <span>Tasa del mes</span>
+      <span style="font-family:'JetBrains Mono',monospace;color:#f4f3ee;background:#2b2e29;border:1px solid #3a3d38;padding:5px 8px;border-radius:3px">1 USD = {{ rateFmt }} DOP</span>
+    </div>
+  </header>
+
+  <main style="flex:1;width:100%;max-width:1320px;margin:0 auto;padding:20px 24px 90px;box-sizing:border-box;display:flex;flex-direction:column;gap:20px">
+
+    <section style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:1px;background:#e3e1d8;border:1px solid #e3e1d8;border-radius:4px;overflow:hidden">
+      <div style="background:#fffefa;padding:18px 20px;display:flex;flex-direction:column;gap:14px">
+        <div style="font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#6b6d66">Dinero total</div>
+        <div>
+          <div style="font-family:'JetBrains Mono',monospace;font-size:28px;font-weight:600;letter-spacing:-.02em">{{ totalDOP }} <span style="font-size:13px;color:#6b6d66;font-weight:500">DOP</span></div>
+          <div style="font-family:'JetBrains Mono',monospace;font-size:13px;color:#6b6d66;margin-top:4px">≈ {{ totalUSD }} USD</div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr auto;border:1px solid #e3e1d8;border-radius:3px;font-size:13px">
+          <div style="padding:7px 10px;border-bottom:1px solid #eeece5;border-right:1px solid #eeece5;color:#45473f">Cuenta USA</div>
+          <div style="display:flex;align-items:center;border-bottom:1px solid #eeece5"><input type="number" step="any" value="{{ accUSD }}" sc-camel-on-change="{{ onAccUSD }}" style="width:120px;border:0;background:transparent;padding:7px 4px 7px 10px;text-align:right;font:500 12.5px 'JetBrains Mono',monospace;color:#1d1f1c;outline:none" style-focus="box-shadow:inset 0 0 0 2px #2f7d52;background:#fff"><span style="padding-right:10px;font-size:11px;color:#6b6d66">USD</span></div>
+          <div style="padding:7px 10px;border-right:1px solid #eeece5;color:#45473f">Cuenta RD</div>
+          <div style="display:flex;align-items:center"><input type="number" step="any" value="{{ accDOP }}" sc-camel-on-change="{{ onAccDOP }}" style="width:120px;border:0;background:transparent;padding:7px 4px 7px 10px;text-align:right;font:500 12.5px 'JetBrains Mono',monospace;color:#1d1f1c;outline:none" style-focus="box-shadow:inset 0 0 0 2px #2f7d52;background:#fff"><span style="padding-right:10px;font-size:11px;color:#6b6d66">DOP</span></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;gap:10px;font-size:12.5px;color:#45473f;border-top:1px dashed #e3e1d8;padding-top:10px">
+          <span>Ingreso del mes − usado</span>
+          <span style="font-family:'JetBrains Mono',monospace;color:{{ incomeLeftColor }}">{{ incomeLeft }} DOP</span>
+        </div>
+      </div>
+
+      <div style="background:#fffefa;padding:18px 20px;display:flex;align-items:center;gap:20px;flex-wrap:wrap">
+        <div style="position:relative;width:168px;height:168px;flex:none">
+          <svg sc-camel-view-box="0 0 168 168" width="168" height="168" style="transform:rotate(-90deg)">
+            <circle cx="84" cy="84" r="64" fill="none" stroke="#ebe9e1" stroke-width="20"></circle>
+            <circle cx="84" cy="84" r="64" fill="none" stroke="#c9d3c9" stroke-width="20" stroke-dasharray="{{ dn.pending.dash }}" stroke-dashoffset="{{ dn.pending.off }}"></circle>
+            <circle cx="84" cy="84" r="64" fill="none" stroke="#2b3a33" stroke-width="20" stroke-dasharray="{{ dn.fixed.dash }}" stroke-dashoffset="{{ dn.fixed.off }}"></circle>
+            <circle cx="84" cy="84" r="64" fill="none" stroke="#2f7d52" stroke-width="20" stroke-dasharray="{{ dn.variable.dash }}" stroke-dashoffset="{{ dn.variable.off }}"></circle>
+          </svg>
+          <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center">
+            <div style="font-size:10.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#6b6d66">{{ centerLabel }}</div>
+            <div style="font-family:'JetBrains Mono',monospace;font-size:19px;font-weight:600;margin-top:3px;color:{{ centerColor }}">{{ centerBig }}</div>
+            <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#6b6d66;margin-top:2px">{{ centerSmall }}</div>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px;font-size:12.5px;flex:1;min-width:150px">
+          <div style="font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#6b6d66;margin-bottom:2px">Presupuesto usado</div>
+          <div style="display:flex;align-items:center;gap:8px"><span style="width:10px;height:10px;background:#2b3a33;flex:none"></span><span style="flex:1">Fijos pagados</span><span style="font-family:'JetBrains Mono',monospace">{{ fixedPaidFmt }}</span></div>
+          <div style="display:flex;align-items:center;gap:8px"><span style="width:10px;height:10px;background:#2f7d52;flex:none"></span><span style="flex:1">Transacciones</span><span style="font-family:'JetBrains Mono',monospace">{{ varFmt }}</span></div>
+          <div style="display:flex;align-items:center;gap:8px"><span style="width:10px;height:10px;background:#c9d3c9;flex:none"></span><span style="flex:1">Fijos pendientes</span><span style="font-family:'JetBrains Mono',monospace">{{ pendingFmt }}</span></div>
+          <div style="display:flex;align-items:center;gap:8px"><span style="width:10px;height:10px;background:#ebe9e1;border:1px solid #dcdad1;box-sizing:border-box;flex:none"></span><span style="flex:1">Libre</span><span style="font-family:'JetBrains Mono',monospace">{{ freeFmt }}</span></div>
+        </div>
+      </div>
+
+      <div style="background:#fffefa;padding:18px 20px;display:flex;flex-direction:column;gap:0;font-size:13px">
+        <div style="font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#6b6d66;margin-bottom:10px">{{ monthLabel }}</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:6px 0;border-bottom:1px solid #eeece5">
+          <span>Presupuesto planeado</span>
+          <span style="display:flex;align-items:center"><input type="number" step="any" value="{{ budget }}" sc-camel-on-change="{{ onBudget }}" sc-camel-read-only="{{ closed }}" style="width:110px;border:0;background:#f6f5f0;padding:5px 8px;text-align:right;font:600 13px 'JetBrains Mono',monospace;color:#1d1f1c;outline:none;border-radius:2px" style-focus="box-shadow:inset 0 0 0 2px #2f7d52;background:#fff"></span>
+        </div>
+        <div style="display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid #eeece5"><span>Usado hasta hoy</span><span style="font-family:'JetBrains Mono',monospace;font-weight:600">{{ usedFmt }}</span></div>
+        <div style="display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid #eeece5"><span>Disponible</span><span style="font-family:'JetBrains Mono',monospace;font-weight:600;color:{{ availColor }}">{{ availFmt }}</span></div>
+        <div style="display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid #eeece5;color:#45473f"><span>Disponible tras fijos pendientes</span><span style="font-family:'JetBrains Mono',monospace;color:{{ afterColor }}">{{ afterFmt }}</span></div>
+        <div style="display:flex;justify-content:space-between;gap:10px;padding:8px 0;color:#6b6d66;font-size:12px"><span>Usado en USD</span><span style="font-family:'JetBrains Mono',monospace">{{ usedUSDFmt }} USD</span></div>
+      </div>
+    </section>
+
+    <sc-if value="{{ isMes }}" hint-placeholder-val="{{ true }}">
+      <div style="display:flex;flex-direction:column;gap:20px">
+        <sc-if value="{{ closed }}">
+          <div style="display:flex;flex-wrap:wrap;align-items:center;gap:12px 20px;padding:14px 18px;background:#1d1f1c;color:#f4f3ee;border-radius:4px">
+            <div style="flex:1 1 260px">
+              <div style="font-weight:600;font-size:15px">Resumen de {{ monthLabel }}</div>
+              <div style="font-size:12.5px;color:#a9aba3;margin-top:2px">Mes cerrado. Los registros quedan de solo lectura.</div>
+            </div>
+            <div style="display:flex;gap:24px;flex-wrap:wrap;font-size:12px;color:#a9aba3">
+              <div>Ingreso<div style="font-family:'JetBrains Mono',monospace;font-size:15px;color:#f4f3ee">{{ incomeDOPFmt }}</div></div>
+              <div>Gastado<div style="font-family:'JetBrains Mono',monospace;font-size:15px;color:#f4f3ee">{{ usedFmt }}</div></div>
+              <div>Ahorrado<div style="font-family:'JetBrains Mono',monospace;font-size:15px;color:#f4f3ee">{{ savedMonthDOPFmt }}</div></div>
+              <div>Vs. presupuesto<div style="font-family:'JetBrains Mono',monospace;font-size:15px;color:{{ summaryDiffColor }}">{{ availFmt }}</div></div>
+            </div>
+            <button sc-camel-on-click="{{ reopen }}" style="height:32px;padding:0 14px;border:1px solid #4a4d47;background:transparent;color:#f4f3ee;border-radius:3px;font:500 13px 'Schibsted Grotesk';cursor:pointer" style-hover="background:#2b2e29">Reabrir mes</button>
+          </div>
+        </sc-if>
+
+        <div style="display:flex;flex-wrap:wrap;gap:20px;align-items:flex-start">
+          <div style="flex:1 1 600px;min-width:0;background:#fffefa;border:1px solid #e3e1d8;border-radius:4px">
+            <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;padding:14px 16px 12px">
+              <div style="font-weight:600;font-size:15px">Gastos mensuales</div>
+              <div style="font-size:12px;color:#6b6d66">{{ fixedPaidCount }} · total <span style="font-family:'JetBrains Mono',monospace;color:#1d1f1c">{{ fixedAllFmt }} DOP</span></div>
+            </div>
+            <div style="overflow-x:auto">
+              <sc-raw-table style="width:100%;border-collapse:collapse;font-size:13px">
+                <sc-raw-thead><sc-raw-tr>
+                  <sc-raw-th style="padding:7px 10px;font-weight:600;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#6b6d66;background:#f6f5f0;border-top:1px solid #e3e1d8;border-bottom:1px solid #e3e1d8;border-right:1px solid #ebe9e2;text-align:center;width:44px">Pagado</sc-raw-th>
+                  <sc-raw-th style="padding:7px 10px;font-weight:600;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#6b6d66;background:#f6f5f0;border-top:1px solid #e3e1d8;border-bottom:1px solid #e3e1d8;border-right:1px solid #ebe9e2;text-align:left">Concepto</sc-raw-th>
+                  <sc-raw-th style="padding:7px 10px;font-weight:600;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#6b6d66;background:#f6f5f0;border-top:1px solid #e3e1d8;border-bottom:1px solid #e3e1d8;border-right:1px solid #ebe9e2;text-align:left;width:60px">Día</sc-raw-th>
+                  <sc-raw-th style="padding:7px 10px;font-weight:600;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#6b6d66;background:#f6f5f0;border-top:1px solid #e3e1d8;border-bottom:1px solid #e3e1d8;border-right:1px solid #ebe9e2;text-align:right;width:110px">Monto</sc-raw-th>
+                  <sc-raw-th style="padding:7px 10px;font-weight:600;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#6b6d66;background:#f6f5f0;border-top:1px solid #e3e1d8;border-bottom:1px solid #e3e1d8;border-right:1px solid #ebe9e2;text-align:left;width:64px">Moneda</sc-raw-th>
+                  <sc-raw-th style="padding:7px 10px;font-weight:600;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#6b6d66;background:#f6f5f0;border-top:1px solid #e3e1d8;border-bottom:1px solid #e3e1d8;border-right:1px solid #ebe9e2;text-align:right">DOP</sc-raw-th>
+                  <sc-if value="{{ showUSD }}"><sc-raw-th style="padding:7px 10px;font-weight:600;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#6b6d66;background:#f6f5f0;border-top:1px solid #e3e1d8;border-bottom:1px solid #e3e1d8;border-right:1px solid #ebe9e2;text-align:right">USD</sc-raw-th></sc-if>
+                  <sc-raw-th style="background:#f6f5f0;border-top:1px solid #e3e1d8;border-bottom:1px solid #e3e1d8;width:32px"></sc-raw-th>
+                </sc-raw-tr></sc-raw-thead>
+                <sc-raw-tbody>
+                  <sc-for list="{{ fixedRows }}" as="r" hint-placeholder-count="11">
+                    <sc-raw-tr style="background:{{ r.bg }}">
+                      <sc-raw-td style="text-align:center;border-bottom:1px solid #eeece5;border-right:1px solid #f1efe9"><input type="checkbox" checked="{{ r.paid }}" sc-camel-on-change="{{ r.onPaid }}" disabled="{{ closed }}" style="width:15px;height:15px;accent-color:#2f7d52;cursor:pointer"></sc-raw-td>
+                      <sc-raw-td style="padding:0;border-bottom:1px solid #eeece5;border-right:1px solid #f1efe9"><input value="{{ r.name }}" sc-camel-on-change="{{ r.onName }}" sc-camel-read-only="{{ closed }}" style="width:100%;min-width:120px;box-sizing:border-box;border:0;background:transparent;padding:7px 10px;font:inherit;color:inherit;outline:none" style-focus="box-shadow:inset 0 0 0 2px #2f7d52;background:#fff"></sc-raw-td>
+                      <sc-raw-td style="padding:0;border-bottom:1px solid #eeece5;border-right:1px solid #f1efe9"><input value="{{ r.day }}" sc-camel-on-change="{{ r.onDay }}" sc-camel-read-only="{{ closed }}" placeholder="—" style="width:100%;box-sizing:border-box;border:0;background:transparent;padding:7px 10px;font:12.5px 'JetBrains Mono',monospace;color:#45473f;outline:none" style-focus="box-shadow:inset 0 0 0 2px #2f7d52;background:#fff"></sc-raw-td>
+                      <sc-raw-td style="padding:0;border-bottom:1px solid #eeece5;border-right:1px solid #f1efe9"><input type="number" step="any" value="{{ r.amount }}" sc-camel-on-change="{{ r.onAmount }}" sc-camel-read-only="{{ closed }}" style="width:100%;box-sizing:border-box;border:0;background:transparent;padding:7px 10px;text-align:right;font:12.5px 'JetBrains Mono',monospace;color:inherit;outline:none" style-focus="box-shadow:inset 0 0 0 2px #2f7d52;background:#fff"></sc-raw-td>
+                      <sc-raw-td style="padding:0;border-bottom:1px solid #eeece5;border-right:1px solid #f1efe9"><sc-raw-select value="{{ r.cur }}" sc-camel-on-change="{{ r.onCur }}" disabled="{{ closed }}" style="width:100%;border:0;background:transparent;padding:7px 10px;font:12px 'JetBrains Mono',monospace;color:inherit;outline:none;cursor:pointer"><option value="DOP">DOP</option><option value="USD">USD</option></sc-raw-select></sc-raw-td>
+                      <sc-raw-td style="padding:7px 10px;border-bottom:1px solid #eeece5;border-right:1px solid #f1efe9;text-align:right;font-family:'JetBrains Mono',monospace;font-size:12.5px;white-space:nowrap">{{ r.dop }}</sc-raw-td>
+                      <sc-if value="{{ showUSD }}"><sc-raw-td style="padding:7px 10px;border-bottom:1px solid #eeece5;border-right:1px solid #f1efe9;text-align:right;font-family:'JetBrains Mono',monospace;font-size:12.5px;color:#6b6d66;white-space:nowrap">{{ r.usd }}</sc-raw-td></sc-if>
+                      <sc-raw-td style="border-bottom:1px solid #eeece5;text-align:center"><sc-if value="{{ open }}"><button sc-camel-on-click="{{ r.onDel }}" title="Eliminar" style="border:0;background:transparent;color:#a3a59d;cursor:pointer;font-size:15px;padding:4px 8px" style-hover="color:#b23a2a">×</button></sc-if></sc-raw-td>
+                    </sc-raw-tr>
+                  </sc-for>
+                  <sc-if value="{{ open }}">
+                    <sc-raw-tr style="background:#f9f8f3">
+                      <sc-raw-td style="border-bottom:1px solid #e3e1d8;border-right:1px solid #f1efe9;text-align:center;color:#a3a59d">+</sc-raw-td>
+                      <sc-raw-td style="padding:0;border-bottom:1px solid #e3e1d8;border-right:1px solid #f1efe9"><input value="{{ fx.name }}" sc-camel-on-change="{{ fx.onName }}" placeholder="Nuevo gasto mensual" style="width:100%;min-width:120px;box-sizing:border-box;border:0;background:transparent;padding:7px 10px;font:inherit;color:inherit;outline:none" style-focus="box-shadow:inset 0 0 0 2px #2f7d52;background:#fff"></sc-raw-td>
+                      <sc-raw-td style="padding:0;border-bottom:1px solid #e3e1d8;border-right:1px solid #f1efe9"><input value="{{ fx.day }}" sc-camel-on-change="{{ fx.onDay }}" placeholder="Día" style="width:100%;box-sizing:border-box;border:0;background:transparent;padding:7px 10px;font:12.5px 'JetBrains Mono',monospace;color:inherit;outline:none" style-focus="box-shadow:inset 0 0 0 2px #2f7d52;background:#fff"></sc-raw-td>
+                      <sc-raw-td style="padding:0;border-bottom:1px solid #e3e1d8;border-right:1px solid #f1efe9"><input type="number" step="any" value="{{ fx.amount }}" sc-camel-on-change="{{ fx.onAmount }}" placeholder="0.00" style="width:100%;box-sizing:border-box;border:0;background:transparent;padding:7px 10px;text-align:right;font:12.5px 'JetBrains Mono',monospace;color:inherit;outline:none" style-focus="box-shadow:inset 0 0 0 2px #2f7d52;background:#fff"></sc-raw-td>
+                      <sc-raw-td style="padding:0;border-bottom:1px solid #e3e1d8;border-right:1px solid #f1efe9"><sc-raw-select value="{{ fx.cur }}" sc-camel-on-change="{{ fx.onCur }}" style="width:100%;border:0;background:transparent;padding:7px 10px;font:12px 'JetBrains Mono',monospace;color:inherit;outline:none;cursor:pointer"><option value="DOP">DOP</option><option value="USD">USD</option></sc-raw-select></sc-raw-td>
+                      <sc-raw-td colspan="{{ addColspan }}" style="border-bottom:1px solid #e3e1d8;padding:4px 8px;text-align:right"><button sc-camel-on-click="{{ addFixed }}" style="height:28px;padding:0 12px;border:0;background:#2f7d52;color:#fff;border-radius:3px;font:500 12.5px 'Schibsted Grotesk';cursor:pointer" style-hover="background:#23613f">Agregar</button></sc-raw-td>
+                    </sc-raw-tr>
+                  </sc-if>
+                </sc-raw-tbody>
+              </sc-raw-table>
+            </div>
+          </div>
+
+          <div style="flex:1 1 340px;min-width:0;display:flex;flex-direction:column;gap:20px">
+            <div style="background:#fffefa;border:1px solid #e3e1d8;border-radius:4px;padding:14px 16px 16px">
+              <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px">
+                <div style="font-weight:600;font-size:15px">Por categoría</div>
+                <div style="font-size:12px;color:#6b6d66">DOP</div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:9px">
+                <sc-for list="{{ catRows }}" as="c" hint-placeholder-count="6">
+                  <div style="display:grid;grid-template-columns:110px 1fr auto;align-items:center;gap:10px;font-size:12.5px">
+                    <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ c.name }}</span>
+                    <span style="height:8px;background:#f1efe9;position:relative"><span style="position:absolute;left:0;top:0;bottom:0;width:{{ c.w }};background:{{ c.color }}"></span></span>
+                    <span style="font-family:'JetBrains Mono',monospace;font-size:12px;min-width:76px;text-align:right">{{ c.dop }}</span>
+                  </div>
+                </sc-for>
+                <sc-if value="{{ noCats }}"><div style="font-size:12.5px;color:#6b6d66">Aún no hay gastos este mes.</div></sc-if>
+              </div>
+            </div>
+
+            <div style="background:#fffefa;border:1px solid #e3e1d8;border-radius:4px">
+              <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;padding:14px 16px 12px">
+                <div style="font-weight:600;font-size:15px">Envíos USD → DOP</div>
+                <div style="font-size:12px;color:#6b6d66">Promedio <span style="font-family:'JetBrains Mono',monospace;color:#1d1f1c">{{ rateFmt }}</span></div>
+              </div>
+              <div style="overflow-x:auto">
+                <sc-raw-table style="width:100%;border-collapse:collapse;font-size:13px">
+                  <sc-raw-thead><sc-raw-tr>
+                    <sc-raw-th style="padding:7px 10px;font-weight:600;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#6b6d66;background:#f6f5f0;border-top:1px solid #e3e1d8;border-bottom:1px solid #e3e1d8;border-right:1px solid #ebe9e2;text-align:left">Fecha</sc-raw-th>
+                    <sc-raw-th style="padding:7px 10px;font-weight:600;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#6b6d66;background:#f6f5f0;border-top:1px solid #e3e1d8;border-bottom:1px solid #e3e1d8;border-right:1px solid #ebe9e2;text-align:left">Vía</sc-raw-th>
+                    <sc-raw-th style="padding:7px 10px;font-weight:600;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#6b6d66;background:#f6f5f0;border-top:1px solid #e3e1d8;border-bottom:1px solid #e3e1d8;border-right:1px solid #ebe9e2;text-align:right">USD</sc-raw-th>
+                    <sc-raw-th style="padding:7px 10px;font-weight:600;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#6b6d66;background:#f6f5f0;border-top:1px solid #e3e1d8;border-bottom:1px solid #e3e1d8;border-right:1px solid #ebe9e2;text-align:right">Tasa</sc-raw-th>
+                    <sc-raw-th style="padding:7px 10px;font-weight:600;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#6b6d66;background:#f6f5f0;border-top:1px solid #e3e1d8;border-bottom:1px solid #e3e1d8;border-right:1px solid #ebe9e2;text-align:right">DOP</sc-raw-th>
+                    <sc-raw-th style="background:#f6f5f0;border-top:1px solid #e3e1d8;border-bottom:1px solid #e3e1d8;width:28px"></sc-raw-th>
+                  </sc-raw-tr></sc-raw-thead>
+                  <sc-raw-tbody>
+                    <sc-for list="{{ trRows }}" as="t" hint-placeholder-count="1">
+                      <sc-raw-tr>
+                        <sc-raw-td style="padding:7px 10px;border-bottom:1px solid #eeece5;border-right:1px solid #f1efe9;font-family:'JetBrains Mono',monospace;font-size:12px;white-space:nowrap">{{ t.dateShort }}</sc-raw-td>
+                        <sc-raw-td style="padding:7px 10px;border-bottom:1px solid #eeece5;border-right:1px solid #f1efe9">{{ t.via }}</sc-raw-td>
+                        <sc-raw-td style="padding:7px 10px;border-bottom:1px solid #eeece5;border-right:1px solid #f1efe9;text-align:right;font-family:'JetBrains Mono',monospace;font-size:12.5px">{{ t.usd }}</sc-raw-td>
+                        <sc-raw-td style="padding:7px 10px;border-bottom:1px solid #eeece5;border-right:1px solid #f1efe9;text-align:right;font-family:'JetBrains Mono',monospace;font-size:12.5px">{{ t.rate }}</sc-raw-td>
+                        <sc-raw-td style="padding:7px 10px;border-bottom:1px solid #eeece5;border-right:1px solid #f1efe9;text-align:right;font-family:'JetBrains Mono',monospace;font-size:12.5px;white-space:nowrap">{{ t.dop }}</sc-raw-td>
+                        <sc-raw-td style="border-bottom:1px solid #eeece5;text-align:center"><sc-if value="{{ open }}"><button sc-camel-on-click="{{ t.onDel }}" title="Eliminar" style="border:0;background:transparent;color:#a3a59d;cursor:pointer;font-size:15px;padding:4px 6px" style-hover="color:#b23a2a">×</button></sc-if></sc-raw-td>
+                      </sc-raw-tr>
+                    </sc-for>
+                    <sc-if value="{{ open }}">
+                      <sc-raw-tr style="background:#f9f8f3">
+                        <sc-raw-td style="padding:0;border-bottom:1px solid #e3e1d8;border-right:1px solid #f1efe9"><input type="date" value="{{ tr.date }}" sc-camel-on-change="{{ tr.onDate }}" style="width:100%;min-width:118px;box-sizing:border-box;border:0;background:transparent;padding:6px 8px;font:12px 'JetBrains Mono',monospace;color:inherit;outline:none" style-focus="box-shadow:inset 0 0 0 2px #2f7d52;background:#fff"></sc-raw-td>
+                        <sc-raw-td style="padding:0;border-bottom:1px solid #e3e1d8;border-right:1px solid #f1efe9"><sc-raw-select value="{{ tr.via }}" sc-camel-on-change="{{ tr.onVia }}" style="width:100%;min-width:84px;border:0;background:transparent;padding:7px 8px;font:inherit;color:inherit;outline:none;cursor:pointer"><option value="Remitly">Remitly</option><option value="PayPal">PayPal</option></sc-raw-select></sc-raw-td>
+                        <sc-raw-td style="padding:0;border-bottom:1px solid #e3e1d8;border-right:1px solid #f1efe9"><input type="number" step="any" value="{{ tr.usd }}" sc-camel-on-change="{{ tr.onUsd }}" placeholder="500" style="width:100%;min-width:64px;box-sizing:border-box;border:0;background:transparent;padding:7px 8px;text-align:right;font:12.5px 'JetBrains Mono',monospace;color:inherit;outline:none" style-focus="box-shadow:inset 0 0 0 2px #2f7d52;background:#fff"></sc-raw-td>
+                        <sc-raw-td style="padding:0;border-bottom:1px solid #e3e1d8;border-right:1px solid #f1efe9"><input type="number" step="any" value="{{ tr.rate }}" sc-camel-on-change="{{ tr.onRate }}" style="width:100%;min-width:64px;box-sizing:border-box;border:0;background:transparent;padding:7px 8px;text-align:right;font:12.5px 'JetBrains Mono',monospace;color:inherit;outline:none" style-focus="box-shadow:inset 0 0 0 2px #2f7d52;background:#fff"></sc-raw-td>
+                        <sc-raw-td colspan="2" style="border-bottom:1px solid #e3e1d8;padding:4px 8px;text-align:right"><button sc-camel-on-click="{{ addTransfer }}" style="height:28px;padding:0 12px;border:0;background:#2f7d52;color:#fff;border-radius:3px;font:500 12.5px 'Schibsted Grotesk';cursor:pointer" style-hover="background:#23613f">Agregar</button></sc-raw-td>
+                      </sc-raw-tr>
+                    </sc-if>
+                  </sc-raw-tbody>
+                </sc-raw-table>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div style="background:#fffefa;border:1px solid #e3e1d8;border-radius:4px">
+          <div style="display:flex;flex-wrap:wrap;justify-content:space-between;align-items:baseline;gap:6px 16px;padding:14px 16px 12px">
+            <div style="font-weight:600;font-size:15px">Historial de transacciones</div>
+            <div style="font-size:12px;color:#6b6d66">{{ txCount }} · total <span style="font-family:'JetBrains Mono',monospace;color:#1d1f1c">{{ varFmt }} DOP</span></div>
+          </div>
+          <div style="overflow-x:auto">
+            <sc-raw-table style="width:100%;border-collapse:collapse;font-size:13px;min-width:980px">
+              <sc-raw-thead><sc-raw-tr>
+                <sc-raw-th style="padding:7px 10px;font-weight:600;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#6b6d66;background:#f6f5f0;border-top:1px solid #e3e1d8;border-bottom:1px solid #e3e1d8;border-right:1px solid #ebe9e2;text-align:left;width:128px">Fecha</sc-raw-th>
+                <sc-raw-th style="padding:7px 10px;font-weight:600;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#6b6d66;background:#f6f5f0;border-top:1px solid #e3e1d8;border-bottom:1px solid #e3e1d8;border-right:1px solid #ebe9e2;text-align:left">Descripción</sc-raw-th>
+                <sc-raw-th style="padding:7px 10px;font-weight:600;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#6b6d66;background:#f6f5f0;border-top:1px solid #e3e1d8;border-bottom:1px solid #e3e1d8;border-right:1px solid #ebe9e2;text-align:left">Lugar</sc-raw-th>
+                <sc-raw-th style="padding:7px 10px;font-weight:600;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#6b6d66;background:#f6f5f0;border-top:1px solid #e3e1d8;border-bottom:1px solid #e3e1d8;border-right:1px solid #ebe9e2;text-align:left;width:130px">Categoría</sc-raw-th>
+                <sc-raw-th style="padding:7px 10px;font-weight:600;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#6b6d66;background:#f6f5f0;border-top:1px solid #e3e1d8;border-bottom:1px solid #e3e1d8;border-right:1px solid #ebe9e2;text-align:left;width:122px">Método</sc-raw-th>
+                <sc-raw-th style="padding:7px 10px;font-weight:600;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#6b6d66;background:#f6f5f0;border-top:1px solid #e3e1d8;border-bottom:1px solid #e3e1d8;border-right:1px solid #ebe9e2;text-align:right;width:100px">Monto</sc-raw-th>
+                <sc-raw-th style="padding:7px 10px;font-weight:600;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#6b6d66;background:#f6f5f0;border-top:1px solid #e3e1d8;border-bottom:1px solid #e3e1d8;border-right:1px solid #ebe9e2;text-align:left;width:60px">Mon.</sc-raw-th>
+                <sc-raw-th style="padding:7px 10px;font-weight:600;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#6b6d66;background:#f6f5f0;border-top:1px solid #e3e1d8;border-bottom:1px solid #e3e1d8;border-right:1px solid #ebe9e2;text-align:right">DOP</sc-raw-th>
+                <sc-if value="{{ showUSD }}"><sc-raw-th style="padding:7px 10px;font-weight:600;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#6b6d66;background:#f6f5f0;border-top:1px solid #e3e1d8;border-bottom:1px solid #e3e1d8;border-right:1px solid #ebe9e2;text-align:right">USD</sc-raw-th></sc-if>
+                <sc-raw-th style="padding:7px 10px;font-weight:600;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#6b6d66;background:#f6f5f0;border-top:1px solid #e3e1d8;border-bottom:1px solid #e3e1d8;border-right:1px solid #ebe9e2;text-align:left">Notas</sc-raw-th>
+                <sc-raw-th style="background:#f6f5f0;border-top:1px solid #e3e1d8;border-bottom:1px solid #e3e1d8;width:32px"></sc-raw-th>
+              </sc-raw-tr></sc-raw-thead>
+              <sc-raw-tbody>
+                <sc-if value="{{ open }}">
+                  <sc-raw-tr style="background:#f9f8f3">
+                    <sc-raw-td style="padding:0;border-bottom:1px solid #e3e1d8;border-right:1px solid #f1efe9"><input type="date" value="{{ dt.date }}" sc-camel-on-change="{{ dt.onDate }}" style="width:100%;box-sizing:border-box;border:0;background:transparent;padding:6px 8px;font:12px 'JetBrains Mono',monospace;color:inherit;outline:none" style-focus="box-shadow:inset 0 0 0 2px #2f7d52;background:#fff"></sc-raw-td>
+                    <sc-raw-td style="padding:0;border-bottom:1px solid #e3e1d8;border-right:1px solid #f1efe9"><input value="{{ dt.desc }}" sc-camel-on-change="{{ dt.onDesc }}" placeholder="Nueva transacción" style="width:100%;box-sizing:border-box;border:0;background:transparent;padding:7px 10px;font:inherit;color:inherit;outline:none" style-focus="box-shadow:inset 0 0 0 2px #2f7d52;background:#fff"></sc-raw-td>
+                    <sc-raw-td style="padding:0;border-bottom:1px solid #e3e1d8;border-right:1px solid #f1efe9"><input value="{{ dt.place }}" sc-camel-on-change="{{ dt.onPlace }}" placeholder="Lugar" style="width:100%;box-sizing:border-box;border:0;background:transparent;padding:7px 10px;font:inherit;color:inherit;outline:none" style-focus="box-shadow:inset 0 0 0 2px #2f7d52;background:#fff"></sc-raw-td>
+                    <sc-raw-td style="padding:0;border-bottom:1px solid #e3e1d8;border-right:1px solid #f1efe9"><sc-raw-select value="{{ dt.cat }}" sc-camel-on-change="{{ dt.onCat }}" style="width:100%;border:0;background:transparent;padding:7px 10px;font:inherit;color:inherit;outline:none;cursor:pointer"><sc-for list="{{ cats }}" as="c"><option value="{{ c }}">{{ c }}</option></sc-for></sc-raw-select></sc-raw-td>
+                    <sc-raw-td style="padding:0;border-bottom:1px solid #e3e1d8;border-right:1px solid #f1efe9"><sc-raw-select value="{{ dt.method }}" sc-camel-on-change="{{ dt.onMethod }}" style="width:100%;border:0;background:transparent;padding:7px 10px;font:inherit;color:inherit;outline:none;cursor:pointer"><sc-for list="{{ methods }}" as="m"><option value="{{ m }}">{{ m }}</option></sc-for></sc-raw-select></sc-raw-td>
+                    <sc-raw-td style="padding:0;border-bottom:1px solid #e3e1d8;border-right:1px solid #f1efe9"><input type="number" step="any" value="{{ dt.amount }}" sc-camel-on-change="{{ dt.onAmount }}" placeholder="0.00" style="width:100%;box-sizing:border-box;border:0;background:transparent;padding:7px 10px;text-align:right;font:12.5px 'JetBrains Mono',monospace;color:inherit;outline:none" style-focus="box-shadow:inset 0 0 0 2px #2f7d52;background:#fff"></sc-raw-td>
+                    <sc-raw-td style="padding:0;border-bottom:1px solid #e3e1d8;border-right:1px solid #f1efe9"><sc-raw-select value="{{ dt.cur }}" sc-camel-on-change="{{ dt.onCur }}" style="width:100%;border:0;background:transparent;padding:7px 8px;font:12px 'JetBrains Mono',monospace;color:inherit;outline:none;cursor:pointer"><option value="DOP">DOP</option><option value="USD">USD</option></sc-raw-select></sc-raw-td>
+                    <sc-raw-td colspan="{{ txAddColspan }}" style="padding:0;border-bottom:1px solid #e3e1d8;border-right:1px solid #f1efe9"><input value="{{ dt.notes }}" sc-camel-on-change="{{ dt.onNotes }}" placeholder="Notas (opcional)" style="width:100%;box-sizing:border-box;border:0;background:transparent;padding:7px 10px;font:inherit;color:inherit;outline:none" style-focus="box-shadow:inset 0 0 0 2px #2f7d52;background:#fff"></sc-raw-td>
+                    <sc-raw-td colspan="2" style="border-bottom:1px solid #e3e1d8;padding:4px 8px;text-align:right"><button sc-camel-on-click="{{ addTx }}" style="height:28px;padding:0 12px;border:0;background:#2f7d52;color:#fff;border-radius:3px;font:500 12.5px 'Schibsted Grotesk';cursor:pointer" style-hover="background:#23613f">Agregar</button></sc-raw-td>
+                  </sc-raw-tr>
+                </sc-if>
+                <sc-for list="{{ txRows }}" as="r" hint-placeholder-count="7">
+                  <sc-raw-tr>
+                    <sc-raw-td style="padding:0;border-bottom:1px solid #eeece5;border-right:1px solid #f1efe9"><input type="date" value="{{ r.date }}" sc-camel-on-change="{{ r.onDate }}" sc-camel-read-only="{{ closed }}" style="width:100%;box-sizing:border-box;border:0;background:transparent;padding:6px 8px;font:12px 'JetBrains Mono',monospace;color:#45473f;outline:none" style-focus="box-shadow:inset 0 0 0 2px #2f7d52;background:#fff"></sc-raw-td>
+                    <sc-raw-td style="padding:0;border-bottom:1px solid #eeece5;border-right:1px solid #f1efe9"><input value="{{ r.desc }}" sc-camel-on-change="{{ r.onDesc }}" sc-camel-read-only="{{ closed }}" style="width:100%;box-sizing:border-box;border:0;background:transparent;padding:7px 10px;font:inherit;color:inherit;outline:none" style-focus="box-shadow:inset 0 0 0 2px #2f7d52;background:#fff"></sc-raw-td>
+                    <sc-raw-td style="padding:0;border-bottom:1px solid #eeece5;border-right:1px solid #f1efe9"><input value="{{ r.place }}" sc-camel-on-change="{{ r.onPlace }}" sc-camel-read-only="{{ closed }}" style="width:100%;box-sizing:border-box;border:0;background:transparent;padding:7px 10px;font:inherit;color:#45473f;outline:none" style-focus="box-shadow:inset 0 0 0 2px #2f7d52;background:#fff"></sc-raw-td>
+                    <sc-raw-td style="padding:0;border-bottom:1px solid #eeece5;border-right:1px solid #f1efe9"><sc-raw-select value="{{ r.cat }}" sc-camel-on-change="{{ r.onCat }}" disabled="{{ closed }}" style="width:100%;border:0;background:transparent;padding:7px 10px;font:inherit;color:inherit;outline:none;cursor:pointer"><sc-for list="{{ cats }}" as="c"><option value="{{ c }}">{{ c }}</option></sc-for></sc-raw-select></sc-raw-td>
+                    <sc-raw-td style="padding:0;border-bottom:1px solid #eeece5;border-right:1px solid #f1efe9"><sc-raw-select value="{{ r.method }}" sc-camel-on-change="{{ r.onMethod }}" disabled="{{ closed }}" style="width:100%;border:0;background:transparent;padding:7px 10px;font:inherit;color:#45473f;outline:none;cursor:pointer"><sc-for list="{{ methods }}" as="m"><option value="{{ m }}">{{ m }}</option></sc-for></sc-raw-select></sc-raw-td>
+                    <sc-raw-td style="padding:0;border-bottom:1px solid #eeece5;border-right:1px solid #f1efe9"><input type="number" step="any" value="{{ r.amount }}" sc-camel-on-change="{{ r.onAmount }}" sc-camel-read-only="{{ closed }}" style="width:100%;box-sizing:border-box;border:0;background:transparent;padding:7px 10px;text-align:right;font:12.5px 'JetBrains Mono',monospace;color:inherit;outline:none" style-focus="box-shadow:inset 0 0 0 2px #2f7d52;background:#fff"></sc-raw-td>
+                    <sc-raw-td style="padding:0;border-bottom:1px solid #eeece5;border-right:1px solid #f1efe9"><sc-raw-select value="{{ r.cur }}" sc-camel-on-change="{{ r.onCur }}" disabled="{{ closed }}" style="width:100%;border:0;background:transparent;padding:7px 8px;font:12px 'JetBrains Mono',monospace;color:inherit;outline:none;cursor:pointer"><option value="DOP">DOP</option><option value="USD">USD</option></sc-raw-select></sc-raw-td>
+                    <sc-raw-td style="padding:7px 10px;border-bottom:1px solid #eeece5;border-right:1px solid #f1efe9;text-align:right;font-family:'JetBrains Mono',monospace;font-size:12.5px;font-weight:500;white-space:nowrap">{{ r.dop }}</sc-raw-td>
+                    <sc-if value="{{ showUSD }}"><sc-raw-td style="padding:7px 10px;border-bottom:1px solid #eeece5;border-right:1px solid #f1efe9;text-align:right;font-family:'JetBrains Mono',monospace;font-size:12.5px;color:#6b6d66;white-space:nowrap">{{ r.usd }}</sc-raw-td></sc-if>
+                    <sc-raw-td style="padding:0;border-bottom:1px solid #eeece5;border-right:1px solid #f1efe9"><input value="{{ r.notes }}" sc-camel-on-change="{{ r.onNotes }}" sc-camel-read-only="{{ closed }}" style="width:100%;box-sizing:border-box;border:0;background:transparent;padding:7px 10px;font:12.5px 'Schibsted Grotesk';color:#6b6d66;outline:none" style-focus="box-shadow:inset 0 0 0 2px #2f7d52;background:#fff"></sc-raw-td>
+                    <sc-raw-td style="border-bottom:1px solid #eeece5;text-align:center"><sc-if value="{{ open }}"><button sc-camel-on-click="{{ r.onDel }}" title="Eliminar" style="border:0;background:transparent;color:#a3a59d;cursor:pointer;font-size:15px;padding:4px 8px" style-hover="color:#b23a2a">×</button></sc-if></sc-raw-td>
+                  </sc-raw-tr>
+                </sc-for>
+              </sc-raw-tbody>
+            </sc-raw-table>
+          </div>
+        </div>
+
+        <sc-if value="{{ open }}">
+          <div style="display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:12px;padding:14px 16px;border:1px dashed #cfccc1;border-radius:4px">
+            <div style="font-size:13px;color:#45473f;flex:1 1 320px">Al cerrar el mes se guarda este resumen y se crea {{ nextLabel }} con los mismos gastos mensuales, sin marcar como pagados.</div>
+            <button sc-camel-on-click="{{ closeMonth }}" style="height:34px;padding:0 16px;border:0;background:#1d1f1c;color:#f4f3ee;border-radius:3px;font:600 13px 'Schibsted Grotesk';cursor:pointer" style-hover="background:#2f7d52">Cerrar {{ monthLabel }}</button>
+          </div>
+        </sc-if>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isAhorros }}">
+      <div style="display:flex;flex-direction:column;gap:20px">
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:20px">
+          <sc-for list="{{ goalCards }}" as="g" hint-placeholder-count="3">
+            <div style="background:#fffefa;border:1px solid #e3e1d8;border-radius:4px;padding:16px 18px;display:flex;flex-direction:column;gap:10px">
+              <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px">
+                <div style="font-weight:600;font-size:15px">{{ g.name }}</div>
+                <div style="font-size:11.5px;color:#6b6d66">{{ g.kind }}</div>
+              </div>
+              <div>
+                <div style="font-family:'JetBrains Mono',monospace;font-size:24px;font-weight:600;letter-spacing:-.02em">{{ g.saved }} <span style="font-size:12px;color:#6b6d66;font-weight:500">USD</span></div>
+                <div style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#6b6d66;margin-top:3px">≈ {{ g.savedDOP }} DOP</div>
+              </div>
+              <sc-if value="{{ g.hasTarget }}">
+                <div style="display:flex;flex-direction:column;gap:6px">
+                  <div style="height:8px;background:#f1efe9;position:relative"><div style="position:absolute;left:0;top:0;bottom:0;width:{{ g.w }};background:#2f7d52"></div></div>
+                  <div style="display:flex;justify-content:space-between;font-size:12px;color:#45473f"><span>{{ g.pct }} de {{ g.target }} USD</span><span>{{ g.deadline }}</span></div>
+                  <div style="font-size:12px;color:#6b6d66">{{ g.plan }}</div>
+                </div>
+              </sc-if>
+              <sc-if value="{{ g.noTarget }}"><div style="font-size:12px;color:#6b6d66">{{ g.plan }}</div></sc-if>
+            </div>
+          </sc-for>
+        </div>
+
+        <div style="display:flex;flex-wrap:wrap;gap:20px;align-items:flex-start">
+          <div style="flex:1 1 440px;min-width:0;background:#fffefa;border:1px solid #e3e1d8;border-radius:4px">
+            <div style="display:flex;justify-content:space-between;align-items:baseline;padding:14px 16px 12px">
+              <div style="font-weight:600;font-size:15px">Ingresos por mes</div>
+              <div style="font-size:12px;color:#6b6d66">Ingreso en USD, convertido a la tasa del mes</div>
+            </div>
+            <div style="overflow-x:auto">
+              <sc-raw-table style="width:100%;border-collapse:collapse;font-size:13px">
+                <sc-raw-thead><sc-raw-tr>
+                  <sc-raw-th style="padding:7px 10px;font-weight:600;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#6b6d66;background:#f6f5f0;border-top:1px solid #e3e1d8;border-bottom:1px solid #e3e1d8;border-right:1px solid #ebe9e2;text-align:left">Mes</sc-raw-th>
+                  <sc-raw-th style="padding:7px 10px;font-weight:600;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#6b6d66;background:#f6f5f0;border-top:1px solid #e3e1d8;border-bottom:1px solid #e3e1d8;border-right:1px solid #ebe9e2;text-align:right;width:110px">Ingreso USD</sc-raw-th>
+                  <sc-raw-th style="padding:7px 10px;font-weight:600;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#6b6d66;background:#f6f5f0;border-top:1px solid #e3e1d8;border-bottom:1px solid #e3e1d8;border-right:1px solid #ebe9e2;text-align:right">Tasa</sc-raw-th>
+                  <sc-raw-th style="padding:7px 10px;font-weight:600;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#6b6d66;background:#f6f5f0;border-top:1px solid #e3e1d8;border-bottom:1px solid #e3e1d8;border-right:1px solid #ebe9e2;text-align:right">Ingreso DOP</sc-raw-th>
+                  <sc-raw-th style="padding:7px 10px;font-weight:600;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#6b6d66;background:#f6f5f0;border-top:1px solid #e3e1d8;border-bottom:1px solid #e3e1d8;border-right:1px solid #ebe9e2;text-align:right">Ahorrado USD</sc-raw-th>
+                  <sc-raw-th style="padding:7px 10px;font-weight:600;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#6b6d66;background:#f6f5f0;border-top:1px solid #e3e1d8;border-bottom:1px solid #e3e1d8;text-align:right">% ahorro</sc-raw-th>
+                </sc-raw-tr></sc-raw-thead>
+                <sc-raw-tbody>
+                  <sc-for list="{{ incomeRows }}" as="r" hint-placeholder-count="3">
+                    <sc-raw-tr>
+                      <sc-raw-td style="padding:7px 10px;border-bottom:1px solid #eeece5;border-right:1px solid #f1efe9;white-space:nowrap">{{ r.label }}</sc-raw-td>
+                      <sc-raw-td style="padding:0;border-bottom:1px solid #eeece5;border-right:1px solid #f1efe9"><input type="number" step="any" value="{{ r.income }}" sc-camel-on-change="{{ r.onIncome }}" style="width:100%;box-sizing:border-box;border:0;background:transparent;padding:7px 10px;text-align:right;font:12.5px 'JetBrains Mono',monospace;color:inherit;outline:none" style-focus="box-shadow:inset 0 0 0 2px #2f7d52;background:#fff"></sc-raw-td>
+                      <sc-raw-td style="padding:7px 10px;border-bottom:1px solid #eeece5;border-right:1px solid #f1efe9;text-align:right;font-family:'JetBrains Mono',monospace;font-size:12.5px;color:#6b6d66">{{ r.rate }}</sc-raw-td>
+                      <sc-raw-td style="padding:7px 10px;border-bottom:1px solid #eeece5;border-right:1px solid #f1efe9;text-align:right;font-family:'JetBrains Mono',monospace;font-size:12.5px;white-space:nowrap">{{ r.dop }}</sc-raw-td>
+                      <sc-raw-td style="padding:7px 10px;border-bottom:1px solid #eeece5;border-right:1px solid #f1efe9;text-align:right;font-family:'JetBrains Mono',monospace;font-size:12.5px">{{ r.saved }}</sc-raw-td>
+                      <sc-raw-td style="padding:7px 10px;border-bottom:1px solid #eeece5;text-align:right;font-family:'JetBrains Mono',monospace;font-size:12.5px;color:#23613f">{{ r.pct }}</sc-raw-td>
+                    </sc-raw-tr>
+                  </sc-for>
+                </sc-raw-tbody>
+              </sc-raw-table>
+            </div>
+          </div>
+
+          <div style="flex:1 1 480px;min-width:0;background:#fffefa;border:1px solid #e3e1d8;border-radius:4px">
+            <div style="display:flex;justify-content:space-between;align-items:baseline;padding:14px 16px 12px">
+              <div style="font-weight:600;font-size:15px">Aportes</div>
+              <div style="font-size:12px;color:#6b6d66">Total <span style="font-family:'JetBrains Mono',monospace;color:#1d1f1c">{{ totalSavedFmt }} USD</span></div>
+            </div>
+            <div style="overflow-x:auto">
+              <sc-raw-table style="width:100%;border-collapse:collapse;font-size:13px">
+                <sc-raw-thead><sc-raw-tr>
+                  <sc-raw-th style="padding:7px 10px;font-weight:600;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#6b6d66;background:#f6f5f0;border-top:1px solid #e3e1d8;border-bottom:1px solid #e3e1d8;border-right:1px solid #ebe9e2;text-align:left;width:128px">Fecha</sc-raw-th>
+                  <sc-raw-th style="padding:7px 10px;font-weight:600;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#6b6d66;background:#f6f5f0;border-top:1px solid #e3e1d8;border-bottom:1px solid #e3e1d8;border-right:1px solid #ebe9e2;text-align:left">Meta</sc-raw-th>
+                  <sc-raw-th style="padding:7px 10px;font-weight:600;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#6b6d66;background:#f6f5f0;border-top:1px solid #e3e1d8;border-bottom:1px solid #e3e1d8;border-right:1px solid #ebe9e2;text-align:right">Monto</sc-raw-th>
+                  <sc-raw-th style="padding:7px 10px;font-weight:600;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#6b6d66;background:#f6f5f0;border-top:1px solid #e3e1d8;border-bottom:1px solid #e3e1d8;border-right:1px solid #ebe9e2;text-align:left;width:60px">Mon.</sc-raw-th>
+                  <sc-raw-th style="padding:7px 10px;font-weight:600;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#6b6d66;background:#f6f5f0;border-top:1px solid #e3e1d8;border-bottom:1px solid #e3e1d8;border-right:1px solid #ebe9e2;text-align:right">USD</sc-raw-th>
+                  <sc-raw-th style="padding:7px 10px;font-weight:600;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#6b6d66;background:#f6f5f0;border-top:1px solid #e3e1d8;border-bottom:1px solid #e3e1d8;border-right:1px solid #ebe9e2;text-align:right">DOP</sc-raw-th>
+                  <sc-raw-th style="background:#f6f5f0;border-top:1px solid #e3e1d8;border-bottom:1px solid #e3e1d8;width:28px"></sc-raw-th>
+                </sc-raw-tr></sc-raw-thead>
+                <sc-raw-tbody>
+                  <sc-raw-tr style="background:#f9f8f3">
+                    <sc-raw-td style="padding:0;border-bottom:1px solid #e3e1d8;border-right:1px solid #f1efe9"><input type="date" value="{{ ct.date }}" sc-camel-on-change="{{ ct.onDate }}" style="width:100%;box-sizing:border-box;border:0;background:transparent;padding:6px 8px;font:12px 'JetBrains Mono',monospace;color:inherit;outline:none" style-focus="box-shadow:inset 0 0 0 2px #2f7d52;background:#fff"></sc-raw-td>
+                    <sc-raw-td style="padding:0;border-bottom:1px solid #e3e1d8;border-right:1px solid #f1efe9"><sc-raw-select value="{{ ct.goal }}" sc-camel-on-change="{{ ct.onGoal }}" style="width:100%;border:0;background:transparent;padding:7px 10px;font:inherit;color:inherit;outline:none;cursor:pointer"><sc-for list="{{ goalOptions }}" as="o"><option value="{{ o.id }}">{{ o.name }}</option></sc-for></sc-raw-select></sc-raw-td>
+                    <sc-raw-td style="padding:0;border-bottom:1px solid #e3e1d8;border-right:1px solid #f1efe9"><input type="number" step="any" value="{{ ct.amount }}" sc-camel-on-change="{{ ct.onAmount }}" placeholder="0.00" style="width:100%;min-width:70px;box-sizing:border-box;border:0;background:transparent;padding:7px 10px;text-align:right;font:12.5px 'JetBrains Mono',monospace;color:inherit;outline:none" style-focus="box-shadow:inset 0 0 0 2px #2f7d52;background:#fff"></sc-raw-td>
+                    <sc-raw-td style="padding:0;border-bottom:1px solid #e3e1d8;border-right:1px solid #f1efe9"><sc-raw-select value="{{ ct.cur }}" sc-camel-on-change="{{ ct.onCur }}" style="width:100%;border:0;background:transparent;padding:7px 8px;font:12px 'JetBrains Mono',monospace;color:inherit;outline:none;cursor:pointer"><option value="USD">USD</option><option value="DOP">DOP</option></sc-raw-select></sc-raw-td>
+                    <sc-raw-td colspan="3" style="border-bottom:1px solid #e3e1d8;padding:4px 8px;text-align:right"><button sc-camel-on-click="{{ addContrib }}" style="height:28px;padding:0 12px;border:0;background:#2f7d52;color:#fff;border-radius:3px;font:500 12.5px 'Schibsted Grotesk';cursor:pointer" style-hover="background:#23613f">Agregar</button></sc-raw-td>
+                  </sc-raw-tr>
+                  <sc-for list="{{ contribRows }}" as="r" hint-placeholder-count="6">
+                    <sc-raw-tr>
+                      <sc-raw-td style="padding:7px 10px;border-bottom:1px solid #eeece5;border-right:1px solid #f1efe9;font-family:'JetBrains Mono',monospace;font-size:12px;color:#45473f">{{ r.date }}</sc-raw-td>
+                      <sc-raw-td style="padding:7px 10px;border-bottom:1px solid #eeece5;border-right:1px solid #f1efe9">{{ r.goal }}</sc-raw-td>
+                      <sc-raw-td style="padding:7px 10px;border-bottom:1px solid #eeece5;border-right:1px solid #f1efe9;text-align:right;font-family:'JetBrains Mono',monospace;font-size:12.5px">{{ r.amount }}</sc-raw-td>
+                      <sc-raw-td style="padding:7px 10px;border-bottom:1px solid #eeece5;border-right:1px solid #f1efe9;font-family:'JetBrains Mono',monospace;font-size:12px;color:#6b6d66">{{ r.cur }}</sc-raw-td>
+                      <sc-raw-td style="padding:7px 10px;border-bottom:1px solid #eeece5;border-right:1px solid #f1efe9;text-align:right;font-family:'JetBrains Mono',monospace;font-size:12.5px">{{ r.usd }}</sc-raw-td>
+                      <sc-raw-td style="padding:7px 10px;border-bottom:1px solid #eeece5;border-right:1px solid #f1efe9;text-align:right;font-family:'JetBrains Mono',monospace;font-size:12.5px;color:#6b6d66;white-space:nowrap">{{ r.dop }}</sc-raw-td>
+                      <sc-raw-td style="border-bottom:1px solid #eeece5;text-align:center"><button sc-camel-on-click="{{ r.onDel }}" title="Eliminar" style="border:0;background:transparent;color:#a3a59d;cursor:pointer;font-size:15px;padding:4px 6px" style-hover="color:#b23a2a">×</button></sc-raw-td>
+                    </sc-raw-tr>
+                  </sc-for>
+                </sc-raw-tbody>
+              </sc-raw-table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+  </main>
+
+  <sc-if value="{{ confirmClose }}">
+    <div style="position:fixed;inset:0;z-index:20;background:rgba(29,31,28,.45);display:flex;align-items:center;justify-content:center;padding:24px">
+      <div style="width:100%;max-width:440px;background:#fffefa;border:1px solid #e3e1d8;border-radius:4px;box-shadow:0 12px 40px rgba(0,0,0,.18)">
+        <div style="padding:20px 22px 6px;font-weight:600;font-size:16px">Cerrar {{ monthLabel }}</div>
+        <div style="padding:0 22px 18px;font-size:13.5px;line-height:1.5;color:#45473f;text-wrap:pretty">Se creará {{ nextLabel }} con los mismos gastos mensuales, sin marcar como pagados. ¿Lo agrego también al Excel? Se descargará el archivo con todos los meses, incluido {{ nextLabel }}.</div>
+        <div style="display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px;padding:14px 22px;border-top:1px solid #eeece5;background:#f9f8f3">
+          <button sc-camel-on-click="{{ closeCancel }}" style="height:34px;padding:0 14px;border:0;background:transparent;color:#6b6d66;border-radius:3px;font:500 13px 'Schibsted Grotesk';cursor:pointer" style-hover="color:#1d1f1c">Cancelar</button>
+          <button sc-camel-on-click="{{ closeNo }}" style="height:34px;padding:0 14px;border:1px solid #cfccc1;background:#fffefa;color:#1d1f1c;border-radius:3px;font:500 13px 'Schibsted Grotesk';cursor:pointer" style-hover="background:#f1efe9">Solo en la página</button>
+          <button sc-camel-on-click="{{ closeYes }}" style="height:34px;padding:0 14px;border:0;background:#2f7d52;color:#fff;border-radius:3px;font:600 13px 'Schibsted Grotesk';cursor:pointer" style-hover="background:#23613f">Sí, agregar al Excel</button>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+  <nav style="position:fixed;left:0;right:0;bottom:0;z-index:5;background:#e4e2da;border-top:1px solid #cfccc1;display:flex;align-items:stretch;gap:2px;padding:0 24px;height:38px">
+    <button sc-camel-on-click="{{ goMes }}" style="border:0;border-right:1px solid #cfccc1;border-left:1px solid #cfccc1;padding:0 20px;font:600 13px 'Schibsted Grotesk';cursor:pointer;margin-top:-1px;background:{{ tabMes.bg }};color:{{ tabMes.fg }};box-shadow:{{ tabMes.sh }}">Mes</button>
+    <button sc-camel-on-click="{{ goAhorros }}" style="border:0;border-right:1px solid #cfccc1;padding:0 20px;font:600 13px 'Schibsted Grotesk';cursor:pointer;margin-top:-1px;background:{{ tabAh.bg }};color:{{ tabAh.fg }};box-shadow:{{ tabAh.sh }}">Ahorros</button>
+    <div style="flex:1"></div>
+    <button sc-camel-on-click="{{ emptyData }}" style="border:0;background:transparent;color:#6b6d66;font:12px 'Schibsted Grotesk';cursor:pointer;padding:0 10px" style-hover="color:#1d1f1c">Empezar en blanco</button>
+    <button sc-camel-on-click="{{ resetData }}" style="border:0;background:transparent;color:#6b6d66;font:12px 'Schibsted Grotesk';cursor:pointer;padding:0 4px" style-hover="color:#b23a2a">Restablecer datos de ejemplo</button>
+  </nav>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script="" data-props="{&quot;mostrarUSD&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Vista&quot;},&quot;centroDona&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;Monto usado&quot;,&quot;Disponible&quot;,&quot;Porcentaje&quot;],&quot;default&quot;:&quot;Monto usado&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Vista&quot;}}">
+class Component extends DCLogic {
+  static KEY = 'finanzas-personales-v1';
+  static CATS = ['Comida','Supermercado','Transporte','Entretenimiento','Salud','Ropa','Hogar','Suscripciones','Educación','Viajes'];
+  static METHODS = ['Tarjeta','Transferencia','App del banco'];
+  static MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  static uid() { return Math.random().toString(36).slice(2, 10); }
+  static label(k) { const [y, m] = k.split('-'); return Component.MESES[+m - 1] + ' ' + y; }
+  static nextKey(k) { let [y, m] = k.split('-').map(Number); m++; if (m > 12) { m = 1; y++; } return y + '-' + String(m).padStart(2, '0'); }
+  static seed() {
+    const U = Component.uid;
+    const FIX = [['Luz','',1337.15,'DOP'],['Internet','',2699,'DOP'],['Seguro médico','',5640,'DOP'],['Pago nevera','',15000,'DOP'],['Claude','5',106,'USD'],['Google One','16',121.56,'DOP'],['iCloud+','17',604,'DOP'],['Cluely','',308,'DOP'],['Smartfit','17',1550,'DOP'],['Netflix','',1137.30,'DOP'],['Unicaribe','',7400,'DOP']];
+    const fixed = (paid, over) => FIX.map(([name, day, amount, cur]) => ({ id: U(), name, day, amount: over && over[name] != null ? over[name] : amount, cur, paid: paid === true || paid.includes(name) }));
+    const d = (k, n) => k + '-' + String(n).padStart(2, '0');
+    const tx = (k, rows) => rows.map(([n, desc, place, cat, method, amount, notes]) => ({ id: U(), date: d(k, n), desc, place, cat, method, amount, cur: 'DOP', notes: notes || '' }));
+    const tr = (k, rows) => rows.map(([n, via, usd, rate]) => ({ id: U(), date: d(k, n), via, usd, rate }));
+    return {
+      v: 1, sheet: 'mes', month: '2026-10',
+      accounts: { usd: 4320, dop: 86400 },
+      months: {
+        '2026-08': { closed: true, budget: 70000, incomeUSD: 5800, fixed: fixed(true, { Luz: 1290.40 }),
+          transfers: tr('2026-08', [[3,'Remitly',1500,58.40],[18,'PayPal',300,57.10]]),
+          tx: tx('2026-08', [[2,'Compra semanal','Supermercado Nacional','Supermercado','Tarjeta',5230],[4,'Uber','Uber','Transporte','Tarjeta',410],[6,'Almuerzo','Adrian Tropical','Comida','Tarjeta',1280],[9,'Gasolina','Texaco Churchill','Transporte','Tarjeta',2200],[12,'Concierto','Teatro Nacional','Entretenimiento','App del banco',2500],[15,'Compra semanal','Jumbo','Supermercado','Tarjeta',4680],[18,'Camisas','Zara Blue Mall','Ropa','Tarjeta',3900],[21,'Consulta','Centro Médico','Salud','Transferencia',2500,'Copago seguro'],[24,'Cena','Lulú Tasting Bar','Comida','Tarjeta',3150],[29,'Gasolina','Shell','Transporte','Tarjeta',2000]]) },
+        '2026-09': { closed: true, budget: 70000, incomeUSD: 5800, fixed: fixed(true, { Luz: 1412.80 }),
+          transfers: tr('2026-09', [[2,'Remitly',1500,58.55],[17,'Remitly',800,58.62]]),
+          tx: tx('2026-09', [[1,'Compra semanal','Supermercado Bravo','Supermercado','Tarjeta',4975],[3,'Libro de contabilidad','Librería Cuesta','Educación','Tarjeta',1850],[5,'Uber','Uber','Transporte','Tarjeta',360],[8,'Almuerzo','El Conuco','Comida','Tarjeta',1420],[11,'Gasolina','Texaco','Transporte','Tarjeta',2100],[14,'Cine','Caribbean Cinemas','Entretenimiento','App del banco',850],[16,'Compra semanal','Jumbo','Supermercado','Tarjeta',5320],[19,'Farmacia','Farmacia Carol','Salud','Tarjeta',980],[23,'Reserva hotel Estambul','Booking','Viajes','Tarjeta',4800,'Depósito'],[28,'Gasolina','Shell','Transporte','Tarjeta',1900]]) },
+        '2026-10': { closed: false, budget: 70000, incomeUSD: 5800, fixed: fixed(['Luz','Internet','Seguro médico','Pago nevera','Claude','Unicaribe']),
+          transfers: tr('2026-10', [[2,'Remitly',1500,58.76]]),
+          tx: tx('2026-10', [[1,'Compra semanal','Supermercado Nacional','Supermercado','Tarjeta',4850],[2,'Uber al trabajo','Uber','Transporte','Tarjeta',320],[3,'Almuerzo','Adrian Tropical','Comida','Tarjeta',1150],[4,'Cine','Caribbean Cinemas','Entretenimiento','App del banco',900],[5,'Farmacia','Farmacia Carol','Salud','Tarjeta',1240],[6,'Gasolina','Texaco','Transporte','Tarjeta',2000],[7,'Café','Starbucks Ágora','Comida','Tarjeta',385]]) }
+      },
+      goals: [
+        { id: 'emerg', name: 'Fondo de emergencia' },
+        { id: 'personal', name: 'Ahorro personal' },
+        { id: 'turquia', name: 'Viaje a Turquía', monthlyUSD: 3000, start: '2026-08', end: '2027-10' }
+      ],
+      contribs: [
+        ['2026-08-03','turquia',3000],['2026-08-03','emerg',400],['2026-08-20','personal',250],
+        ['2026-09-02','turquia',3000],['2026-09-02','emerg',300],['2026-09-18','personal',200],
+        ['2026-10-03','turquia',3000],['2026-10-03','emerg',500]
+      ].map(([date, goal, amount]) => ({ id: U(), date, goal, amount, cur: 'USD' })),
+      drafts: {
+        tx: { date: '2026-10-07', desc: '', place: '', cat: 'Comida', method: 'Tarjeta', amount: '', cur: 'DOP', notes: '' },
+        fx: { name: '', day: '', amount: '', cur: 'DOP' },
+        tr: { date: '2026-10-07', via: 'Remitly', usd: '', rate: '58.76' },
+        ct: { date: '2026-10-07', goal: 'emerg', amount: '', cur: 'USD' }
+      }
+    };
+  }
+  static load() {
+    try { const s = JSON.parse(localStorage.getItem(Component.KEY)); if (s && s.v === 1 && s.months) return s; } catch (e) {}
+    return Component.seed();
+  }
+  state = Component.load();
+  componentDidUpdate() { try { localStorage.setItem(Component.KEY, JSON.stringify(this.state)); } catch (e) {} }
+
+  rateOf(k) {
+    const keys = Object.keys(this.state.months).sort();
+    for (let i = keys.indexOf(k); i >= 0; i--) {
+      const t = this.state.months[keys[i]].transfers || [];
+      const u = t.reduce((a, x) => a + (+x.usd || 0), 0);
+      if (u > 0) return t.reduce((a, x) => a + (+x.usd || 0) * (+x.rate || 0), 0) / u;
+    }
+    return 58.76;
+  }
+  mutate(fn) {
+    this.setState(s => { const months = { ...s.months }; const m = JSON.parse(JSON.stringify(months[s.month])); fn(m); months[s.month] = m; return { months }; });
+  }
+  setDraft(name, key, v) { this.setState(s => ({ drafts: { ...s.drafts, [name]: { ...s.drafts[name], [key]: v } } })); }
+  rowSet(list, id, key, isCheck) {
+    return e => { const v = isCheck ? e.target.checked : e.target.value; this.mutate(m => { const r = m[list].find(x => x.id === id); if (r) r[key] = v; }); };
+  }
+  rowDel(list, id) { return () => this.mutate(m => { m[list] = m[list].filter(x => x.id !== id); }); }
+
+  loadLib() {
+    if (window.XLSX) return Promise.resolve(window.XLSX);
+    return new Promise((res, rej) => { const sc = document.createElement('script'); sc.src = 'https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js'; sc.onload = () => res(window.XLSX); sc.onerror = rej; document.head.appendChild(sc); });
+  }
+  async importExcel(file) {
+    const C = Component;
+    this.setState({ excelStatus: 'Leyendo…' });
+    try {
+      const X = await this.loadLib();
+      const wb = X.read(await file.arrayBuffer(), { cellDates: true });
+      const iso = v => { if (v instanceof Date) return v.getFullYear() + '-' + String(v.getMonth() + 1).padStart(2, '0') + '-' + String(v.getDate()).padStart(2, '0'); if (typeof v === 'number') { const d = new Date(Math.round((v - 25569) * 864e5)); return d.toISOString().slice(0, 10); } return String(v || ''); };
+      const months = {}; let accounts = null;
+      const sheets = wb.SheetNames.map(n => { const mm = n.match(/^(\S+)\s+(\d{4})$/); const i = mm ? C.MESES.indexOf(mm[1]) : -1; return i < 0 ? null : { n, key: mm[2] + '-' + String(i + 1).padStart(2, '0') }; }).filter(Boolean).sort((a, b) => a.key.localeCompare(b.key));
+      if (!sheets.length) throw new Error('sin hojas de mes');
+      sheets.forEach((sh, si) => {
+        const ws = wb.Sheets[sh.n]; const g = (c, r) => { const x = ws[c + r]; return x ? x.v : undefined; };
+        const fixed = [], transfers = [], tx = [];
+        let fh = 15, eh = 29, th = 38;
+        for (let r = 1; r <= 400; r++) { if (g('C', r) === 'Concepto') fh = r; if (g('M', r) === 'Fecha' && g('N', r) === 'Vía') eh = r; if (g('B', r) === 'Fecha' && g('C', r) === 'Descripción') { th = r; break; } }
+        for (let r = fh + 1; r < th; r++) { const name = g('C', r); if (!name || typeof g('E', r) !== 'number') continue; fixed.push({ id: C.uid(), name: String(name), day: g('D', r) ?? '', amount: g('E', r), cur: g('F', r) || 'DOP', paid: g('B', r) === 'Sí' }); }
+        for (let r = eh + 1; r <= eh + 80; r++) { const u = g('O', r); if (typeof u !== 'number') continue; transfers.push({ id: C.uid(), date: iso(g('M', r)), via: g('N', r) || 'Remitly', usd: u, rate: +g('P', r) || 0 }); }
+        let empty = 0;
+        for (let r = th + 1; r <= th + 3000 && empty < 40; r++) { const a = g('G', r), d = g('C', r); if (a === undefined && d === undefined) { empty++; continue; } empty = 0; tx.push({ id: C.uid(), date: iso(g('B', r)), desc: d || '', place: g('D', r) || '', cat: g('E', r) || 'Comida', method: g('F', r) || 'Tarjeta', amount: a ?? 0, cur: g('H', r) || 'DOP', notes: g('K', r) || '' }); }
+        const acc = { usd: g('C', 8) ?? 0, dop: g('C', 9) ?? 0 };
+        months[sh.key] = { closed: si < sheets.length - 1, budget: g('O', 6) ?? 70000, incomeUSD: g('C', 10) ?? 0, accounts: acc, fixed, transfers, tx };
+        if (si === sheets.length - 1) accounts = acc;
+      });
+      let contribs = this.state.contribs, goals = this.state.goals;
+      const wa = wb.Sheets['Ahorros'];
+      if (wa) {
+        const g = (c, r) => { const x = wa[c + r]; return x ? x.v : undefined; };
+        const ids = { 'Fondo de emergencia': 'emerg', 'Ahorro personal': 'personal', 'Viaje a Turquía': 'turquia' };
+        contribs = [];
+        for (let r = 16; r <= 2000; r++) { const a = g('L', r); if (a === undefined) { if (g('I', r) === undefined && r > 40) break; continue; } contribs.push({ id: C.uid(), date: iso(g('I', r)), goal: ids[g('K', r)] || 'personal', amount: +a, cur: g('M', r) || 'USD' }); }
+        const mk = v => iso(v).slice(0, 7);
+        goals = goals.map(x => x.id === 'turquia' ? { ...x, monthlyUSD: +g('J', 12) || x.monthlyUSD, start: g('L', 12) ? mk(g('L', 12)) : x.start, end: g('N', 12) ? mk(g('N', 12)) : x.end } : x);
+      }
+      const last = sheets[sheets.length - 1].key;
+      this.setState({ months, accounts, contribs, goals, month: last, excelStatus: 'Cargado: ' + file.name });
+    } catch (e) { this.setState({ excelStatus: 'No se pudo leer el archivo' }); }
+  }
+  downloadExcel() {
+    const s = this.state, keys = Object.keys(s.months).sort(), lastK = keys[keys.length - 1];
+    const names = { emerg: 'Fondo de emergencia', personal: 'Ahorro personal', turquia: 'Viaje a Turquía' };
+    const tk = s.goals.find(g => g.id === 'turquia') || {};
+    const data = {
+      months: keys.map(k => { const m = s.months[k]; return { key: k, budget: m.budget, incomeUSD: m.incomeUSD, accounts: k === lastK ? s.accounts : (m.accounts || s.accounts), fixed: m.fixed, transfers: m.transfers, tx: m.tx }; }),
+      contribs: s.contribs.map(c => ({ date: c.date, goalName: names[c.goal] || c.goal, amount: c.amount, cur: c.cur })),
+      turkey: { monthlyUSD: tk.monthlyUSD, start: tk.start, end: tk.end }, defaultRate: 58.76
+    };
+    if (!window.buildFinanzasXlsx) { this.setState({ excelStatus: 'Exportador no disponible' }); return; }
+    const blob = window.buildFinanzasXlsx(data);
+    const url = URL.createObjectURL(blob); const a = document.createElement('a');
+    a.href = url; a.download = 'Finanzas Personales.xlsx'; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+  }
+  doClose(withExcel) {
+    const C = Component;
+    this.setState(st => {
+      const months = { ...st.months }; const cur = months[st.month]; months[st.month] = { ...cur, closed: true, accounts: { ...st.accounts } };
+      const nk = C.nextKey(st.month);
+      if (!months[nk]) months[nk] = { closed: false, budget: cur.budget, incomeUSD: cur.incomeUSD, fixed: cur.fixed.map(f => ({ ...f, id: C.uid(), paid: false })), transfers: [], tx: [] };
+      return { months, month: nk, confirmClose: false, drafts: { ...st.drafts, tx: { ...st.drafts.tx, date: nk + '-01' }, tr: { ...st.drafts.tr, date: nk + '-01' } } };
+    }, () => { if (withExcel) this.downloadExcel(); });
+  }
+  renderVals() {
+    const C = Component, s = this.state, m = s.months[s.month];
+    const keys = Object.keys(s.months).sort();
+    const rate = this.rateOf(s.month);
+    const f2 = n => (isFinite(n) ? n : 0).toLocaleString('es-DO', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const f0 = n => Math.round(n).toLocaleString('es-DO');
+    const toDOP = (a, c) => c === 'USD' ? (+a || 0) * rate : (+a || 0);
+    const closed = !!m.closed, open = !closed;
+    const showUSD = this.props.mostrarUSD ?? true;
+
+    const fixed = m.fixed.map(f => ({ ...f, dopN: toDOP(f.amount, f.cur) }));
+    const fixedAll = fixed.reduce((a, f) => a + f.dopN, 0);
+    const fixedPaid = fixed.filter(f => f.paid).reduce((a, f) => a + f.dopN, 0);
+    const pending = fixedAll - fixedPaid;
+    const txs = m.tx.map(t => ({ ...t, dopN: toDOP(t.amount, t.cur) }));
+    const varSpent = txs.reduce((a, t) => a + t.dopN, 0);
+    const used = fixedPaid + varSpent;
+    const budget = +m.budget || 0;
+    const avail = budget - used;
+    const after = avail - pending;
+    const free = Math.max(0, after);
+
+    const R = 64, CIRC = 2 * Math.PI * R;
+    const scale = Math.max(budget, used + pending, 1);
+    let acc = 0;
+    const seg = v => { const len = v / scale * CIRC; const o = { dash: len + ' ' + CIRC, off: -acc }; acc += len; return o; };
+    const dn = { fixed: seg(fixedPaid), variable: seg(varSpent), pending: seg(pending) };
+
+    const mode = this.props.centroDona ?? 'Monto usado';
+    const pctUsed = budget ? used / budget * 100 : 0;
+    let centerLabel = 'Usado', centerBig = f0(used), centerSmall = 'de ' + f0(budget) + ' DOP';
+    if (mode === 'Disponible') { centerLabel = 'Disponible'; centerBig = f0(avail); centerSmall = 'de ' + f0(budget) + ' DOP'; }
+    if (mode === 'Porcentaje') { centerLabel = 'Usado'; centerBig = pctUsed.toFixed(1) + '%'; centerSmall = f0(used) + ' DOP'; }
+    const red = '#b23a2a', ink = '#1d1f1c';
+
+    const monthOf = d => d.slice(0, 7);
+    const contribUSD = c => c.cur === 'USD' ? (+c.amount || 0) : (+c.amount || 0) / this.rateOf(s.months[monthOf(c.date)] ? monthOf(c.date) : s.month);
+    const savedInMonth = k => s.contribs.filter(c => monthOf(c.date) === k).reduce((a, c) => a + contribUSD(c), 0);
+    const incomeDOP = (+m.incomeUSD || 0) * rate;
+
+    const catSums = C.CATS.map(c => ({ name: c, v: txs.filter(t => t.cat === c).reduce((a, t) => a + t.dopN, 0) })).filter(c => c.v > 0).sort((a, b) => b.v - a.v);
+    const catAll = [{ name: 'Gastos fijos', v: fixedPaid, fixed: true }, ...catSums].filter(c => c.v > 0);
+    const catMax = Math.max(1, ...catAll.map(c => c.v));
+
+    const fixedSet = (id, k, chk) => this.rowSet('fixed', id, k, chk);
+    const txSet = (id, k) => this.rowSet('tx', id, k);
+    const dr = s.drafts;
+    const ds = (n, k) => e => this.setDraft(n, k, e.target.value);
+
+    const idx = keys.indexOf(s.month);
+    const goMonth = k => this.setState(st => ({ month: k, drafts: { ...st.drafts, tx: { ...st.drafts.tx, date: k + (k === '2026-10' ? '-07' : '-01') } } }));
+
+    const curKey = keys.filter(k => !s.months[k].closed).pop() || s.month;
+    const goalCards = s.goals.map(g => {
+      const saved = s.contribs.filter(c => c.goal === g.id).reduce((a, c) => a + contribUSD(c), 0);
+      const base = { name: g.name, saved: f2(saved), savedDOP: f0(saved * this.rateOf(curKey)) };
+      if (!g.monthlyUSD) return { ...base, kind: 'Aportes variables', hasTarget: false, noTarget: true, plan: s.contribs.filter(c => c.goal === g.id).length + ' aportes registrados' };
+      const [sy, sm] = g.start.split('-').map(Number), [ey, em] = g.end.split('-').map(Number), [cy, cm] = curKey.split('-').map(Number);
+      const total = (ey - sy) * 12 + (em - sm) + 1;
+      const target = total * g.monthlyUSD;
+      const doneThis = s.contribs.some(c => c.goal === g.id && monthOf(c.date) === curKey);
+      const left = Math.max(1, (ey - cy) * 12 + (em - cm) + 1 - (doneThis ? 1 : 0));
+      const need = Math.max(0, target - saved) / left;
+      const pct = Math.min(100, saved / target * 100);
+      return { ...base, kind: f0(g.monthlyUSD) + ' USD / mes', hasTarget: true, noTarget: false, w: pct + '%', pct: pct.toFixed(0) + '%', target: f0(target), deadline: 'Meta: ' + C.label(g.end).toLowerCase(), plan: 'Faltan ' + left + ' aportes · ' + f0(need) + ' USD por mes para llegar' };
+    });
+
+    const tabOn = { bg: '#fffefa', fg: '#1d1f1c', sh: 'inset 0 2px 0 #2f7d52' }, tabOff = { bg: 'transparent', fg: '#6b6d66', sh: 'none' };
+
+    return {
+      excelLabel: s.excelStatus || 'Cargar Excel',
+      onExcel: e => { const f = e.target.files && e.target.files[0]; if (f) this.importExcel(f); e.target.value = ''; },
+      sheetTitle: s.sheet === 'mes' ? (closed ? 'Resumen del mes' : 'Mes en curso') : 'Ahorros',
+      month: s.month,
+      monthOptions: keys.map(k => ({ key: k, label: C.label(k) + (s.months[k].closed ? ' · cerrado' : '') })),
+      onMonth: e => goMonth(e.target.value),
+      prevMonth: () => idx > 0 && goMonth(keys[idx - 1]),
+      nextMonth: () => idx < keys.length - 1 && goMonth(keys[idx + 1]),
+      rateFmt: rate.toFixed(2),
+      monthLabel: C.label(s.month), nextLabel: C.label(C.nextKey(s.month)),
+      closed, open, showUSD,
+      isMes: s.sheet === 'mes', isAhorros: s.sheet === 'ahorros',
+      accUSD: s.accounts.usd, accDOP: s.accounts.dop,
+      onAccUSD: e => { const v = e.target.value; this.setState(st => ({ accounts: { ...st.accounts, usd: v } })); },
+      onAccDOP: e => { const v = e.target.value; this.setState(st => ({ accounts: { ...st.accounts, dop: v } })); },
+      totalDOP: f2((+s.accounts.usd || 0) * rate + (+s.accounts.dop || 0)),
+      totalUSD: f2((+s.accounts.usd || 0) + (+s.accounts.dop || 0) / rate),
+      incomeLeft: f2(incomeDOP - used), incomeLeftColor: incomeDOP - used < 0 ? red : ink,
+      dn, centerLabel, centerBig, centerSmall, centerColor: avail < 0 ? red : ink,
+      fixedPaidFmt: f0(fixedPaid), varFmt: f2(varSpent), pendingFmt: f0(pending), freeFmt: f0(free),
+      budget: m.budget, onBudget: e => { const v = e.target.value; this.mutate(mm => { mm.budget = v; }); },
+      usedFmt: f2(used), availFmt: f2(avail), availColor: avail < 0 ? red : '#23613f',
+      afterFmt: f2(after), afterColor: after < 0 ? red : '#45473f',
+      usedUSDFmt: f2(used / rate),
+      incomeDOPFmt: f0(incomeDOP), savedMonthDOPFmt: f0(savedInMonth(s.month) * rate), summaryDiffColor: avail < 0 ? '#f0a596' : '#9fd3b2',
+      fixedPaidCount: fixed.filter(f => f.paid).length + ' de ' + fixed.length + ' pagados',
+      fixedAllFmt: f2(fixedAll),
+      fixedRows: fixed.map(f => ({ ...f, bg: f.paid ? 'transparent' : '#fbfaf5', dop: f2(f.dopN), usd: f2(f.dopN / rate),
+        onPaid: fixedSet(f.id, 'paid', true), onName: fixedSet(f.id, 'name'), onDay: fixedSet(f.id, 'day'), onAmount: fixedSet(f.id, 'amount'), onCur: fixedSet(f.id, 'cur'), onDel: this.rowDel('fixed', f.id) })),
+      addColspan: showUSD ? 3 : 2,
+      fx: { ...dr.fx, onName: ds('fx', 'name'), onDay: ds('fx', 'day'), onAmount: ds('fx', 'amount'), onCur: ds('fx', 'cur') },
+      addFixed: () => { const f = this.state.drafts.fx; if (!f.name.trim() || !(+f.amount)) return; this.mutate(mm => mm.fixed.push({ id: C.uid(), name: f.name.trim(), day: f.day, amount: f.amount, cur: f.cur, paid: false })); this.setState(st => ({ drafts: { ...st.drafts, fx: { name: '', day: '', amount: '', cur: 'DOP' } } })); },
+      catRows: catAll.map(c => ({ name: c.name, dop: f0(c.v), w: (c.v / catMax * 100) + '%', color: c.fixed ? '#2b3a33' : '#2f7d52' })),
+      noCats: catAll.length === 0,
+      trRows: m.transfers.map(t => ({ ...t, dateShort: t.date.slice(8) + '/' + t.date.slice(5, 7), usd: f2(+t.usd), rate: (+t.rate).toFixed(2), dop: f2(t.usd * t.rate), onDel: this.rowDel('transfers', t.id) })),
+      tr: { ...dr.tr, onDate: ds('tr', 'date'), onVia: ds('tr', 'via'), onUsd: ds('tr', 'usd'), onRate: ds('tr', 'rate') },
+      addTransfer: () => { const t = this.state.drafts.tr; if (!(+t.usd) || !(+t.rate)) return; this.mutate(mm => mm.transfers.push({ id: C.uid(), date: t.date, via: t.via, usd: +t.usd, rate: +t.rate })); this.setDraft('tr', 'usd', ''); },
+      cats: C.CATS, methods: C.METHODS,
+      txCount: txs.length + (txs.length === 1 ? ' transacción' : ' transacciones'),
+      txAddColspan: showUSD ? 2 : 1,
+      txRows: [...txs].sort((a, b) => b.date.localeCompare(a.date)).map(t => ({ ...t, dop: f2(t.dopN), usd: f2(t.dopN / rate),
+        onDate: txSet(t.id, 'date'), onDesc: txSet(t.id, 'desc'), onPlace: txSet(t.id, 'place'), onCat: txSet(t.id, 'cat'), onMethod: txSet(t.id, 'method'), onAmount: txSet(t.id, 'amount'), onCur: txSet(t.id, 'cur'), onNotes: txSet(t.id, 'notes'), onDel: this.rowDel('tx', t.id) })),
+      dt: { ...dr.tx, onDate: ds('tx', 'date'), onDesc: ds('tx', 'desc'), onPlace: ds('tx', 'place'), onCat: ds('tx', 'cat'), onMethod: ds('tx', 'method'), onAmount: ds('tx', 'amount'), onCur: ds('tx', 'cur'), onNotes: ds('tx', 'notes') },
+      addTx: () => { const t = this.state.drafts.tx; if (!t.desc.trim() || !(+t.amount)) return; this.mutate(mm => mm.tx.push({ id: C.uid(), ...t, desc: t.desc.trim() })); this.setState(st => ({ drafts: { ...st.drafts, tx: { ...st.drafts.tx, desc: '', place: '', amount: '', notes: '' } } })); },
+      closeMonth: () => this.setState({ confirmClose: true }),
+      confirmClose: !!s.confirmClose,
+      closeYes: () => this.doClose(true),
+      closeNo: () => this.doClose(false),
+      closeCancel: () => this.setState({ confirmClose: false }),
+      downloadExcel: () => this.downloadExcel(),
+      reopen: () => this.mutate(mm => { mm.closed = false; }),
+      goalCards,
+      goalOptions: s.goals.map(g => ({ id: g.id, name: g.name })),
+      incomeRows: keys.map(k => { const mm = s.months[k], r = this.rateOf(k), inc = +mm.incomeUSD || 0, sv = savedInMonth(k);
+        return { label: C.label(k), income: mm.incomeUSD, rate: r.toFixed(2), dop: f2(inc * r), saved: f2(sv), pct: inc ? (sv / inc * 100).toFixed(1) + '%' : '—',
+          onIncome: e => { const v = e.target.value; this.setState(st => ({ months: { ...st.months, [k]: { ...st.months[k], incomeUSD: v } } })); } }; }),
+      totalSavedFmt: f2(s.contribs.reduce((a, c) => a + contribUSD(c), 0)),
+      contribRows: [...s.contribs].sort((a, b) => b.date.localeCompare(a.date)).map(c => { const u = contribUSD(c);
+        return { date: c.date, goal: (s.goals.find(g => g.id === c.goal) || {}).name, amount: f2(+c.amount), cur: c.cur, usd: f2(u), dop: f2(u * this.rateOf(s.months[monthOf(c.date)] ? monthOf(c.date) : curKey)),
+          onDel: () => this.setState(st => ({ contribs: st.contribs.filter(x => x.id !== c.id) })) }; }),
+      ct: { ...dr.ct, onDate: ds('ct', 'date'), onGoal: ds('ct', 'goal'), onAmount: ds('ct', 'amount'), onCur: ds('ct', 'cur') },
+      addContrib: () => { const c = this.state.drafts.ct; if (!(+c.amount)) return; this.setState(st => ({ contribs: [...st.contribs, { id: C.uid(), date: c.date, goal: c.goal, amount: +c.amount, cur: c.cur }], drafts: { ...st.drafts, ct: { ...st.drafts.ct, amount: '' } } })); },
+      goMes: () => this.setState({ sheet: 'mes' }), goAhorros: () => this.setState({ sheet: 'ahorros' }),
+      tabMes: s.sheet === 'mes' ? tabOn : tabOff, tabAh: s.sheet === 'ahorros' ? tabOn : tabOff,
+      emptyData: () => { if (!confirm('¿Empezar en blanco? Se borrarán todos los datos de la página.')) return; const d = new Date(), k = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'), today = k + '-' + String(d.getDate()).padStart(2, '0');
+        this.setState(st => ({ month: k, accounts: { usd: '', dop: '' }, contribs: [], months: { [k]: { closed: false, budget: '', incomeUSD: '', fixed: [], transfers: [], tx: [] } }, drafts: { ...st.drafts, tx: { ...st.drafts.tx, date: today }, tr: { ...st.drafts.tr, date: today }, ct: { ...st.drafts.ct, date: today } } })); },
+      resetData: () => { if (confirm('¿Restablecer los datos de ejemplo? Se perderán los cambios.')) this.setState(C.seed()); }
+    };
+  }
+}
+</script>
+
+
+</body></html>

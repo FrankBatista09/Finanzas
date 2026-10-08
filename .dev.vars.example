@@ -1,0 +1,5 @@
+# Copiar a .dev.vars para desarrollo local (wrangler pages dev lo lee automáticamente).
+# Token Bearer para /api/ingest/* y /mcp (el que usa Claude para escribir).
+API_TOKEN=dev-token-cambiar
+# Habilita /api/dev/* (datos de ejemplo / empezar en blanco). Nunca activar en producción.
+ALLOW_DEV_RESET=1

@@ -1,0 +1,17 @@
+name = "finanzas-personales"
+compatibility_date = "2026-09-01"
+pages_build_output_dir = "dist"
+
+# D1: fuente de verdad del histórico.
+# Crear con `npx wrangler d1 create finanzas` y pegar aquí el database_id que devuelve.
+[[d1_databases]]
+binding = "DB"
+database_name = "finanzas"
+database_id = "00000000-0000-0000-0000-000000000000"
+migrations_dir = "migrations"
+
+# Secrets (no van aquí): `npx wrangler pages secret put API_TOKEN`
+# Variables opcionales para validar el JWT de Cloudflare Access en /api/*:
+# [vars]
+# ACCESS_TEAM_DOMAIN = "tu-equipo.cloudflareaccess.com"
+# ACCESS_AUD = "<Application Audience (AUD) Tag>"
