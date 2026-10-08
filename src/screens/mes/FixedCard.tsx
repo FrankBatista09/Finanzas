@@ -180,6 +180,7 @@ const FixedRow = memo(function FixedRow({ row: f, inMain, inSecond, accounts, re
         <CellText
           value={f.name}
           onCommit={(name) => actions.patchFixed(f.id, { name })}
+          commitOn="blur"
           readOnly={readOnly}
           minWidth={120}
           maxLength={MAX_LEN.name}

@@ -149,7 +149,7 @@ export function planSummary(form: GoalForm): { months: number; monthly: number; 
  */
 export type GoalFormError = 'name' | 'nameTaken' | 'amount' | 'months';
 
-const fold = (name: string) => name.trim().toLowerCase();
+const fold = (name: string) => name.trim().normalize('NFC').toLowerCase();
 
 /**
  * Lo que impide guardar; vacío si el formulario es válido. `editingId` es la meta que se edita (null si es nueva),

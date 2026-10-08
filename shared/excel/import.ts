@@ -153,7 +153,8 @@ function toCurrency(v: CellValue | undefined, empty: Currency): Currency {
 function serialToISO(serial: number, date1904: boolean): ISODate | null {
   const days = date1904 ? serial + 1462 : serial;
   // Fuera de 1900-01-01..9999-12-31 no es una fecha de Excel (y toISOString fallaría).
-  if (!(days >= 1 && days < 2958466)) return null;
+  // El serial 1 es 1899-12-31, que la app no admite como fecha.
+  if (!(days >= 2 && days < 2958466)) return null;
   return new Date(Math.round((days - 25569) * 864e5)).toISOString().slice(0, 10);
 }
 
