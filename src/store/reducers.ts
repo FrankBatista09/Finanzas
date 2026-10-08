@@ -23,17 +23,30 @@ import type {
   TransferPatch,
   TxPatch,
 } from '../../shared/api';
-import { accountsById, budgetRaised, budgetsFromLog, convert, defaultAccount, leftoverFor, openingFor, rateFor, sortedKeys } from '../../shared/calc';
-import { CURRENCIES, MAX_LEN } from '../../shared/constants';
+import {
+  accountsById,
+  budgetRaised,
+  budgetsFromLog,
+  convert,
+  defaultAccount,
+  isMoneyAccount,
+  leftoverFor,
+  openingFor,
+  rateFor,
+  sortedKeys,
+} from '../../shared/calc';
+import { CURRENCIES, GOLD, GOLD_DECIMALS, isGold, MAX_LEN } from '../../shared/constants';
 import { clampToMonth, firstDay, inMonth, isISODate, isMonthKey } from '../../shared/month';
 import type {
   Account,
+  AccountCurrency,
   AppState,
   BudgetEntry,
   Contribution,
   Currency,
   FixedExpense,
   Goal,
+  GoldPrice,
   Income,
   ISODate,
   Month,
@@ -204,7 +217,13 @@ function setRate(m: Month, rate: MonthRate): Month {
   return { ...m, rates };
 }
 
-/** Solo cambia lo que venga; `theme: null` vuelve a la paleta original y `defaultAccountId: null` a la cuenta automática. */
+const samePrice = (a: GoldPrice | null, b: GoldPrice | null) =>
+  a === b || (a !== null && b !== null && a.amount === b.amount && a.currency === b.currency);
+
+/**
+ * Solo cambia lo que venga; `theme: null` vuelve a la paleta original, `defaultAccountId: null` a la cuenta
+ * automática y `goldPrice: null` deja el oro sin precio.
+ */
 function patchSettings(state: AppState, patch: SettingsUpdate): AppState {
   const next = {
     theme: patch.theme !== undefined ? patch.theme : state.theme,
@@ -212,6 +231,8 @@ function patchSettings(state: AppState, patch: SettingsUpdate): AppState {
     mainCurrency: patch.mainCurrency ?? state.mainCurrency,
     secondCurrency: patch.secondCurrency ?? state.secondCurrency,
     defaultAccountId: patch.defaultAccountId !== undefined ? patch.defaultAccountId : state.defaultAccountId,
+    // El mismo precio conserva su objeto: así repetir la acción no cambia el estado.
+    goldPrice: patch.goldPrice !== undefined && !samePrice(patch.goldPrice, state.goldPrice) ? patch.goldPrice : state.goldPrice,
   };
   const same = (Object.keys(next) as (keyof typeof next)[]).every((k) => next[k] === state[k]);
   return same ? state : { ...state, ...next };
@@ -363,7 +384,14 @@ export function targetOf(action: Action): string {
 const positive = (n: number) => Number.isFinite(n) && n > 0;
 const nonNegative = (n: number) => Number.isFinite(n) && n >= 0;
 const isCurrency = (v: unknown): v is Currency => (CURRENCIES as readonly unknown[]).includes(v);
+/** Lo que puede ser la moneda de una cuenta: una moneda o el oro. */
+const isAccountCurrency = (v: unknown): v is AccountCurrency => isCurrency(v) || v === GOLD;
 const hasAccount = (state: AppState, id: string) => state.accounts.some((a) => a.id === id);
+/** Una cuenta que existe y es de dinero: las de oro (gramos) no pagan gastos, ni llevan presupuesto, ni envían ni reciben. */
+const hasMoneyAccount = (state: AppState, id: string) => state.accounts.some((a) => a.id === id && isMoneyAccount(a));
+
+/** Gramos con los decimales que se aceptan: lo que pase de ahí es ruido de quien escribe. */
+const grams = (n: number) => Math.round(n * 10 ** GOLD_DECIMALS) / 10 ** GOLD_DECIMALS;
 
 const isBlank = (text: string) => text.trim() === '';
 const notAmount = (n: number) => !nonNegative(n);
@@ -376,9 +404,12 @@ function named(text: string, max: number = MAX_LEN.name): string | null {
   return out && out.length <= max ? out : null;
 }
 
-/** La cuenta de una fila nueva: la que se indique (tiene que existir) o, si no se indica, la de por defecto. */
+/**
+ * La cuenta de un gasto nuevo: la que se indique (tiene que existir y ser de dinero, no de oro) o, si no se
+ * indica, la de por defecto.
+ */
 function accountFor(state: AppState, accountId: string | undefined): string | null {
-  if (accountId !== undefined) return hasAccount(state, accountId) ? accountId : null;
+  if (accountId !== undefined) return hasMoneyAccount(state, accountId) ? accountId : null;
   return defaultAccount(state)?.id ?? null;
 }
 
@@ -399,32 +430,56 @@ function keepValid<P extends object>(patch: P, invalid: { [K in keyof P]?: (valu
   return out;
 }
 
-/** Edición de un gasto fijo: concepto no vacío, monto >= 0 y una cuenta que exista. */
+/** Edición de un gasto fijo: concepto no vacío, monto >= 0 y una cuenta de dinero que exista. */
 export function fixedChange(state: AppState, patch: FixedPatch): FixedPatch {
-  return keepValid(patch, { name: isBlank, amount: notAmount, cur: notCurrency, accountId: (id) => !hasAccount(state, id) });
+  return keepValid(patch, { name: isBlank, amount: notAmount, cur: notCurrency, accountId: (id) => !hasMoneyAccount(state, id) });
 }
 
-/** Edición de una transacción: descripción no vacía, fecha válida, monto >= 0 y una cuenta que exista. */
+/** Edición de una transacción: descripción no vacía, fecha válida, monto >= 0 y una cuenta de dinero que exista. */
 export function txChange(state: AppState, patch: TxPatch): TxPatch {
   return keepValid(patch, {
     desc: isBlank,
     date: notDate,
     amount: notAmount,
     cur: notCurrency,
-    accountId: (id) => !hasAccount(state, id),
+    accountId: (id) => !hasMoneyAccount(state, id),
   });
 }
 
-/** Edición de un ingreso: fecha válida, monto >= 0 y una cuenta que exista. La descripción puede quedar vacía. */
-export function incomeChange(state: AppState, patch: IncomePatch): IncomePatch {
-  return keepValid(patch, {
+/**
+ * Edición de un ingreso: fecha válida, monto >= 0 y una cuenta que exista. La descripción puede quedar vacía.
+ * La moneda y "sube el presupuesto" siguen a la cuenta en la que queda el ingreso, como exige el servidor:
+ *  · en una cuenta de oro el monto son gramos (XAU, hasta tres decimales) y nunca sube el presupuesto: pasarlo
+ *    a una la arrastra a eso, y ahí se ignoran otra moneda y la casilla;
+ *  · en una de dinero no vale XAU: al sacarlo de una de oro toma la moneda de la cuenta nueva.
+ * {} si el ingreso no existe.
+ */
+export function incomeChange(state: AppState, id: string, patch: IncomePatch): IncomePatch {
+  const row = state.incomes.find((i) => i.id === id);
+  if (!row) return {};
+  const out = keepValid(patch, {
     date: notDate,
     desc: (desc) => desc.length > MAX_LEN.desc,
     amount: notAmount,
-    cur: notCurrency,
-    accountId: (id) => !hasAccount(state, id),
+    cur: (cur) => !isAccountCurrency(cur),
+    accountId: (accountId) => !hasAccount(state, accountId),
     budget: (budget) => typeof budget !== 'boolean',
   });
+  const account = accountsById(state).get(out.accountId ?? row.accountId);
+  if (!account) return out;
+  const next: IncomePatch = { ...out };
+  if (isGold(account.currency)) {
+    if (row.cur === GOLD) Reflect.deleteProperty(next, 'cur');
+    else next.cur = GOLD;
+    if (row.budget) next.budget = false;
+    else Reflect.deleteProperty(next, 'budget');
+    if (next.amount !== undefined) next.amount = grams(next.amount);
+  } else if (isGold(next.cur ?? row.cur)) {
+    // Sale de una cuenta de oro: toma la moneda de la nueva. Si ya era de dinero, pedirle gramos se ignora.
+    if (isGold(row.cur)) next.cur = account.currency;
+    else Reflect.deleteProperty(next, 'cur');
+  }
+  return next;
 }
 
 /** Edición de un aporte: una meta que exista, fecha válida y monto >= 0. */
@@ -485,9 +540,11 @@ export interface IncomeInput {
   desc?: string;
   /** Cuenta a la que entra. Sin indicar: la cuenta por defecto del usuario. */
   accountId?: string;
+  /** Gramos si la cuenta es de oro. */
   amount: number;
-  cur: Currency;
-  /** true: el ingreso sube además el presupuesto del mes de su fecha (Income.budget). Sin indicar: false. */
+  /** La moneda en que se cobró. En una cuenta de oro no cuenta: el ingreso queda en gramos (XAU). */
+  cur: AccountCurrency;
+  /** true: el ingreso sube además el presupuesto del mes de su fecha (Income.budget). Sin indicar: false. Nunca en una cuenta de oro. */
   budget?: boolean;
 }
 
@@ -500,8 +557,9 @@ export interface ContributionInput {
 
 export interface AccountInput {
   name: string;
-  currency: Currency;
-  /** Saldo inicial, en la moneda de la cuenta (puede ser negativo). Sin indicar: 0. */
+  /** Una moneda, o XAU para una cuenta de oro (en gramos). */
+  currency: AccountCurrency;
+  /** Saldo inicial, en la moneda de la cuenta (puede ser negativo); gramos, hasta tres decimales, si es de oro. Sin indicar: 0. */
   opening?: number;
 }
 
@@ -561,7 +619,8 @@ function transferRate(state: AppState, monthKey: MonthKey, date: ISODate, fromId
   const accounts = accountsById(state);
   const from = accounts.get(fromId);
   const to = accounts.get(toId);
-  if (!from || !to || from.id === to.id) return null;
+  // Un envío mueve dinero: ninguno de los dos lados puede ser una cuenta de oro.
+  if (!from || !to || from.id === to.id || !isMoneyAccount(from) || !isMoneyAccount(to)) return null;
   if (from.currency === to.currency) return 1;
   if (given === undefined) return rateFor(state, monthKey, from.currency, to.currency, date).rate;
   return positive(given) ? given : null;
@@ -589,7 +648,7 @@ export function newTransfer(state: AppState, monthKey: MonthKey, input: Transfer
 /**
  * Lo que hay que mandar para aplicar `patch` a ese envío; {} si no queda nada que guardar (o el envío no existe).
  * Como en las demás celdas, lo que no vale se ignora: una vía vacía, un monto negativo, una tasa que no sea > 0 o
- * un cambio de cuenta que dejaría el envío con una cuenta que no existe o con la misma en los dos lados.
+ * un cambio de cuenta que dejaría el envío con una cuenta que no existe, con una de oro o con la misma en los dos lados.
  * Si el cambio de cuenta cambia las monedas del envío y no viene otra tasa, la tasa pasa a ser la del mes para el
  * par nuevo (1 entre monedas iguales): la anterior era de otras monedas.
  */
@@ -608,33 +667,47 @@ export function transferChange(state: AppState, id: string, patch: TransferPatch
   let toId = row.toAccountId;
   const nextFrom = patch.fromAccountId ?? fromId;
   const nextTo = patch.toAccountId ?? toId;
-  if ((nextFrom !== fromId || nextTo !== toId) && accounts.has(nextFrom) && accounts.has(nextTo) && nextFrom !== nextTo) {
+  if ((nextFrom !== fromId || nextTo !== toId) && hasMoneyAccount(state, nextFrom) && hasMoneyAccount(state, nextTo) && nextFrom !== nextTo) {
     if (nextFrom !== fromId) out.fromAccountId = nextFrom;
     if (nextTo !== toId) out.toAccountId = nextTo;
     fromId = nextFrom;
     toId = nextTo;
   }
 
-  const fromCur = accounts.get(fromId)?.currency;
-  const toCur = accounts.get(toId)?.currency;
+  const moneyOf = (accountId: string): Currency | undefined => {
+    const cur = accounts.get(accountId)?.currency;
+    return isGold(cur) ? undefined : cur;
+  };
+  const fromCur = moneyOf(fromId);
+  const toCur = moneyOf(toId);
   const typed = patch.rate !== undefined && positive(patch.rate) ? patch.rate : undefined;
   if (fromCur && toCur && fromCur === toCur) {
     if (row.rate !== 1) out.rate = 1;
   } else if (typed !== undefined) {
     out.rate = typed;
   } else if (fromCur && toCur) {
-    const moved = fromCur !== accounts.get(row.fromAccountId)?.currency || toCur !== accounts.get(row.toAccountId)?.currency;
+    const moved = fromCur !== moneyOf(row.fromAccountId) || toCur !== moneyOf(row.toAccountId);
     if (moved) out.rate = rateFor(state, monthKey, fromCur, toCur, out.date ?? row.date).rate;
   }
   return out;
 }
 
-/** Fecha válida, monto > 0 y una cuenta que exista. No pertenece a un mes: vale cualquier fecha. */
+/**
+ * Fecha válida, monto > 0 y una cuenta que exista (sin indicar, la de por defecto). No pertenece a un mes: vale
+ * cualquier fecha. A una cuenta de oro le entran gramos: el ingreso queda en XAU, con hasta tres decimales y sin
+ * subir el presupuesto, se indique lo que se indique. A una de dinero no le vale XAU.
+ */
 export function newIncome(state: AppState, input: IncomeInput, id: string): Income | null {
   const desc = (input.desc ?? '').trim();
-  const accountId = accountFor(state, input.accountId);
-  if (!accountId || !isISODate(input.date) || !positive(input.amount) || !isCurrency(input.cur) || desc.length > MAX_LEN.desc) return null;
-  return { id, date: input.date, desc, accountId, amount: input.amount, cur: input.cur, budget: input.budget === true };
+  const account = input.accountId === undefined ? defaultAccount(state) : (accountsById(state).get(input.accountId) ?? null);
+  if (!account || !isISODate(input.date) || !positive(input.amount) || desc.length > MAX_LEN.desc) return null;
+  const base = { id, date: input.date, desc, accountId: account.id };
+  if (isGold(account.currency)) {
+    const amount = grams(input.amount);
+    return positive(amount) ? { ...base, amount, cur: GOLD, budget: false } : null;
+  }
+  if (!isCurrency(input.cur)) return null;
+  return { ...base, amount: input.amount, cur: input.cur, budget: input.budget === true };
 }
 
 /** Monto > 0, fecha válida y una meta que exista. */
@@ -645,11 +718,15 @@ export function newContribution(state: AppState, input: ContributionInput, id: s
 
 // ── Cuentas ──────────────────────────────────────────────────────────────────
 
-/** Nombre (obligatorio), una de las tres monedas y un saldo inicial finito. Queda al final de la lista, visible. */
+/**
+ * Nombre (obligatorio), una de las tres monedas u oro, y un saldo inicial finito (los gramos de una de oro, con
+ * hasta tres decimales). Queda al final de la lista, visible.
+ */
 export function newAccount(state: AppState, input: AccountInput, id: string): Account | null {
   const name = named(input.name);
-  const opening = input.opening ?? 0;
-  if (!name || !isCurrency(input.currency) || !Number.isFinite(opening)) return null;
+  const typed = input.opening ?? 0;
+  if (!name || !isAccountCurrency(input.currency) || !Number.isFinite(typed)) return null;
+  const opening = isGold(input.currency) ? grams(typed) : typed;
   const sort = state.accounts.reduce((max, a) => Math.max(max, a.sort), -1) + 1;
   return { id, name, currency: input.currency, opening, hidden: false, sort };
 }
@@ -676,10 +753,15 @@ export function canRemoveAccount(state: AppState, id: string): boolean {
   return hasAccount(state, id) && !accountInUse(state, id);
 }
 
-/** Se puede ocultar cualquier cuenta visible menos la última: sin ninguna a la vista no habría de dónde pagar. */
+/**
+ * Se puede ocultar cualquier cuenta visible menos la última de dinero: sin ninguna a la vista no habría de dónde
+ * pagar (una de oro no paga nada, así que no cuenta para eso y se puede ocultar siempre).
+ */
 export function canHideAccount(state: AppState, id: string): boolean {
   const visible = state.accounts.filter((a) => !a.hidden);
-  return visible.length > 1 && visible.some((a) => a.id === id);
+  const account = visible.find((a) => a.id === id);
+  if (!account) return false;
+  return !isMoneyAccount(account) || visible.filter(isMoneyAccount).length > 1;
 }
 
 /** El último mes del usuario: el único en el que se puede corregir un saldo. null si no hay meses. */
@@ -691,10 +773,13 @@ export function latestKey(state: AppState): MonthKey | null {
  * Corregir un saldo: el saldo inicial que hay que guardar para que la cuenta muestre `balance` al final del mes
  * `monthKey` (shared/calc openingFor). null si no se puede: la cuenta no existe, el número no es finito o el mes
  * no es el último del usuario (los saldos de meses pasados son historia: corregirlos movería todos los de después).
+ * De una cuenta de oro se corrigen los gramos, con hasta tres decimales.
  */
 export function openingForBalance(state: AppState, monthKey: MonthKey, accountId: string, balance: number): number | null {
-  if (latestKey(state) !== monthKey || !hasAccount(state, accountId) || !Number.isFinite(balance)) return null;
-  return openingFor(state, accountId, monthKey, balance);
+  const account = accountsById(state).get(accountId);
+  if (latestKey(state) !== monthKey || !account || !Number.isFinite(balance)) return null;
+  if (!isGold(account.currency)) return openingFor(state, accountId, monthKey, balance);
+  return grams(openingFor(state, accountId, monthKey, grams(balance)));
 }
 
 // ── Presupuesto y tasas del mes ──────────────────────────────────────────────
@@ -709,7 +794,7 @@ const openMonth = (state: AppState, key: MonthKey) => state.months[key] !== unde
  * envíos (el registro quedaría en negativo y la API lo rechaza).
  */
 export function budgetPart(state: AppState, key: MonthKey, accountId: string, amount: number): MonthPatch | null {
-  if (!openMonth(state, key) || !hasAccount(state, accountId) || !nonNegative(amount)) return null;
+  if (!openMonth(state, key) || !hasMoneyAccount(state, accountId) || !nonNegative(amount)) return null;
   const fromLog = round6(amount - budgetRaised(state, key, accountId));
   return fromLog >= 0 ? { budgets: { [accountId]: fromLog } } : null;
 }
@@ -719,7 +804,7 @@ export function newBudgetEntry(state: AppState, key: MonthKey, input: BudgetEntr
   const date = input.date ?? clampToMonth(today, key);
   const note = (input.note ?? '').trim();
   const valid = Number.isFinite(input.amount) && input.amount !== 0 && isISODate(date) && inMonth(date, key) && note.length <= MAX_LEN.desc;
-  if (!openMonth(state, key) || !hasAccount(state, input.accountId) || !valid) return null;
+  if (!openMonth(state, key) || !hasMoneyAccount(state, input.accountId) || !valid) return null;
   return { id, date, accountId: input.accountId, amount: input.amount, kind: input.kind ?? 'adjust', note };
 }
 
@@ -766,6 +851,17 @@ export function currencyChange(state: AppState, role: 'main' | 'second', cur: Cu
   if (cur === (role === 'main' ? main : second)) return {};
   if (cur === (role === 'main' ? second : main)) return { mainCurrency: second, secondCurrency: main };
   return role === 'main' ? { mainCurrency: cur } : { secondCurrency: cur };
+}
+
+/**
+ * Lo que hay que mandar para que 1 gramo de oro valga `amount` de `currency`; {} si ya era ese el precio y null
+ * si no vale (la moneda no es una de las tres, o el monto no es un número >= 0). Un monto 0 (el campo vacío)
+ * quita el precio: no hay precio por defecto.
+ */
+export function goldPriceChange(state: AppState, amount: number, currency: Currency): SettingsUpdate | null {
+  if (!isCurrency(currency) || !nonNegative(amount)) return null;
+  const next = amount > 0 ? { amount, currency } : null;
+  return samePrice(next, state.goldPrice) ? {} : { goldPrice: next };
 }
 
 // ── Metas ────────────────────────────────────────────────────────────────────

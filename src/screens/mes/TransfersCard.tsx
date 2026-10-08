@@ -1,5 +1,5 @@
 import { memo, useMemo, useState } from 'react';
-import { transferReceived } from '../../../shared/calc';
+import { isMoneyAccount, transferReceived } from '../../../shared/calc';
 import { f2 } from '../../../shared/format';
 import type { Currency, Transfer } from '../../../shared/types';
 import { useI18n, useStrings } from '../../i18n';
@@ -36,7 +36,7 @@ export function TransfersCard() {
   const vias = useMemo(() => viaSuggestions(state.months, monthKey), [state.months, monthKey]);
   // La misma lista de cuentas visibles mientras no cambien las cuentas (ver FixedCard).
   const visible = useMemo(() => accountOptions(), [state.accounts]);
-  const currencies = useMemo(() => new Map(state.accounts.map((a) => [a.id, a.currency])), [state.accounts]);
+  const currencies = useMemo(() => new Map(state.accounts.filter(isMoneyAccount).map((a) => [a.id, a.currency])), [state.accounts]);
 
   // Las cuentas y la tasa del borrador se resuelven con lo que hay ahora: sin tocar, siguen a la cuenta por
   // defecto y a la tasa vigente en la fecha del borrador (la que le pondría el servidor a un envío sin tasa).

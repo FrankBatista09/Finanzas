@@ -27,7 +27,7 @@ import type {
   TxCreate,
   TxPatch,
 } from '../shared/api';
-import { MAX_LEN } from '../shared/constants';
+import { GOLD, MAX_LEN } from '../shared/constants';
 import { isLanguage, LANGUAGES } from '../shared/i18n';
 import { isISODate, isMonthKey } from '../shared/month';
 import { normalizeTheme } from '../shared/theme';
@@ -64,6 +64,8 @@ const id = () => z.string({ error: typed('must be text') }).regex(ID_RE, { error
 const monthKey = () => z.string({ error: typed('must be a month (YYYY-MM)') }).refine(isMonthKey, { error: 'is not a valid month (YYYY-MM)' });
 const isoDate = () => z.string({ error: typed('must be a date (YYYY-MM-DD)') }).refine(isISODate, { error: 'is not a valid date (YYYY-MM-DD)' });
 const currency = () => z.enum(['DOP', 'USD', 'TRY'], { error: 'must be DOP, USD or TRY' });
+// El oro ('XAU', en gramos) solo se acepta donde va una cuenta: su moneda y la de un ingreso que le entra.
+const accountCurrency = () => z.enum(['DOP', 'USD', 'TRY', GOLD], { error: 'must be DOP, USD, TRY or XAU (gold, in grams)' });
 const bool = () => z.boolean({ error: typed('must be true or false') });
 
 // ── Ajustes del usuario ──────────────────────────────────────────────────────
@@ -91,9 +93,11 @@ export const settingsUpdateSchema = z
     mainCurrency: currency().optional(),
     secondCurrency: currency().optional(),
     defaultAccountId: id().nullable().optional(),
+    // Lo que vale 1 gramo de oro, en una moneda normal; null quita el precio.
+    goldPrice: z.strictObject({ amount: positive(), currency: currency() }, { error: typed('must be null or { amount, currency }') }).nullable().optional(),
   })
   .refine((s) => Object.values(s).some((value) => value !== undefined), {
-    error: 'nothing to change: send theme, language, mainCurrency, secondCurrency or defaultAccountId',
+    error: 'nothing to change: send theme, language, mainCurrency, secondCurrency, defaultAccountId or goldPrice',
   })
   .refine((s) => s.mainCurrency === undefined || s.mainCurrency !== s.secondCurrency, {
     error: SAME_CURRENCY,
@@ -106,13 +110,13 @@ export const settingsUpdateSchema = z
 export const accountCreateSchema = z.strictObject({
   id: id().optional(),
   name: requiredText(MAX_LEN.name),
-  currency: currency(),
+  currency: accountCurrency(),
   opening: anyAmount().optional(),
 }) satisfies z.ZodType<AccountCreate>;
 
 export const accountPatchSchema = z.strictObject({
   name: requiredText(MAX_LEN.name).optional(),
-  currency: currency().optional(),
+  currency: accountCurrency().optional(),
   opening: anyAmount().optional(),
   hidden: bool().optional(),
   sort: sortIndex().optional(),
@@ -252,24 +256,34 @@ export const transferPatchSchema = z
 
 // ── Ingresos ─────────────────────────────────────────────────────────────────
 
-export const incomeCreateSchema = z.strictObject({
-  id: id().optional(),
-  date: isoDate(),
-  desc: text(MAX_LEN.desc).optional(),
-  accountId: id().optional(),
-  amount: positive(),
-  cur: currency(),
-  budget: bool().optional(),
-}) satisfies z.ZodType<IncomeCreate>;
+export const GOLD_NO_BUDGET = 'an income in gold (XAU, grams) cannot add to the budget';
 
-export const incomePatchSchema = z.strictObject({
-  date: isoDate().optional(),
-  desc: text(MAX_LEN.desc).optional(),
-  accountId: id().optional(),
-  amount: nonNegative().optional(),
-  cur: currency().optional(),
-  budget: bool().optional(),
-}) satisfies z.ZodType<IncomePatch>;
+// Los gramos de oro no son presupuesto. Que `cur` sea XAU si y solo si la cuenta es de oro lo comprueban
+// createIncome y patchIncome (server/db.ts), que son quienes conocen la cuenta.
+const goldNoBudget = (i: { cur?: string | undefined; budget?: boolean | undefined }) => !(i.cur === GOLD && i.budget === true);
+
+export const incomeCreateSchema = z
+  .strictObject({
+    id: id().optional(),
+    date: isoDate(),
+    desc: text(MAX_LEN.desc).optional(),
+    accountId: id().optional(),
+    amount: positive(),
+    cur: accountCurrency(),
+    budget: bool().optional(),
+  })
+  .refine(goldNoBudget, { error: GOLD_NO_BUDGET, path: ['budget'] }) satisfies z.ZodType<IncomeCreate>;
+
+export const incomePatchSchema = z
+  .strictObject({
+    date: isoDate().optional(),
+    desc: text(MAX_LEN.desc).optional(),
+    accountId: id().optional(),
+    amount: nonNegative().optional(),
+    cur: accountCurrency().optional(),
+    budget: bool().optional(),
+  })
+  .refine(goldNoBudget, { error: GOLD_NO_BUDGET, path: ['budget'] }) satisfies z.ZodType<IncomePatch>;
 
 // ── Metas y aportes ──────────────────────────────────────────────────────────
 

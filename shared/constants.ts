@@ -1,4 +1,4 @@
-import type { Account, Currency, Goal } from './types';
+import type { Account, AccountCurrency, Currency, Goal, Gold } from './types';
 
 /** Nombre de la app: marca de la barra superior, título de la pestaña y nombre del archivo de Excel. */
 export const APP_NAME = 'FE Finance';
@@ -28,6 +28,20 @@ export const VIAS = ['Remitly', 'PayPal'] as const;
 
 /** En el orden en que se ofrecen en los selectores. */
 export const CURRENCIES: readonly Currency[] = ['DOP', 'USD', 'TRY'];
+
+/** El oro como "moneda" de una cuenta: se mide en gramos (shared/types.ts Gold). */
+export const GOLD: Gold = 'XAU';
+/** Unidad en la que se muestran los saldos de oro: "125.50 g". Igual en los tres idiomas. */
+export const GOLD_UNIT = 'g';
+/** Decimales que se aceptan y se muestran, como mucho, en una cantidad de oro. */
+export const GOLD_DECIMALS = 3;
+
+/** Lo que se ofrece al crear o editar una CUENTA, y solo ahí: las monedas y el oro. */
+export const ACCOUNT_CURRENCIES: readonly AccountCurrency[] = [...CURRENCIES, GOLD];
+
+export function isGold(currency: AccountCurrency | null | undefined): currency is Gold {
+  return currency === GOLD;
+}
 
 /** Monedas con las que arranca un usuario nuevo; cada quien las cambia en Settings. */
 export const DEFAULT_MAIN_CURRENCY: Currency = 'DOP';

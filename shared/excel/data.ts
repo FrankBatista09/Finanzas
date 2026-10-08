@@ -15,6 +15,7 @@ import {
   convert,
   currentKey,
   incomeInMonth,
+  isMoneyBalance,
   monthCalc,
   openingFor,
   sortedKeys,
@@ -42,7 +43,10 @@ const inBook = (cur: Currency): cur is BookCurrency => cur === 'USD' || cur === 
 
 function exportMonth(state: AppState, accounts: ReadonlyMap<string, Account>, key: MonthKey): ExportMonth {
   const m = state.months[key]!;
-  const visible = balances(state, key).accounts.filter((a) => !a.account.hidden);
+  // El libro solo sabe de dinero: las cuentas de oro (gramos) quedan fuera de sus saldos.
+  const visible = balances(state, key)
+    .accounts.filter(isMoneyBalance)
+    .filter((a) => !a.account.hidden);
   /** Lo que el libro no sabe escribir (TRY) va convertido a DOP: con la tasa de su fecha si la tiene, o la última del mes. */
   const amountInBook = (amount: number, cur: Currency, date?: string) =>
     inBook(cur) ? { amount, cur } : { amount: convert(state, key, amount, cur, 'DOP', date), cur: 'DOP' as const };
@@ -96,7 +100,8 @@ function exportMonth(state: AppState, accounts: ReadonlyMap<string, Account>, ke
  *  · incomeUSD: los ingresos con fecha en el mes, en USD.
  *  · accounts.dop: la suma de los saldos de las cuentas visibles en DOP al final del mes.
  *    accounts.usd: la suma de los saldos de las demás cuentas visibles (USD y TRY), en USD.
- *    Así el "dinero total" del libro (USD × tasa del mes + DOP) es el de la app.
+ *    Así el "dinero total" del libro (USD × tasa del mes + DOP) es el de la app, salvo por el oro: las cuentas
+ *    de oro (gramos) no salen en el libro, tengan o no precio, y sus ingresos en gramos tampoco son ingreso.
  *  · Gastos fijos y transacciones: monto y moneda tal cual si son DOP o USD; si son TRY, el monto convertido a
  *    DOP (la transacción lleva el original al final de sus notas).
  *  · Envíos: solo los que van entre una cuenta en USD y otra en DOP. USD → DOP como { usd: lo que salió, rate };
@@ -301,7 +306,8 @@ function importedSavings(
  * Las metas se buscan por nombre exacto y, si no aparece, sin distinguir mayúsculas. Además, una de las tres
  * metas de la versión 1 (que el lector ya trae con su nombre de hoy) vale por la que el usuario conserve con
  * el nombre de entonces, para que volver a cargar su propio libro en español no se las duplique.
- * Todo lo demás (otras cuentas, ajustes, meses que no vienen, otros ingresos) queda como estaba.
+ * Todo lo demás (otras cuentas, también las de oro con sus ingresos en gramos, ajustes como el precio del oro,
+ * meses que no vienen, otros ingresos) queda como estaba.
  *
  * Lo que se pierde o conviene saber (el libro es un resumen hasta que se rediseñe):
  *  · de un mes sustituido se pierden las cuentas de cada gasto, las tasas escritas a mano, el reparto y la
@@ -383,7 +389,10 @@ export function applyImportToState(base: AppState, payload: ImportPayload, newId
     // Cada celda del libro es la suma de un grupo de cuentas visibles (buildExportData): a la cuenta del libro
     // le toca lo que queda después de las demás cuentas visibles de su grupo, que no se tocan.
     const book = file.get(lastKey)!.accounts;
-    const others = balances(zeroed, lastKey).accounts.filter((a) => !a.account.hidden && a.account.id !== usd.id && a.account.id !== dop.id);
+    // Las cuentas de oro no están en ninguna de las dos celdas (buildExportData): ni se cuentan ni se tocan.
+    const others = balances(zeroed, lastKey)
+      .accounts.filter(isMoneyBalance)
+      .filter((a) => !a.account.hidden && a.account.id !== usd.id && a.account.id !== dop.id);
     const otherDop = others.filter((a) => a.account.currency === 'DOP').reduce((a, b) => a + b.balance, 0);
     const otherUsd = others
       .filter((a) => a.account.currency !== 'DOP')

@@ -2,12 +2,13 @@
 // add_transaction del servidor MCP, así que no sabe nada de HTTP y valida su propia entrada.
 
 import type { IngestResponse, IngestTransaction } from '../shared/api';
+import { isMoneyAccount } from '../shared/calc';
 import { CATS, METHODS } from '../shared/constants';
 import { canonicalCat, canonicalMethod } from '../shared/i18n';
 import { currentMonthKey, label, monthOf, monthSpan, todayISO } from '../shared/month';
 import type { Account, AppUser } from '../shared/types';
 import { createTransaction, ensureMonth, getMonth, userAccounts } from './db';
-import { invalidData, monthClosedError, noAccountsError, validationError } from './errors';
+import { goldAccountError, invalidData, monthClosedError, noAccountsError, validationError } from './errors';
 import { userFromBody } from './users';
 import { ingestSchema, parse } from './validate';
 
@@ -103,6 +104,8 @@ export async function ingestTransaction(
   const { accounts, defaultAccount } = await userAccounts(db, user.id);
   const account = data.account === undefined ? defaultAccount : matchAccount(accounts, data.account);
   if (!account) throw noAccountsError();
+  // Una cuenta de oro guarda gramos: de ella no sale ningún gasto.
+  if (!isMoneyAccount(account)) throw goldAccountError(account.name);
 
   // Un año mal puesto dejaría un mes fantasma: solo se crea un mes cercano a hoy (6 atrás, 1 adelante).
   // A un mes que ya existe se puede escribir sea cual sea su fecha.

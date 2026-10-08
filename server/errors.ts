@@ -65,6 +65,16 @@ export function unknownAccountError(id: string): ApiError {
 }
 
 /**
+ * Una fila de dinero (parte del presupuesto, gasto fijo, transacción, envío, cuenta por defecto) nombra una
+ * cuenta de oro, que guarda gramos y no dinero. Como una cuenta desconocida, es un dato inválido: 400.
+ */
+export function goldAccountError(name: string): ApiError {
+  return validationError(
+    `"${name.slice(0, 64)}" is a gold account (grams): it cannot be used for budget parts, monthly expenses, transactions or transfers, or as the default account.`,
+  );
+}
+
+/**
  * El usuario no tiene ninguna cuenta en la que registrar. Por la API no se llega aquí (siempre queda al menos
  * una: borrar la última está prohibido); es el aviso para quien se quedó sin cuentas por otro camino.
  */

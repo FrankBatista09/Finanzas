@@ -824,12 +824,12 @@ describe('ediciones de celda: lo que el servidor rechazaría se ignora y el rest
   });
 
   it('ingreso y aporte', () => {
-    expect(incomeChange(s, { amount: -5, desc: '' })).toEqual({ desc: '' });
-    expect(incomeChange(s, { accountId: 'gone', date: 'ayer', amount: 10 })).toEqual({ amount: 10 });
+    expect(incomeChange(s, 'seed-in-1', { amount: -5, desc: '' })).toEqual({ desc: '' });
+    expect(incomeChange(s, 'seed-in-1', { accountId: 'gone', date: 'ayer', amount: 10 })).toEqual({ amount: 10 });
     // La casilla "sube el presupuesto" pasa en los dos sentidos; lo que no sea un booleano, no.
-    expect(incomeChange(s, { budget: true })).toEqual({ budget: true });
-    expect(incomeChange(s, { budget: false, amount: -1 })).toEqual({ budget: false });
-    expect(incomeChange(s, { budget: 'yes' as unknown as boolean, desc: 'Bonus' })).toEqual({ desc: 'Bonus' });
+    expect(incomeChange(s, 'seed-in-1', { budget: true })).toEqual({ budget: true });
+    expect(incomeChange(s, 'seed-in-1', { budget: false, amount: -1 })).toEqual({ budget: false });
+    expect(incomeChange(s, 'seed-in-1', { budget: 'yes' as unknown as boolean, desc: 'Bonus' })).toEqual({ desc: 'Bonus' });
     expect(contributionChange(s, { goalId: 'marte', amount: 10 })).toEqual({ amount: 10 });
     expect(contributionChange(s, { goalId: 'personal', date: '2026-10-09', amount: -1, cur: 'DOP' })).toEqual({ goalId: 'personal', date: '2026-10-09', cur: 'DOP' });
   });

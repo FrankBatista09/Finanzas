@@ -7,7 +7,7 @@
 
 import { createContext, useContext } from 'react';
 import type { CloseRequest, ContributionPatch, FixedPatch, GoalPatch, IncomePatch, TransferPatch, TxPatch } from '../../shared/api';
-import type { Balances, Leftover, MonthCalc, RateInfo } from '../../shared/calc';
+import type { Balances, Leftover, MonthCalc, MoneyAccount, RateInfo } from '../../shared/calc';
 import type { Account, AppState, AppUser, Currency, ISODate, Language, Month, MonthKey, ThemeColors } from '../../shared/types';
 import type {
   AccountInput,
@@ -45,15 +45,21 @@ export interface Actions {
   setMainCurrency(currency: Currency): void;
   /** Cambia la segunda moneda (la de las líneas "≈"). Elegir la que hoy es la principal las intercambia. */
   setSecondCurrency(currency: Currency): void;
-  /** La cuenta de la que sale un gasto cuando no se indica otra: una cuenta visible, o null para la automática. */
+  /** La cuenta de la que sale un gasto cuando no se indica otra: una cuenta visible de dinero (no de oro), o null para la automática. */
   setDefaultAccount(accountId: string | null): void;
+  /**
+   * El precio del oro: lo que vale 1 gramo, en una de las tres monedas. Con él las cuentas de oro suman al dinero
+   * total; un monto 0 (el campo vacío) lo quita y vuelven a verse solo en gramos. false si el monto no es un
+   * número >= 0. Se guarda con el mismo retraso que una celda.
+   */
+  setGoldPrice(amount: number, currency: Currency): boolean;
 
   // ── Cuentas ────────────────────────────────────────────────────────────────
-  /** Crea una cuenta al final de la lista. false si falta el nombre, la moneda no es una de las tres o el saldo inicial no es un número. */
+  /** Crea una cuenta al final de la lista. false si falta el nombre, la moneda no es una de las tres ni oro, o el saldo inicial no es un número. */
   addAccount(input: AccountInput): boolean;
   /** Un nombre en blanco se ignora (es obligatorio): la celda recupera su valor al salir. */
   renameAccount(id: string, name: string): void;
-  /** Oculta o vuelve a mostrar una cuenta. false si no existe o si es la última visible (esa no se puede ocultar). */
+  /** Oculta o vuelve a mostrar una cuenta. false si no existe o si es la última visible de dinero (esa no se puede ocultar). */
   setAccountHidden(id: string, hidden: boolean): boolean;
   /** Elimina una cuenta. false (y no hace nada) si no existe o algo la usa: esa se oculta. */
   removeAccount(id: string): boolean;
@@ -126,10 +132,14 @@ export interface Actions {
   // ── Ingresos, metas y aportes (no pertenecen a un mes) ─────────────────────
   /**
    * false si la fecha no es válida, el monto no es > 0 o la cuenta indicada no existe. Vale cualquier fecha, también
-   * de un mes cerrado. Con `budget: true` el ingreso sube además el presupuesto del mes de su fecha.
+   * de un mes cerrado. Con `budget: true` el ingreso sube además el presupuesto del mes de su fecha. A una cuenta
+   * de oro le entran gramos: el ingreso queda en XAU y nunca sube el presupuesto.
    */
   addIncome(input: IncomeInput): boolean;
-  /** Se ignoran una fecha no válida, un `amount` negativo y un `accountId` que no exista. */
+  /**
+   * Se ignoran una fecha no válida, un `amount` negativo y un `accountId` que no exista. Al pasar el ingreso a una
+   * cuenta de oro queda en gramos y sin subir el presupuesto; al sacarlo de una, en la moneda de la cuenta nueva.
+   */
   patchIncome(id: string, patch: IncomePatch): void;
   removeIncome(id: string): void;
 
@@ -212,15 +222,21 @@ export interface Finanzas {
 
   /** Todas las cuentas del usuario, también las ocultas, en su orden. */
   accounts: readonly Account[];
-  /** Las que se muestran en listas y selectores. */
-  visibleAccounts: readonly Account[];
-  /** La cuenta de la que sale un gasto cuando no se indica otra (shared/calc defaultAccount); null solo si no hay cuentas. */
-  defaultAccount: Account | null;
   /**
-   * Opciones de un selector de cuenta ({ value: id, label: nombre }): las visibles y, detrás, las que se pasen y
-   * no estén entre ellas (la cuenta de una fila que después se ocultó): `accountOptions(row.accountId)`.
+   * Las de dinero que se muestran en las listas y selectores de la hoja del mes y de los ajustes. Las de oro no
+   * están: solo se ven en "Savings" (salen de `balances`) y en los ingresos (`incomeAccountOptions`).
+   */
+  visibleAccounts: readonly MoneyAccount[];
+  /** La cuenta de la que sale un gasto cuando no se indica otra (shared/calc defaultAccount); null solo si no hay cuentas de dinero. */
+  defaultAccount: MoneyAccount | null;
+  /**
+   * Opciones de un selector de cuenta ({ value: id, label: nombre }) para lo que es dinero (gastos, envíos): las
+   * visibles que no son de oro y, detrás, las que se pasen y no estén entre ellas (la cuenta de una fila que
+   * después se ocultó): `accountOptions(row.accountId)`.
    */
   accountOptions(...include: (string | null | undefined)[]): AccountOption[];
+  /** Como `accountOptions`, con las cuentas de oro también: a qué cuenta entra un ingreso. */
+  incomeAccountOptions(...include: (string | null | undefined)[]): AccountOption[];
   /** Saldos de todas las cuentas al final del mes seleccionado y el "Total money" (shared/calc balances). */
   balances: Balances;
   /** El mes seleccionado es el último del usuario: solo entonces se puede corregir un saldo (actions.setAccountBalance). */

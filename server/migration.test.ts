@@ -2,13 +2,14 @@
 // y lo que cambia de forma (tasas, presupuesto) dice lo mismo que antes.
 // La 0003 solo renombra un valor: el método 'Card' de las transacciones pasa a ser 'Debit card'.
 // La 0004 añade transfers.budget en 0: los envíos que ya había no suben el presupuesto de ningún mes.
+// La 0005 rehace accounts e incomes para admitir el oro ('XAU'): ni una fila cambia y ninguna clave foránea se pierde.
 
 import { describe, expect, it } from 'vitest';
 import { monthCalc, rateFor } from '../shared/calc';
 import { METHODS } from '../shared/constants';
 import { applyMigrations, asD1, createTestDb, migrationFiles } from './d1-node';
 import type { NodeD1Database } from './d1-node';
-import { addLeftover, loadState, patchMonth, setMonthRate } from './db';
+import { addLeftover, createAccount, createIncome, loadState, patchMonth, setMonthRate } from './db';
 
 const [INIT, ...LATER] = migrationFiles();
 
@@ -247,6 +248,161 @@ describe('migración 0004: transfers.budget', () => {
     `);
     expect(sqlite.sqlite.prepare("SELECT budget FROM transfers WHERE id = 'x2'").get()).toEqual({ budget: 0 });
     expect(() => sqlite.sqlite.exec("UPDATE transfers SET budget = NULL WHERE id = 'x2'")).toThrow();
+  });
+});
+
+describe("migración 0005: cuentas e ingresos admiten el oro ('XAU')", () => {
+  const FILE = '0005_gold_accounts.sql';
+  const BEFORE = LATER.slice(0, LATER.indexOf(FILE));
+
+  const tablesOf = (db: NodeD1Database) =>
+    db.sqlite
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE 'd1_%' ORDER BY name")
+      .all()
+      .map((row) => String(row.name));
+  const foreignKeys = (db: NodeD1Database, table: string) =>
+    db.sqlite
+      .prepare(`PRAGMA foreign_key_list(${table})`)
+      .all()
+      .map((row) => ({ ...row }));
+  const indexes = (db: NodeD1Database) =>
+    db.sqlite.prepare("SELECT name, tbl_name, sql FROM sqlite_master WHERE type = 'index' AND sql IS NOT NULL ORDER BY name").all().map((row) => ({ ...row }));
+
+  /**
+   * La base de producción antes de 0005, con filas en todas las tablas que referencian a `accounts` (fijos,
+   * transacciones, envíos por los dos lados, ingresos y registro del presupuesto) y con lo que una copia
+   * descuidada perdería: cuentas ocultas, saldos con decimales y negativos, un orden que no es el de alta y un
+   * ingreso que sube el presupuesto.
+   */
+  function db0004(): NodeD1Database {
+    const db = legacyDb();
+    applyMigrations(db, BEFORE);
+    for (const user of ['frank', 'eda']) {
+      db.sqlite.exec(`
+        INSERT INTO accounts (user_id, id, name, currency, opening, hidden, sort) VALUES
+          ('${user}', 'pp', 'PayPal', 'USD', -12.345678, 0, 0), ('${user}', 'old', 'Old ''bank''', 'DOP', 0.1, 1, 7);
+        INSERT INTO incomes (user_id, id, date, description, account_id, amount, currency, budget) VALUES
+          ('${user}', 'i2', '2026-09-15', '', 'tr', 1250.75, 'TRY', 1), ('${user}', 'i3', '2025-01-01', 'Old', 'old', 10, 'USD', 0);
+        INSERT INTO transfers (user_id, id, month_key, date, via, from_account_id, to_account_id, amount, rate, budget) VALUES
+          ('${user}', 'x9', '2026-10', '2026-10-02', 'PayPal', 'pp', 'us', 300, 1, 1);
+        INSERT INTO month_budget_log (user_id, id, month_key, date, account_id, amount, kind, note) VALUES
+          ('${user}', 'b-${user}', '2026-10', '2026-10-05', 'pp', -20.5, 'adjust', 'note');
+      `);
+    }
+    return db;
+  }
+
+  it('es la migración que sigue a la 0004', () => {
+    expect(BEFORE).toEqual(['0002_dated_rates_budget_log.sql', '0003_debit_card_method.sql', '0004_transfer_budget.sql']);
+  });
+
+  it('todas las filas de todas las tablas siguen igual, en su orden, y ninguna referencia queda rota', () => {
+    const db = db0004();
+    const tables = tablesOf(db);
+    const before = Object.fromEntries(tables.map((t) => [t, dump(db, t)]));
+    // Hay algo que perder en cada tabla que cuelga de las cuentas.
+    for (const t of ['accounts', 'incomes', 'fixed_expenses', 'transactions', 'transfers', 'month_budget_log']) expect(before[t]!.length, t).toBeGreaterThan(1);
+    expect(before.accounts).toHaveLength(10);
+    expect(before.incomes).toHaveLength(6);
+
+    applyMigrations(db, [FILE]);
+
+    expect(tablesOf(db)).toEqual(tables);
+    for (const t of tables) expect(dump(db, t), t).toEqual(before[t]);
+    expect(db.sqlite.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
+    expect(db.sqlite.prepare('PRAGMA foreign_keys').get()).toEqual({ foreign_keys: 1 });
+    // Las tablas de paso no quedan.
+    expect(db.sqlite.prepare("SELECT name FROM sqlite_master WHERE name LIKE 'accounts_%' OR name LIKE 'incomes_new%'").all()).toEqual([]);
+  });
+
+  it('las claves foráneas y los índices son los mismos que antes', () => {
+    const db = db0004();
+    const tables = tablesOf(db);
+    const fks = Object.fromEntries(tables.map((t) => [t, foreignKeys(db, t)]));
+    const idx = indexes(db);
+    // La de ingresos a su cuenta: una fila por columna de la clave (user_id, account_id).
+    expect(fks.incomes!.map((fk) => [fk.table, fk.from, fk.to, fk.on_delete])).toEqual([
+      ['accounts', 'user_id', 'user_id', 'NO ACTION'],
+      ['accounts', 'account_id', 'id', 'NO ACTION'],
+    ]);
+    expect(idx.map((i) => i.name)).toContain('incomes_date');
+    applyMigrations(db, [FILE]);
+    for (const t of tables) expect(foreignKeys(db, t), t).toEqual(fks[t]);
+    expect(indexes(db)).toEqual(idx);
+  });
+
+  it('las claves foráneas siguen vivas: una cuenta en uso no se borra y nada puede nombrar una que no existe', () => {
+    const db = db0004();
+    applyMigrations(db, [FILE]);
+    const run = (sql: string) => () => db.sqlite.exec(sql);
+    // Cada tabla hija sigue sujetando a su cuenta: fijo (us), transacción (dr), envío (pp), ingreso (old), registro (tr de Eda).
+    for (const id of ['us', 'dr', 'pp', 'old']) expect(run(`DELETE FROM accounts WHERE user_id = 'frank' AND id = '${id}'`), id).toThrow(/FOREIGN KEY constraint failed/);
+    expect(run("DELETE FROM accounts WHERE user_id = 'eda' AND id = 'tr'")).toThrow(/FOREIGN KEY constraint failed/);
+    expect(run("INSERT INTO incomes (user_id, id, date, account_id, amount, currency) VALUES ('frank', 'i9', '2026-10-01', 'nope', 1, 'USD')")).toThrow(
+      /FOREIGN KEY constraint failed/,
+    );
+    expect(run("UPDATE transactions SET account_id = 'nope' WHERE user_id = 'frank' AND id = 't1'")).toThrow(/FOREIGN KEY constraint failed/);
+    // La cuenta de otro usuario tampoco vale: las claves incluyen user_id.
+    db.sqlite.exec("INSERT INTO accounts (user_id, id, name, currency) VALUES ('eda', 'solo-eda', 'Solo', 'USD')");
+    expect(run("UPDATE fixed_expenses SET account_id = 'solo-eda' WHERE user_id = 'frank' AND id = 'f1'")).toThrow(/FOREIGN KEY constraint failed/);
+    // Y borrar un mes sigue llevándose lo suyo sin tocar las cuentas ni los ingresos.
+    db.sqlite.exec("DELETE FROM months WHERE user_id = 'frank' AND key = '2026-10'");
+    expect(db.sqlite.prepare("SELECT COUNT(*) AS n FROM accounts WHERE user_id = 'frank'").get()).toEqual({ n: 5 });
+    expect(db.sqlite.prepare("SELECT COUNT(*) AS n FROM incomes WHERE user_id = 'frank'").get()).toEqual({ n: 3 });
+    expect(db.sqlite.prepare("SELECT COUNT(*) AS n FROM transfers WHERE user_id = 'frank' AND month_key = '2026-10'").get()).toEqual({ n: 0 });
+  });
+
+  it("'XAU' vale en cuentas e ingresos, y solo ahí; lo demás que no es una moneda sigue sin valer", () => {
+    const db = db0004();
+    const run = (sql: string) => () => db.sqlite.exec(sql);
+    const goldAccount = "INSERT INTO accounts (user_id, id, name, currency, opening) VALUES ('frank', 'gold', 'Gold', 'XAU', 125.5)";
+    expect(run(goldAccount)).toThrow(/CHECK constraint failed/);
+    applyMigrations(db, [FILE]);
+    db.sqlite.exec(goldAccount);
+    db.sqlite.exec("INSERT INTO incomes (user_id, id, date, account_id, amount, currency) VALUES ('frank', 'ig', '2026-10-01', 'gold', 2.125, 'XAU')");
+    expect(db.sqlite.prepare("SELECT description, budget FROM incomes WHERE id = 'ig'").get()).toEqual({ description: '', budget: 0 });
+    expect(db.sqlite.prepare("SELECT hidden, sort FROM accounts WHERE id = 'gold'").get()).toEqual({ hidden: 0, sort: 0 });
+    expect(run("INSERT INTO accounts (user_id, id, name, currency) VALUES ('frank', 'eur', 'Euro', 'EUR')")).toThrow(/CHECK constraint failed/);
+    expect(run("UPDATE incomes SET currency = 'EUR' WHERE user_id = 'frank' AND id = 'i1'")).toThrow(/CHECK constraint failed/);
+    expect(run("UPDATE accounts SET name = NULL WHERE user_id = 'frank' AND id = 'us'")).toThrow(/NOT NULL constraint failed/);
+    expect(run("INSERT INTO accounts (user_id, id, name, currency) VALUES ('frank', 'us', 'Again', 'USD')")).toThrow(/UNIQUE constraint failed/);
+    // En ninguna otra tabla: ni gastos, ni transacciones, ni tasas, ni metas, ni aportes.
+    for (const sql of [
+      "UPDATE fixed_expenses SET currency = 'XAU' WHERE id = 'f1'",
+      "UPDATE transactions SET currency = 'XAU' WHERE id = 't1'",
+      "UPDATE goals SET currency = 'XAU' WHERE id = 'g1'",
+      "UPDATE goals SET approx_currency = 'XAU' WHERE id = 'g1'",
+      "UPDATE contributions SET currency = 'XAU' WHERE id = 'c1'",
+      "UPDATE month_rates SET to_currency = 'XAU' WHERE user_id = 'eda'",
+    ]) {
+      expect(run(sql), sql).toThrow(/CHECK constraint failed/);
+    }
+  });
+
+  it('el servidor lee el mismo estado que antes, sin precio del oro, y ya puede guardar una cuenta de oro', async () => {
+    const sqlite = db0004();
+    const db = asD1(sqlite);
+    // El servidor de hoy sobre la base de antes de migrar: lo único que no sabría leer es lo que aún no existe.
+    const before = { frank: await loadState(db, 'frank'), eda: await loadState(db, 'eda') };
+    applyMigrations(sqlite, [FILE]);
+    expect(await loadState(db, 'frank')).toEqual(before.frank);
+    expect(await loadState(db, 'eda')).toEqual(before.eda);
+    expect(before.frank.goldPrice).toBeNull();
+    expect(before.frank.accounts.map((a) => a.id)).toEqual(['us', 'pp', 'dr', 'tr', 'old']);
+
+    const gold = await createAccount(db, 'frank', { name: 'Gold', currency: 'XAU', opening: 10 });
+    await createIncome(db, 'frank', { date: '2026-10-08', accountId: gold.id, amount: 2.5, cur: 'XAU' });
+    const after = await loadState(db, 'frank');
+    expect(after.accounts.at(-1)).toMatchObject({ name: 'Gold', currency: 'XAU', opening: 10, sort: 8 });
+    expect(after.incomes.at(-1)).toMatchObject({ accountId: gold.id, amount: 2.5, cur: 'XAU', budget: false });
+    expect(await loadState(db, 'eda')).toEqual(before.eda);
+  });
+
+  it('una base vacía migra igual', () => {
+    const empty = createTestDb(['0001_init.sql', ...BEFORE]);
+    applyMigrations(empty, [FILE]);
+    expect(dump(empty, 'accounts')).toEqual([]);
+    expect(dump(empty, 'incomes')).toEqual([]);
   });
 });
 

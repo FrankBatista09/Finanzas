@@ -39,6 +39,8 @@ import {
   currentKey,
   defaultAccount,
   incomeInMonth,
+  isMoneyAccount,
+  isMoneyIncome,
   leftoverFor,
   monthCalc,
   rateFor,
@@ -46,11 +48,11 @@ import {
   transferReceived,
 } from '../shared/calc';
 import type { AccountBalance, Balances, MonthCalc, RateInfo, RateSource } from '../shared/calc';
-import { APP_NAME, CATS, METHODS, TIMEZONE, VIAS } from '../shared/constants';
-import { f0, f2, fRate } from '../shared/format';
+import { APP_NAME, CATS, GOLD, GOLD_UNIT, isGold, METHODS, TIMEZONE, VIAS } from '../shared/constants';
+import { f0, f2, fGrams, fRate } from '../shared/format';
 import { canonicalCat, canonicalMethod } from '../shared/i18n';
 import { currentMonthKey, isISODate, isMonthKey, label, monthOf, monthSpan, todayISO } from '../shared/month';
-import type { Account, AppState, AppUser, Currency, FixedExpense, ISODate, Month, MonthKey } from '../shared/types';
+import type { Account, AccountCurrency, AppState, AppUser, Currency, FixedExpense, ISODate, Month, MonthKey } from '../shared/types';
 import { checkBearer } from './auth';
 import { readLimitedBody } from './body';
 import { createIncome, createTransfer, ensureMonth, getMonth, loadState, patchFixed, userAccounts, userState } from './db';
@@ -58,6 +60,7 @@ import type { Env } from './env';
 import {
   ApiError,
   errorBody,
+  goldAccountError,
   INTERNAL_MESSAGE,
   invalidData,
   monthClosedError,
@@ -251,6 +254,7 @@ function instructions(users: readonly AppUser[]): string {
     `${APP_NAME}: personal finances. With these tools you record a person's expenses, incomes and transfers, and check how the month and the accounts are going.`,
     who,
     `Money: each person has their own accounts (a name and a currency: ${CURRENCY_CODES.join(', ')}) and their own main currency, in which budget and totals are shown. Nobody types a balance: every movement changes it. An expense is subtracted from the account it is paid from, which is the person's default account unless they name another one. An income adds to an account. A transfer moves money from one account to another. Call list_accounts when you need to know which accounts exist.`,
+    `Gold: an account can also hold gold, measured in grams (its currency is ${GOLD} and balances read like "125.50 ${GOLD_UNIT}"). A gold account is not money: it cannot pay expenses or fixed expenses, send or receive transfers, carry budget or be the default account, and the tools reject it. Grams are added to it with add_income (the amount is grams; no \`currency\`, no \`add_to_budget\`). Its value in money comes from the gold price the person types in the web app (the value of 1 gram); while no price is set, gold is shown in grams only and is not counted in the total money. The gold price cannot be changed from these tools.`,
     'Language: these tools answer in English only; talk to each person in their own language. People may dictate in Spanish or Turkish: pass descriptions, places, notes, account names and names of fixed expenses exactly as they said them, without translating.',
     'Currency: when the person names a currency (dollars, pesos, lira), record the amount in the currency they said, even if it is not the currency of the account: the server converts with the rate in effect on the date of the record. If they name none, omit `currency` and the currency of the account is used. Never convert an amount yourself.',
     `Date: by default, today in ${TIMEZONE}. If the person gives no date or says "today", omit \`date\` and the server uses today's. Dates are YYYY-MM-DD and months are YYYY-MM. Each record goes to the month of its date. For relative dates ("yesterday", "on Friday") start from today's date as returned by month_summary or list_accounts.`,
@@ -270,8 +274,9 @@ const SEP = ' · ';
 /** Cómo se le explica al modelo el mes por defecto (ver resolveMonth). */
 const IN_PROGRESS = 'the month in progress (the calendar month or, if it does not exist yet or is already closed, the last open month)';
 
-function money(amount: number, cur: Currency): string {
-  return `${f2(amount)} ${cur}`;
+/** Un importe con su moneda; de oro, sus gramos: "125.50 g". */
+function money(amount: number, cur: AccountCurrency): string {
+  return isGold(cur) ? `${fGrams(amount)} ${GOLD_UNIT}` : `${f2(amount)} ${cur}`;
 }
 
 /**
@@ -479,9 +484,40 @@ function accountData(account: Account, b: AccountBalance | null) {
 }
 
 /** La cuenta a la que entra o de la que sale `amount`, y cuánto es en su moneda si se dijo en otra. */
-function accountPart(state: AppState | null, key: MonthKey, account: Account, amount: number, cur: Currency, date?: ISODate): string {
-  if (!state || cur === account.currency) return account.name;
-  return `${account.name} (${money(convert(state, key, amount, cur, account.currency, date), account.currency)})`;
+function accountPart(state: AppState | null, key: MonthKey, account: Account, amount: number, cur: AccountCurrency, date?: ISODate): string {
+  const to = account.currency;
+  // Gramos y dinero no se convierten entre sí en un movimiento.
+  if (!state || cur === to || isGold(cur) || isGold(to)) return account.name;
+  return `${account.name} (${money(convert(state, key, amount, cur, to, date), to)})`;
+}
+
+/**
+ * El saldo de una cuenta como se le dice al modelo, con su equivalente en `main` si está en otra moneda. De una
+ * cuenta de oro, sus gramos y lo que valen al precio del oro; sin precio, solo los gramos, y se dice por qué.
+ */
+function balanceText(state: AppState, key: MonthKey, b: AccountBalance, main: Currency): string {
+  const cur = b.account.currency;
+  if (!isGold(cur)) return moneyIn(state, key, b.balance, cur, main);
+  return b.valued ? `${money(b.balance, cur)} (${money(b.inMain, main)})` : `${money(b.balance, cur)} (no gold price set)`;
+}
+
+/** Las monedas de verdad entre las de unas cuentas: el oro no tiene tasa. */
+function moneyCurrencies(list: readonly AccountCurrency[]): Currency[] {
+  return list.filter((c): c is Currency => !isGold(c));
+}
+
+/**
+ * Lo que hay que saber del oro cuando el usuario tiene alguna cuenta visible de oro: el precio escrito y, si no
+ * hay, que el oro no entra en el total. Ninguna línea si no tiene oro a la vista.
+ */
+function goldLines(state: AppState, all: Balances): string[] {
+  if (!all.accounts.some((b) => !b.account.hidden && isGold(b.account.currency))) return [];
+  const price = state.goldPrice;
+  return [
+    price
+      ? `Gold price: 1 ${GOLD_UNIT} = ${money(price.amount, price.currency)} (typed by the person in the web app).`
+      : 'Gold is not included in the total money: no gold price is set. The person can type the value of 1 gram in the web app (Savings).',
+  ];
 }
 
 /** La cuenta que nombra la persona o, si no nombra ninguna, su cuenta por defecto. */
@@ -626,7 +662,7 @@ const addTransferArgs = z.strictObject({
 const addIncomeArgs = z.strictObject({
   amount: positive().describe('Amount received as the person said it, in the currency of `currency` and without converting. Greater than 0.'),
   currency: currency(
-    'Currency the person said: DOP (Dominican pesos), USD (dollars) or TRY (Turkish lira). Omit it if they named none: the currency of the account is used.',
+    'Currency the person said: DOP (Dominican pesos), USD (dollars) or TRY (Turkish lira). Omit it if they named none: the currency of the account is used. Always omit it for a gold account: there the amount is grams.',
   ),
   account: accountName(`Account the money enters, ${ACCOUNT_HINT}. Omit it unless the person names one: their default account is used.`),
   date: isoDate()
@@ -637,7 +673,7 @@ const addIncomeArgs = z.strictObject({
     .boolean({ error: 'must be true or false' })
     .default(false)
     .describe(
-      "true only if the person says this money should also raise the budget of the month of its date (for example \"add it to this month's budget\"). By default false: the income enters the account and the budget stays as it is.",
+      "true only if the person says this money should also raise the budget of the month of its date (for example \"add it to this month's budget\"). By default false: the income enters the account and the budget stays as it is. Not allowed for a gold account.",
     ),
 });
 
@@ -762,7 +798,7 @@ const addTransaction = defineTool({
     if (monthCreated) sentences.push(`The month ${label(t.monthKey)} was created.`);
     if (after) sentences.push(usedLine(after.calc));
     if (paidFrom) sentences.push(balanceSentence(paidFrom));
-    if (after) sentences.push(...approxNotes(after.state, t.monthKey, t.cur, [after.calc.main, ...(paidFrom ? [paidFrom.account.currency] : [])], t.date));
+    if (after) sentences.push(...approxNotes(after.state, t.monthKey, t.cur, [after.calc.main, ...moneyCurrencies(paidFrom ? [paidFrom.account.currency] : [])], t.date));
     return {
       text: sentences.join(' '),
       data: {
@@ -863,10 +899,11 @@ const monthSummary = defineTool({
     // Saldos al final del mes que se resume: para el mes en curso son los de ahora.
     const all = balances(state, m.key);
     const visible = all.accounts.filter((b) => !b.account.hidden);
-    const incomes = state.incomes.filter((i) => monthOf(i.date) === m.key);
+    // Los ingresos del mes son los de dinero: los gramos que entran a una cuenta de oro no cuentan (incomeInMonth).
+    const incomes = state.incomes.filter(isMoneyIncome).filter((i) => monthOf(i.date) === m.key);
     const rates = ratesToMain(state, m.key, [
       second,
-      ...visible.map((b) => b.account.currency),
+      ...moneyCurrencies(visible.map((b) => b.account.currency)),
       ...parts.map((p) => p.account.currency),
       ...m.fixed.map((f) => f.cur),
       ...m.tx.map((t) => t.cur),
@@ -910,8 +947,9 @@ const monthSummary = defineTool({
         : 'By category: No expenses yet this month.',
       `Month income: ${money(c.income, main)}${SEP}Income − used: ${money(c.incomeLeft, main)}`,
       visible.length > 0
-        ? `Account balances at the end of ${label(m.key)}: ${visible.map((b) => `${b.account.name} ${moneyIn(state, m.key, b.balance, b.account.currency, main)}`).join('; ')}${SEP}Total money: ${both(all.totalMain, all.totalSecond)}`
+        ? `Account balances at the end of ${label(m.key)}: ${visible.map((b) => `${b.account.name} ${balanceText(state, m.key, b, main)}`).join('; ')}${SEP}Total money: ${both(all.totalMain, all.totalSecond)}`
         : `Account balances at the end of ${label(m.key)}: no visible accounts.`,
+      ...goldLines(state, all),
       `Month rates: ${rates.map(rateText).join('; ')}`,
     );
     if (typed.length > 0) {
@@ -960,8 +998,11 @@ const monthSummary = defineTool({
         transactions: { count: c.txCount, total: c.varSpent },
         categories: c.categories.map((cat) => ({ name: cat.name, value: cat.value })),
         income: { count: incomes.length, total: c.income, left: c.incomeLeft },
-        accounts: visible.map((b) => ({ ...accountData(b.account, b), inMain: b.inMain })),
+        // De una cuenta de oro, `balance` son gramos; `inMain` es null si no hay precio del oro.
+        accounts: visible.map((b) => ({ ...accountData(b.account, b), inMain: b.valued ? b.inMain : null })),
         totalMoney: { main: all.totalMain, second: all.totalSecond },
+        // El precio del oro escrito por la persona (null = sin precio) y si por eso hay oro fuera del total.
+        gold: { price: state.goldPrice, excludedFromTotal: all.goldExcluded },
         rates,
         typedRates: typed,
       },
@@ -993,6 +1034,9 @@ const addTransfer = defineTool({
     const { accounts } = await userAccounts(db, user.id);
     const from = matchAccount(accounts, from_account, 'from_account');
     const to = matchAccount(accounts, to_account, 'to_account');
+    // Una cuenta de oro guarda gramos: no envía ni recibe dinero.
+    if (!isMoneyAccount(from)) throw goldAccountError(from.name);
+    if (!isMoneyAccount(to)) throw goldAccountError(to.name);
     if (from.id === to.id) throw validationError(invalidData(`to_account: must be a different account from from_account (both are ${from.name})`));
     const same = from.currency === to.currency;
     // Entre cuentas de la misma moneda entra lo mismo que sale: otra tasa inventaría o perdería dinero.
@@ -1058,6 +1102,7 @@ const addIncome = defineTool({
     `Apart from \`user\`, only \`amount\` is required. Defaults: the person's default account, the currency of that account and today's date in ${TIMEZONE}. Pass \`account\` if the person names the account the money entered, and \`currency\` only if they name a currency: the amount is recorded in the currency they said, without converting.`,
     "The month's income is the sum of the incomes dated in it. An income does not belong to a month sheet, so it can also be recorded with a date in a closed month; a date in another year is rejected.",
     "With `add_to_budget: true` the income also raises the budget of the month of its date, in the part of the account it enters, by its amount (converted to the currency of that account at the rate in effect on its date); the answer then states the month's budget. Use it only when the person asks for it.",
+    'To add grams to a gold account, name that account and pass the grams as `amount`, without `currency` and without `add_to_budget`: grams of gold are not money, so they do not count in the month\'s income.',
     "The answer states the new balance of the account and the month's income so far. Each call creates a new income: do not repeat it for the same one. Do not use it for money moved between the person's own accounts (use add_transfer).",
   ].join(' '),
   schema: addIncomeArgs,
@@ -1088,7 +1133,7 @@ const addIncome = defineTool({
 
     const parts = [
       income.desc,
-      after ? moneyIn(after.state, key, income.amount, income.cur, after.main, income.date) : money(income.amount, income.cur),
+      after && isMoneyIncome(income) ? moneyIn(after.state, key, income.amount, income.cur, after.main, income.date) : money(income.amount, income.cur),
       `into ${accountPart(after?.state ?? null, key, account, income.amount, income.cur, income.date)}`,
       `${income.date} (${label(key)})`,
     ];
@@ -1103,7 +1148,7 @@ const addIncome = defineTool({
             : `It was also added to the budget of ${label(key)}, now ${money(after.budget, after.main)}.`,
         );
       }
-      sentences.push(...approxNotes(after.state, key, income.cur, [after.main, account.currency], income.date));
+      if (isMoneyIncome(income)) sentences.push(...approxNotes(after.state, key, income.cur, [after.main, ...moneyCurrencies([account.currency])], income.date));
     }
     return {
       text: sentences.join(' '),
@@ -1123,6 +1168,7 @@ const listAccounts = defineTool({
   title: 'List accounts',
   description: [
     "Lists the accounts in the finances of `user`: the name, currency and current balance of each visible account, which one is the default account, and the total money in the person's main currency and in their second currency.",
+    `A gold account has currency ${GOLD} and its balance is in grams; its value in money uses the gold price typed by the person (the value of 1 gram), which is also stated. With no gold price set, gold is listed in grams only and is not counted in the total.`,
     'Call it when you need to know which accounts exist: before recording an expense, an income or a transfer for which the person names an account you do not know, or when they ask how much money they have or what the balance of an account is.',
     "Balances are never typed: each one is the account's opening balance plus everything recorded since. Hidden accounts are not listed. It also says what today's date is for the users.",
   ].join(' '),
@@ -1141,21 +1187,22 @@ const listAccounts = defineTool({
     const visible = all.accounts.filter((b) => !b.account.hidden);
     const hidden = all.accounts.length - visible.length;
     const today = todayISO(now);
-    const rates = ratesToMain(state, asOf, [second, ...visible.map((b) => b.account.currency)]);
+    const rates = ratesToMain(state, asOf, [second, ...moneyCurrencies(visible.map((b) => b.account.currency))]);
 
     const lines = [
       `${user.name}${SEP}${visible.length} ${visible.length === 1 ? 'account' : 'accounts'}${SEP}main currency ${main}, second currency ${second}`,
       ...visible.map((b) =>
         [
           b.account.name,
-          b.account.currency,
-          `balance ${moneyIn(state, asOf, b.balance, b.account.currency, main)}`,
+          isGold(b.account.currency) ? `${GOLD} (gold, in grams)` : b.account.currency,
+          `balance ${balanceText(state, asOf, b, main)}`,
           b.account.id === preferred?.id && 'default account',
         ]
           .filter(Boolean)
           .join(SEP),
       ),
       `Total money: ${money(all.totalMain, main)} (${money(all.totalSecond, second)})`,
+      ...goldLines(state, all),
     ];
     if (hidden > 0) lines.push(`Hidden accounts, not listed and not counted in the total: ${hidden}.`);
     lines.push(`Rates used (${label(asOf)}): ${rates.map(rateText).join('; ')}`, `Today is ${today}.`);
@@ -1169,11 +1216,14 @@ const listAccounts = defineTool({
         defaultAccountId: preferred?.id ?? null,
         accounts: visible.map((b) => ({
           ...accountData(b.account, b),
-          inMain: b.inMain,
-          inSecond: b.inSecond,
+          // De una cuenta de oro, `balance` son gramos; su valor es null si no hay precio del oro.
+          inMain: b.valued ? b.inMain : null,
+          inSecond: b.valued ? b.inSecond : null,
           isDefault: b.account.id === preferred?.id,
         })),
         totalMoney: { main: all.totalMain, second: all.totalSecond },
+        // El precio del oro escrito por la persona (null = sin precio) y si por eso hay oro fuera del total.
+        gold: { price: state.goldPrice, excludedFromTotal: all.goldExcluded },
         hiddenCount: hidden,
         rates,
       },

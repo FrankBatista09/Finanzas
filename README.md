@@ -134,13 +134,14 @@ En «Settings → Appearance» cada usuario elige tres colores: acento (botones,
 
 ## Modelo de datos y cálculos
 
-D1 es la fuente de verdad. Tablas (`migrations/0001_init.sql`, `0002_dated_rates_budget_log.sql` y `0004_transfer_budget.sql`, que añade `transfers.budget`): `months`, `accounts`, `month_budget_log`, `month_rates`, `fixed_expenses`, `transactions`, `transfers`, `incomes`, `goals`, `contributions` y `settings`. Todas llevan `user_id` y todas las claves son `(user_id, …)`, de modo que dos usuarios pueden tener el mismo mes o los mismos ids sin tocarse.
+D1 es la fuente de verdad. Tablas (`migrations/0001_init.sql`, `0002_dated_rates_budget_log.sql`, `0004_transfer_budget.sql`, que añade `transfers.budget`, y `0005_gold_accounts.sql`, que rehace `accounts` e `incomes` para admitir el oro sin tocar una fila): `months`, `accounts`, `month_budget_log`, `month_rates`, `fixed_expenses`, `transactions`, `transfers`, `incomes`, `goals`, `contributions` y `settings`. Todas llevan `user_id` y todas las claves son `(user_id, …)`, de modo que dos usuarios pueden tener el mismo mes o los mismos ids sin tocarse.
 
 ### El dinero
 
 - **Tres monedas**: DOP, USD y TRY. Cada fila guarda su **monto y su moneda originales**; nada convertido se guarda nunca, ni tampoco los saldos.
 - **Moneda principal y segunda moneda**, por usuario («Settings → Currencies»). En la principal se ven el presupuesto, los totales y la primera columna de importes de cada tabla; en la segunda, las líneas «≈» y la segunda columna. Tienen que ser distintas; al cambiarlas, todas las cifras y los encabezados las siguen. Un usuario nuevo empieza con DOP y USD.
 - **Cuentas**, de cada usuario: un nombre y una moneda. Se agregan, se renombran y se ocultan en «Savings». Una cuenta oculta no aparece en las listas ni suma al dinero total, pero conserva sus movimientos. Una cuenta con movimientos no se elimina ni cambia de moneda (se oculta), y siempre queda al menos una.
+- **Oro.** Una cuenta puede estar también en oro (`XAU`), medido en gramos («125.50 g», hasta tres decimales). El oro solo existe ahí, en «Savings»: no es moneda principal ni segunda, ni de metas, tasas, gastos o transacciones, y una cuenta de oro no se puede elegir (la API y el MCP la rechazan con `400`) para una parte del presupuesto, un gasto fijo, una transacción, un envío ni como cuenta por defecto; en la hoja del mes no aparece. Su saldo es el saldo inicial más los ingresos que se le registran en «Savings», que son gramos y nunca suben el presupuesto ni cuentan como ingreso del mes. Lo que vale lo dice el **precio del oro**: el valor de 1 gramo en la moneda que se elija, escrito a mano junto a las cuentas (un ajuste por usuario; no hay precio por defecto). Con precio, los gramos pasan a esa moneda y de ahí a la principal con las tasas de siempre, y suman al dinero total; sin precio, la cuenta se ve solo en gramos y el total avisa de que el oro no está incluido.
 - **Saldos calculados.** El saldo de una cuenta no se escribe mes a mes: es su saldo inicial, más los ingresos que le entran, menos las transacciones y los gastos fijos **pagados** que salen de ella, menos los envíos que salen y más los que entran, todo hasta el mes que se mira. Un movimiento en otra moneda entra o sale convertido con la tasa vigente en su fecha (un gasto fijo, que no tiene fecha, con la última de su mes). «Corregir» un saldo a mano (escribiéndolo en «Savings», solo en el último mes) ajusta el saldo inicial; los movimientos no se tocan. Los aportes a metas son un apartado y no mueven saldos.
 - **Cuenta por defecto**: de ella sale un gasto cuando no se indica otra (también los que registra Claude). Es la elegida en «Settings»; si no hay, la primera visible en la moneda principal.
 - **Ingresos**, uno por uno: fecha, descripción, cuenta, monto y moneda. El ingreso de un mes es la suma de los que tienen fecha en él; ya no se escribe. No pertenecen a un mes: se agregan y editan aunque el mes esté cerrado.
@@ -159,7 +160,7 @@ D1 es la fuente de verdad. Tablas (`migrations/0001_init.sql`, `0002_dated_rates
 - **Metas en su moneda.** Cada meta tiene la suya: en ella van el ahorro mensual, el objetivo y lo ahorrado. Cada aporte guarda su moneda y se convierte a la de la meta con la tasa vigente en su fecha. Cada meta puede elegir además en qué moneda se muestra su línea «≈» (por defecto, la principal).
 - **Mes cerrado = solo lectura.** La API responde `409 month_closed` a cualquier escritura en sus gastos, transacciones, envíos, presupuesto o tasas. Se puede reabrir y eliminar.
 - **Eliminar un mes** («Delete month», al final de la hoja; abierto o cerrado) borra sus gastos fijos, transacciones, envíos, presupuesto y tasas, y no se puede deshacer. Los saldos cambian en consecuencia. Los ingresos y los aportes con fecha en ese mes se conservan (no son del mes). Si era el único mes, al volver a entrar se crea el actual.
-- **Ajustes por usuario** (`settings`): idioma, tema, moneda principal, segunda moneda, cuenta por defecto, tasa USD→DOP de respaldo y la marca de que ya se le crearon las cuentas y metas iniciales (si las borra, no vuelven).
+- **Ajustes por usuario** (`settings`): idioma, tema, moneda principal, segunda moneda, cuenta por defecto, precio del oro, tasa USD→DOP de respaldo y la marca de que ya se le crearon las cuentas y metas iniciales (si las borra, no vuelven).
 - «Hoy» se calcula siempre en `America/Santo_Domingo`.
 
 Todos los cálculos están en `shared/calc.ts` (con `shared/calc.test.ts` como documentación ejecutable) y los usan por igual el frontend, la API, el MCP y el puente del Excel. El formato de números está en `shared/format.ts`. El frontend carga el histórico completo del usuario con `GET /api/state` y aplica las ediciones de forma optimista; las de texto y número esperan 400 ms antes de enviarse. Cada usuario tiene su propia cola de guardado: lo que quedó pendiente de uno se envía con su cabecera aunque ya se esté viendo a otro.
@@ -180,12 +181,13 @@ El contrato completo (rutas, cuerpos y reglas) está en el comentario inicial de
 - **`X-User: <id>`** es obligatoria en todas las rutas de `/api/*` salvo `/api/session` y `/api/ingest/*`. Si falta o no es un usuario configurado: `400 validation`. Todo lo que la ruta lee o escribe es de ese usuario; un id que existe pero es de otro responde `404`.
 - **`GET /api/session`** (sin `X-User`): los usuarios configurados y si están activas las utilidades de desarrollo. Es lo primero que pide la web.
 - **`GET /api/state`**: `{ user, state }` con todo el histórico del usuario (meses, cuentas, ingresos, metas, aportes) y sus ajustes. La primera vez le crea las cuentas y metas iniciales y el mes actual.
-- **`PATCH /api/settings`**: cualquier combinación de `language`, `theme` (`null` vuelve a la paleta original), `mainCurrency`, `secondCurrency` y `defaultAccountId` (`null` = automática). Las dos monedas deben quedar distintas: para intercambiarlas se mandan juntas.
+- **`PATCH /api/settings`**: cualquier combinación de `language`, `theme` (`null` vuelve a la paleta original), `mainCurrency`, `secondCurrency`, `defaultAccountId` (`null` = automática; no puede ser una cuenta de oro) y `goldPrice` (`{ "amount", "currency" }`, lo que vale 1 gramo de oro; `null` lo quita). Las dos monedas deben quedar distintas: para intercambiarlas se mandan juntas.
 - **`/api/accounts`** (`GET`, `POST`, `PATCH /:id`, `DELETE /:id`): cuentas. `PATCH` cambia nombre, saldo inicial, `hidden` u orden. Eliminar una cuenta en uso (o la última) y cambiar la moneda de una cuenta en uso responden `409 conflict`.
 - **`PATCH /api/months/:key`**: `{ "budgets": { "<cuenta>": monto } }`, las partes del presupuesto que cambian (>= 0; 0 quita la parte).
 - **`PUT /api/months/:key/rates`** `{ "from", "to", "rate" }` escribe la tasa de un par (una por par, en cualquier sentido) y **`DELETE /api/months/:key/rates/:from/:to`** la quita.
 - **`DELETE /api/months/:key`**: elimina el mes con todo lo suyo.
-- **`/api/incomes`** (`GET`, `POST`, `PATCH /:id`, `DELETE /:id`): ingresos.
+- **`/api/incomes`** (`GET`, `POST`, `PATCH /:id`, `DELETE /:id`): ingresos. A una cuenta de oro le entran gramos: `cur` tiene que ser `XAU` (y solo ahí) y `budget` no puede ser `true`.
+- Una cuenta de oro (`currency: "XAU"`) en un cuerpo que es de dinero (presupuesto, gasto fijo, transacción, envío, cuenta por defecto) responde `400 validation` (`"<nombre>" is a gold account (grams): …`).
 - **`/api/fixed`**, **`/api/transactions`**: llevan `accountId` (si falta al crear, la cuenta por defecto). **`/api/transfers`**: `fromAccountId`, `toAccountId`, `amount` y `rate` opcional (si falta, la del mes para ese par). Envíos y aportes (**`/api/contributions`**) también se editan con `PATCH`.
 - **`/api/goals`**: crear, editar y eliminar metas, con su moneda (`cur`; por defecto la principal). Un plan a medias responde `400`; un nombre repetido o eliminar una meta con aportes, `409 conflict`.
 - Una cuenta que no existe, en cualquier cuerpo, responde `400 validation` (`Unknown account "<id>".`).
@@ -200,7 +202,8 @@ El contrato completo (rutas, cuerpos y reglas) está en el comentario inicial de
 - el presupuesto es el total, en DOP; el ingreso, el total del mes, en USD;
 - los dos saldos son la suma de las cuentas visibles en DOP y la suma de las demás (USD y TRY), en USD;
 - gastos y transacciones en TRY salen convertidos a DOP (la transacción lleva el monto original en sus notas); aportes en TRY, a USD; el ahorro mensual de una meta en otra moneda, a USD;
-- solo salen los envíos entre una cuenta en USD y otra en DOP.
+- solo salen los envíos entre una cuenta en USD y otra en DOP;
+- las cuentas de oro no salen: ni sus gramos ni su valor entran en los saldos del libro, y sus ingresos en gramos no son ingreso del mes. Al importar, las cuentas de oro, sus ingresos y el precio del oro quedan como estaban.
 
 Se pierde: qué cuenta pagó cada gasto y el saldo de cada una, el reparto del presupuesto, el detalle de los ingresos, las tasas escritas a mano (el libro calcula la suya con los envíos del mes; si la escrita era otra, lo que muestra convertido difiere de la app), los envíos de otros pares y la moneda de las metas. No depende de la moneda principal del usuario.
 
@@ -296,10 +299,10 @@ El token Bearer solo sirve en `/mcp` y `/api/ingest/*`; no abre el resto de la A
 | `month_summary` | `user`; opcional `month` | En la moneda principal: presupuesto y sus partes por cuenta, usado, disponible, fijos pendientes, gasto por categoría, ingreso del mes, saldos y las tasas del mes con su origen. |
 | `add_transfer` | `user`, `from_account`, `to_account`, `amount`; opcionales `rate`, `via`, `date`, `add_to_budget` | Registra un envío entre dos cuentas. Sin `rate` usa la del mes y dice de dónde salió (si es el valor de respaldo, avisa). Con `add_to_budget: true` lo que llega sube además el presupuesto del mes. |
 | `mark_fixed_paid` | `user`, `name`; opcionales `month`, `paid` | Marca un gasto fijo como pagado, buscándolo por nombre; dice de qué cuenta sale. |
-| `add_income` | `user`, `amount`; opcionales `currency`, `account`, `date`, `description` | Registra un ingreso en una cuenta. No lo bloquea un mes cerrado. |
-| `list_accounts` | `user` | Cuentas visibles con moneda y saldo, cuál es la de por defecto y el dinero total en las dos monedas. |
+| `add_income` | `user`, `amount`; opcionales `currency`, `account`, `date`, `description` | Registra un ingreso en una cuenta. No lo bloquea un mes cerrado. En una cuenta de oro, `amount` son gramos (sin `currency` ni `add_to_budget`). |
+| `list_accounts` | `user` | Cuentas visibles con moneda y saldo, cuál es la de por defecto y el dinero total en las dos monedas. Las de oro, en gramos, con el precio del oro y si quedan fuera del total por no tenerlo. |
 
-Las cuentas se dicen por su nombre (sin distinguir mayúsculas ni acentos; vale un comienzo que no sea ambiguo) o por su id. Desde el MCP no se crean cuentas, tasas ni presupuesto, ni se editan o borran registros: eso se hace en la web.
+Las cuentas se dicen por su nombre (sin distinguir mayúsculas ni acentos; vale un comienzo que no sea ambiguo) o por su id. Desde el MCP no se crean cuentas, tasas ni presupuesto, ni se cambian ajustes (tampoco el precio del oro), ni se editan o borran registros: eso se hace en la web. Una cuenta de oro no vale para `add_transaction` ni `add_transfer`.
 
 **`user`** es el id de la persona (`frank`, `eda`) y es obligatorio cuando hay más de un usuario configurado; con uno solo se puede omitir. Si falta o no existe, la herramienta responde con un error que lista los usuarios válidos y no registra nada. Al modelo se le indica que pregunte cuando no esté claro de quién son las finanzas, así que conviene que cada persona lo deje dicho en las instrucciones de su proyecto de Claude («mi usuario de FE Finance es `eda`»). Cada respuesta nombra a la persona («Recorded for Eda: …»).
 

@@ -6,12 +6,24 @@
 // en la fecha de cada fila, y cada cifra convertida lleva una nota (RateNote) cuando esa tasa no es una escrita
 // en el mes de la fila.
 
-import { contribIn, convertOn, currentKey, defaultAccount, goalsProgress, incomeRows, rateFor, sortedIncomes, visibleAccounts } from '../../../shared/calc';
+import {
+  contribIn,
+  convertOn,
+  currentKey,
+  defaultAccount,
+  goalsProgress,
+  incomeRows,
+  isMoneyIncome,
+  moneyAccounts,
+  rateFor,
+  sortedIncomes,
+  visibleAccounts,
+} from '../../../shared/calc';
 import type { GoalProgress, IncomeRow } from '../../../shared/calc';
-import { MAX_LEN } from '../../../shared/constants';
-import { f0, f2, fPct } from '../../../shared/format';
+import { GOLD, isGold, MAX_LEN } from '../../../shared/constants';
+import { f0, f2, fGrams, fPct } from '../../../shared/format';
 import { isISODate, monthOf } from '../../../shared/month';
-import type { AppState, Currency, Goal, ISODate, Language, MonthKey } from '../../../shared/types';
+import type { AccountCurrency, AppState, Currency, Goal, ISODate, Language, MonthKey } from '../../../shared/types';
 import { createI18n, translator } from '../../i18n';
 import type { ContributionInput } from '../../store';
 import { AHORROS } from './strings';
@@ -179,7 +191,7 @@ export function incomeRowView(r: IncomeRow, lang: Language, incomeFallback = fal
 }
 
 export function incomeRowViews(state: AppState, lang: Language): IncomeRowView[] {
-  return incomeRows(state).map((r) => incomeRowView(r, lang, usesFallback(state, r.key, state.incomes), usesFallback(state, r.key, state.contribs)));
+  return incomeRows(state).map((r) => incomeRowView(r, lang, usesFallback(state, r.key, state.incomes.filter(isMoneyIncome)), usesFallback(state, r.key, state.contribs)));
 }
 
 // ── Ingresos, uno por uno ────────────────────────────────────────────────────
@@ -193,23 +205,29 @@ export interface IncomeItemView {
   amount: number;
   /** El mismo monto con formato, para el nombre del botón de eliminar. */
   amountText: string;
-  cur: Currency;
+  /** XAU en un ingreso a una cuenta de oro: el monto son gramos, sin moneda que elegir ni presupuesto que subir. */
+  cur: AccountCurrency;
   /** true: además de entrar a la cuenta, sube el presupuesto del mes de su fecha (la casilla "Adds to budget"). */
   budget: boolean;
-  /** En la moneda principal, con la tasa vigente en su fecha. */
+  /** En la moneda principal, con la tasa vigente en su fecha. Una raya si son gramos de oro: no son dinero cobrado. */
   main: string;
   mainNote: RateNote;
 }
 
 /**
  * Del más reciente al más antiguo; los de un mismo día quedan en el orden en que se registraron. Con `monthKey`,
- * solo los que tienen fecha en ese mes (la tarjeta "Income" de la hoja del mes).
+ * solo los que tienen fecha en ese mes (la tarjeta "Income" de la hoja del mes) y solo los de dinero: los gramos
+ * que entran a una cuenta de oro se ven en Savings, no en la hoja del mes.
  */
 export function incomeItems(state: AppState, lang: Language, monthKey?: MonthKey): IncomeItemView[] {
   const main = state.mainCurrency;
   const all = sortedIncomes(state);
-  return (monthKey === undefined ? all : all.filter((i) => monthOf(i.date) === monthKey)).map((i) => {
+  return (monthKey === undefined ? all : all.filter(isMoneyIncome).filter((i) => monthOf(i.date) === monthKey)).map((i) => {
     const key = monthOf(i.date);
+    if (!isMoneyIncome(i)) {
+      const base = { id: i.id, date: i.date, desc: i.desc, accountId: i.accountId, amount: i.amount, cur: i.cur, budget: false };
+      return { ...base, amountText: fGrams(i.amount), main: '—', mainNote: NO_NOTE };
+    }
     return {
       id: i.id,
       date: i.date,
@@ -252,33 +270,31 @@ export interface IncomeDraftView {
   /** '' solo si el usuario no tiene ninguna cuenta. */
   accountId: string;
   amount: number;
-  cur: Currency;
+  /** XAU si la cuenta es de oro: el monto son gramos. */
+  cur: AccountCurrency;
   budget: boolean;
 }
 
 /**
  * Lo que muestra la fila de agregar. Una cuenta que ya no se ofrece (se ocultó o se eliminó) se cambia por la
  * cuenta por defecto. Sin moneda elegida va la de la cuenta. `today` es la fecha que se propone: hoy en Savings; en
- * la hoja del mes, la de sus filas de agregar (useFinanzas().draftDate).
+ * la hoja del mes, la de sus filas de agregar (useFinanzas().draftDate). Con `gold` (Savings) se ofrecen también
+ * las cuentas de oro: en una de ellas el ingreso son gramos (XAU) y no sube el presupuesto, diga lo que diga el borrador.
  */
-export function resolveIncomeDraft(draft: IncomeDraft, state: AppState, today: ISODate): IncomeDraftView {
-  const account = visibleAccounts(state).find((a) => a.id === draft.accountId) ?? defaultAccount(state);
-  return {
-    date: draft.date ?? today,
-    desc: draft.desc,
-    accountId: account?.id ?? '',
-    amount: draft.amount,
-    cur: draft.cur ?? account?.currency ?? state.mainCurrency,
-    budget: draft.budget,
-  };
+export function resolveIncomeDraft(draft: IncomeDraft, state: AppState, today: ISODate, gold = false): IncomeDraftView {
+  const offered = gold ? visibleAccounts(state) : moneyAccounts(state);
+  const account = offered.find((a) => a.id === draft.accountId) ?? defaultAccount(state);
+  const base = { date: draft.date ?? today, desc: draft.desc, accountId: account?.id ?? '', amount: draft.amount };
+  if (account && isGold(account.currency)) return { ...base, cur: GOLD, budget: false };
+  return { ...base, cur: draft.cur ?? account?.currency ?? state.mainCurrency, budget: draft.budget };
 }
 
 /**
  * El ingreso listo para guardar, o null si no se puede agregar: hace falta una cuenta, una fecha válida y un monto
  * mayor que 0. La descripción es opcional (va sin espacios sobrantes) y no puede pasar del largo que admite la API.
  */
-export function incomeDraftInput(draft: IncomeDraft, state: AppState, today: ISODate): IncomeDraftView | null {
-  const input = resolveIncomeDraft(draft, state, today);
+export function incomeDraftInput(draft: IncomeDraft, state: AppState, today: ISODate, gold = false): IncomeDraftView | null {
+  const input = resolveIncomeDraft(draft, state, today, gold);
   const desc = input.desc.trim();
   const ok = input.accountId !== '' && isISODate(input.date) && Number.isFinite(input.amount) && input.amount > 0 && desc.length <= MAX_LEN.desc;
   return ok ? { ...input, desc } : null;

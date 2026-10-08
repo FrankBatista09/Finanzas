@@ -31,7 +31,7 @@ export function IncomesCard() {
           </>
         }
       />
-      <IncomeTable label={s('incomesTitle')} rows={incomeItems(state, lang)} empty={EMPTY_INCOME} date={today} />
+      <IncomeTable label={s('incomesTitle')} rows={incomeItems(state, lang)} empty={EMPTY_INCOME} date={today} gold />
     </Card>
   );
 }

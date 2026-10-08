@@ -1628,6 +1628,7 @@ describe('month_summary', () => {
         { id: 'dr', name: 'DR account', currency: 'DOP', balance: near(220641.93), inMain: near(220641.93) },
       ],
       totalMoney: { main: near(1012844.25), second: near(13482 + 220641.93 / 58.76) },
+      gold: { price: null, excludedFromTotal: false },
       rates: [{ from: 'USD', to: 'DOP', rate: 58.76, source: 'month', monthKey: '2026-10', date: '2026-10-06', note: 'typed on 2026-10-06' }],
       typedRates: [
         { from: 'USD', to: 'DOP', rate: 58.76, date: '2026-10-01' },
@@ -2717,6 +2718,7 @@ describe('list_accounts', () => {
         { id: 'dr', name: 'DR account', currency: 'DOP', balance: b.accounts[1]!.balance, inMain: b.accounts[1]!.inMain, inSecond: b.accounts[1]!.inSecond, isDefault: true },
       ],
       totalMoney: { main: b.totalMain, second: b.totalSecond },
+      gold: { price: null, excludedFromTotal: false },
       hiddenCount: 0,
       rates: [{ from: 'USD', to: 'DOP', rate: 58.76, source: 'month', monthKey: '2026-10', date: '2026-10-06', note: 'typed on 2026-10-06' }],
     });

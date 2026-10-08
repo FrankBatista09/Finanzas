@@ -78,13 +78,14 @@ const EMPTY: AppState = {
   secondCurrency: DEFAULT_SECOND_CURRENCY,
   defaultAccountId: null,
   defaultRate: DEFAULT_RATE,
+  goldPrice: null,
   theme: null,
   language: 'en',
 };
 
 const emptyMonth = (key: string): Month => ({ key, closed: false, closedAt: null, budgetLog: [], budgets: {}, rates: [], fixed: [], transfers: [], tx: [] });
 
-const DEFAULT_SETTINGS = { theme: null, language: 'en', mainCurrency: 'DOP', secondCurrency: 'USD', defaultAccountId: null };
+const DEFAULT_SETTINGS = { theme: null, language: 'en', mainCurrency: 'DOP', secondCurrency: 'USD', defaultAccountId: null, goldPrice: null };
 
 const invalid = { status: 400, code: 'validation' };
 const notFound = { status: 404, code: 'not_found' };
@@ -1867,7 +1868,7 @@ describe('applyImport', () => {
     const before = settings();
     await applyImport(db, F, { ...empty, months: [month('2026-10', false)] });
     expect(settings()).toEqual(before);
-    expect(await getSettings(db, F)).toEqual({ theme, language: 'tr', mainCurrency: 'TRY', secondCurrency: 'USD', defaultAccountId: 'us' });
+    expect(await getSettings(db, F)).toEqual({ theme, language: 'tr', mainCurrency: 'TRY', secondCurrency: 'USD', defaultAccountId: 'us', goldPrice: null });
   });
 
   it('respeta closed: un mes que ya estaba cerrado conserva su fecha de cierre; si llega abierto, se reabre', async () => {

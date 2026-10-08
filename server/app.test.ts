@@ -66,11 +66,12 @@ const arrivedState = (language: AppState['language'] = 'en'): AppState => ({
   secondCurrency: 'USD',
   defaultAccountId: null,
   defaultRate: DEFAULT_RATE,
+  goldPrice: null,
   theme: null,
   language,
 });
 
-const DEFAULT_SETTINGS: SettingsResponse = { theme: null, language: 'en', mainCurrency: 'DOP', secondCurrency: 'USD', defaultAccountId: null };
+const DEFAULT_SETTINGS: SettingsResponse = { theme: null, language: 'en', mainCurrency: 'DOP', secondCurrency: 'USD', defaultAccountId: null, goldPrice: null };
 
 const unknownAccount = (id: string) => ({ code: 'validation', message: `Unknown account "${id}".` });
 
@@ -428,7 +429,7 @@ describe('PATCH /api/settings', () => {
       expect(r.error?.code).toBe('validation');
     }
     expect((await api.patch('/api/settings', {})).error?.message).toBe(
-      'Invalid data: nothing to change: send theme, language, mainCurrency, secondCurrency or defaultAccountId',
+      'Invalid data: nothing to change: send theme, language, mainCurrency, secondCurrency, defaultAccountId or goldPrice',
     );
     expect((await api.patch('/api/settings', { language: 'fr' })).error?.message).toBe('Invalid data: language: must be one of: en, es, tr');
     expect((await api.patch('/api/settings', { mainCurrency: 'EUR' })).error?.message).toBe('Invalid data: mainCurrency: must be DOP, USD or TRY');

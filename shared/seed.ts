@@ -175,6 +175,7 @@ export function seedState(): AppState {
     secondCurrency: 'USD',
     defaultAccountId: 'dr',
     defaultRate: DEFAULT_RATE,
+    goldPrice: null,
     theme: null,
     language: 'en',
     accounts: SEED_ACCOUNTS.map((a) => ({ ...a })),

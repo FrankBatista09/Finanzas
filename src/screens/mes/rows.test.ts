@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { CATS, METHODS } from '../../../shared/constants';
 import { seedState } from '../../../shared/seed';
-import type { Account, AppState, Currency, ISODate, MonthKey } from '../../../shared/types';
+import type { AppState, Currency, ISODate, MonthKey } from '../../../shared/types';
 import { createI18n } from '../../i18n';
 import { accountOptions, inBoth, pairRates } from '../../store';
 import {
@@ -258,7 +258,7 @@ describe('rowAccountOptions', () => {
 });
 
 describe('tasas del mes: qué pares se ven', () => {
-  const acc = (currency: Currency): Pick<Account, 'currency'> => ({ currency });
+  const acc = (currency: Currency): { currency: Currency } => ({ currency });
   const none = { fixed: [], tx: [] };
 
   it('usedCurrencies: la principal, la segunda, las de las cuentas visibles y las de los gastos del mes, en el orden de siempre', () => {

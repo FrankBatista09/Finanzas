@@ -7,10 +7,11 @@
 //  · lo que es del mes entero (gastos fijos, partes del presupuesto, totales) usa la última tasa del mes;
 //  · un saldo se expresa en otra moneda con la última tasa del mes que se está mirando.
 
-import { DEFAULT_USD_RATES } from './constants';
+import { DEFAULT_USD_RATES, isGold } from './constants';
 import { firstDay, monthOf, monthSpan } from './month';
 import type {
   Account,
+  AccountCurrency,
   AppState,
   BudgetEntry,
   BudgetEntryKind,
@@ -46,17 +47,34 @@ export function visibleAccounts(state: AppState): Account[] {
   return state.accounts.filter((a) => !a.hidden).sort((a, b) => a.sort - b.sort);
 }
 
+/** Una cuenta de dinero: en una moneda, no en gramos de oro. */
+export type MoneyAccount = Account & { currency: Currency };
+
+/**
+ * Solo las cuentas de dinero pagan gastos, llevan parte del presupuesto, envían o reciben envíos y pueden ser la
+ * cuenta por defecto. Una de oro guarda gramos: solo tiene saldo inicial e ingresos (en gramos).
+ */
+export function isMoneyAccount(account: Account): account is MoneyAccount {
+  return !isGold(account.currency);
+}
+
+/** Las cuentas visibles de dinero, en su orden: las que se ofrecen en la hoja del mes. */
+export function moneyAccounts(state: AppState): MoneyAccount[] {
+  return visibleAccounts(state).filter(isMoneyAccount);
+}
+
 /**
  * Cuenta de la que sale un gasto cuando no se indica otra: la elegida en Settings si sigue visible; si no,
  * la primera visible en la moneda principal; si no, la primera visible; si no hay visibles, la primera que haya.
+ * Nunca una de oro: null si el usuario no tiene ninguna cuenta de dinero.
  */
-export function defaultAccount(state: AppState): Account | null {
-  const visible = visibleAccounts(state);
+export function defaultAccount(state: AppState): MoneyAccount | null {
+  const visible = moneyAccounts(state);
   return (
     visible.find((a) => a.id === state.defaultAccountId) ??
     visible.find((a) => a.currency === state.mainCurrency) ??
     visible[0] ??
-    [...state.accounts].sort((a, b) => a.sort - b.sort)[0] ??
+    [...state.accounts].sort((a, b) => a.sort - b.sort).filter(isMoneyAccount)[0] ??
     null
   );
 }
@@ -223,6 +241,17 @@ export function convertOn(state: AppState, date: ISODate, amount: number, from: 
   return convert(state, monthOf(date), amount, from, to, date);
 }
 
+/**
+ * Gramos de oro expresados en `to`, con el precio escrito por el usuario (AppState.goldPrice): gramos × precio,
+ * y de la moneda del precio a `to` con la conversión de siempre (la última tasa del mes `key`). null sin precio:
+ * el oro no tiene valor en dinero hasta que alguien lo escribe (no hay precio por defecto).
+ */
+export function goldValue(state: AppState, key: MonthKey, grams: number, to: Currency): number | null {
+  const price = state.goldPrice;
+  if (!price || !(price.amount > 0)) return null;
+  return convert(state, key, (grams || 0) * price.amount, price.currency, to);
+}
+
 /** Lo que entra a la cuenta de destino de un envío, en su moneda. */
 export function transferReceived(t: Pick<Transfer, 'amount' | 'rate'>): number {
   return (t.amount || 0) * (t.rate || 0);
@@ -234,9 +263,14 @@ export interface AccountBalance {
   account: Account;
   /** Saldo en la moneda de la cuenta. */
   balance: number;
-  /** El mismo saldo en la moneda principal y en la segunda, con las tasas del mes que se mira. */
+  /**
+   * El mismo saldo en la moneda principal y en la segunda, con las tasas del mes que se mira. De una cuenta de
+   * oro, sus gramos al precio del oro; 0 si no hay precio (ver `valued`).
+   */
   inMain: number;
   inSecond: number;
+  /** false solo para una cuenta de oro sin precio escrito: `inMain` e `inSecond` no dicen nada y no suma al total. */
+  valued: boolean;
 }
 
 export interface Balances {
@@ -245,6 +279,8 @@ export interface Balances {
   /** Suma de las cuentas visibles: el "Total money". */
   totalMain: number;
   totalSecond: number;
+  /** true si alguna cuenta visible de oro quedó fuera del total porque no hay precio del oro. La interfaz lo avisa. */
+  goldExcluded: boolean;
 }
 
 /**
@@ -255,14 +291,23 @@ export interface Balances {
  * Un movimiento en otra moneda entra o sale convertido con la tasa vigente en su fecha (un gasto fijo, que no
  * tiene fecha, con la última de su mes). Los aportes a metas no mueven saldos (son un apartado). Un movimiento
  * cuya cuenta ya no existe se ignora.
+ * Una cuenta de oro lleva gramos: su saldo inicial más los ingresos en gramos que le entran. En dinero vale lo
+ * que diga el precio del oro (goldValue); sin precio no tiene valor y no suma al total.
  */
 export function balances(state: AppState, asOf: MonthKey): Balances {
   const byId = accountsById(state);
   const sum = new Map<string, number>(state.accounts.map((a) => [a.id, a.opening || 0]));
-  const move = (accountId: string, key: MonthKey, amount: number, cur: Currency, sign: 1 | -1, date?: ISODate) => {
+  const move = (accountId: string, key: MonthKey, amount: number, cur: AccountCurrency, sign: 1 | -1, date?: ISODate) => {
     const acc = byId.get(accountId);
     if (!acc) return;
-    sum.set(acc.id, sum.get(acc.id)! + sign * convert(state, key, amount, cur, acc.currency, date));
+    const to = acc.currency;
+    if (isGold(to) || isGold(cur)) {
+      // Gramos con gramos. Dinero y oro no se mezclan en un movimiento (la API lo rechaza): convertirlo con el
+      // precio de hoy cambiaría los gramos de la cuenta cada vez que se corrige el precio.
+      if (to === cur) sum.set(acc.id, sum.get(acc.id)! + sign * (amount || 0));
+      return;
+    }
+    sum.set(acc.id, sum.get(acc.id)! + sign * convert(state, key, amount, cur, to, date));
   };
 
   for (const inc of state.incomes) {
@@ -286,19 +331,26 @@ export function balances(state: AppState, asOf: MonthKey): Balances {
     .sort((a, b) => a.sort - b.sort)
     .map((account) => {
       const balance = sum.get(account.id)!;
-      return {
-        account,
-        balance,
-        inMain: convert(state, asOf, balance, account.currency, state.mainCurrency),
-        inSecond: convert(state, asOf, balance, account.currency, state.secondCurrency),
-      };
+      const cur = account.currency;
+      const inCur = (to: Currency) => (isGold(cur) ? goldValue(state, asOf, balance, to) : convert(state, asOf, balance, cur, to));
+      const inMain = inCur(state.mainCurrency);
+      const inSecond = inCur(state.secondCurrency);
+      return { account, balance, inMain: inMain ?? 0, inSecond: inSecond ?? 0, valued: inMain !== null && inSecond !== null };
     });
   const visible = accounts.filter((a) => !a.account.hidden);
   return {
     accounts,
     totalMain: visible.reduce((a, b) => a + b.inMain, 0),
     totalSecond: visible.reduce((a, b) => a + b.inSecond, 0),
+    goldExcluded: visible.some((a) => !a.valued),
   };
+}
+
+/** El saldo de una cuenta de dinero. */
+export type MoneyBalance = AccountBalance & { account: MoneyAccount };
+
+export function isMoneyBalance(b: AccountBalance): b is MoneyBalance {
+  return isMoneyAccount(b.account);
 }
 
 /**
@@ -324,7 +376,7 @@ export interface CategorySum {
 export const FIXED_CATEGORY = 'Fixed expenses';
 
 export interface BudgetPart {
-  account: Account;
+  account: MoneyAccount;
   /** Parte del presupuesto que sale de esta cuenta, en su moneda: fromLog + fromIncomes + fromTransfers. */
   amount: number;
   /** Lo que viene del registro del presupuesto (Month.budgetLog): es lo que se edita con PATCH { budgets }. */
@@ -389,9 +441,21 @@ export interface MonthCalc {
   catMax: number;
 }
 
-/** Ingresos con fecha en ese mes, sumados en `to`, cada uno con la tasa vigente en su fecha. */
+/** Un ingreso de dinero (no gramos de oro). */
+export type MoneyIncome = Income & { cur: Currency };
+
+export function isMoneyIncome(income: Income): income is MoneyIncome {
+  return !isGold(income.cur);
+}
+
+/**
+ * Ingresos con fecha en ese mes, sumados en `to`, cada uno con la tasa vigente en su fecha. Los gramos que entran
+ * a una cuenta de oro no cuentan: no son dinero cobrado, y valorarlos con el precio de hoy cambiaría el ingreso
+ * de meses pasados cada vez que se corrige el precio.
+ */
 export function incomeInMonth(state: AppState, key: MonthKey, to: Currency = state.mainCurrency): number {
   return state.incomes
+    .filter(isMoneyIncome)
     .filter((i) => monthOf(i.date) === key)
     .reduce((a, i) => a + convert(state, key, i.amount, i.cur, to, i.date), 0);
 }
@@ -424,12 +488,12 @@ export function budgetsFromLog(log: readonly Pick<BudgetEntry, 'accountId' | 'am
 }
 
 /** Los ingresos que suben el presupuesto de ese mes: los de `budget: true` con fecha en él. */
-export function budgetIncomes(state: AppState, key: MonthKey): Income[] {
-  return state.incomes.filter((i) => i.budget && monthOf(i.date) === key);
+export function budgetIncomes(state: AppState, key: MonthKey): MoneyIncome[] {
+  return state.incomes.filter(isMoneyIncome).filter((i) => i.budget && monthOf(i.date) === key);
 }
 
 /** Lo que un ingreso con `budget: true` le suma a la parte de `account`: su monto en la moneda de la cuenta, a la tasa de su fecha. */
-function incomeInAccount(state: AppState, income: Income, account: Account): number {
+function incomeInAccount(state: AppState, income: MoneyIncome, account: MoneyAccount): number {
   return convertOn(state, income.date, income.amount, income.cur, account.currency);
 }
 
@@ -448,7 +512,7 @@ export function budgetTransfers(state: AppState, key: MonthKey): Transfer[] {
  */
 export function budgetRaised(state: AppState, key: MonthKey, accountId: string): number {
   const account = accountsById(state).get(accountId);
-  if (!account || !state.months[key]) return 0;
+  if (!account || !isMoneyAccount(account) || !state.months[key]) return 0;
   const incomes = budgetIncomes(state, key)
     .filter((i) => i.accountId === accountId)
     .reduce((a, i) => a + incomeInAccount(state, i, account), 0);
@@ -465,7 +529,7 @@ export interface BudgetHistoryRow {
   id: string;
   date: ISODate;
   /** La cuenta del movimiento o del ingreso; en un envío, la de destino. */
-  account: Account;
+  account: MoneyAccount;
   /**
    * En la moneda de la cuenta (un ingreso en otra moneda, ya convertido a la tasa de su fecha; de un envío, lo
    * recibido: monto × tasa). Puede ser negativo.
@@ -488,7 +552,8 @@ export interface BudgetHistoryRow {
 export function budgetHistory(state: AppState, key: MonthKey): BudgetHistoryRow[] {
   const m = state.months[key];
   if (!m) return [];
-  const byId = accountsById(state);
+  // El presupuesto es dinero: lo de una cuenta de oro no cuenta (la API no deja escribirlo).
+  const byId = new Map(state.accounts.filter(isMoneyAccount).map((a) => [a.id, a]));
   const rows: Omit<BudgetHistoryRow, 'inMain' | 'total'>[] = [];
   for (const e of m.budgetLog) {
     const account = byId.get(e.accountId);
@@ -568,7 +633,8 @@ export function monthCalc(state: AppState, key: MonthKey): MonthCalc {
   const raising = budgetIncomes(state, key);
   // Un envío solo sube la parte de la cuenta a la que llega; a la de origen no le resta nada.
   const arriving = budgetTransfers(state, key);
-  const budgetParts: BudgetPart[] = [...state.accounts]
+  const budgetParts: BudgetPart[] = state.accounts
+    .filter(isMoneyAccount)
     .sort((a, b) => a.sort - b.sort)
     .map((account) => {
       const log = fromLog[account.id] ?? 0;
