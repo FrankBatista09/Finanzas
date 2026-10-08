@@ -73,6 +73,11 @@
   overflow: hidden;
 }
 
+/* El precio del gramo de oro: su propio marco, separado de las cuentas. */
+.goldPrice {
+  margin-top: 8px;
+}
+
 /* El marco ya cierra la tabla por abajo. */
 .accounts tr:last-child > td {
   border-bottom: 0;
