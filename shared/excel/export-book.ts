@@ -2,6 +2,7 @@
 // Port de design_handoff/referencia/excel-export.js. La salida tiene que ser idéntica byte a byte a la del
 // script original (ver export.test.ts), así que el orden en que se registran los estilos y los textos
 // compartidos es parte del contrato: no reordenar ni "mejorar" el XML.
+// Aquí no hay textos que dependan del idioma: todos llegan desde export.ts, que los toma de un ExcelLocale.
 
 export const XML_DECL = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
 export const NS_MAIN = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main';
@@ -12,7 +13,13 @@ export const NS_PKG_REL = 'http://schemas.openxmlformats.org/package/2006/relati
 
 /** Escapa texto para XML. No toca las comillas: quien lo ponga en un atributo las escapa aparte. */
 export function esc(s: string): string {
-  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  // XML 1.0 no admite caracteres de control (salvo tab, salto de línea y retorno) ni U+FFFE/U+FFFF: un texto
+  // pegado desde otra app que traiga uno dejaría el libro corrupto, así que se quitan.
+  return String(s)
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]/g, '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
 }
 
 /** Índice de columna (0 = A) → letras: 0 → 'A', 26 → 'AA'. */
@@ -30,7 +37,7 @@ export function colL(n: number): string {
 /** 'C10' → [2, 10]: columna desde 0, fila desde 1. */
 export function parse(ref: string): [col: number, row: number] {
   const m = /^([A-Z]+)(\d+)$/.exec(ref);
-  if (!m) throw new Error(`Referencia de celda inválida: ${ref}`);
+  if (!m) throw new Error(`Invalid cell reference: ${ref}`);
   const [, letters = '', digits = ''] = m;
   let c = 0;
   for (const ch of letters) c = c * 26 + (ch.charCodeAt(0) - 64);
@@ -305,7 +312,7 @@ export interface RichText {
 /** Valor de una celda. null y '' dejan la celda vacía (solo con estilo). */
 export type CellValue = string | number | null | Formula | RichText;
 
-interface Cell {
+export interface Cell {
   v: CellValue;
   sp: StyleSpec;
 }
@@ -489,13 +496,13 @@ export class Sheet {
           .map(([c, { v, sp }]) => {
             const ref = colL(c) + r;
             const s = this.book.xfOf(sp);
-            if (v === null || v === '') return `<c r="${ref}" s="${s}"/>`;
+            if (v === undefined || v === null || v === '') return `<c r="${ref}" s="${s}"/>`;
             if (typeof v === 'number') return `<c r="${ref}" s="${s}"><v>${v}</v></c>`;
-            if (typeof v === 'string') {
-              return `<c r="${ref}" s="${s}" t="s"><v>${this.book.si(`<t xml:space="preserve">${esc(v)}</t>`)}</v></c>`;
+            if (typeof v === 'object') {
+              if ('f' in v) return `<c r="${ref}" s="${s}"><f>${esc(v.f)}</f></c>`;
+              return `<c r="${ref}" s="${s}" t="s"><v>${this.book.si(v.rich)}</v></c>`;
             }
-            if ('f' in v) return `<c r="${ref}" s="${s}"><f>${esc(v.f)}</f></c>`;
-            return `<c r="${ref}" s="${s}" t="s"><v>${this.book.si(v.rich)}</v></c>`;
+            return `<c r="${ref}" s="${s}" t="s"><v>${this.book.si(`<t xml:space="preserve">${esc(v)}</t>`)}</v></c>`;
           })
           .join('');
         const ht = this.rowHt[r] ? ` ht="${this.rowHt[r]}" customHeight="1"` : '';

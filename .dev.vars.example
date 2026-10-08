@@ -3,3 +3,5 @@
 API_TOKEN=dev-token-cambiar
 # Habilita /api/dev/* (datos de ejemplo / empezar en blanco). Nunca activar en producción.
 ALLOW_DEV_RESET=1
+# Los usuarios (USERS) se definen en wrangler.toml [vars]; para probar otra lista en local, descomentar:
+# USERS=frank:Frank,eda:Eda

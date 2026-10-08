@@ -1,0 +1,17 @@
+/* Monto de un envío: el campo y, pegado a su derecha, el código de la moneda de la cuenta de origen. */
+.withCode {
+  display: flex;
+  align-items: center;
+}
+
+.code {
+  padding-right: 8px;
+  font: var(--fs-label) var(--font-mono);
+  color: var(--text-muted);
+}
+
+/* Código de moneda detrás de una cifra calculada ("Recibido"). */
+.unit {
+  font-size: var(--fs-label);
+  color: var(--text-muted);
+}

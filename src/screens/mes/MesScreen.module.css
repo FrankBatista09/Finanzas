@@ -1,0 +1,43 @@
+/* Gastos mensuales a la izquierda; categorías, tasas y envíos a la derecha. Cuando no caben, se apilan (flex-wrap). */
+.columns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--gap-20);
+  align-items: flex-start;
+}
+
+/* min-width: 0 deja que la tarjeta encoja por debajo del ancho de su tabla, que entonces hace scroll. */
+.fixed {
+  flex: 1 1 600px;
+  min-width: 0;
+}
+
+.side {
+  flex: 1 1 380px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-20);
+}
+
+.footer {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* "Eliminar mes": un texto atenuado sobre el fondo de la página (tokens --page-*), que solo se pone rojo al ir a usarlo. */
+.deleteMonth {
+  padding: 2px 0;
+  border: 0;
+  background: transparent;
+  color: var(--page-text-muted);
+  font: var(--fs-meta) var(--font-ui);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.deleteMonth:hover,
+.deleteMonth:focus-visible {
+  color: var(--error);
+}

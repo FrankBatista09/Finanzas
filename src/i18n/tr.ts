@@ -1,0 +1,186 @@
+// Textos comunes en turco. Los términos clave (Ay, Birikimler, Bütçe, Kur, Kalan, Hesap, Transfer…) son los
+// acordados para toda la app; el resto busca un turco de interfaz natural y breve. Pendiente de revisión por un
+// hablante nativo.
+
+import type { Shape } from './define';
+import type { en } from './en';
+
+export const tr: Shape<typeof en> = {
+  // ── Compartidos por las pantallas ──────────────────────────────────────────
+  add: 'Ekle',
+  delete: 'Sil',
+  deleteNamed: 'Sil: {name}',
+  cancel: 'İptal',
+  save: 'Kaydet',
+  edit: 'Düzenle',
+  close: 'Kapat',
+  actions: 'Eylemler',
+  date: 'Tarih',
+  amount: 'Tutar',
+  currency: 'Para birimi',
+  currencyShort: 'Birim',
+  month: 'Ay',
+  year: 'Yıl',
+  rate: 'Kur',
+  goal: 'Hedef',
+  income: 'Gelir',
+  savings: 'Birikimler',
+  transactions: 'İşlemler',
+  used: 'Kullanılan',
+  available: 'Kalan',
+  closeMonth: '{month} ayını kapat',
+  description: 'Açıklama',
+  total: 'Toplam',
+  budget: 'Bütçe',
+  account: 'Hesap',
+  accounts: 'Hesaplar',
+  balance: 'Bakiye',
+  from: 'Nereden',
+  to: 'Nereye',
+  received: 'Alınan',
+  monthRates: 'Ay kurları',
+  addRate: 'Kur ekle',
+  addIncome: 'Gelir ekle',
+  incomeByMonth: 'Aylara göre gelir',
+  saved: 'Biriken',
+  pctSaved: 'Birikim oranı',
+  deleteMonth: 'Ayı sil',
+
+  // ── De dónde salió una tasa ────────────────────────────────────────────────
+  rateTyped: 'bu ay için girildi',
+  rateFromTransfers: 'bu ayın transferlerinden',
+  rateCrossed: '{currency} üzerinden çapraz kur',
+  rateFromMonth: '{month} ayından',
+  rateDefault: 'varsayılan değer, henüz girilmedi',
+
+  // ── Carga y error de conexión ──────────────────────────────────────────────
+  loading: 'Yükleniyor…',
+  bootErrorTitle: 'Sunucuya ulaşılamadı',
+  bootErrorText: 'Bağlantınızı kontrol edip tekrar deneyin. Oturumun süresi dolduysa sayfayı yenileyin.',
+  retry: 'Tekrar dene',
+  retrying: 'Tekrar deneniyor…',
+
+  // ── Barra superior ─────────────────────────────────────────────────────────
+  subtitleCurrent: 'Bu ay',
+  subtitleClosed: 'Ay özeti',
+  user: 'Kullanıcı',
+  prevMonth: 'Önceki ay',
+  nextMonth: 'Sonraki ay',
+  monthClosedOption: '{month} · kapalı',
+  importExcel: 'Excel içe aktar',
+  excelReading: 'Okunuyor…',
+  excelLoaded: 'Yüklendi: {file}',
+  excelFailed: 'Dosya okunamadı',
+  downloadExcel: 'Excel indir',
+  excel: 'Excel',
+  excelNote: 'Excel dosyası, yeniden tasarlanana kadar USD ve DOP cinsinden, iki hesaplı bir özettir.',
+  monthRate: 'Ay kuru',
+
+  // ── Ajustes ────────────────────────────────────────────────────────────────
+  settings: 'Ayarlar',
+  language: 'Dil',
+  appearance: 'Görünüm',
+  themes: 'Temalar',
+  themeAccent: 'Vurgu',
+  themeHeader: 'Üst çubuk',
+  themeBackground: 'Arka plan',
+  themeReset: 'Varsayılana dön',
+  themeForest: 'Orman',
+  themeOcean: 'Okyanus',
+  themePlum: 'Erik',
+  themeTerracotta: 'Kiremit',
+  themeRose: 'Gül',
+  themeAmber: 'Kehribar',
+  themeSlate: 'Arduvaz',
+  currencies: 'Para birimleri',
+  mainCurrency: 'Ana para birimi',
+  secondCurrency: 'İkinci para birimi',
+  defaultAccount: 'Varsayılan hesap',
+  automatic: 'Otomatik',
+  automaticNamed: 'Otomatik ({name})',
+
+  // ── Panel resumen ──────────────────────────────────────────────────────────
+  summaryOf: '{month} özeti',
+  budgetOf: '{account} bütçesi, {currency} cinsinden',
+  incomeMinusUsed: 'Ay geliri − kullanılan',
+  budgetUsed: 'Kullanılan bütçe',
+  budgetUsedOf: 'Kullanılan bütçe: {budget} {currency} içinden {used}',
+  ofBudget: '/ {budget} {currency}',
+  fixedPaid: 'Ödenen sabitler',
+  fixedPending: 'Bekleyen sabitler',
+  free: 'Serbest',
+  plannedBudget: 'Planlanan bütçe',
+  usedSoFar: 'Bugüne kadar kullanılan',
+  availableAfterFixed: 'Bekleyen sabitlerden sonra kalan',
+  usedIn: '{currency} olarak kullanılan',
+
+  // ── Dinero total y cuentas ─────────────────────────────────────────────────
+  totalMoney: 'Toplam para',
+  moneyByAccount: 'Hesaba göre para',
+  moneyByAccountOf: 'Hesaba göre para: toplam {total} {currency}',
+  accountName: 'Hesap adı',
+  balanceOf: '{account} bakiyesi, {currency} cinsinden',
+  openingBalance: 'Açılış bakiyesi',
+  addAccount: 'Hesap ekle',
+  newAccountName: 'Yeni hesabın adı',
+  newAccountOpening: 'Yeni hesabın açılış bakiyesi',
+  newAccountCurrency: 'Yeni hesabın para birimi',
+  hide: 'Gizle',
+  hideNamed: 'Gizle: {name}',
+  show: 'Göster',
+  showNamed: 'Göster: {name}',
+  hiddenAccounts: 'Gizli hesaplar ({count})',
+  deleteAccount: 'Hesabı sil',
+
+  // ── Modal de cierre de mes ─────────────────────────────────────────────────
+  closeDialogBody:
+    "{next}, aynı aylık giderlerle ve ödenmemiş olarak oluşturulacak. Excel'e de eklensin mi? {next} dahil tüm ayları içeren dosya indirilecek.",
+  closeOnlyPage: 'Yalnızca sayfada',
+  closeWithExcel: "Evet, Excel'e ekle",
+
+  // ── Diálogo de borrar mes ──────────────────────────────────────────────────
+  deleteMonthTitle: '{month} silinsin mi?',
+  deleteMonthBody:
+    'Bu ay; {fixed}, {transactions} ve {transfers} ile birlikte silinir. Hesap bakiyeleri buna göre değişir. Bu işlem geri alınamaz.',
+  // El sustantivo no cambia después de un número: las dos formas son iguales.
+  countFixed: { one: '{count} aylık gider', other: '{count} aylık gider' },
+  countTransactions: { one: '{count} işlem', other: '{count} işlem' },
+  countTransfers: { one: '{count} transfer', other: '{count} transfer' },
+
+  // ── Pestañas y utilidades de desarrollo ────────────────────────────────────
+  sheets: 'Sayfalar',
+  devReset: 'Boş başla',
+  devResetConfirm: 'Boş başlansın mı? {name} adlı kullanıcının sayfadaki tüm verileri silinecek.',
+  devSeed: 'Örnek verileri geri yükle',
+  devSeedConfirm: 'Örnek veriler geri yüklensin mi? {name} adlı kullanıcının değişiklikleri kaybolacak.',
+
+  // ── Avisos ─────────────────────────────────────────────────────────────────
+  dismissNotice: 'Bildirimi kapat',
+  saveFailed: 'Kaydedilemedi. Değişiklik geri alındı.',
+  downloadFailed: 'Excel indirilemedi.',
+  importFailed: 'Excel içe aktarılamadı.',
+  closeFailed: 'Ay kapatılamadı.',
+  deleteMonthFailed: 'Ay silinemedi.',
+  devSeedFailed: 'Örnek veriler geri yüklenemedi.',
+  devResetFailed: 'Boş başlatılamadı.',
+
+  // ── Errores ────────────────────────────────────────────────────────────────
+  errorNetwork: 'Sunucuya ulaşılamadı.',
+  errorValidation: 'Veriler geçerli değil.',
+  errorValidationDetail: 'Veriler geçerli değil: {detail}',
+  errorNotFound: 'Bu kayıt artık yok.',
+  errorMonthClosed: 'Ay kapalı; kayıtları salt okunur.',
+  errorConflict: 'Değişiklik mevcut verilerle çakışıyor.',
+  errorUnauthorized: 'Oturumun süresi doldu. Sayfayı yenileyin.',
+  errorForbidden: 'Erişim izniniz yok.',
+  errorInternal: 'Sunucuda bir sorun oluştu. Tekrar deneyin.',
+  errorUnexpected: 'Beklenmeyen bir hata oluştu.',
+
+  // ── Excel que no se pudo leer ──────────────────────────────────────────────
+  importNotXlsx: 'Dosya bir Excel çalışma kitabı (.xlsx) değil.',
+  importOldFormat: 'Dosya eski bir .xls ya da parola korumalı. Parolasız .xlsx olarak kaydedin.',
+  importTooLarge: 'Dosya içe aktarılamayacak kadar büyük.',
+  importDamaged: '.xlsx dosyası bozuk.',
+  importNoMonthSheets: 'Dosya {app} biçiminde değil: ay sayfası yok.',
+  importUnreadable: 'Dosya okunamadı.',
+};

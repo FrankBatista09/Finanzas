@@ -1,0 +1,197 @@
+/* Panel de ajustes: cuelga de la barra superior, a la derecha. Sin sombra (solo el modal la lleva): lo separa
+   del contenido un borde de tinta. Va posicionado respecto a la barra, no al botón, para no salirse de la
+   pantalla cuando la barra se parte en varias filas. */
+.panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 24px;
+  width: 300px;
+  max-width: calc(100vw - 48px);
+  max-height: 72vh;
+  overflow: auto;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 14px 16px 16px;
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--ink);
+  border-radius: var(--radius-card);
+  font-size: var(--fs-body);
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-10);
+}
+
+.heading {
+  margin: 0;
+  font-size: var(--fs-label);
+  font-weight: 600;
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.languages {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--gap-6);
+}
+
+.presets {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--gap-6);
+}
+
+/* Un ajuste con su nombre encima: moneda principal, segunda moneda, cuenta por defecto. */
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-6);
+}
+
+.currencies {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--gap-6);
+}
+
+/* Códigos de moneda. Va después de .choice (más abajo no: misma especificidad) gracias al selector doble. */
+.choice.code {
+  font: 500 var(--fs-meta) var(--font-mono);
+}
+
+.choice.code.choiceOn {
+  font-weight: 600;
+}
+
+.account {
+  height: 30px;
+  cursor: pointer;
+}
+
+.note {
+  margin: 0;
+  font-size: var(--fs-meta);
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+/* Opción de una lista corta (idioma, tema). La elegida se marca como la celda seleccionada de una hoja de cálculo. */
+.choice {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--gap-8);
+  min-width: 0;
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--border-dashed);
+  background: var(--surface);
+  color: var(--ink);
+  border-radius: var(--radius);
+  font: 500 var(--fs-num) var(--font-ui);
+  cursor: pointer;
+}
+
+.choice:hover {
+  background: var(--track);
+}
+
+.choiceOn {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+  font-weight: 600;
+}
+
+.preset {
+  justify-content: flex-start;
+}
+
+.presetName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Muestra del tema: barra, acento y fondo. */
+.chips {
+  flex: none;
+  display: flex;
+  width: 36px;
+  height: 14px;
+  border: 1px solid var(--border-swatch);
+  box-sizing: border-box;
+}
+
+.chips > span {
+  flex: 1;
+}
+
+.colors {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: var(--gap-8) var(--gap-10);
+}
+
+.colorInput {
+  width: 36px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--border-dashed);
+  border-radius: var(--radius);
+  background: none;
+  cursor: pointer;
+}
+
+.colorInput::-webkit-color-swatch-wrapper {
+  padding: 2px;
+}
+
+.colorInput::-webkit-color-swatch {
+  border: 0;
+  border-radius: 1px;
+}
+
+.colorInput::-moz-color-swatch {
+  border: 0;
+  border-radius: 1px;
+}
+
+.hex {
+  font: var(--fs-meta) var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}
+
+.reset {
+  align-self: flex-end;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font: 500 var(--fs-num) var(--font-ui);
+  cursor: pointer;
+}
+
+.reset:hover:enabled {
+  color: var(--ink);
+}
+
+.reset:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.choice:focus-visible,
+.reset:focus-visible,
+.colorInput:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}

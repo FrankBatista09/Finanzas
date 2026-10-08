@@ -1,0 +1,94 @@
+/* Editores de celda: ocupan toda la celda, sin borde ni fondo, y al enfocarse se marcan como la selección de Excel. */
+
+.input,
+.select {
+  width: 100%;
+  box-sizing: border-box;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: var(--pad-cell);
+  font: inherit;
+  color: inherit;
+  outline: none;
+}
+
+.input:focus,
+.select:focus {
+  box-shadow: var(--focus-ring);
+  background: var(--focus-bg);
+}
+
+.select {
+  cursor: pointer;
+}
+
+.select:disabled,
+.checkbox:disabled {
+  cursor: default;
+}
+
+/* Texto monoespaciado: la columna "Día". */
+.mono {
+  font: var(--fs-num) var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Texto pequeño en la fuente de la UI: la columna "Notas". */
+.small {
+  font: var(--fs-num) var(--font-ui);
+}
+
+.number {
+  text-align: right;
+  font: var(--fs-num) var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.date {
+  padding: 6px 8px;
+  font: var(--fs-meta) var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.selectMono {
+  font: var(--fs-meta) var(--font-mono);
+}
+
+/* Celdas estrechas (envíos, columna de moneda). */
+.dense {
+  padding: 7px 8px;
+}
+
+.checkbox {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.checkbox:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* Tonos. Van al final para ganar a `color: inherit` de la base. */
+.soft {
+  color: var(--text-soft);
+}
+
+.muted {
+  color: var(--text-muted);
+}
+
+.faint {
+  color: var(--text-faint);
+}
+
+.ok {
+  color: var(--accent-text);
+}
+
+.error {
+  color: var(--error);
+}

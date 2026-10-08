@@ -1,0 +1,177 @@
+.bar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: var(--bar);
+  color: var(--bar-text);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 20px;
+  padding: 10px 24px;
+}
+
+/* Marca y, a su lado, el selector de usuario. Ocupa lo que sobre: empuja el resto a la derecha. */
+.lead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  flex: 1 1 auto;
+}
+
+.brand {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.title {
+  margin: 0;
+  font-weight: 700;
+  font-size: var(--fs-brand);
+  letter-spacing: -0.01em;
+}
+
+.subtitle {
+  font-size: var(--fs-meta);
+  color: var(--text-light);
+}
+
+.picker {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* ‹ y › usan la fuente por defecto de los botones del navegador: el prototipo no les pone familia. */
+.step {
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--bar-border);
+  background: transparent;
+  color: var(--bar-text);
+  border-radius: var(--radius);
+  cursor: pointer;
+  font-size: 15px;
+}
+
+.step:hover,
+.upload:hover,
+.settings:hover {
+  background: var(--bar-input);
+}
+
+/* Las dos listas de la barra: usuario y mes. */
+.select {
+  height: 30px;
+  padding: 0 30px 0 12px;
+  border: 1px solid var(--bar-border);
+  background: var(--bar-input);
+  color: var(--bar-text);
+  border-radius: var(--radius);
+  font: 500 var(--fs-body) var(--font-ui);
+  cursor: pointer;
+}
+
+.month {
+  min-width: 190px;
+}
+
+.upload {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--bar-border);
+  border-radius: var(--radius);
+  font: 500 var(--fs-num) var(--font-ui);
+  color: var(--bar-text);
+  cursor: pointer;
+}
+
+/* El input de archivo no se ve, pero sigue en el orden de tabulación (con display:none no se podría usar con teclado). */
+.file {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* El foco de teclado del input oculto se enseña en la etiqueta. */
+.upload:has(.file:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.download {
+  height: 30px;
+  padding: 0 12px;
+  border: 0;
+  background: var(--accent);
+  color: var(--on-accent);
+  border-radius: var(--radius);
+  font: 500 var(--fs-num) var(--font-ui);
+  cursor: pointer;
+}
+
+.download:hover {
+  background: var(--accent-hover);
+}
+
+.settings {
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--bar-border);
+  background: transparent;
+  color: var(--bar-text);
+  border-radius: var(--radius);
+  font: 500 var(--fs-num) var(--font-ui);
+  cursor: pointer;
+}
+
+/* Con el panel abierto. Va después de .settings para ganarle el fondo. */
+.settingsOn {
+  background: var(--bar-input);
+}
+
+.rate {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--fs-meta);
+  color: var(--text-light);
+}
+
+.chip {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--bar-text);
+  background: var(--bar-input);
+  border: 1px solid var(--bar-border);
+  padding: 5px 8px;
+  border-radius: var(--radius);
+}
+
+/* De dónde sale la tasa cuando no es la escrita para el mes (sus envíos, otro mes, cruzada): un apunte atenuado. */
+.rateHint {
+  color: var(--text-light);
+}
+
+/* La tasa es el valor fijo de respaldo: nadie la ha escrito. Se avisa con el mismo color que "pasado de presupuesto". */
+.chipWarn {
+  border-color: var(--banner-over);
+  color: var(--banner-over);
+}
+
+.rateWarn {
+  color: var(--banner-over);
+  font-weight: 600;
+}

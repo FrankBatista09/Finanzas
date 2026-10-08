@@ -1,17 +1,23 @@
-name = "finanzas-personales"
+name = "fe-finance"
 compatibility_date = "2026-09-01"
 pages_build_output_dir = "dist"
 
 # D1: fuente de verdad del histórico.
-# Crear con `npx wrangler d1 create finanzas` y pegar aquí el database_id que devuelve.
+# Creada con `npx wrangler d1 create finanzas`; el database_id es un identificador, no un secreto.
 [[d1_databases]]
 binding = "DB"
 database_name = "finanzas"
-database_id = "00000000-0000-0000-0000-000000000000"
+database_id = "a0d77035-0673-4378-9a0e-5d488dd8480f"
 migrations_dir = "migrations"
 
-# Secrets (no van aquí): `npx wrangler pages secret put API_TOKEN`
-# Variables opcionales para validar el JWT de Cloudflare Access en /api/*:
-# [vars]
-# ACCESS_TEAM_DOMAIN = "tu-equipo.cloudflareaccess.com"
-# ACCESS_AUD = "<Application Audience (AUD) Tag>"
+# Usuarios de la app, cada uno con sus finanzas aparte: pares id:Nombre separados por comas.
+# Para agregar o renombrar a alguien basta editar esta línea y volver a desplegar.
+# El id (antes de los dos puntos) es la clave de sus datos: no cambiarlo una vez que tenga registros.
+[vars]
+USERS = "frank:Frank,eda:Eda"
+
+# No van aquí, sino como secrets del proyecto (`npx wrangler pages secret put <NOMBRE> --project-name fe-finance`):
+#   API_TOKEN            Bearer de /api/ingest/* y /mcp (el que usa Claude).
+#   ACCESS_TEAM_DOMAIN   "<equipo>.cloudflareaccess.com"  } juntos activan la validación del login de
+#   ACCESS_AUD           AUD de la aplicación de Access    } Cloudflare Access en /api/*. Como secrets solo existen
+#                                                            en producción; en local no hay Access que validar.

@@ -14,7 +14,7 @@
     "test:watch": "vitest",
     "db:migrate:local": "wrangler d1 migrations apply finanzas --local",
     "db:migrate:remote": "wrangler d1 migrations apply finanzas --remote",
-    "deploy": "npm run build && wrangler pages deploy"
+    "deploy": "npm run build && wrangler pages deploy --branch main --commit-dirty=true"
   },
   "dependencies": {
     "@fontsource-variable/jetbrains-mono": "^5.3.0",

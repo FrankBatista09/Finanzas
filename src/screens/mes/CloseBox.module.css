@@ -1,0 +1,35 @@
+/* La caja va directamente sobre el fondo de la página, que el usuario puede cambiar: borde y texto usan los tokens --page-*. */
+.box {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--gap-12);
+  padding: var(--pad-card);
+  border: 1px dashed var(--page-border);
+  border-radius: var(--radius-card);
+}
+
+.text {
+  margin: 0;
+  font-size: var(--fs-body);
+  color: var(--page-text-soft);
+  flex: 1 1 320px;
+}
+
+.button {
+  height: 34px;
+  padding: 0 16px;
+  border: 0;
+  background: var(--bar);
+  color: var(--bar-text);
+  border-radius: var(--radius);
+  font: 600 var(--fs-body) var(--font-ui);
+  cursor: pointer;
+}
+
+/* Al pasar el ratón toma el fondo de acento, y con él el color de texto que se lee encima. */
+.button:hover {
+  background: var(--accent);
+  color: var(--on-accent);
+}

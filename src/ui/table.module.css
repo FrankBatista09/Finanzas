@@ -1,0 +1,130 @@
+/* Tabla tipo hoja de cálculo. Los anchos de th son de contenido (content-box), como en el prototipo. */
+
+.scroll {
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-body);
+}
+
+.th {
+  padding: var(--pad-cell);
+  font-weight: 600;
+  font-size: var(--fs-label);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--text-muted);
+  background: var(--th-bg);
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  border-right: 1px solid var(--border-th);
+  text-align: left;
+}
+
+/* Columna sin título (la de eliminar). El prototipo no le pone padding, así que lleva el de 1px del navegador:
+   la columna mide su ancho + 2px, y de eso depende el reparto del resto de la tabla. */
+.thBlank {
+  padding: 1px;
+  border-right: 0;
+}
+
+.td {
+  padding: var(--pad-cell);
+  border-bottom: 1px solid var(--border-row);
+  border-right: 1px solid var(--border-cell);
+}
+
+/* Contiene un editor, que pone su propio padding. */
+.edit {
+  padding: 0;
+}
+
+/* Casilla o "+": centrado. El padding de 1px es el que el navegador da a un td sin estilo, como en el prototipo. */
+.center {
+  padding: 1px;
+  text-align: center;
+}
+
+/* Botón de eliminar: última columna. */
+.action {
+  padding: 1px;
+  text-align: center;
+  border-right: 0;
+}
+
+/* Botón "Agregar" de la fila de agregar. */
+.add {
+  padding: 4px 8px;
+  text-align: right;
+  border-right: 0;
+}
+
+/* Cifra calculada. */
+.num {
+  text-align: right;
+  font-family: var(--font-mono);
+  font-size: var(--fs-num);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Texto monoespaciado (fechas, moneda). */
+.mono {
+  font-family: var(--font-mono);
+  font-size: var(--fs-meta);
+  font-variant-numeric: tabular-nums;
+}
+
+.right {
+  text-align: right;
+}
+
+.alignCenter {
+  text-align: center;
+}
+
+.nowrap {
+  white-space: nowrap;
+}
+
+.medium {
+  font-weight: 500;
+}
+
+.last {
+  border-right: 0;
+}
+
+.unpaid {
+  background: var(--unpaid-row);
+}
+
+.addRow {
+  background: var(--add-row);
+}
+
+.addRow > .td {
+  border-bottom-color: var(--border);
+}
+
+.soft {
+  color: var(--text-soft);
+}
+
+.muted {
+  color: var(--text-muted);
+}
+
+.faint {
+  color: var(--text-faint);
+}
+
+.ok {
+  color: var(--accent-text);
+}
+
+.error {
+  color: var(--error);
+}

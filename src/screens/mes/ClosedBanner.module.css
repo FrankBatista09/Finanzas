@@ -1,0 +1,66 @@
+/* Banner de mes cerrado: la misma barra oscura de la cabecera. */
+.banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--gap-12) var(--gap-20);
+  padding: 14px 18px;
+  background: var(--bar);
+  color: var(--bar-text);
+  border-radius: var(--radius-card);
+}
+
+.heading {
+  flex: 1 1 260px;
+}
+
+.title {
+  margin: 0;
+  font-weight: 600;
+  font-size: var(--fs-title);
+}
+
+.note {
+  font-size: var(--fs-num);
+  color: var(--text-light);
+  margin-top: 2px;
+}
+
+.stats {
+  display: flex;
+  gap: 24px;
+  flex-wrap: wrap;
+  font-size: var(--fs-meta);
+  color: var(--text-light);
+}
+
+.value {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--fs-title);
+  color: var(--bar-text);
+}
+
+/* "Vs. presupuesto". Van después de .value para ganarle el color. */
+.valueOver {
+  color: var(--banner-over);
+}
+
+.valueOk {
+  color: var(--banner-ok);
+}
+
+.reopen {
+  height: 32px;
+  padding: 0 14px;
+  border: 1px solid var(--bar-border-strong);
+  background: transparent;
+  color: var(--bar-text);
+  border-radius: var(--radius);
+  font: 500 var(--fs-body) var(--font-ui);
+  cursor: pointer;
+}
+
+.reopen:hover {
+  background: var(--bar-input);
+}

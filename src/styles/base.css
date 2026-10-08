@@ -1,0 +1,29 @@
+/* Estilos globales: los del <style> del prototipo y nada más.
+   A propósito no hay `* { box-sizing: border-box }`: los anchos de th/td del prototipo son de contenido
+   (width: 44px + padding), y cada input que lo necesita declara su propio border-box. */
+
+body {
+  margin: 0;
+  background: var(--page);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+a {
+  color: var(--accent-text);
+}
+
+a:hover {
+  color: var(--ink);
+}
+
+input[type='number']::-webkit-inner-spin-button {
+  opacity: 0.3;
+}
+
+select {
+  appearance: none;
+  -webkit-appearance: none;
+}
