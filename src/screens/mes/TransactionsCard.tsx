@@ -15,6 +15,8 @@ import {
   CellSelect,
   CellText,
   DeleteButton,
+  Dialog,
+  DialogButton,
   Num,
   SheetTable,
   Td,
@@ -195,6 +197,14 @@ const TxRow = memo(function TxRow({ row: tx, inMain, inSecond, accounts, readOnl
   const s = useStrings(MES);
   // La descripción de la transacción, para las etiquetas de sus celdas ("Amount of Coffee").
   const named = { name: tx.desc };
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState(tx.notes);
+  // Al cerrar se guarda lo editado; al abrir se parte de lo que haya guardado.
+  const close = () => {
+    setOpen(false);
+    if (!readOnly && text !== tx.notes) actions.patchTx(tx.id, { notes: text });
+  };
+  if (!open && text !== tx.notes) setText(tx.notes);
   return (
     <tr>
       <Td kind="edit">
@@ -271,15 +281,59 @@ const TxRow = memo(function TxRow({ row: tx, inMain, inSecond, accounts, readOnl
         {f2(inSecond)}
       </Td>
       <Td kind="edit">
-        <CellText
-          value={tx.notes}
-          onCommit={(notes) => actions.patchTx(tx.id, { notes })}
-          readOnly={readOnly}
-          small
-          tone="muted"
-          maxLength={MAX_LEN.notes}
-          label={s('notesOf', named)}
-        />
+        <div style={{ display: 'flex', alignItems: 'center' }}>
+          <CellText
+            value={tx.notes}
+            onCommit={(notes) => actions.patchTx(tx.id, { notes })}
+            readOnly={readOnly}
+            small
+            tone="muted"
+            maxLength={MAX_LEN.notes}
+            label={s('notesOf', named)}
+          />
+          {/* La celda es estrecha: una descripción larga se abre aparte para leerla o editarla con espacio. */}
+          <button
+            type="button"
+            onClick={() => setOpen(true)}
+            aria-label={s('openNotes', named)}
+            title={s('openNotes', named)}
+            style={{ border: 0, background: 'transparent', color: 'var(--text-faint)', cursor: 'pointer', padding: '0 8px', font: 'inherit' }}
+          >
+            ⋯
+          </button>
+        </div>
+        {open && (
+          <Dialog
+            title={tx.desc}
+            onCancel={close}
+            maxWidth={560}
+            footer={
+              <DialogButton variant="primary" onClick={close}>
+                {s('closeNotes')}
+              </DialogButton>
+            }
+          >
+            <textarea
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              readOnly={readOnly}
+              maxLength={MAX_LEN.notes}
+              rows={10}
+              aria-label={s('notesOf', named)}
+              style={{
+                width: '100%',
+                boxSizing: 'border-box',
+                border: '1px solid var(--border)',
+                borderRadius: 'var(--radius)',
+                padding: '8px 10px',
+                font: 'var(--fs-body)/1.5 var(--font-ui)',
+                color: 'var(--ink)',
+                background: 'var(--focus-bg)',
+                resize: 'vertical',
+              }}
+            />
+          </Dialog>
+        )}
       </Td>
       <Td kind="action">{!readOnly && <DeleteButton onClick={() => actions.removeTx(tx.id)} label={t('deleteNamed', named)} />}</Td>
     </tr>

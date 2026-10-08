@@ -156,18 +156,46 @@ describe('SummaryPanel · Month: el presupuesto', () => {
     has(els(html, 'table'), { 'aria-label': 'Budget' });
   });
 
-  it('una fila por cuenta visible, con su parte editable y su moneda; el presupuesto planeado ya no se escribe', () => {
+  it('una fila por cuenta con parte, con su parte editable, su moneda y su ×; el presupuesto planeado ya no se escribe', () => {
     const html = panel();
-    // Solo las partes son campos: "Planned budget" es su suma.
+    // Solo las partes son campos (más el monto de la fila de agregar): "Planned budget" es su suma.
+    // La US account existe y está visible, pero sin parte este mes no tiene fila.
     const inputs = els(html, 'input');
     expect(inputs.map((i) => [i.type, i.value, i['aria-label']])).toEqual([
-      ['number', '0', 'Budget from US account, in USD'],
       ['number', '70000', 'Budget from DR account, in DOP'],
+      ['number', '', 'Amount of the new budget part'],
     ]);
     expect(inputs.every((i) => i.step === 'any')).toBe(true);
     expect(html).not.toContain('readOnly');
     const rows = [...html.matchAll(/<tr\b[^>]*>(.*?)<\/tr>/g)].map((m) => text(m[1]!).trim());
-    expect(rows).toEqual(['US account USD', 'DR account DOP']);
+    expect(rows).toEqual(['DR account DOP ×', 'US account New account… USD Add']);
+    // La × quita la cuenta del presupuesto (deja su parte en 0).
+    expect(buttonTexts(html)).toEqual(['×', 'Add']);
+    has(els(html, 'button'), { 'aria-label': 'Remove DR account from the budget' });
+  });
+
+  it('la fila de agregar: las cuentas visibles que aún no están en el presupuesto, "New account…" al final, el monto y "Add"', () => {
+    const html = panel();
+    expect(els(html, 'select')).toEqual([expect.objectContaining({ 'aria-label': 'Account to add to the budget' })]);
+    // Arranca en la primera cuenta libre, y enseña su moneda.
+    expect(html).toContain('<option value="us" selected="">US account</option><option value="__new__">New account…</option></select>');
+    has(els(html, 'input'), { placeholder: '0.00', value: '', 'aria-label': 'Amount of the new budget part' });
+
+    // Con varias cuentas libres salen todas las visibles, en su orden; la oculta (sin parte) no se ofrece.
+    const many = panel({ state: manyAccounts() });
+    expect(many).toContain(
+      '<option value="us" selected="">US account</option><option value="tr">TR account</option><option value="__new__">New account…</option></select>',
+    );
+    expect(many).not.toContain('Old savings');
+
+    // Con todas las visibles ya en el presupuesto solo queda "New account…", que lleva a Savings.
+    const state = seedState();
+    state.months['2026-10']!.budgets = { us: 200, dr: 58248 };
+    const full = panel({ state });
+    // Un select de una sola opción no dispararía nada: ahí va un botón.
+    expect(els(full, 'option')).toHaveLength(0);
+    expect(buttonTexts(full)).toEqual(['×', '×', 'New account…', 'Add']);
+    has(els(full, 'button'), { 'aria-label': 'Remove US account from the budget' });
   });
 
   it('las partes en otra moneda suman convertidas con la tasa del mes; una cuenta oculta con parte sigue a la vista', () => {
@@ -179,9 +207,20 @@ describe('SummaryPanel · Month: el presupuesto', () => {
 
     // La US account se oculta: con parte, su fila se queda (suma al total); sin parte, desaparece.
     state.accounts.find((a) => a.id === 'us')!.hidden = true;
-    expect(els(panel({ state }), 'input').map((i) => i['aria-label'])).toEqual(['Budget from US account, in USD', 'Budget from DR account, in DOP']);
+    const withPart = panel({ state });
+    expect(els(withPart, 'input').map((i) => i['aria-label'])).toEqual([
+      'Budget from US account, in USD',
+      'Budget from DR account, in DOP',
+      'Amount of the new budget part',
+    ]);
+    // También la oculta se puede quitar del presupuesto.
+    has(els(withPart, 'button'), { 'aria-label': 'Remove US account from the budget' });
     state.months['2026-10']!.budgets = { dr: 70000 };
-    expect(els(panel({ state }), 'input').map((i) => i['aria-label'])).toEqual(['Budget from DR account, in DOP']);
+    const withoutPart = panel({ state });
+    expect(els(withoutPart, 'input').map((i) => i['aria-label'])).toEqual(['Budget from DR account, in DOP', 'Amount of the new budget part']);
+    // Y, oculta, tampoco se ofrece para agregarla.
+    expect(els(withoutPart, 'option')).toHaveLength(0);
+    expect(buttonTexts(withoutPart)).toContain('New account…');
   });
 
   it('con la lira como moneda principal, todo el panel va en TRY y la línea "≈" en USD', () => {
@@ -199,7 +238,9 @@ describe('SummaryPanel · Month: el presupuesto', () => {
     expect(t).toContain('Used in USD 836.45 USD');
     has(els(html, 'svg'), { 'aria-label': `Budget used: ${f0(c.used)} of ${f0(c.budget)} TRY` });
     // Las partes siguen en la moneda de su cuenta: lo guardado no se convierte.
-    expect(els(html, 'input').map((i) => i.value)).toEqual(['0', '70000']);
+    // (La US account, sin parte, ya no tiene fila; el último campo es el monto vacío de la fila de agregar.)
+    expect(els(html, 'input').map((i) => i.value)).toEqual(['70000', '']);
+    expect(t).toContain('DR account DOP');
     expect(t).not.toContain('DOP ≈');
   });
 
@@ -213,14 +254,29 @@ describe('SummaryPanel · Month: el presupuesto', () => {
     expect(t).toContain('Octubre 2026 Presupuesto planeado 70,000.00');
     expect(t).toContain('Usado hasta hoy 49,149.71 Disponible 20,850.29 Disponible tras fijos pendientes 17,129.43 Usado en USD 836.45 USD');
     const inputs = els(html, 'input');
-    has(inputs, { 'aria-label': 'Presupuesto de US account, en USD' });
     has(inputs, { 'aria-label': 'Presupuesto de DR account, en DOP' });
+    // La US account solo tiene campo cuando tiene parte en el presupuesto del mes.
+    expect(inputs.map((i) => i['aria-label'])).not.toContain('Presupuesto de US account, en USD');
+    const state = seedState();
+    state.months['2026-10']!.budgets = { us: 200, dr: 58248 };
+    has(els(panel({ lang: 'es', state }), 'input'), { 'aria-label': 'Presupuesto de US account, en USD' });
+    // Lo nuevo: quitar una cuenta del presupuesto y la fila para sumar otra.
+    has(inputs, { 'aria-label': 'Monto de la nueva parte del presupuesto' });
+    has(els(html, 'select'), { 'aria-label': 'Cuenta que se suma al presupuesto' });
+    has(els(html, 'button'), { 'aria-label': 'Quitar DR account del presupuesto' });
+    expect(html).toContain('<option value="__new__">Cuenta nueva…</option>');
+    expect(buttonTexts(html)).toEqual(['×', 'Agregar']);
     has(els(html, 'section'), { 'aria-label': 'Resumen de Octubre 2026' });
     has(els(html, 'svg'), { 'aria-label': 'Presupuesto usado: 49,150 de 70,000 DOP' });
   });
 
   it('en turco: los términos acordados y las mismas cifras, con el mismo formato', () => {
-    const t = text(panel({ lang: 'tr' }));
+    const html = panel({ lang: 'tr' });
+    const t = text(html);
+    has(els(html, 'input'), { 'aria-label': 'Yeni bütçe payının tutarı' });
+    has(els(html, 'select'), { 'aria-label': 'Bütçeye eklenecek hesap' });
+    has(els(html, 'button'), { 'aria-label': 'DR account hesabını bütçeden çıkar' });
+    expect(html).toContain('<option value="__new__">Yeni hesap…</option>');
     expect(t).toContain('Bütçe 70,000.00 DOP ≈ 1,191.29 USD');
     // Los nombres de las cuentas los escribe el usuario: no se traducen.
     expect(t).toContain('US account');
@@ -251,10 +307,14 @@ describe('SummaryPanel · Month: el presupuesto', () => {
     expect(+pending!['stroke-dashoffset']!).toBeCloseTo(-(len(fixed!) + len(variable!)), 8);
   });
 
-  it('en un mes cerrado las partes del presupuesto son de solo lectura', () => {
+  it('en un mes cerrado las partes del presupuesto son de solo lectura: sin × y sin fila de agregar', () => {
     const html = panel({ monthKey: '2026-09' });
-    expect(els(html, 'input')).toHaveLength(2);
-    expect(els(html, 'input').filter((i) => 'readOnly' in i)).toHaveLength(2);
+    // Solo la parte de la DR account: la US account no tiene parte en septiembre.
+    expect(els(html, 'input').map((i) => i['aria-label'])).toEqual(['Budget from DR account, in DOP']);
+    expect(els(html, 'input').filter((i) => 'readOnly' in i)).toHaveLength(1);
+    expect(els(html, 'select')).toEqual([]);
+    expect(buttonTexts(html)).toEqual([]);
+    expect(text(html)).not.toContain('New account…');
     expect(text(html)).toContain('September 2026 Planned budget 70,000.00');
   });
 
@@ -414,7 +474,9 @@ describe('SummaryPanel · Savings: el dinero total', () => {
     expect(b.accounts).toHaveLength(4);
     expect(t).toContain(`Total money ${f2(b.totalMain)} DOP`);
     expect(b.totalMain).toBeCloseTo(13482 * 58.76 + 220641.93 + (21000 / 42) * 58.76, 6);
-    expect(buttonTexts(html)).toEqual(['Hide', 'Hide', 'Hide', 'Add account', 'Hidden accounts (1)']);
+    // La TR account no la nombra nada (ni movimientos ni presupuesto): además de ocultarse, se puede eliminar con su ×.
+    expect(buttonTexts(html)).toEqual(['Hide', 'Hide', 'Hide', '×', 'Add account', 'Hidden accounts (1)']);
+    expect(els(html, 'button').map((b) => b['aria-label']).filter((l) => l?.startsWith('Delete '))).toEqual(['Delete TR account']);
     has(els(html, 'button'), { 'aria-expanded': 'false' });
     expect(t).not.toContain('Old savings');
     expect(t).toContain('TR account 29,380.00');
@@ -433,7 +495,8 @@ describe('SummaryPanel · Savings: el dinero total', () => {
     const es = panel({ lang: 'es', state: manyAccounts() });
     expect(text(es)).toContain('Dinero total');
     expect(text(es)).toContain('Dinero por cuenta US account 792,202.32');
-    expect(buttonTexts(es)).toEqual(['Ocultar', 'Ocultar', 'Ocultar', 'Agregar cuenta', 'Cuentas ocultas (1)']);
+    expect(buttonTexts(es)).toEqual(['Ocultar', 'Ocultar', 'Ocultar', '×', 'Agregar cuenta', 'Cuentas ocultas (1)']);
+    has(els(es, 'button'), { 'aria-label': 'Eliminar TR account' });
     has(els(es, 'input'), { 'aria-label': 'Saldo de US account, en USD' });
     has(els(es, 'input'), { placeholder: 'Saldo inicial', 'aria-label': 'Saldo inicial de la nueva cuenta' });
     has(els(es, 'button'), { 'aria-label': 'Ocultar DR account' });
@@ -442,7 +505,8 @@ describe('SummaryPanel · Savings: el dinero total', () => {
     const tr = panel({ lang: 'tr', state: manyAccounts() });
     expect(text(tr)).toContain('Toplam para');
     expect(text(tr)).toContain('Hesaba göre para US account 792,202.32');
-    expect(buttonTexts(tr)).toEqual(['Gizle', 'Gizle', 'Gizle', 'Hesap ekle', 'Gizli hesaplar (1)']);
+    expect(buttonTexts(tr)).toEqual(['Gizle', 'Gizle', 'Gizle', '×', 'Hesap ekle', 'Gizli hesaplar (1)']);
+    has(els(tr, 'button'), { 'aria-label': 'Sil: TR account' });
     has(els(tr, 'input'), { 'aria-label': 'US account bakiyesi, USD cinsinden' });
   });
 

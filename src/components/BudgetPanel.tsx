@@ -1,8 +1,9 @@
 import { donut } from '../../shared/calc';
 import { f0, f2 } from '../../shared/format';
 import { useI18n } from '../i18n';
-import { useFinanzas } from '../store';
-import { CellNumber, cx, SheetTable, Td } from '../ui';
+import { useState } from 'react';
+import { useFinanzas, useShell } from '../store';
+import { AddButton, AddRow, CellNumber, CellSelect, cx, DeleteButton, SheetTable, Td } from '../ui';
 import { Donut, DonutCenter, LegendRow } from './Donut';
 import styles from './SummaryPanel.module.css';
 
@@ -11,8 +12,22 @@ import styles from './SummaryPanel.module.css';
  * usado y lo disponible. Todas las cifras salen de monthCalc (shared/calc.ts), en la moneda principal.
  */
 export function BudgetPanel() {
-  const { monthKey, calc, main, second, readOnly, actions } = useFinanzas();
+  const { monthKey, calc, main, second, readOnly, actions, visibleAccounts } = useFinanzas();
+  const { goToSheet } = useShell();
   const { t, label } = useI18n();
+  // Que una cuenta exista en Savings no la mete en el presupuesto: aquí solo salen las que tienen parte este mes,
+  // y las demás se suman con la fila de abajo.
+  const parts = calc.budgetParts.filter((p) => p.amount !== 0);
+  const free = visibleAccounts.filter((a) => !parts.some((p) => p.account.id === a.id));
+  const NEW = '__new__';
+  const [pick, setPick] = useState('');
+  const [amount, setAmount] = useState(0);
+  const chosen = free.find((a) => a.id === pick) ?? free[0];
+  const add = () => {
+    if (!chosen || !(amount > 0) || !actions.setBudgetPart(chosen.id, amount)) return false;
+    setPick('');
+    setAmount(0);
+  };
   const dn = donut(calc);
   const over = calc.avail < 0;
 
@@ -32,8 +47,8 @@ export function BudgetPanel() {
         <div className={styles.accounts} key={monthKey}>
           <SheetTable label={t('budget')}>
             <tbody>
-              {/* Una fila por cuenta visible y por cualquier oculta que aún tenga parte: suman el total de arriba. */}
-              {calc.budgetParts.map(({ account, amount }) => (
+              {/* Una fila por cuenta con parte este mes (también una oculta que aún la tenga): suman el total de arriba. */}
+              {parts.map(({ account, amount }) => (
                 <tr key={account.id}>
                   <Td tone="soft">{account.name}</Td>
                   <Td kind="edit" className={styles.amountCol}>
@@ -44,11 +59,44 @@ export function BudgetPanel() {
                       label={t('budgetOf', { account: account.name, currency: account.currency })}
                     />
                   </Td>
-                  <Td kind="mono" tone="muted" last>
+                  <Td kind="mono" tone="muted">
                     {account.currency}
+                  </Td>
+                  <Td kind="action" last>
+                    {!readOnly && (
+                      <DeleteButton compact onClick={() => actions.setBudgetPart(account.id, 0)} label={t('removeFromBudget', { name: account.name })} />
+                    )}
                   </Td>
                 </tr>
               ))}
+              {!readOnly && (
+                <AddRow onAdd={add}>
+                  <Td kind="edit">
+                    {free.length > 0 ? (
+                      <CellSelect
+                        value={chosen?.id ?? NEW}
+                        options={[...free.map((a) => ({ value: a.id, label: a.name })), { value: NEW, label: t('newAccountOption') }]}
+                        onCommit={(id) => (id === NEW ? goToSheet('ahorros') : setPick(id))}
+                        label={t('budgetAccount')}
+                      />
+                    ) : (
+                      // Sin cuentas libres un select de una sola opción no dispararía nada: va un botón a Savings.
+                      <button type="button" className={styles.link} style={{ padding: '7px 10px' }} onClick={() => goToSheet('ahorros')}>
+                        {t('newAccountOption')}
+                      </button>
+                    )}
+                  </Td>
+                  <Td kind="edit" className={styles.amountCol}>
+                    <CellNumber value={amount} onCommit={setAmount} blankZero placeholder="0.00" label={t('budgetAmount')} />
+                  </Td>
+                  <Td kind="mono" tone="muted">
+                    {chosen?.currency ?? ''}
+                  </Td>
+                  <Td kind="add" last>
+                    <AddButton />
+                  </Td>
+                </AddRow>
+              )}
             </tbody>
           </SheetTable>
         </div>

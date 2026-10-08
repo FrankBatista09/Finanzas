@@ -268,7 +268,7 @@ describe('mes abierto · October 2026', () => {
     const card = section(html, 'Transaction history', 'Closing the month');
     const ct = text(card);
     expect(ct).toContain('Transaction history 7 transactions · total 10,845.00 DOP');
-    expect(ct).toContain('Date Description Place Category Method Amount Cur. Account DOP USD Notes');
+    expect(ct).toContain('Date Name Place Category Method Amount Cur. Account DOP USD Description');
     expect(els(card, 'table')).toContainEqual(expect.objectContaining({ style: 'min-width:1100px', 'aria-label': 'Transaction history' }));
 
     const inputs = els(card, 'input');
@@ -282,8 +282,8 @@ describe('mes abierto · October 2026', () => {
       '2026-10-02',
       '2026-10-01',
     ]);
-    expect(inputs.filter((i) => i.placeholder).map((i) => i.placeholder)).toEqual(['New transaction', 'Place', '0.00', 'Notes (optional)']);
-    expect(inputs.filter((i) => i['aria-label'] === 'Description').map((i) => i.value)).toEqual([
+    expect(inputs.filter((i) => i.placeholder).map((i) => i.placeholder)).toEqual(['New transaction', 'Place', '0.00', 'Description (optional)']);
+    expect(inputs.filter((i) => i['aria-label'] === 'Name').map((i) => i.value)).toEqual([
       'Coffee',
       'Gas',
       'Pharmacy',
@@ -294,7 +294,11 @@ describe('mes abierto · October 2026', () => {
     ]);
     // Coffee: 385 DOP = 6.55 USD.
     expect(ct).toContain('385.00 6.55');
-    expect(buttons(card)).toEqual(['Add', ...Array<string>(7).fill('×')]);
+    // Cada fila lleva "⋯" (abre su descripción en un diálogo) y su ×.
+    expect(buttons(card)).toEqual(['Add', ...Array<string[]>(7).fill(['⋯', '×']).flat()]);
+    // El diálogo solo se monta al abrirlo.
+    expect(card).not.toContain('<textarea');
+    expect(card).not.toContain('role="dialog"');
     // El borrador arranca en Food / Card, en la cuenta por defecto y en su moneda, con todas las categorías, métodos, monedas y cuentas.
     const draftRow = section(card, '<tbody>', '</tr>');
     expect(draftRow).toContain('<option value="Food" selected="">Food</option><option value="Groceries">Groceries</option>');
@@ -321,7 +325,7 @@ describe('mes abierto · October 2026', () => {
         'Amount of the new transaction',
         'Currency of the new transaction',
         'Account of the new transaction',
-        'Notes of the new transaction',
+        'Description of the new transaction',
         'Date of Coffee',
         'Place of Coffee',
         'Category of Coffee',
@@ -329,10 +333,17 @@ describe('mes abierto · October 2026', () => {
         'Amount of Coffee',
         'Currency of Coffee',
         'Account of Coffee',
-        'Notes of Coffee',
+        'Description of Coffee',
+        'Open the description of Coffee',
         'Delete Coffee',
       ]),
     );
+    // El "⋯" de cada fila dice de qué transacción abre la descripción, también al pasar el cursor.
+    const dots = els(card, 'button').filter((b) => b['aria-label']?.startsWith('Open the description of '));
+    expect(dots.map((b) => b['aria-label'])).toEqual(
+      ['Coffee', 'Gas', 'Pharmacy', 'Movies', 'Lunch', 'Uber to work', 'Weekly groceries'].map((name) => `Open the description of ${name}`),
+    );
+    expect(dots.every((b) => b.title === b['aria-label'] && b.type === 'button')).toBe(true);
   });
 });
 
@@ -415,7 +426,10 @@ describe('mes cerrado · September 2026', () => {
   });
 
   it('sin filas de agregar, sin × y sin caja de cerrar; borrar el mes sigue estando', () => {
-    expect(buttons(html)).toEqual(['Reopen month', 'Delete month']);
+    // Las descripciones se siguen pudiendo abrir para leerlas: un "⋯" por transacción (10 en septiembre).
+    expect(buttons(html)).toEqual(['Reopen month', ...Array<string>(10).fill('⋯'), 'Delete month']);
+    expect(buttons(html)).not.toContain('×');
+    expect(els(html, 'button').filter((b) => b['aria-label']?.startsWith('Open the description of '))).toHaveLength(10);
     expect(t).not.toContain('Closing the month');
     expect(els(html, 'input').filter((i) => i.placeholder && i.placeholder !== '—')).toEqual([]);
     expect(els(html, 'td').filter((td) => 'colSpan' in td)).toEqual([]);
@@ -524,7 +538,7 @@ describe('casos límite', () => {
     const html = render('2026-10', { state });
     const t = text(html);
     expect(t).toContain('Paid Item Day Amount Currency Account USD TRY');
-    expect(t).toContain('Date Description Place Category Method Amount Cur. Account USD TRY Notes');
+    expect(t).toContain('Date Name Place Category Method Amount Cur. Account USD TRY Description');
     // 42,025.57 DOP / 58.76.
     expect(t).toContain('Monthly expenses 6 of 11 paid · total 715.21 USD');
     expect(t).toContain('Transaction history 7 transactions · total 184.56 USD');
@@ -628,7 +642,7 @@ describe('en español', () => {
     expect(t).toContain('Tasas del mes Desde Tasa Hacia 1 USD =');
     expect(t).toContain('Envíos Fecha Vía Desde Monto Hacia Tasa Recibido');
     expect(t).toContain('Historial de transacciones 7 transacciones · total 10,845.00 DOP');
-    expect(t).toContain('Fecha Descripción Lugar Categoría Método Monto Mon. Cuenta DOP USD Notas');
+    expect(t).toContain('Fecha Nombre Lugar Categoría Método Monto Mon. Cuenta DOP USD Descripción');
     expect(t).toContain(
       'Al cerrar el mes se guarda este resumen y se crea Noviembre 2026 con los mismos gastos mensuales, sin marcar como pagados. Cerrar Octubre 2026 Eliminar mes',
     );
@@ -679,7 +693,7 @@ describe('en español', () => {
   it('lo que escribió el usuario no se traduce; las etiquetas y los botones, sí', () => {
     const inputs = els(html, 'input');
     expect(inputs.filter((i) => i['aria-label'] === 'Concepto').map((i) => i.value)).toContain('Health insurance');
-    expect(inputs.filter((i) => i['aria-label'] === 'Descripción').map((i) => i.value)).toContain('Weekly groceries');
+    expect(inputs.filter((i) => i['aria-label'] === 'Nombre').map((i) => i.value)).toContain('Weekly groceries');
     // Sin el «—» de la columna Día, que no es un texto.
     expect(placeholders(inputs)).toEqual([
       'Nuevo gasto mensual',
@@ -691,7 +705,7 @@ describe('en español', () => {
       'Nueva transacción',
       'Lugar',
       '0.00',
-      'Notas (opcional)',
+      'Descripción (opcional)',
     ]);
     const labels = [...inputs, ...els(html, 'select'), ...els(html, 'button')].map((e) => e['aria-label']);
     expect(labels).toEqual(
@@ -716,10 +730,12 @@ describe('en español', () => {
         'Tasa del nuevo envío',
         'Fecha de Coffee',
         'Categoría de Coffee',
-        'Notas de Coffee',
+        'Descripción de Coffee',
+        'Descripción de la nueva transacción',
+        'Abrir la descripción de Coffee',
       ]),
     );
-    expect(new Set(buttons(html))).toEqual(new Set(['×', 'Agregar', 'Agregar tasa', 'Cerrar Octubre 2026', 'Eliminar mes']));
+    expect(new Set(buttons(html))).toEqual(new Set(['×', '⋯', 'Agregar', 'Agregar tasa', 'Cerrar Octubre 2026', 'Eliminar mes']));
     expect(els(html, 'button')).toContainEqual(expect.objectContaining({ title: 'Eliminar' }));
   });
 
@@ -735,7 +751,7 @@ describe('en español', () => {
     expect(text(closed)).toContain(
       'Resumen de Septiembre 2026 Mes cerrado. Los registros quedan de solo lectura. Importes en DOP Ingreso 339,731 Gastado 66,636.54 Ahorrado 205,010 Vs. presupuesto 3,363.46 Reabrir mes',
     );
-    expect(buttons(closed)).toEqual(['Reabrir mes', 'Eliminar mes']);
+    expect(buttons(closed)).toEqual(['Reabrir mes', ...Array<string>(10).fill('⋯'), 'Eliminar mes']);
   });
 });
 
@@ -749,7 +765,7 @@ describe('en turco', () => {
     expect(t).toContain('Ay kurları Nereden Kur Nereye 1 USD =');
     expect(t).toContain('Transferler Tarih Kanal Nereden Tutar Nereye Kur Alınan');
     expect(t).toContain('İşlem geçmişi 7 işlem · toplam 10,845.00 DOP');
-    expect(t).toContain('Tarih Açıklama Yer Kategori Yöntem Tutar Birim Hesap DOP USD Notlar');
+    expect(t).toContain('Tarih Ad Yer Kategori Yöntem Tutar Birim Hesap DOP USD Açıklama');
     expect(t).toContain(
       'Ay kapatıldığında bu özet kaydedilir ve Kasım 2026, aynı aylık giderlerle, ödenmemiş olarak oluşturulur. Ekim 2026 ayını kapat Ayı sil',
     );
@@ -794,7 +810,7 @@ describe('en turco', () => {
       'Yeni işlem',
       'Yer',
       '0.00',
-      'Notlar (isteğe bağlı)',
+      'Açıklama (isteğe bağlı)',
     ]);
     const labels = [...inputs, ...els(html, 'select'), ...els(html, 'button')].map((e) => e['aria-label']);
     expect(labels).toEqual(
@@ -809,9 +825,12 @@ describe('en turco', () => {
         'Kur USD → DOP',
         'Yeni kur',
         'Tarih: Coffee',
+        'Açıklama: Coffee',
+        'Yeni işlemin açıklaması',
+        'Coffee açıklamasını aç',
       ]),
     );
-    expect(new Set(buttons(html))).toEqual(new Set(['×', 'Ekle', 'Kur ekle', 'Ekim 2026 ayını kapat', 'Ayı sil']));
+    expect(new Set(buttons(html))).toEqual(new Set(['×', '⋯', 'Ekle', 'Kur ekle', 'Ekim 2026 ayını kapat', 'Ayı sil']));
     expect(t).toContain('88,140.00 DOP');
     expect(t).toContain('6,228.56 106.00');
   });
@@ -827,7 +846,7 @@ describe('en turco', () => {
     expect(text(closed)).toContain(
       'Eylül 2026 özeti Ay kapalı. Kayıtlar salt okunur. Tutarlar DOP cinsinden Gelir 339,731 Harcanan 66,636.54 Biriken 205,010 Bütçeye göre 3,363.46 Ayı yeniden aç',
     );
-    expect(buttons(closed)).toEqual(['Ayı yeniden aç', 'Ayı sil']);
+    expect(buttons(closed)).toEqual(['Ayı yeniden aç', ...Array<string>(10).fill('⋯'), 'Ayı sil']);
   });
 });
 
