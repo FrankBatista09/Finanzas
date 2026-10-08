@@ -190,7 +190,7 @@ describe('loadState / replaceAll', () => {
       { from: 'USD', to: 'DOP', rate: 59.5, date: '2026-10-06' },
     ];
     other.months['2026-10']!.transfers.push({
-      id: 't-try', monthKey: '2026-10', date: '2026-10-08', via: 'Wise', fromAccountId: 'us', toAccountId: 'tr', amount: 100, rate: 40.2,
+      id: 't-try', monthKey: '2026-10', date: '2026-10-08', via: 'Wise', fromAccountId: 'us', toAccountId: 'tr', amount: 100, rate: 40.2, budget: true,
     });
     delete other.months['2026-08'];
     await replaceAll(db, F, other);
@@ -1503,7 +1503,7 @@ describe('envíos entre cuentas', () => {
   it('sin tasa lleva la del mes para las monedas de las dos cuentas; entre cuentas de la misma moneda, 1', async () => {
     const { db } = await seeded();
     // Octubre tiene escrita 1 USD = 58.76 DOP.
-    expect(await createTransfer(db, F, transfer)).toEqual({ id: expect.any(String), ...transfer, rate: 58.76 });
+    expect(await createTransfer(db, F, transfer)).toEqual({ id: expect.any(String), ...transfer, rate: 58.76, budget: false });
     // En sentido contrario, su inversa.
     const back = await createTransfer(db, F, { ...transfer, fromAccountId: 'dr', toAccountId: 'us', amount: 5876 });
     expect(back.rate).toBeCloseTo(1 / 58.76, 12);

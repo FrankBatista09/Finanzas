@@ -335,11 +335,11 @@ describe('envío: la tasa propuesta', () => {
 
 describe('envío: agregar', () => {
   const ctx = transferContext(seedState());
-  const filled: TransferDraft = { date: '2026-10-02', via: 'PayPal', fromAccountId: 'us', toAccountId: 'dr', amount: 500, rate: 58.9 };
+  const filled: TransferDraft = { date: '2026-10-02', via: 'PayPal', fromAccountId: 'us', toAccountId: 'dr', amount: 500, rate: 58.9, budget: false };
 
-  it('arranca en Remitly, sin monto y con cuentas y tasa sin tocar', () => {
+  it('arranca en Remitly, sin monto, con cuentas y tasa sin tocar y con "Adds to budget" marcada', () => {
     expect(DEFAULT_VIA).toBe('Remitly');
-    expect(newTransferDraft()).toEqual({ date: null, via: 'Remitly', fromAccountId: null, toAccountId: null, amount: 0, rate: null });
+    expect(newTransferDraft()).toEqual({ date: null, via: 'Remitly', fromAccountId: null, toAccountId: null, amount: 0, rate: null, budget: true });
   });
 
   it('necesita monto y tasa mayores que 0 y dos cuentas', () => {
@@ -354,7 +354,7 @@ describe('envío: agregar', () => {
     expect(transferInput({ ...filled, amount: 0 }, '2026-11-01', ctx)).toBeNull();
   });
 
-  it('lo que se manda: fecha, vía, cuentas y tasa ya resueltas (la tasa, la que se ve en el campo)', () => {
+  it('lo que se manda: fecha, vía, cuentas y tasa ya resueltas (la tasa, la que se ve en el campo), y la casilla como esté', () => {
     expect(transferInput(filled, '2026-11-01', ctx)).toEqual({
       date: '2026-10-02',
       via: 'PayPal',
@@ -362,6 +362,7 @@ describe('envío: agregar', () => {
       toAccountId: 'dr',
       amount: 500,
       rate: 58.9,
+      budget: false,
     });
     expect(transferInput({ ...newTransferDraft(), amount: 500 }, '2026-11-01', ctx)).toEqual({
       date: '2026-11-01',
@@ -370,6 +371,7 @@ describe('envío: agregar', () => {
       toAccountId: 'dr',
       amount: 500,
       rate: 58.76,
+      budget: true,
     });
   });
 

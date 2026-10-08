@@ -428,6 +428,7 @@ describe('viaSuggestions', () => {
             toAccountId: 'dr',
             amount: 100,
             rate: 58,
+            budget: false,
           })),
         },
       ]),

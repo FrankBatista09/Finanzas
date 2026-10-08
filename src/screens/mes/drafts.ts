@@ -116,6 +116,8 @@ export interface TransferDraft {
   amount: number;
   /** null = sin tocar: la tasa del mes para las monedas de las dos cuentas, y las sigue si cambian. */
   rate: number | null;
+  /** La casilla "Adds to budget": marcada de entrada, porque lo que se envía suele ser para gastarlo este mes. */
+  budget: boolean;
 }
 
 export interface TransferContext extends Pick<DraftContext, 'accounts' | 'defaultAccount'> {
@@ -139,7 +141,7 @@ function viaOf(draft: TransferDraft): string {
 }
 
 export function newTransferDraft(): TransferDraft {
-  return { date: null, via: DEFAULT_VIA, fromAccountId: null, toAccountId: null, amount: 0, rate: null };
+  return { date: null, via: DEFAULT_VIA, fromAccountId: null, toAccountId: null, amount: 0, rate: null, budget: true };
 }
 
 /** Otra cuenta visible distinta de `than`; mejor una de otra moneda, que es lo que suele ser un envío. */
@@ -237,10 +239,11 @@ export function transferInput(draft: TransferDraft, draftDate: ISODate, ctx: Tra
     toAccountId: to.id,
     amount: draft.amount,
     rate: transferRate(draft, ctx).rate,
+    budget: draft.budget,
   };
 }
 
-/** Solo se limpia el monto: fecha, vía, cuentas y tasa suelen repetirse en el siguiente envío. La vía queda como se guardó. */
+/** Solo se limpia el monto: fecha, vía, cuentas, tasa y casilla suelen repetirse en el siguiente envío. La vía queda como se guardó. */
 export function afterTransferAdded(draft: TransferDraft): TransferDraft {
   return { ...draft, via: viaOf(draft), amount: 0 };
 }

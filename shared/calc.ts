@@ -325,12 +325,14 @@ export const FIXED_CATEGORY = 'Fixed expenses';
 
 export interface BudgetPart {
   account: Account;
-  /** Parte del presupuesto que sale de esta cuenta, en su moneda: fromLog + fromIncomes. */
+  /** Parte del presupuesto que sale de esta cuenta, en su moneda: fromLog + fromIncomes + fromTransfers. */
   amount: number;
   /** Lo que viene del registro del presupuesto (Month.budgetLog): es lo que se edita con PATCH { budgets }. */
   fromLog: number;
   /** Lo que suman los ingresos del mes con `budget: true` que entran a esta cuenta, en su moneda. */
   fromIncomes: number;
+  /** Lo que suman los envíos del mes con `budget: true` que llegan a esta cuenta: lo recibido, en su moneda. */
+  fromTransfers: number;
   /** `amount` en la moneda principal, con la última tasa del mes. */
   inMain: number;
 }
@@ -360,7 +362,7 @@ export interface MonthCalc {
   /** fijosPagados + transacciones */
   used: number;
   usedSecond: number;
-  /** Presupuesto del mes: Σ de las partes por cuenta (registro + ingresos que suben el presupuesto). */
+  /** Presupuesto del mes: Σ de las partes por cuenta (registro + ingresos y envíos que suben el presupuesto). */
   budget: number;
   budgetSecond: number;
   /** Una fila por cuenta visible (y por cualquier cuenta oculta que tenga parte), en el orden de las cuentas. */
@@ -411,7 +413,7 @@ const tidy = (n: number) => Math.round(n * 1e9) / 1e9;
 
 /**
  * Month.budgets a partir de Month.budgetLog: accountId → suma de sus movimientos, en la moneda de la cuenta.
- * Las cuentas que suman 0 no aparecen. No incluye los ingresos que suben el presupuesto.
+ * Las cuentas que suman 0 no aparecen. No incluye los ingresos ni los envíos que suben el presupuesto.
  */
 export function budgetsFromLog(log: readonly Pick<BudgetEntry, 'accountId' | 'amount'>[]): Record<string, number> {
   const sum = new Map<string, number>();
@@ -431,16 +433,45 @@ function incomeInAccount(state: AppState, income: Income, account: Account): num
   return convertOn(state, income.date, income.amount, income.cur, account.currency);
 }
 
+/**
+ * Los envíos que suben el presupuesto de ese mes: los de `budget: true` de su hoja (Transfer.monthKey, no el
+ * mes de su fecha: un envío pertenece a un mes, a diferencia de un ingreso).
+ */
+export function budgetTransfers(state: AppState, key: MonthKey): Transfer[] {
+  return (state.months[key]?.transfers ?? []).filter((t) => t.budget);
+}
+
+/**
+ * Lo que los ingresos y los envíos con `budget: true` le suman a la parte de una cuenta en ese mes, en la moneda
+ * de la cuenta: lo que el cálculo pone encima del registro. Quien fija una parte "en total" se lo resta para
+ * saber cuánto tiene que sumar el registro (0 si la cuenta no existe o el mes no está registrado).
+ */
+export function budgetRaised(state: AppState, key: MonthKey, accountId: string): number {
+  const account = accountsById(state).get(accountId);
+  if (!account || !state.months[key]) return 0;
+  const incomes = budgetIncomes(state, key)
+    .filter((i) => i.accountId === accountId)
+    .reduce((a, i) => a + incomeInAccount(state, i, account), 0);
+  const transfers = budgetTransfers(state, key)
+    .filter((t) => t.toAccountId === accountId)
+    .reduce((a, t) => a + transferReceived(t), 0);
+  return incomes + transfers;
+}
+
 export interface BudgetHistoryRow {
-  /** Los tres tipos del registro, o 'income': un ingreso con `budget: true`. */
-  kind: BudgetEntryKind | 'income';
-  /** Id del BudgetEntry o, si kind es 'income', del ingreso. */
+  /** Los tres tipos del registro, 'income' (un ingreso con `budget: true`) o 'transfer' (un envío con `budget: true`). */
+  kind: BudgetEntryKind | 'income' | 'transfer';
+  /** Id del BudgetEntry o, si kind es 'income' o 'transfer', del ingreso o del envío. */
   id: string;
   date: ISODate;
+  /** La cuenta del movimiento o del ingreso; en un envío, la de destino. */
   account: Account;
-  /** En la moneda de la cuenta (un ingreso en otra moneda, ya convertido a la tasa de su fecha). Puede ser negativo. */
+  /**
+   * En la moneda de la cuenta (un ingreso en otra moneda, ya convertido a la tasa de su fecha; de un envío, lo
+   * recibido: monto × tasa). Puede ser negativo.
+   */
   amount: number;
-  /** La nota del movimiento o la descripción del ingreso. */
+  /** La nota del movimiento, la descripción del ingreso o la vía del envío. */
   note: string;
   /** `amount` en la moneda principal, con la última tasa del mes. */
   inMain: number;
@@ -450,9 +481,9 @@ export interface BudgetHistoryRow {
 
 /**
  * La historia del presupuesto del mes en una sola lista cronológica: los movimientos del registro y los ingresos
- * que lo suben, con el total acumulado en la moneda principal. Con la misma fecha van primero los movimientos
- * del registro, en su orden, y después los ingresos. Lo de una cuenta que ya no existe no sale (tampoco cuenta
- * en monthCalc). Un mes sin registrar da una lista vacía.
+ * y envíos que lo suben, con el total acumulado en la moneda principal. Con la misma fecha van primero los
+ * movimientos del registro, en su orden, después los ingresos y después los envíos. Lo de una cuenta que ya no
+ * existe no sale (tampoco cuenta en monthCalc). Un mes sin registrar da una lista vacía.
  */
 export function budgetHistory(state: AppState, key: MonthKey): BudgetHistoryRow[] {
   const m = state.months[key];
@@ -466,6 +497,10 @@ export function budgetHistory(state: AppState, key: MonthKey): BudgetHistoryRow[
   for (const i of budgetIncomes(state, key)) {
     const account = byId.get(i.accountId);
     if (account) rows.push({ kind: 'income', id: i.id, date: i.date, account, amount: incomeInAccount(state, i, account), note: i.desc });
+  }
+  for (const t of budgetTransfers(state, key)) {
+    const account = byId.get(t.toAccountId);
+    if (account) rows.push({ kind: 'transfer', id: t.id, date: t.date, account, amount: transferReceived(t), note: t.via });
   }
   // Orden estable: con la misma fecha se conserva el de arriba.
   rows.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
@@ -531,13 +566,16 @@ export function monthCalc(state: AppState, key: MonthKey): MonthCalc {
   // El registro es la fuente de verdad (no Month.budgets, que es su suma ya hecha).
   const fromLog = budgetsFromLog(m.budgetLog);
   const raising = budgetIncomes(state, key);
+  // Un envío solo sube la parte de la cuenta a la que llega; a la de origen no le resta nada.
+  const arriving = budgetTransfers(state, key);
   const budgetParts: BudgetPart[] = [...state.accounts]
     .sort((a, b) => a.sort - b.sort)
     .map((account) => {
       const log = fromLog[account.id] ?? 0;
       const incomes = raising.filter((i) => i.accountId === account.id).reduce((a, i) => a + incomeInAccount(state, i, account), 0);
-      const amount = log + incomes;
-      return { account, amount, fromLog: log, fromIncomes: incomes, inMain: toMain(amount, account.currency) };
+      const transfers = arriving.filter((t) => t.toAccountId === account.id).reduce((a, t) => a + transferReceived(t), 0);
+      const amount = log + incomes + transfers;
+      return { account, amount, fromLog: log, fromIncomes: incomes, fromTransfers: transfers, inMain: toMain(amount, account.currency) };
     })
     .filter((p) => !p.account.hidden || p.amount !== 0 || p.fromLog !== 0);
   const budget = budgetParts.reduce((a, p) => a + p.inMain, 0);

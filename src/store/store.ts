@@ -329,8 +329,8 @@ export class FinanzasStore {
       case 'tx/remove':
         return api.deleteTransaction(action.id, opts);
       case 'transfer/add': {
-        const { id, monthKey, date, via, fromAccountId, toAccountId, amount, rate } = action.row;
-        return api.createTransfer({ id, monthKey, date, via, fromAccountId, toAccountId, amount, rate }, opts);
+        const { id, monthKey, date, via, fromAccountId, toAccountId, amount, rate, budget } = action.row;
+        return api.createTransfer({ id, monthKey, date, via, fromAccountId, toAccountId, amount, rate, budget }, opts);
       }
       case 'transfer/patch':
         return api.patchTransfer(action.id, action.patch, opts);

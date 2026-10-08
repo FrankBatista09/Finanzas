@@ -76,6 +76,7 @@ export function mixedState(): AppState {
     toAccountId: to,
     amount,
     rate,
+    budget: false,
   });
   sep.transfers.push(
     transfer('2026-09', 1, '05', 'Wise', 'us', 'tr', 500, 39.4),

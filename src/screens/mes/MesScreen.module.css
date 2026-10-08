@@ -20,6 +20,18 @@
   gap: var(--gap-20);
 }
 
+/* Dos tarjetas iguales: la rejilla las estira al alto de la más larga. min-width: 0 deja que su tabla haga scroll. */
+.pair {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 520px), 1fr));
+  gap: var(--gap-20);
+  align-items: stretch;
+}
+
+.pair > * {
+  min-width: 0;
+}
+
 .footer {
   display: flex;
   justify-content: flex-end;

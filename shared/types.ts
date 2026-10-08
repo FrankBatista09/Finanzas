@@ -8,8 +8,8 @@
 //  · Tasas escritas a mano por par de monedas, cada una con su fecha: una fila se convierte con la tasa vigente
 //    en SU fecha, así que escribir una tasa nueva no cambia lo ya registrado. shared/calc.ts resuelve cualquier
 //    conversión.
-//  · El presupuesto del mes es la suma de un registro de movimientos con fecha (más los ingresos marcados para
-//    sumarle), no un número que se sobrescribe: así queda la historia de cómo cambió.
+//  · El presupuesto del mes es la suma de un registro de movimientos con fecha (más los ingresos y los envíos
+//    marcados para sumarle), no un número que se sobrescribe: así queda la historia de cómo cambió.
 //  · Cada fila guarda su monto y moneda originales; lo convertido nunca se persiste.
 
 export type Currency = 'DOP' | 'USD' | 'TRY';
@@ -141,6 +141,12 @@ export interface Transfer {
   amount: number;
   /** 1 moneda de origen = `rate` moneda de destino. Lo que entra es amount × rate. Entre cuentas de la misma moneda, 1. */
   rate: number;
+  /**
+   * true: además de mover los saldos, sube el presupuesto de SU mes (`monthKey`) en la parte de la cuenta de
+   * destino, por lo recibido (amount × rate). A la parte de la cuenta de origen no le resta. Como con los
+   * ingresos, no genera ningún BudgetEntry: lo suma shared/calc.ts (monthCalc, budgetHistory).
+   */
+  budget: boolean;
 }
 
 /** Dinero que entra a una cuenta (sueldo, pago, regalo…). La suma del mes es el "ingreso del mes". */
@@ -166,12 +172,12 @@ export interface Month {
   closedAt: string | null;
   /**
    * Registro del presupuesto del mes, por fecha. Es la fuente de verdad: shared/calc.ts calcula con él (más los
-   * ingresos con `budget: true`). No son saldos.
+   * ingresos y los envíos con `budget: true`). No son saldos.
    */
   budgetLog: BudgetEntry[];
   /**
    * DERIVADO de `budgetLog` (calc.budgetsFromLog): accountId → suma de sus movimientos, en la moneda de la
-   * cuenta; las cuentas que suman 0 no aparecen. No incluye los ingresos que suben el presupuesto. El servidor
+   * cuenta; las cuentas que suman 0 no aparecen. No incluye los ingresos ni los envíos que suben el presupuesto. El servidor
    * lo calcula al leer y nunca lo guarda; quien cambie `budgetLog` en memoria debe recalcularlo.
    */
   budgets: Record<string, number>;

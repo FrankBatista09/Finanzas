@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   balances,
   budgetHistory,
+  budgetRaised,
   budgetsFromLog,
   convert,
   convertOn,
@@ -121,7 +122,7 @@ describe('rateFor', () => {
     s.months['2026-10']!.rates = [];
     // 1,500 USD → 88,140 DOP y 58,000 DOP → 1,000 USD: salieron 2,500 USD en total frente a 146,140 DOP.
     s.months['2026-10']!.transfers.push({
-      id: 'back', monthKey: '2026-10', date: '2026-10-09', via: 'Bank', fromAccountId: 'dr', toAccountId: 'us', amount: 58000, rate: 1 / 58,
+      id: 'back', monthKey: '2026-10', date: '2026-10-09', via: 'Bank', fromAccountId: 'dr', toAccountId: 'us', amount: 58000, rate: 1 / 58, budget: false,
     });
     expect(rateFor(s, '2026-10', 'USD', 'DOP').rate).toBeCloseTo(146140 / 2500, 8);
   });
@@ -409,6 +410,93 @@ describe('ingresos que suben el presupuesto (Income.budget)', () => {
       ['income', 'same-day', 70010],
     ]);
     expect(monthCalc(s, '2026-10').budget).toBe(70010);
+  });
+});
+
+describe('envíos que suben el presupuesto (Transfer.budget)', () => {
+  it('sube la parte de la cuenta de destino por lo recibido; la de origen y los saldos quedan igual', () => {
+    const plain = seedState();
+    const s = seedState();
+    // El envío de octubre: 1,500 USD de la US account a la DR account a 58.76 = 88,140 DOP.
+    s.months['2026-10']!.transfers[0]!.budget = true;
+    const c = monthCalc(s, '2026-10');
+    expect(c.budget).toBe(158140);
+    expect(c.budgetSecond).toBeCloseTo(158140 / 58.76, 8);
+    expect(c.avail - monthCalc(plain, '2026-10').avail).toBeCloseTo(88140, 8);
+    expect(c.budgetParts.map((p) => [p.account.id, p.amount, p.fromLog, p.fromIncomes, p.fromTransfers, p.inMain])).toEqual([
+      // A la cuenta de origen no le resta nada.
+      ['us', 0, 0, 0, 0, 0],
+      ['dr', 158140, 70000, 0, 88140, 158140],
+    ]);
+    // Solo su mes: los envíos de septiembre no están marcados.
+    expect(monthCalc(s, '2026-09').budget).toBe(70000);
+    // La casilla no mueve dinero: los saldos son los mismos que sin ella, y Month.budgets sigue siendo solo el registro.
+    expect(balances(s, '2026-10')).toEqual(balances(plain, '2026-10'));
+    expect(s.months['2026-10']!.budgets).toEqual({ dr: 70000 });
+  });
+
+  it('entre otras monedas: lo recibido va en la moneda de la cuenta de destino y cuenta en el mes de su hoja', () => {
+    const s = seedState();
+    s.accounts.push({ id: 'tr', name: 'TR account', currency: 'TRY', opening: 0, hidden: false, sort: 2 });
+    const october = s.months['2026-10']!;
+    october.rates.push({ from: 'TRY', to: 'DOP', rate: 1.5, date: '2026-10-01' });
+    october.transfers.push(
+      // 100 USD → 4,000 TRY. Su fecha es de septiembre, pero es de la hoja de octubre: sube octubre.
+      { id: 'to-tr', monthKey: '2026-10', date: '2026-09-30', via: 'Wise', fromAccountId: 'us', toAccountId: 'tr', amount: 100, rate: 40, budget: true },
+      // 5,876 DOP → 100 USD: sube la parte de la US account en 100 USD y no baja la de la DR account.
+      { id: 'to-us', monthKey: '2026-10', date: '2026-10-06', via: 'Bank', fromAccountId: 'dr', toAccountId: 'us', amount: 5876, rate: 1 / 58.76, budget: true },
+      // Sin marcar, o hacia una cuenta que ya no existe: no cuentan.
+      { id: 'plain', monthKey: '2026-10', date: '2026-10-06', via: 'Bank', fromAccountId: 'us', toAccountId: 'tr', amount: 10, rate: 40, budget: false },
+      { id: 'ghost', monthKey: '2026-10', date: '2026-10-06', via: 'Bank', fromAccountId: 'us', toAccountId: 'gone', amount: 10, rate: 40, budget: true },
+    );
+    const c = monthCalc(s, '2026-10');
+    const parts = c.budgetParts.map((p) => [p.account.id, p.fromLog, p.fromTransfers, p.amount] as const);
+    expect(parts[0]![0]).toBe('us');
+    expect(parts[0]![2]).toBeCloseTo(100, 8);
+    expect(parts.slice(1)).toEqual([
+      ['dr', 70000, 0, 70000],
+      ['tr', 0, 4000, 4000],
+    ]);
+    // 70,000 + 100 USD × 58.76 + 4,000 TRY × 1.5
+    expect(c.budget).toBeCloseTo(70000 + 5876 + 6000, 6);
+    expect(monthCalc(s, '2026-09').budget).toBe(70000);
+
+    const history = budgetHistory(s, '2026-10');
+    expect(history.map((h) => [h.date, h.kind, h.id, h.account.id, Math.round(h.amount * 100) / 100, h.note, Math.round(h.total * 100) / 100])).toEqual([
+      ['2026-09-30', 'transfer', 'to-tr', 'tr', 4000, 'Wise', 6000],
+      ['2026-10-01', 'initial', 'seed-bg-2026-10-1', 'dr', 65000, '', 71000],
+      ['2026-10-05', 'adjust', 'seed-bg-2026-10-2', 'dr', 5000, 'Car repair', 76000],
+      ['2026-10-06', 'transfer', 'to-us', 'us', 100, 'Bank', 81876],
+    ]);
+    expect(history.at(-1)!.total).toBeCloseTo(c.budget, 8);
+  });
+
+  it('con la misma fecha: el registro, después los ingresos y después los envíos', () => {
+    const s = seedState();
+    s.months['2026-10']!.transfers.push({
+      id: 'same-day', monthKey: '2026-10', date: '2026-10-05', via: 'Cash', fromAccountId: 'us', toAccountId: 'dr', amount: 1, rate: 60, budget: true,
+    });
+    s.incomes.push({ id: 'gift', date: '2026-10-05', desc: 'Gift', accountId: 'dr', amount: 10, cur: 'DOP', budget: true });
+    expect(budgetHistory(s, '2026-10').map((h) => [h.kind, h.id, h.total])).toEqual([
+      ['initial', 'seed-bg-2026-10-1', 65000],
+      ['adjust', 'seed-bg-2026-10-2', 70000],
+      ['income', 'gift', 70010],
+      ['transfer', 'same-day', 70070],
+    ]);
+  });
+
+  it('budgetRaised: lo que ingresos y envíos ponen encima del registro de una cuenta, en su moneda', () => {
+    const s = seedState();
+    s.months['2026-10']!.transfers[0]!.budget = true;
+    s.incomes.push({ id: 'gig', date: '2026-10-03', desc: 'Gig', accountId: 'dr', amount: 100, cur: 'USD', budget: true });
+    // 88,140 del envío + 100 USD a 58.76.
+    expect(budgetRaised(s, '2026-10', 'dr')).toBeCloseTo(88140 + 5876, 8);
+    expect(budgetRaised(s, '2026-10', 'us')).toBe(0);
+    expect(budgetRaised(s, '2026-09', 'dr')).toBe(0);
+    expect(budgetRaised(s, '2026-10', 'gone')).toBe(0);
+    expect(budgetRaised(s, '2030-01', 'dr')).toBe(0);
+    const part = monthCalc(s, '2026-10').budgetParts.find((p) => p.account.id === 'dr')!;
+    expect(part.amount - part.fromLog).toBeCloseTo(budgetRaised(s, '2026-10', 'dr'), 8);
   });
 });
 

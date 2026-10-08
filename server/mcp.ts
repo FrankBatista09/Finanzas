@@ -615,6 +615,12 @@ const addTransferArgs = z.strictObject({
   date: isoDate()
     .optional()
     .describe(`Date of the transfer, YYYY-MM-DD. Omit it if the person gave no date or said "today": today in ${TIMEZONE} is used.`),
+  add_to_budget: z
+    .boolean({ error: 'must be true or false' })
+    .default(false)
+    .describe(
+      "true only if the person says the money sent should also raise the budget of the month (for example \"add it to this month's budget\"). By default false: the money moves between the accounts and the budget stays as it is.",
+    ),
 });
 
 const addIncomeArgs = z.strictObject({
@@ -825,13 +831,13 @@ const listTransactions = defineTool({
 });
 
 /** Cómo se nombra cada fila de la historia del presupuesto. */
-const HISTORY_KIND = { initial: 'initial', adjust: 'adjustment', leftover: 'leftover', income: 'income' } as const;
+const HISTORY_KIND = { initial: 'initial', adjust: 'adjustment', leftover: 'leftover', income: 'income', transfer: 'transfer' } as const;
 
 const monthSummary = defineTool({
   name: 'month_summary',
   title: 'Month summary',
   description: [
-    "Summary of one month in the finances of `user`, with every amount in the person's main currency: budget and the part of it that comes out of each account, how the budget got there (its history: the initial amount, later adjustments, the leftover of the previous month and the incomes added to it, each with its date), used, available, fixed expenses paid and pending (with the names of the ones still to pay), spending by category, the month's income and income minus used, the balance of each account and the month's rates.",
+    "Summary of one month in the finances of `user`, with every amount in the person's main currency: budget and the part of it that comes out of each account, how the budget got there (its history: the initial amount, later adjustments, the leftover of the previous month and the incomes and transfers added to it, each with its date), used, available, fixed expenses paid and pending (with the names of the ones still to pay), spending by category, the month's income and income minus used, the balance of each account and the month's rates.",
     'Use it when the person asks how the month is going, how much is left, what is still to be paid, how much they have or why the budget changed.',
     'If the previous month ended with money left over (or overspent) and it has not been added to this month\'s budget, a "Leftover" line says how much; adding it is done in the app.',
     'Rates carry the date they apply from: an amount is converted with the rate in effect on its own date, so a rate typed later does not change earlier records. The "Month rates" line gives the latest rate of the month and where it came from; "default value, not set yet" means the converted amounts are only approximate.',
@@ -930,6 +936,7 @@ const monthSummary = defineTool({
           amount: p.amount,
           fromLog: p.fromLog,
           fromIncomes: p.fromIncomes,
+          fromTransfers: p.fromTransfers,
           inMain: p.inMain,
         })),
         budgetHistory: history.map((h) => ({
@@ -970,12 +977,13 @@ const addTransfer = defineTool({
     'It is not an expense and does not count as used. `amount` is what leaves, in the currency of the origin account; what arrives is amount × rate, in the currency of the destination account.',
     "Between accounts of different currencies pass `rate` if the person says it or says how much arrived; if it is omitted, the rate in effect on that date for the two currencies is used and the answer says where it came from. The transfers of a month also set that month's rate between the two currencies while the person has never typed one. Between accounts of the same currency the same amount arrives.",
     `Defaults: via ${VIAS[0]} and today's date in ${TIMEZONE}. \`via\` is free text: the name of the service used (${VIAS.join(', ')} or any other). If the month of the date does not exist, it is created (only near today); if it is closed, the call fails.`,
+    "With `add_to_budget: true` the transfer also raises the budget of its month, in the part of the destination account, by the amount that arrived; the budget part of the origin account is not lowered. The answer then states the month's new budget.",
     'The answer states what left, what arrived and the new balance of both accounts. Each call creates a new transfer: do not repeat it for the same transfer.',
   ].join(' '),
   schema: addTransferArgs,
   readOnly: false,
   idempotent: false,
-  async run({ from_account, to_account, amount, rate: given, via, date: givenDate }, ctx) {
+  async run({ from_account, to_account, amount, rate: given, via, date: givenDate, add_to_budget }, ctx) {
     const { db, now, user } = ctx;
     if (givenDate) await assertReachable(ctx, givenDate);
     const date = givenDate ?? todayISO(now);
@@ -1002,12 +1010,13 @@ const addTransfer = defineTool({
     const transfer = await createTransfer(
       db,
       user.id,
-      parse(transferCreateSchema, { monthKey: key, date, via, fromAccountId: from.id, toAccountId: to.id, amount, rate }),
+      parse(transferCreateSchema, { monthKey: key, date, via, fromAccountId: from.id, toAccountId: to.id, amount, rate, budget: add_to_budget }),
     );
     const received = transferReceived(transfer);
     const after = await afterWrite(ctx, (state) => {
       const { all } = balancesNow(state, now, key);
-      return { from: balanceOf(all, from.id), to: balanceOf(all, to.id) };
+      const c = monthCalc(state, key);
+      return { from: balanceOf(all, from.id), to: balanceOf(all, to.id), budget: c.budget, main: c.main };
     });
 
     const moved = `${money(transfer.amount, from.currency)} left ${from.name}, ${money(received, to.currency)} arrived in ${to.name}`;
@@ -1022,6 +1031,9 @@ const addTransfer = defineTool({
     }
     if (after?.from) sentences.push(balanceSentence(after.from));
     if (after?.to) sentences.push(balanceSentence(after.to));
+    if (transfer.budget && after) {
+      sentences.push(`${money(received, to.currency)} was also added to the budget of ${label(key)}, now ${money(after.budget, after.main)}.`);
+    }
     return {
       text: sentences.join(' '),
       data: {
@@ -1031,6 +1043,7 @@ const addTransfer = defineTool({
         sent: { amount: transfer.amount, currency: from.currency },
         received: { amount: received, currency: to.currency },
         rateSource: same ? 'same' : assumed ? assumed.source : 'given',
+        month: after ? { key, label: label(key), currency: after.main, budget: after.budget } : null,
         monthCreated: created,
       },
     };

@@ -102,6 +102,8 @@ function tr(k: MonthKey, rows: TrRow[]): Transfer[] {
     toAccountId: 'dr',
     amount: usd,
     rate,
+    // Ninguno sube el presupuesto: las cifras de ejemplo (70,000 en octubre) salen solo del registro.
+    budget: false,
   }));
 }
 
