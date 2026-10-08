@@ -4,7 +4,7 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  min-width: 124px;
+  min-width: 108px;
 }
 
 /* La tarjeta mide su propio hueco: con la tarjeta a todo el ancho (apilada, o en una pantalla muy ancha) las dos
@@ -25,11 +25,14 @@
   align-items: center;
 }
 
-/* Ancha para un nombre corriente ("US account") sin recortarlo; crece si sobra sitio. */
+/* Ancha para un nombre corriente ("US account") sin recortarlo; crece si sobra sitio. width: 0 hace que el ancho
+   de la columna no dependa del nombre más largo de la lista: uno largo ("Bank Of America") se recorta con puntos
+   suspensivos en vez de ensanchar la tabla hasta sacarla de su media tarjeta. */
 .route .account {
-  flex: 1 1 104px;
-  width: auto;
-  min-width: 104px;
+  flex: 1 1 92px;
+  width: 0;
+  min-width: 92px;
+  text-overflow: ellipsis;
 }
 
 .arrow {
@@ -73,4 +76,27 @@
 .addButton {
   padding-left: 8px;
   padding-right: 8px;
+}
+
+/* La comisión, bajo la tasa: un rótulo atenuado y su campo, más pequeños que la tasa. */
+.fee {
+  display: flex;
+  align-items: center;
+  padding-bottom: 2px;
+}
+
+.feeLabel {
+  flex: none;
+  padding-left: 8px;
+  font-size: var(--fs-label);
+  color: var(--text-muted);
+}
+
+.fee .feeInput {
+  flex: 1;
+  width: 0;
+  padding-top: 2px;
+  padding-bottom: 4px;
+  font-size: var(--fs-label);
+  color: var(--text-soft);
 }

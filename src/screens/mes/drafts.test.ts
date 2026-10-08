@@ -24,6 +24,7 @@ import {
   rateDate,
   ratePair,
   swapSides,
+  transferFee,
   transferInput,
   transferRate,
   transferSides,
@@ -31,6 +32,7 @@ import {
   typeTransferRate,
 } from './drafts';
 import type { DraftContext, FixedDraft, TransferContext, TransferDraft, TxDraft } from './drafts';
+import { lastFee } from './rows';
 
 const account = (id: string, currency: Currency, sort: number, hidden = false): Account => ({ id, name: `${id} account`, currency, opening: 0, hidden, sort });
 
@@ -48,6 +50,7 @@ const transferContext = (state: AppState, key: MonthKey = '2026-10'): TransferCo
   visible: moneyAccounts(state),
   defaultAccount: defaultAccount(state),
   rateOf: (from, to) => rateFor(state, key, from, to).rate,
+  lastFee: (via) => lastFee(state.months, key, via),
 });
 
 describe('cuenta y moneda de un gasto nuevo', () => {
@@ -335,11 +338,11 @@ describe('envío: la tasa propuesta', () => {
 
 describe('envío: agregar', () => {
   const ctx = transferContext(seedState());
-  const filled: TransferDraft = { date: '2026-10-02', via: 'PayPal', fromAccountId: 'us', toAccountId: 'dr', amount: 500, rate: 58.9, budget: false };
+  const filled: TransferDraft = { date: '2026-10-02', via: 'PayPal', fromAccountId: 'us', toAccountId: 'dr', amount: 500, rate: 58.9, budget: false, fee: 0 };
 
-  it('arranca en Remitly, sin monto, con cuentas y tasa sin tocar y con "Adds to budget" marcada', () => {
+  it('arranca en Remitly, sin monto, con cuentas, tasa y comisión sin tocar y con "Moves budget" marcada', () => {
     expect(DEFAULT_VIA).toBe('Remitly');
-    expect(newTransferDraft()).toEqual({ date: null, via: 'Remitly', fromAccountId: null, toAccountId: null, amount: 0, rate: null, budget: true });
+    expect(newTransferDraft()).toEqual({ date: null, via: 'Remitly', fromAccountId: null, toAccountId: null, amount: 0, rate: null, budget: true, fee: null });
   });
 
   it('necesita monto y tasa mayores que 0 y dos cuentas', () => {
@@ -363,6 +366,7 @@ describe('envío: agregar', () => {
       amount: 500,
       rate: 58.9,
       budget: false,
+      fee: 0,
     });
     expect(transferInput({ ...newTransferDraft(), amount: 500 }, '2026-11-01', ctx)).toEqual({
       date: '2026-11-01',
@@ -372,6 +376,7 @@ describe('envío: agregar', () => {
       amount: 500,
       rate: 58.76,
       budget: true,
+      fee: 0,
     });
   });
 
@@ -388,8 +393,26 @@ describe('envío: agregar', () => {
     }
   });
 
-  it('después de agregar solo se limpia el monto', () => {
-    expect(afterTransferAdded(filled)).toEqual({ ...filled, amount: 0 });
+  it('la comisión: sin tocar, la del último envío por esa vía (y la sigue si cambia la vía); escrita, la escrita', () => {
+    const state = seedState();
+    // Remitly cobró 2.99 en su último envío de septiembre y 3.49 en octubre; PayPal, nada.
+    state.months['2026-09']!.transfers.at(-1)!.fee = 2.99;
+    state.months['2026-10']!.transfers[0]!.fee = 3.49;
+    const withFees = transferContext(state);
+    expect(transferFee(newTransferDraft(), withFees)).toBe(3.49);
+    expect(transferFee({ ...newTransferDraft(), via: ' remitly ' }, withFees)).toBe(3.49);
+    expect(transferFee({ ...newTransferDraft(), via: 'PayPal' }, withFees)).toBe(0);
+    expect(transferFee({ ...newTransferDraft(), via: 'Wise' }, withFees)).toBe(0);
+    // Mirando septiembre, lo de octubre todavía no existe.
+    expect(transferFee(newTransferDraft(), transferContext(state, '2026-09'))).toBe(2.99);
+    // Escrita (también 0) manda.
+    expect(transferFee({ ...newTransferDraft(), fee: 0 }, withFees)).toBe(0);
+    expect(transferFee({ ...newTransferDraft(), fee: 1.5 }, withFees)).toBe(1.5);
+    expect(transferInput({ ...newTransferDraft(), amount: 500 }, '2026-10-07', withFees)?.fee).toBe(3.49);
+  });
+
+  it('después de agregar solo se limpia el monto (y la comisión vuelve a seguir a la vía)', () => {
+    expect(afterTransferAdded(filled)).toEqual({ ...filled, amount: 0, fee: null });
     expect(afterTransferAdded({ ...filled, via: 'Western Union' }).via).toBe('Western Union');
     expect(afterTransferAdded({ ...newTransferDraft(), amount: 500 })).toEqual(newTransferDraft());
     expect(filled.amount).toBe(500);

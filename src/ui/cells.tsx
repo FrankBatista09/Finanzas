@@ -105,6 +105,8 @@ export interface NumberFieldProps {
   onCommit?: (value: number) => void;
   /** Muestra el campo vacío (con su placeholder) cuando el valor es 0. Para las filas de agregar. */
   blankZero?: boolean;
+  /** Por defecto: 'change' con `blankZero` (filas de agregar) y 'blur' en el resto. Un valor guardado que se ve vacío en 0 (la comisión de un envío) pide 'blur'. */
+  commitOn?: CommitOn;
   readOnly?: boolean;
   placeholder?: string;
   className?: string;
@@ -117,7 +119,7 @@ export interface NumberFieldProps {
  * <input type="number"> con borrador local y sin estilos propios: lo usan CellNumber y los campos sueltos
  * del panel resumen. Vacío o inválido se confirma como 0 (shared/format parseAmount).
  */
-export function NumberField({ value, onCommit, blankZero, ...rest }: NumberFieldProps) {
+export function NumberField({ value, onCommit, blankZero, commitOn, ...rest }: NumberFieldProps) {
   const draft = useDraft({
     value,
     format: (v: number) => (blankZero && !v ? '' : String(v)),
@@ -127,7 +129,7 @@ export function NumberField({ value, onCommit, blankZero, ...rest }: NumberField
     onCommit,
     // Una celda con valor guardado se confirma al salir: así un número a medio escribir o mal escrito ("12a")
     // nunca deja guardada la parte válida que había antes. Las filas de agregar siguen confirmando al teclear.
-    commitOn: blankZero ? 'change' : 'blur',
+    commitOn: commitOn ?? (blankZero ? 'change' : 'blur'),
   });
   return (
     <input
@@ -156,6 +158,8 @@ export interface CellNumberProps extends InputBase {
   onCommit?: (value: number) => void;
   /** Vacío cuando el valor es 0 (filas de agregar: así se ve el placeholder). */
   blankZero?: boolean;
+  /** Ver NumberFieldProps.commitOn. */
+  commitOn?: CommitOn;
   /** Padding lateral de 8px en vez de 10px (tabla de envíos). */
   dense?: boolean;
 }

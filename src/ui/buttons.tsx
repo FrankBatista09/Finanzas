@@ -19,8 +19,7 @@ export function AddButton({ children, className, onClick, ...rest }: AddButtonPr
   const row = useContext(AddRowContext);
   const handleClick = (e: MouseEvent<HTMLButtonElement>) => {
     if (onClick) onClick(e);
-    // detail === 0: el clic vino del teclado (Enter o espacio sobre el botón).
-    else row?.submit(e.detail === 0);
+    else row?.submit();
   };
   return (
     <button {...rest} type="button" className={cx(styles.add, className)} onClick={handleClick}>

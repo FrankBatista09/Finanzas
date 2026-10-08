@@ -61,6 +61,7 @@ export const AHORROS = defineStrings({
     contribDate: 'Contribution date',
     deleteContrib: 'Delete contribution of {date} to {goal}: {amount} {cur}',
     noGoals: 'Add a goal first to record contributions.',
+    addContribution: 'Add contribution',
 
     // ── Tasas ────────────────────────────────────────────────────────────────
     // Al pie de una tabla con alguna cifra convertida con la tasa fija de respaldo (marcada con *).
@@ -114,6 +115,7 @@ export const AHORROS = defineStrings({
     contribDate: 'Fecha del aporte',
     deleteContrib: 'Eliminar aporte del {date} a {goal}: {amount} {cur}',
     noGoals: 'Agrega primero una meta para registrar aportes.',
+    addContribution: 'Agregar aporte',
 
     fallbackNote: '* Convertido con una tasa por defecto, aún sin definir.',
   },
@@ -167,6 +169,7 @@ export const AHORROS = defineStrings({
     contribDate: 'Katkı tarihi',
     deleteContrib: '{date} tarihli {goal} katkısını sil: {amount} {cur}',
     noGoals: 'Katkı kaydetmek için önce bir hedef ekleyin.',
+    addContribution: 'Katkı ekle',
 
     fallbackNote: '* Henüz girilmemiş, varsayılan bir kurla çevrildi.',
   },

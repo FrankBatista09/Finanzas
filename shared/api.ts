@@ -91,6 +91,9 @@
 //     cambia el presupuesto de ese mes.
 //   · Ingresos y aportes no pertenecen a un mes: se pueden crear, editar y borrar siempre, con cualquier fecha.
 //   · El cliente puede mandar `id` al crear (actualizaciones optimistas sin reconciliar ids). Si falta, lo genera el servidor.
+//   · Envíos: `fee` (>= 0, por defecto 0) es la comisión, en la moneda de la cuenta de origen: le resta a su saldo
+//     y cuenta como una transacción del mes en "Other" (shared/calc.ts transferFees). No es una fila de
+//     /api/transactions: se cambia editando el envío.
 //   · Montos: números finitos; amount > 0 al crear y >= 0 al editar; rate > 0. Las partes del presupuesto son >= 0
 //     (0 deja la parte en cero) y el saldo inicial de una cuenta puede ser cualquier número finito, también
 //     negativo. El monto de un movimiento del presupuesto puede ser negativo, pero no 0.
@@ -99,8 +102,9 @@
 //     fila se convierte con la tasa vigente en su fecha (shared/calc.ts rateFor), así que escribir una tasa con
 //     fecha de hoy no cambia lo registrado antes. DELETE exige ?date= (sin él, 400).
 //   · Presupuesto: el del mes es la suma de su registro (Month.budgetLog) más los ingresos del mes con
-//     `budget: true` y los envíos del mes con `budget: true` (estos suben la parte de la cuenta de destino por
-//     lo recibido, amount × rate; a la de origen no le restan). Month.budgets es la suma del registro por
+//     `budget: true` y el neto de los envíos del mes con `budget: true` (estos MUEVEN presupuesto: suben la
+//     parte de la cuenta de destino por lo recibido, amount × rate, y bajan la de origen por lo enviado, amount;
+//     una parte puede quedar en negativo). Month.budgets es la suma del registro por
 //     cuenta, ya hecha (sin los ingresos ni los envíos); nunca se
 //     guarda. PATCH { budgets: { cuenta: monto } } sigue significando "la parte de esta cuenta es este monto":
 //     el servidor añade un movimiento con la diferencia respecto a la suma del registro de esa cuenta (tipo
@@ -316,10 +320,12 @@ export interface TransferCreate {
   amount: number;
   /** 1 moneda de origen = rate moneda de destino. Si falta: la tasa vigente en `date` para ese par. */
   rate?: number;
-  /** true: el envío sube además el presupuesto de su mes en la cuenta de destino, por lo recibido (Transfer.budget). Por defecto false. */
+  /** true: el envío mueve además presupuesto de su mes, de la parte de la cuenta de origen a la de destino (Transfer.budget). Por defecto false. */
   budget?: boolean;
+  /** Comisión, en la moneda de la cuenta de origen (Transfer.fee). >= 0; por defecto 0. */
+  fee?: number;
 }
-export type TransferPatch = Partial<Pick<Transfer, 'date' | 'via' | 'fromAccountId' | 'toAccountId' | 'amount' | 'rate' | 'budget'>>;
+export type TransferPatch = Partial<Pick<Transfer, 'date' | 'via' | 'fromAccountId' | 'toAccountId' | 'amount' | 'rate' | 'budget' | 'fee'>>;
 
 export interface IncomeCreate {
   id?: string;

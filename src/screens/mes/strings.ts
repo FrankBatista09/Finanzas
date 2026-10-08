@@ -29,6 +29,7 @@ export const MES = defineStrings({
     amountOf: 'Amount of {name}',
     currencyOf: 'Currency of {name}',
     newFixedAccount: 'Account of the new expense',
+    addFixed: 'Add expense',
     accountOf: 'Account of {name}',
 
     // Por categoría
@@ -49,9 +50,13 @@ export const MES = defineStrings({
     fromOf: 'Account {name} leaves from',
     toOf: 'Account {name} goes to',
     rateOf: 'Rate of {name}',
-    transferBudgetOf: 'Adds to budget: {name}',
-    newTransferBudget: 'The new transfer adds to the budget',
-    transfersNote: 'Money moved between your accounts. With "Adds to budget" checked, what arrives also raises this month\'s budget.',
+    transferBudgetOf: 'Moves budget: {name}',
+    newTransferBudget: 'The new transfer moves budget',
+    transfersNote:
+      'Money moved between your accounts. With "Moves budget" checked, this month\'s budget moves with it: it leaves the origin account\'s part and joins the destination\'s. The fee is charged to the origin account and counts as a transaction.',
+    feeOf: 'Fee of {name}',
+    newTransferFee: 'Fee of the new transfer',
+    addTransfer: 'Add transfer',
 
     // Tasas del mes
     pairRate: 'Rate {from} → {to}',
@@ -92,6 +97,11 @@ export const MES = defineStrings({
     notesOf: 'Description of {name}',
     openNotes: 'Open the description of {name}',
     closeNotes: 'Close',
+    addTx: 'Add transaction',
+    // La comisión de un envío, como fila del historial: su nombre y la marca de que sale del envío.
+    feeName: '{via} fee',
+    feeFromTransfer: 'From the transfer of {date}. Change it in Transfers.',
+    feeTag: 'from transfer',
 
     // Cerrar el mes y mes cerrado
     closeText: 'Closing the month saves this summary and creates {next} with the same monthly expenses, not marked as paid.',
@@ -118,6 +128,7 @@ export const MES = defineStrings({
     amountOf: 'Monto de {name}',
     currencyOf: 'Moneda de {name}',
     newFixedAccount: 'Cuenta del nuevo gasto',
+    addFixed: 'Agregar gasto',
     accountOf: 'Cuenta de {name}',
 
     byCategory: 'Por categoría',
@@ -136,9 +147,13 @@ export const MES = defineStrings({
     fromOf: 'Cuenta de la que sale {name}',
     toOf: 'Cuenta a la que llega {name}',
     rateOf: 'Tasa de {name}',
-    transferBudgetOf: 'Suma al presupuesto: {name}',
-    newTransferBudget: 'El nuevo envío suma al presupuesto',
-    transfersNote: 'Dinero que pasa de una cuenta tuya a otra. Con «Suma al presupuesto» marcado, lo que llega sube además el presupuesto de este mes.',
+    transferBudgetOf: 'Mueve presupuesto: {name}',
+    newTransferBudget: 'El nuevo envío mueve presupuesto',
+    transfersNote:
+      'Dinero que pasa de una cuenta tuya a otra. Con «Mueve presupuesto» marcado, el presupuesto de este mes se mueve con él: sale de la parte de la cuenta de origen y pasa a la de destino. La comisión se cobra de la cuenta de origen y cuenta como una transacción.',
+    feeOf: 'Comisión de {name}',
+    newTransferFee: 'Comisión del nuevo envío',
+    addTransfer: 'Agregar envío',
 
     pairRate: 'Tasa {from} → {to}',
     newRateFrom: 'Moneda de origen de la nueva tasa',
@@ -176,6 +191,10 @@ export const MES = defineStrings({
     notesOf: 'Descripción de {name}',
     openNotes: 'Abrir la descripción de {name}',
     closeNotes: 'Cerrar',
+    addTx: 'Agregar transacción',
+    feeName: 'Comisión de {via}',
+    feeFromTransfer: 'Sale del envío del {date}. Se cambia en Envíos.',
+    feeTag: 'del envío',
 
     closeText: 'Al cerrar el mes se guarda este resumen y se crea {next} con los mismos gastos mensuales, sin marcar como pagados.',
     closedNote: 'Mes cerrado. Los registros quedan de solo lectura.',
@@ -201,6 +220,7 @@ export const MES = defineStrings({
     amountOf: 'Tutar: {name}',
     currencyOf: 'Para birimi: {name}',
     newFixedAccount: 'Yeni giderin hesabı',
+    addFixed: 'Gider ekle',
     accountOf: 'Hesap: {name}',
 
     byCategory: 'Kategoriye göre',
@@ -219,9 +239,13 @@ export const MES = defineStrings({
     fromOf: 'Çıkış hesabı: {name}',
     toOf: 'Varış hesabı: {name}',
     rateOf: 'Kur: {name}',
-    transferBudgetOf: 'Bütçeye eklenir: {name}',
-    newTransferBudget: 'Yeni transfer bütçeye eklenir',
-    transfersNote: 'Hesaplarınız arasında aktarılan para. "Bütçeye eklenir" işaretliyse gelen tutar bu ayın bütçesini de artırır.',
+    transferBudgetOf: 'Bütçeyi taşır: {name}',
+    newTransferBudget: 'Yeni transfer bütçeyi taşır',
+    transfersNote:
+      'Hesaplarınız arasında aktarılan para. "Bütçeyi taşır" işaretliyse bu ayın bütçesi de onunla taşınır: çıkış hesabının payından düşer, varış hesabının payına eklenir. Komisyon çıkış hesabından alınır ve bir işlem olarak sayılır.',
+    feeOf: 'Komisyon: {name}',
+    newTransferFee: 'Yeni transferin komisyonu',
+    addTransfer: 'Transfer ekle',
 
     pairRate: 'Kur {from} → {to}',
     newRateFrom: 'Yeni kurun kaynak para birimi',
@@ -259,6 +283,10 @@ export const MES = defineStrings({
     notesOf: 'Açıklama: {name}',
     openNotes: '{name} açıklamasını aç',
     closeNotes: 'Kapat',
+    addTx: 'İşlem ekle',
+    feeName: '{via} komisyonu',
+    feeFromTransfer: '{date} tarihli transferden gelir. Transferler bölümünden değiştirilir.',
+    feeTag: 'transferden',
 
     closeText: 'Ay kapatıldığında bu özet kaydedilir ve {next}, aynı aylık giderlerle, ödenmemiş olarak oluşturulur.',
     closedNote: 'Ay kapalı. Kayıtlar salt okunur.',

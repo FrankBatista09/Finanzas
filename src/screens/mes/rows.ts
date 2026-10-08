@@ -1,6 +1,7 @@
 // Orden, listas y formatos de las tablas de la hoja "Mes": lo que renderVals() del prototipo prepara antes de pintar.
 // Funciones puras, sin React y sin textos: los que dependen del idioma están en strings.ts.
 
+import type { TransferFee } from '../../../shared/calc';
 import { CURRENCIES, VIAS } from '../../../shared/constants';
 import { fRate } from '../../../shared/format';
 import { firstDay } from '../../../shared/month';
@@ -23,6 +24,40 @@ export function sortFixed<T extends Pick<FixedExpense, 'sort'>>(rows: readonly T
 export function sortTxDesc<T extends Pick<Transaction, 'date'>>(rows: readonly T[]): T[] {
   // Las fechas ISO se ordenan bien como texto; se comparan sin localeCompare para no depender del locale.
   return [...rows].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+}
+
+/**
+ * Una fila del historial: una transacción (se edita y se borra) o la comisión de un envío (calc.transferFees),
+ * que no es una fila guardada: se ve, cuenta en los totales y cambia con su envío.
+ */
+export type HistoryRow = { kind: 'tx'; key: string; date: ISODate; tx: Transaction } | { kind: 'fee'; key: string; date: ISODate; fee: TransferFee };
+
+/**
+ * El historial del mes: las transacciones y las comisiones de los envíos juntas, de la más reciente a la más
+ * antigua. Con la misma fecha van primero las transacciones, en su orden, y después las comisiones.
+ */
+export function historyRows(tx: readonly Transaction[], fees: readonly TransferFee[]): HistoryRow[] {
+  return sortTxDesc<HistoryRow>([
+    ...tx.map((t) => ({ kind: 'tx' as const, key: t.id, date: t.date, tx: t })),
+    ...fees.map((fee) => ({ kind: 'fee' as const, key: `fee:${fee.transferId}`, date: fee.date, fee })),
+  ]);
+}
+
+/**
+ * La comisión del envío más reciente hecho por esa vía (sin distinguir mayúsculas), en este mes o en los
+ * anteriores: es la que se propone para el siguiente, porque cada servicio suele cobrar siempre lo mismo. 0 si
+ * no hay ninguno. "Más reciente" es por fecha; con la misma fecha, el que se registró después.
+ */
+export function lastFee(months: Readonly<Record<MonthKey, Pick<Month, 'transfers'>>>, monthKey: MonthKey, via: string): number {
+  const wanted = via.trim().toLowerCase();
+  let hit: { date: ISODate; fee: number } | null = null;
+  for (const key of Object.keys(months).sort()) {
+    if (key > monthKey) break;
+    for (const t of months[key]!.transfers) {
+      if (t.via.trim().toLowerCase() === wanted && (!hit || t.date >= hit.date)) hit = { date: t.date, fee: t.fee || 0 };
+    }
+  }
+  return hit?.fee ?? 0;
 }
 
 /**

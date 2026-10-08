@@ -726,8 +726,11 @@ describe('filas nuevas: validación del contrato', () => {
 
   it('envío: vía, fecha, monto > 0 y dos cuentas distintas que existan', () => {
     const ok = { date: '2026-10-07', via: 'Remitly', fromAccountId: 'us', toAccountId: 'dr', amount: 500, rate: 58.7 };
-    // Sin `budget` el envío no sube el presupuesto.
-    expect(newTransfer(s, OCT, ok, 'x')).toEqual({ id: 'x', monthKey: OCT, ...ok, budget: false });
+    // Sin `budget` el envío no mueve presupuesto; sin `fee`, no lleva comisión.
+    expect(newTransfer(s, OCT, ok, 'x')).toEqual({ id: 'x', monthKey: OCT, ...ok, budget: false, fee: 0 });
+    expect(newTransfer(s, OCT, { ...ok, fee: 2.99 }, 'x')).toMatchObject({ fee: 2.99 });
+    expect(newTransfer(s, OCT, { ...ok, fee: -1 }, 'x')).toBeNull();
+    expect(newTransfer(s, OCT, { ...ok, fee: Number.NaN }, 'x')).toBeNull();
     expect(newTransfer(s, OCT, { ...ok, budget: true }, 'x')).toMatchObject({ budget: true });
     expect(newTransfer(s, OCT, { ...ok, amount: 0 }, 'x')).toBeNull();
     expect(newTransfer(s, OCT, { ...ok, rate: 0 }, 'x')).toBeNull();
@@ -1011,7 +1014,7 @@ describe('cuentas: reglas', () => {
     expect(budgetPart(raised, OCT, 'us', 200)).toEqual({ budgets: { us: 200 } });
   });
 
-  it('budgetPart: lo que suma un envío marcado se descuenta igual que lo de un ingreso', () => {
+  it('budgetPart: lo que mueve un envío marcado se descuenta igual que lo de un ingreso, en sus dos cuentas', () => {
     // Además del ingreso de 10,000, el envío de octubre (88,140 DOP recibidos) sube la parte de la DR account.
     const raised = reduce(withBudgetIncome(), { type: 'transfer/patch', id: 'seed-tr-2026-10-1', patch: { budget: true } });
     expect(partOf(raised, 'dr')).toMatchObject({ amount: 168140, fromLog: 70000, fromIncomes: 10000, fromTransfers: 88140 });
@@ -1020,10 +1023,15 @@ describe('cuentas: reglas', () => {
     // Por debajo de lo que ya suman el ingreso y el envío el registro quedaría en negativo: no se puede.
     expect(budgetPart(raised, OCT, 'dr', 98139)).toBeNull();
     expect(budgetPart(raised, OCT, 'dr', 98140)).toEqual({ budgets: { dr: 0 } });
-    // La cuenta de origen no descuenta nada.
-    expect(budgetPart(raised, OCT, 'us', 200)).toEqual({ budgets: { us: 200 } });
+    // De la cuenta de origen salieron 1,500 USD: su parte se ve en −1,500 y, para que se vea 200, el registro suma 1,700.
+    expect(partOf(raised, 'us')).toMatchObject({ amount: -1500, fromLog: 0, fromTransfers: -1500 });
+    expect(budgetPart(raised, OCT, 'us', 200)).toEqual({ budgets: { us: 1700 } });
+    expect(budgetPart(raised, OCT, 'us', 0)).toEqual({ budgets: { us: 1500 } });
+    expect(budgetPart(raised, OCT, 'us', -1500)).toBeNull();
     const next = reduce(raised, { type: 'month/patch', key: OCT, patch: budgetPart(raised, OCT, 'dr', 170000)! });
     expect(partOf(next, 'dr')).toMatchObject({ amount: 170000, fromLog: 71860, fromTransfers: 88140 });
+    const us = reduce(raised, { type: 'month/patch', key: OCT, patch: budgetPart(raised, OCT, 'us', 200)! });
+    expect(partOf(us, 'us')).toMatchObject({ amount: 200, fromLog: 1700, fromTransfers: -1500 });
   });
 
   it('transferChange: la casilla del presupuesto se manda tal cual, marcada o desmarcada', () => {
@@ -1032,10 +1040,24 @@ describe('cuentas: reglas', () => {
     expect(transferChange(s, id, { budget: true })).toEqual({ budget: true });
     expect(transferChange(s, id, { budget: false, amount: 900 })).toEqual({ budget: false, amount: 900 });
     expect(transferChange(s, id, { budget: 'yes' as unknown as boolean })).toEqual({});
-    // Marcarla sube el presupuesto y no mueve los saldos.
+    // Marcarla mueve presupuesto de una cuenta a otra (con la tasa del mes, el total no cambia) y no mueve los saldos.
     const on = reduce(s, { type: 'transfer/patch', id, patch: transferChange(s, id, { budget: true }) });
-    expect(monthCalc(on, OCT).budget).toBe(158140);
+    expect(monthCalc(on, OCT).budget).toBeCloseTo(70000, 8);
+    expect(monthCalc(on, OCT).budgetParts.map((p) => p.amount)).toEqual([-1500, 158140]);
     expect(balances(on, OCT)).toEqual(balances(s, OCT));
+  });
+
+  it('transferChange: la comisión, >= 0; la que no vale se ignora', () => {
+    const s = seedState();
+    const id = s.months[OCT]!.transfers[0]!.id;
+    expect(transferChange(s, id, { fee: 2.99 })).toEqual({ fee: 2.99 });
+    expect(transferChange(s, id, { fee: 0 })).toEqual({ fee: 0 });
+    expect(transferChange(s, id, { fee: -1 })).toEqual({});
+    expect(transferChange(s, id, { fee: Number.POSITIVE_INFINITY })).toEqual({});
+    // Aplicada, le resta a la cuenta de origen y cuenta en lo usado del mes.
+    const on = reduce(s, { type: 'transfer/patch', id, patch: { fee: 2.99 } });
+    expect(balances(on, OCT).accounts[0]!.balance).toBeCloseTo(balances(s, OCT).accounts[0]!.balance - 2.99, 10);
+    expect(monthCalc(on, OCT).used - monthCalc(s, OCT).used).toBeCloseTo(2.99 * 58.76, 8);
   });
 
   it('budgetPart: por debajo de lo que ya suman los ingresos no se puede (el registro quedaría en negativo)', () => {

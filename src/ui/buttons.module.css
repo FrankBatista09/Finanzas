@@ -32,3 +32,43 @@
 .delete:hover {
   color: var(--error);
 }
+
+/* "+ Add …" de la cabecera de una tarjeta: abre la fila de agregar (y, abierta, es su "Cancel"). Discreto: el
+   botón verde es el de guardar la fila. */
+.revealButton {
+  flex: none;
+  padding: 3px 9px;
+  border: 1px solid var(--border-dashed);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--accent-text);
+  font: 600 var(--fs-meta) var(--font-ui);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.revealButton:hover {
+  border-color: var(--accent);
+}
+
+/* El mismo control como texto sin caja, para las tablas pequeñas con marco propio. */
+.reveal {
+  align-self: flex-start;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--accent-text);
+  font: 600 var(--fs-meta) var(--font-ui);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.reveal:hover {
+  text-decoration: underline;
+}
+
+.revealButton:focus-visible,
+.reveal:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}

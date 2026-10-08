@@ -5,13 +5,32 @@ import type { Currency, Transfer } from '../../../shared/types';
 import { useI18n, useStrings } from '../../i18n';
 import { useFinanzas } from '../../store';
 import type { AccountOption, Actions } from '../../store';
-import { AddButton, AddRow, Card, CardHeader, CardNote, CellCheckbox, CellDate, CellNumber, CellSelect, CellText, DeleteButton, SheetTable, Td, Th } from '../../ui';
+import type { CommitOn } from '../../ui';
+import {
+  AddButton,
+  AddRow,
+  AddRowButton,
+  Card,
+  CardHeader,
+  CardNote,
+  CellCheckbox,
+  CellDate,
+  CellNumber,
+  CellSelect,
+  CellText,
+  DeleteButton,
+  SheetTable,
+  Td,
+  Th,
+  useAddRow,
+} from '../../ui';
 import {
   afterTransferAdded,
   DEFAULT_VIA,
   newTransferDraft,
   pickTransferAccount,
   swapSides,
+  transferFee,
   transferInput,
   transferRate,
   transferSides,
@@ -19,20 +38,22 @@ import {
 } from './drafts';
 import type { TransferContext } from './drafts';
 import { RateCell } from './RateCell';
-import { MAX_LEN, rowAccountOptions, shortDate, transferName, viaSuggestions } from './rows';
+import { lastFee, MAX_LEN, rowAccountOptions, shortDate, transferName, viaSuggestions } from './rows';
 import { MES } from './strings';
 import styles from './TransfersCard.module.css';
 
 /**
  * "Envíos": el dinero que pasa de una cuenta a otra en el mes. Sale de la cuenta de origen en su moneda y entra a
- * la de destino multiplicado por la tasa del envío. Con la casilla "Adds to budget", lo que llega sube además el
- * presupuesto del mes en la cuenta de destino. Las filas se editan como las de las demás tablas.
+ * la de destino multiplicado por la tasa del envío. Con la casilla "Moves budget", el presupuesto del mes se mueve
+ * con él: baja en la parte de la cuenta de origen y sube en la de destino. La comisión (lo que cobra el servicio,
+ * de la cuenta de origen y en su moneda) va bajo la tasa. Las filas se editan como las de las demás tablas.
  */
 export function TransfersCard() {
   const { state, monthKey, month, accounts, visibleAccounts, defaultAccount, accountOptions, rateOf, readOnly, draftDate, actions } = useFinanzas();
   const { t } = useI18n();
   const s = useStrings(MES);
   const [draft, setDraft] = useState(newTransferDraft);
+  const adding = useAddRow(() => setDraft(newTransferDraft()));
   const vias = useMemo(() => viaSuggestions(state.months, monthKey), [state.months, monthKey]);
   // La misma lista de cuentas visibles mientras no cambien las cuentas (ver FixedCard).
   const visible = useMemo(() => accountOptions(), [state.accounts]);
@@ -41,7 +62,13 @@ export function TransfersCard() {
   // Las cuentas y la tasa del borrador se resuelven con lo que hay ahora: sin tocar, siguen a la cuenta por
   // defecto y a la tasa vigente en la fecha del borrador (la que le pondría el servidor a un envío sin tasa).
   const date = draft.date ?? draftDate;
-  const ctx: TransferContext = { accounts, visible: visibleAccounts, defaultAccount, rateOf: (from, to) => rateOf(from, to, undefined, date).rate };
+  const ctx: TransferContext = {
+    accounts,
+    visible: visibleAccounts,
+    defaultAccount,
+    rateOf: (from, to) => rateOf(from, to, undefined, date).rate,
+    lastFee: (via) => lastFee(state.months, monthKey, via),
+  };
   const sides = transferSides(draft, ctx);
   const rate = transferRate(draft, ctx);
   const fromId = sides.from?.id ?? '';
@@ -56,9 +83,9 @@ export function TransfersCard() {
 
   return (
     <Card className={styles.fit}>
-      <CardHeader title={s('transfersTitle')} />
+      <CardHeader title={s('transfersTitle')} action={!readOnly && <AddRowButton control={adding}>{s('addTransfer')}</AddRowButton>} />
       <CardNote>{s('transfersNote')}</CardNote>
-      {/* Media tarjeta: origen y destino comparten columna y lo recibido va bajo el monto, para caber sin scroll. */}
+      {/* Media tarjeta: origen y destino comparten columna, lo recibido va bajo el monto y la comisión bajo la tasa, para caber sin scroll. */}
       <SheetTable minWidth={520} label={s('transfersTitle')}>
         <thead>
           <tr>
@@ -69,7 +96,7 @@ export function TransfersCard() {
             </Th>
             <Th align="right">{t('amount')}</Th>
             <Th align="right">{t('rate')}</Th>
-            <Th align="center" className={styles.budgetTh} title={t('addsToBudget')} aria-label={t('addsToBudget')}>
+            <Th align="center" className={styles.budgetTh} title={t('movesBudget')} aria-label={t('movesBudget')}>
               {t('budgetShort')}
             </Th>
             <Th blank width={28} />
@@ -90,7 +117,7 @@ export function TransfersCard() {
             />
           ))}
           {!readOnly && (
-            <AddRow onAdd={add}>
+            <AddRow control={adding} onAdd={add}>
               <Td kind="edit">
                 <CellDate
                   value={draft.date ?? draftDate}
@@ -158,6 +185,8 @@ export function TransfersCard() {
                   minWidth={68}
                   label={s('newTransferRate')}
                 />
+                {/* Sin tocar, la comisión del último envío por esa vía: cada servicio suele cobrar lo mismo. */}
+                <Fee value={transferFee(draft, ctx)} onCommit={(fee) => setDraft((d) => ({ ...d, fee }))} commitOn="change" label={s('newTransferFee')} />
               </Td>
               <Td kind="center">
                 <CellCheckbox checked={draft.budget} onCommit={(budget) => setDraft((d) => ({ ...d, budget }))} label={s('newTransferBudget')} />
@@ -180,6 +209,20 @@ function Received({ amount, cur }: { amount: number; cur: Currency | undefined }
     <div className={styles.received} title={t('received')}>
       = {f2(amount)} {cur}
     </div>
+  );
+}
+
+/**
+ * La comisión del envío, como segunda línea bajo la tasa: un rótulo atenuado y su campo, en la moneda de la cuenta
+ * de origen (la misma del monto). Vacío es "sin comisión".
+ */
+function Fee({ value, onCommit, readOnly, commitOn, label }: { value: number; onCommit: (fee: number) => void; readOnly?: boolean; commitOn: CommitOn; label: string }) {
+  const { t } = useI18n();
+  return (
+    <label className={styles.fee}>
+      <span className={styles.feeLabel}>{t('fee')}</span>
+      <CellNumber value={value} onCommit={onCommit} readOnly={readOnly} blankZero commitOn={commitOn} dense minWidth={58} placeholder={readOnly ? undefined : '0.00'} label={label} className={styles.feeInput} />
+    </label>
   );
 }
 
@@ -275,6 +318,7 @@ const TransferRow = memo(function TransferRow({ row: tr, fromCur, toCur, fromOpt
           minWidth={68}
           label={s('rateOf', named)}
         />
+        <Fee value={tr.fee} onCommit={(fee) => actions.patchTransfer(tr.id, { fee })} readOnly={readOnly} commitOn="blur" label={s('feeOf', named)} />
       </Td>
       <Td kind="center">
         <CellCheckbox

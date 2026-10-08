@@ -1,0 +1,23 @@
+/* La comisión de un envío, entre las transacciones: una fila de solo lectura (texto, sin campos). */
+.feeRow {
+  background: var(--add-row);
+}
+
+/* "transfer": la marca de que la fila sale de un envío y no se edita aquí. */
+.feeTag {
+  margin-left: 8px;
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: var(--fs-label);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+/* El nombre de la cuenta, en una línea y recortado como el de las listas de las demás filas. */
+.feeRow .feeAccount {
+  max-width: 130px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}

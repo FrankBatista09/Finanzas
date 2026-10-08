@@ -479,8 +479,8 @@ describe('applyImportToState · Finanzas Personales v3.xlsx en un usuario nuevo'
 
   it('cada envío del libro va de la cuenta en USD a la de DOP', () => {
     expect(state.months['2026-08']!.transfers.map(({ id: _id, ...t }) => t)).toEqual([
-      { monthKey: '2026-08', date: '2026-08-03', via: 'Remitly', fromAccountId: 'us', toAccountId: 'dr', amount: 1500, rate: 58.4, budget: false },
-      { monthKey: '2026-08', date: '2026-08-18', via: 'PayPal', fromAccountId: 'us', toAccountId: 'dr', amount: 300, rate: 57.1, budget: false },
+      { monthKey: '2026-08', date: '2026-08-03', via: 'Remitly', fromAccountId: 'us', toAccountId: 'dr', amount: 1500, rate: 58.4, budget: false, fee: 0 },
+      { monthKey: '2026-08', date: '2026-08-18', via: 'PayPal', fromAccountId: 'us', toAccountId: 'dr', amount: 300, rate: 57.1, budget: false, fee: 0 },
     ]);
     // Sin tasa escrita, la del mes sale de esos envíos, como en el libro.
     expect(rateFor(state, '2026-08', 'USD', 'DOP')).toEqual({ rate: (1500 * 58.4 + 300 * 57.1) / 1800, source: 'transfers', monthKey: '2026-08', date: null });
@@ -1038,31 +1038,38 @@ describe('ida y vuelta: exportar, importar y volver a exportar', () => {
     }
   });
 
-  it('un envío que sube el presupuesto: al recargar su libro conserva la marca y el registro no lo cuenta dos veces', () => {
+  it('un envío que mueve presupuesto y lleva comisión: al recargar su libro conserva las dos cosas y el registro no cuenta nada dos veces', () => {
     const base = seedState();
-    // 1,500 USD a 58.76 = 88,140 DOP encima de los 70,000 del registro.
+    // 1,500 USD a 58.76: −1,500 USD en la US account y +88,140 DOP en la DR account; el total sigue en 70,000.
     base.months['2026-10']!.transfers[0]!.budget = true;
+    // El libro no sabe de comisiones: no salen como filas, pero el saldo de la US account ya las tiene restadas.
+    base.months['2026-10']!.transfers[0]!.fee = 2.99;
     const book = buildExportData(base);
-    expect(exported(book, '2026-10').budget).toBe(158140);
+    expect(exported(book, '2026-10').budget).toBeCloseTo(70000, 6);
+    expect(exported(book, '2026-10').tx).toHaveLength(base.months['2026-10']!.tx.length);
+    expect(exported(book, '2026-10').accounts.usd).toBeCloseTo(exported(buildExportData(seedState()), '2026-10').accounts.usd! - 2.99, 6);
 
     let state = base;
     for (let i = 0; i < 2; i++) {
       state = applyImportToState(state, parseFinanzasXlsx(buildFinanzasXlsx(buildExportData(state))), ids(`r${i}`));
       const october = state.months['2026-10']!;
-      expect(october.transfers.map((t) => [t.date, t.amount, t.rate, t.budget]), `vuelta ${i + 1}`).toEqual([['2026-10-02', 1500, 58.76, true]]);
-      // El presupuesto del libro (158,140) menos lo que ya pone el envío: el registro vuelve a sus 70,000.
+      expect(october.transfers.map((t) => [t.date, t.amount, t.rate, t.budget, t.fee]), `vuelta ${i + 1}`).toEqual([['2026-10-02', 1500, 58.76, true, 2.99]]);
+      // El presupuesto del libro (70,000) menos el neto del envío en DOP (0, a la tasa del mes): el registro vuelve a sus 70,000.
       expect(october.budgetLog.map((e) => [e.id, e.accountId, e.kind]), `vuelta ${i + 1}`).toEqual([['imported-budget-2026-10', 'dr', 'initial']]);
       expect(october.budgetLog[0]!.amount, `vuelta ${i + 1}`).toBeCloseTo(70000, 6);
-      expect(monthCalc(state, '2026-10').budget, `vuelta ${i + 1}`).toBeCloseTo(158140, 6);
+      expect(monthCalc(state, '2026-10').budget, `vuelta ${i + 1}`).toBeCloseTo(70000, 6);
+      // La comisión sigue restando del saldo: el saldo inicial de la US account vuelve a ser el de antes.
+      expect(state.accounts.find((a) => a.id === 'us')!.opening, `vuelta ${i + 1}`).toBeCloseTo(2000, 6);
       // Los envíos de los otros meses no estaban marcados y siguen sin estarlo.
       expect(state.months['2026-09']!.transfers.map((t) => t.budget)).toEqual([false, false]);
     }
 
-    // En otro usuario no hay envío del que heredar la marca (el libro no la guarda): todo el presupuesto va al registro.
+    // En otro usuario no hay envío del que heredar la marca ni la comisión (el libro no las guarda): todo el
+    // presupuesto va al registro, y el mismo total.
     const fresh = applyImportToState(newUserState(), parseFinanzasXlsx(buildFinanzasXlsx(book)), ids());
-    expect(fresh.months['2026-10']!.transfers.map((t) => t.budget)).toEqual([false]);
-    expect(fresh.months['2026-10']!.budgets).toEqual({ dr: expect.closeTo(158140, 6) });
-    expect(monthCalc(fresh, '2026-10').budget).toBeCloseTo(158140, 6);
+    expect(fresh.months['2026-10']!.transfers.map((t) => [t.budget, t.fee])).toEqual([[false, 0]]);
+    expect(fresh.months['2026-10']!.budgets).toEqual({ dr: expect.closeTo(70000, 6) });
+    expect(monthCalc(fresh, '2026-10').budget).toBeCloseTo(70000, 6);
   });
 
   it('en el mismo usuario con TRY y más cuentas: el dinero total y el ingreso de cada mes no cambian al recargar su libro', () => {

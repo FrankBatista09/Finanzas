@@ -114,6 +114,13 @@ describe('parse', () => {
     expect(() => parse(transferCreateSchema, { ...transfer, amount: 0 })).toThrow(ApiError);
     expect(() => parse(transferCreateSchema, { ...transfer, rate: 0 })).toThrow(ApiError);
     expect(() => parse(transferCreateSchema, { ...transfer, rate: null })).toThrow(ApiError);
+    // La comisión: opcional, >= 0, en la moneda de la cuenta de origen.
+    expect(parse(transferCreateSchema, { ...transfer, fee: 2.99 })).toEqual({ ...transfer, fee: 2.99 });
+    expect(parse(transferCreateSchema, { ...transfer, fee: 0 })).toEqual({ ...transfer, fee: 0 });
+    expect(messageOf(() => parse(transferCreateSchema, { ...transfer, fee: -1 }))).toBe('Invalid data: fee: cannot be negative');
+    expect(() => parse(transferCreateSchema, { ...transfer, fee: '2.99' })).toThrow(ApiError);
+    expect(parse(transferPatchSchema, { fee: 3.49 })).toEqual({ fee: 3.49 });
+    expect(messageOf(() => parse(transferPatchSchema, { fee: -0.01 }))).toBe('Invalid data: fee: cannot be negative');
     // El formato anterior (solo dólares, sin cuentas) ya no existe.
     expect(messageOf(() => parse(transferCreateSchema, { ...transfer, usd: 1500 }))).toContain('Unrecognized key: "usd"');
     expect(messageOf(() => parse(transferCreateSchema, { ...noRate, toAccountId: undefined }))).toBe('Invalid data: toAccountId: is required');

@@ -3,6 +3,7 @@ import { CURRENCIES, GOLD_UNIT, isGold, MAX_LEN } from '../../../shared/constant
 import type { ISODate } from '../../../shared/types';
 import { useI18n, useStrings } from '../../i18n';
 import { useFinanzas } from '../../store';
+import type { AddRowControl } from '../../ui';
 import { AddButton, AddRow, CellCheckbox, CellDate, CellNumber, CellSelect, CellText, DeleteButton, SheetTable, Td, Th } from '../../ui';
 import { Converted, FallbackNote } from './Converted';
 import { afterIncomeAdd, incomeDraftInput, resolveIncomeDraft } from './model';
@@ -18,6 +19,8 @@ export interface IncomeTableProps {
   empty: IncomeDraft;
   /** La fecha que propone la fila de agregar mientras no se elija otra. */
   date: ISODate;
+  /** La fila de agregar, que abre el "+ Add income" de la cabecera de la tarjeta (useAddRow). */
+  adding: AddRowControl;
   /** La hoja de un mes cerrado: se ve, pero no se agrega, edita ni elimina desde ahí (sí desde Savings). */
   readOnly?: boolean;
   /**
@@ -33,12 +36,12 @@ export interface IncomeTableProps {
 }
 
 /**
- * La tabla de ingresos, uno por uno, con la fila de agregar arriba: la comparten "Income" de Savings (todos) y
+ * La tabla de ingresos, uno por uno, con la fila de agregar arriba (a petición): la comparten "Income" de Savings (todos) y
  * "Income" de la hoja del mes (los de ese mes). Cada ingreso entra a una cuenta y mueve su saldo; con la casilla
  * "Adds to budget" sube además el presupuesto del mes de su fecha. No pertenecen a un mes: en Savings se agregan,
  * editan y eliminan aunque el mes seleccionado esté cerrado.
  */
-export function IncomeTable({ label, rows, empty, date, readOnly = false, compact = false, gold = false }: IncomeTableProps) {
+export function IncomeTable({ label, rows, empty, date, adding, readOnly = false, compact = false, gold = false }: IncomeTableProps) {
   const { main, accountOptions: moneyOptions, incomeAccountOptions, actions } = useFinanzas();
   const accountOptions = gold ? incomeAccountOptions : moneyOptions;
   const { t } = useI18n();
@@ -66,7 +69,8 @@ export function IncomeTable({ label, rows, empty, date, readOnly = false, compac
           </tr>
         </thead>
         <tbody>
-          {!readOnly && <IncomeAddRow empty={empty} date={date} compact={compact} gold={gold} />}
+          {/* Cerrada se desmonta: su borrador se descarta con ella. */}
+          {!readOnly && adding.open && <IncomeAddRow empty={empty} date={date} adding={adding} compact={compact} gold={gold} />}
           {rows.map((r) => {
             const grams = isGold(r.cur);
             const named = { date: r.date, amount: r.amountText, cur: grams ? GOLD_UNIT : r.cur };
@@ -139,7 +143,7 @@ export function IncomeTable({ label, rows, empty, date, readOnly = false, compac
 }
 
 /** Fila de agregar. El borrador vive aquí para que escribir en ella no repinte la lista. */
-function IncomeAddRow({ empty, date, compact, gold }: Pick<IncomeTableProps, 'empty' | 'date' | 'compact' | 'gold'>) {
+function IncomeAddRow({ empty, date, adding, compact, gold }: Pick<IncomeTableProps, 'empty' | 'date' | 'adding' | 'compact' | 'gold'>) {
   const { state, accountOptions: moneyOptions, incomeAccountOptions, actions } = useFinanzas();
   const accountOptions = gold ? incomeAccountOptions : moneyOptions;
   const { t } = useI18n();
@@ -155,7 +159,7 @@ function IncomeAddRow({ empty, date, compact, gold }: Pick<IncomeTableProps, 'em
   };
 
   return (
-    <AddRow onAdd={add}>
+    <AddRow control={adding} onAdd={add}>
       <Td kind="edit">
         <CellDate value={shown.date} onCommit={(next) => setDraft((d) => ({ ...d, date: next }))} label={s('incomeDate')} />
       </Td>
@@ -203,8 +207,8 @@ function IncomeAddRow({ empty, date, compact, gold }: Pick<IncomeTableProps, 'em
         <CellCheckbox checked={shown.budget} onCommit={(budget) => setDraft((d) => ({ ...d, budget }))} disabled={grams} label={s('newIncomeBudget')} />
       </Td>
       <Td kind="add">
-        {/* En media tarjeta el botón largo ensancharía la columna de la ×: va el "Add" corto. */}
-        {compact ? <AddButton aria-label={t('addIncome')} /> : <AddButton>{t('addIncome')}</AddButton>}
+        {/* El botón largo ("Add income") es ya el de la cabecera, que abre esta fila: aquí va el "Add" corto. */}
+        <AddButton aria-label={t('addIncome')} />
       </Td>
     </AddRow>
   );

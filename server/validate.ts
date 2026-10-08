@@ -235,6 +235,7 @@ export const transferCreateSchema = z
     amount: positive(),
     rate: positive().optional(),
     budget: bool().optional(),
+    fee: nonNegative().optional(),
   })
   .refine((t) => t.fromAccountId !== t.toAccountId, { error: SAME_ACCOUNT, path: ['toAccountId'] }) satisfies z.ZodType<TransferCreate>;
 
@@ -248,6 +249,7 @@ export const transferPatchSchema = z
     amount: positive().optional(),
     rate: positive().optional(),
     budget: bool().optional(),
+    fee: nonNegative().optional(),
   })
   .refine((t) => t.fromAccountId === undefined || t.fromAccountId !== t.toAccountId, {
     error: SAME_ACCOUNT,

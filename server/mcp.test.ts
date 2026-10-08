@@ -887,8 +887,22 @@ describe('/mcp: tools/list', () => {
     expect(byName.month_summary.required).toEqual(['user']);
 
     const transfer = byName.add_transfer;
-    expect(Object.keys(transfer.properties)).toEqual(['user', 'from_account', 'to_account', 'amount', 'rate', 'via', 'date', 'add_to_budget']);
-    expect(transfer.properties.add_to_budget).toMatchObject({ type: 'boolean', default: false });
+    expect(Object.keys(transfer.properties)).toEqual([
+      'user',
+      'from_account',
+      'to_account',
+      'amount',
+      'rate',
+      'via',
+      'date',
+      'fee',
+      'move_budget',
+      'add_to_budget',
+    ]);
+    // `add_to_budget` es el nombre de antes de `move_budget` y se sigue aceptando; ninguno es obligatorio.
+    expect(transfer.properties.move_budget).toMatchObject({ type: 'boolean' });
+    expect(transfer.properties.add_to_budget).toMatchObject({ type: 'boolean' });
+    expect(transfer.properties.fee).toMatchObject({ type: 'number', minimum: 0 });
     // La tasa es opcional: sin ella vale la del mes.
     expect(transfer.required).toEqual(['user', 'from_account', 'to_account', 'amount']);
     expect(transfer.properties.from_account).toMatchObject({ type: 'string', minLength: 1, maxLength: 120 });
@@ -1614,6 +1628,7 @@ describe('month_summary', () => {
         ],
       },
       transactions: { count: 7, total: 10845 },
+      transferFees: [],
       categories: [
         { name: 'Fixed expenses', value: near(38304.71) },
         { name: 'Groceries', value: 4850 },
@@ -1746,6 +1761,7 @@ describe('add_transfer', () => {
       amount: 500,
       rate: 59.4,
       budget: false,
+      fee: 0,
     } satisfies Record<keyof Transfer, unknown>);
     expect(r.data).toEqual({
       user: FRANK,
@@ -1753,9 +1769,10 @@ describe('add_transfer', () => {
       from: { id: 'us', name: 'US account', currency: 'USD', balance: await balanceOf(db, 'us') },
       to: { id: 'dr', name: 'DR account', currency: 'DOP', balance: await balanceOf(db, 'dr') },
       sent: { amount: 500, currency: 'USD' },
+      fee: { amount: 0, currency: 'USD' },
       received: { amount: 29700, currency: 'DOP' },
       rateSource: 'given',
-      // Sin add_to_budget el presupuesto del mes sigue en sus 70,000.
+      // Sin move_budget el presupuesto del mes sigue en sus 70,000.
       month: { key: '2026-10', label: 'October 2026', currency: 'DOP', budget: 70000 },
       monthCreated: false,
     });
@@ -2582,25 +2599,64 @@ describe('presupuesto con historia, sobrante e ingresos que lo suben', () => {
     expect(await fails(env, 'add_income', { amount: 100, add_to_budget: 'yes' })).toBe('Invalid data: add_to_budget: must be true or false');
   });
 
-  it('add_transfer con add_to_budget: lo que llega sube el presupuesto del mes en la cuenta de destino, y month_summary lo cuenta', async () => {
+  it('add_transfer con fee: la comisión sale de la cuenta de origen, cuenta como una transacción del mes y month_summary la enseña', async () => {
     const { env, db } = await seeded();
-    const r = await call(env, 'add_transfer', { from_account: 'US account', to_account: 'DR account', amount: 100, rate: 59, add_to_budget: true });
+    const before = monthCalc(await loadState(db, F), '2026-10');
+    const us = balances(await loadState(db, F), '2026-10').accounts.find((a) => a.account.id === 'us')!.balance;
+    const r = await call(env, 'add_transfer', { from_account: 'US account', to_account: 'DR account', amount: 100, rate: 59, fee: 2.99 });
     expect(r.isError).toBe(false);
-    expect(r.text).toContain('5,900.00 DOP was also added to the budget of October 2026, now 75,900.00 DOP.');
-    expect(r.data!.transfer).toMatchObject({ amount: 100, rate: 59, budget: true });
-    expect(r.data!.month).toEqual({ key: '2026-10', label: 'October 2026', currency: 'DOP', budget: 75900 });
-    // No se escribe en el registro: lo suma el cálculo.
+    expect(r.text).toContain('The fee of 2.99 USD also left US account and counts as a transaction of October 2026 (category Other).');
+    expect(r.data!.transfer).toMatchObject({ amount: 100, fee: 2.99, budget: false });
+    expect(r.data!.fee).toEqual({ amount: 2.99, currency: 'USD' });
+    // Saldo: lo enviado y la comisión, sin convertir.
+    expect(r.data!.from.balance).toBeCloseTo(us - 100 - 2.99, 8);
+    const after = monthCalc(await loadState(db, F), '2026-10');
+    expect(after.txCount).toBe(before.txCount + 1);
+    expect(after.varSpent - before.varSpent).toBeCloseTo(2.99 * 58.76, 8);
+    expect(after.avail - before.avail).toBeCloseTo(-2.99 * 58.76, 8);
+
+    const summary = await call(env, 'month_summary');
+    expect(summary.text).toContain('Transactions: 8 (11,020.69 DOP) · of them, transfer fees (category Other): Remitly 2026-10-07 2.99 USD from US account');
+    expect(summary.data!.transferFees).toEqual([
+      expect.objectContaining({ transferId: r.data!.transfer.id, via: 'Remitly', accountId: 'us', amount: 2.99, currency: 'USD', category: 'Other' }),
+    ]);
+    expect(summary.data!.categories).toContainEqual({ name: 'Other', value: expect.closeTo(2.99 * 58.76, 8) });
+    expect(await fails(env, 'add_transfer', { from_account: 'US account', to_account: 'DR account', amount: 1, fee: -1 })).toBe(
+      'Invalid data: fee: cannot be negative',
+    );
+  });
+
+  it('add_transfer con move_budget: el presupuesto del mes pasa de la cuenta de origen a la de destino, y month_summary lo cuenta', async () => {
+    const { env, db } = await seeded();
+    const r = await call(env, 'add_transfer', { from_account: 'US account', to_account: 'DR account', amount: 100, rate: 59, move_budget: true });
+    expect(r.isError).toBe(false);
+    // −100 USD (5,876 DOP a la tasa del mes) y +5,900 DOP: el total solo cambia por la diferencia de tasa.
+    expect(r.text).toContain(
+      "Budget of October 2026 moved: 100.00 USD less in US account, 5,900.00 DOP more in DR account; the month's budget is now 70,024.00 DOP.",
+    );
+    expect(r.data!.transfer).toMatchObject({ amount: 100, rate: 59, budget: true, fee: 0 });
+    expect(r.data!.month).toEqual({ key: '2026-10', label: 'October 2026', currency: 'DOP', budget: 70024 });
+    // No se escribe en el registro: lo hace el cálculo.
     expect((await getMonth(db, F, '2026-10'))!.budgetLog).toHaveLength(2);
-    expect(monthCalc(await loadState(db, F), '2026-10').budget).toBe(75900);
+    expect(monthCalc(await loadState(db, F), '2026-10').budget).toBe(70024);
 
     const summary = await call(env, 'month_summary');
     expect(summary.text.split('\n')[2]).toBe(
-      'Budget history: 2026-10-01 initial DR account +65,000.00 DOP; 2026-10-05 adjustment DR account +5,000.00 DOP (Car repair); 2026-10-07 transfer DR account +5,900.00 DOP (Remitly)',
+      'Budget history: 2026-10-01 initial DR account +65,000.00 DOP; 2026-10-05 adjustment DR account +5,000.00 DOP (Car repair); 2026-10-07 transfer US account -100.00 USD (Remitly); 2026-10-07 transfer DR account +5,900.00 DOP (Remitly)',
     );
-    expect(summary.data!.budgetHistory.at(-1)).toMatchObject({ kind: 'transfer', id: r.data!.transfer.id, accountId: 'dr', amount: 5900, currency: 'DOP', total: 75900 });
+    expect(summary.data!.budgetHistory.slice(-2)).toMatchObject([
+      { kind: 'transfer', side: 'out', id: r.data!.transfer.id, accountId: 'us', amount: -100, currency: 'USD', total: 64124 },
+      { kind: 'transfer', side: 'in', id: r.data!.transfer.id, accountId: 'dr', amount: 5900, currency: 'DOP', total: 70024 },
+    ]);
     expect(summary.data!.budgetParts).toEqual([
+      { accountId: 'us', name: 'US account', currency: 'USD', amount: -100, fromLog: 0, fromIncomes: 0, fromTransfers: -100, inMain: -5876 },
       { accountId: 'dr', name: 'DR account', currency: 'DOP', amount: 75900, fromLog: 70000, fromIncomes: 0, fromTransfers: 5900, inMain: 75900 },
     ]);
+    // El nombre de antes se sigue aceptando, con el mismo significado; si vienen los dos, manda move_budget.
+    const old = await call(env, 'add_transfer', { from_account: 'US account', to_account: 'DR account', amount: 1, add_to_budget: true });
+    expect(old.data!.transfer.budget).toBe(true);
+    const both = await call(env, 'add_transfer', { from_account: 'US account', to_account: 'DR account', amount: 1, move_budget: false, add_to_budget: true });
+    expect(both.data!.transfer.budget).toBe(false);
     expect(await fails(env, 'add_transfer', { from_account: 'US account', to_account: 'DR account', amount: 1, add_to_budget: 'yes' })).toBe(
       'Invalid data: add_to_budget: must be true or false',
     );

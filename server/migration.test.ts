@@ -5,7 +5,7 @@
 // La 0005 rehace accounts e incomes para admitir el oro ('XAU'): ni una fila cambia y ninguna clave foránea se pierde.
 
 import { describe, expect, it } from 'vitest';
-import { monthCalc, rateFor } from '../shared/calc';
+import { balances, monthCalc, rateFor } from '../shared/calc';
 import { METHODS } from '../shared/constants';
 import { applyMigrations, asD1, createTestDb, migrationFiles } from './d1-node';
 import type { NodeD1Database } from './d1-node';
@@ -74,8 +74,8 @@ describe('migración 0002 sobre una base con datos de 0001', () => {
     applyMigrations(db, LATER);
     // De las transacciones solo cambia el nombre del método con tarjeta (0003).
     before.transactions = before.transactions!.map((row) => (row.method === 'Card' ? { ...row, method: 'Debit card' } : row));
-    // Y a los envíos solo se les añade la columna `budget`, en 0 (0004).
-    before.transfers = before.transfers!.map((row) => ({ ...row, budget: 0 }));
+    // Y a los envíos solo se les añaden las columnas `budget` (0004) y `fee` (0006), en 0.
+    before.transfers = before.transfers!.map((row) => ({ ...row, budget: 0, fee: 0 }));
     for (const table of UNTOUCHED) expect(dump(db, table), table).toEqual(before[table]);
     // Y la base queda coherente: ninguna clave foránea rota.
     expect(db.sqlite.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
@@ -248,6 +248,56 @@ describe('migración 0004: transfers.budget', () => {
     `);
     expect(sqlite.sqlite.prepare("SELECT budget FROM transfers WHERE id = 'x2'").get()).toEqual({ budget: 0 });
     expect(() => sqlite.sqlite.exec("UPDATE transfers SET budget = NULL WHERE id = 'x2'")).toThrow();
+  });
+});
+
+describe('migración 0006: transfers.fee', () => {
+  const FILE = '0006_transfer_fee.sql';
+  const BEFORE = LATER.slice(0, LATER.indexOf(FILE));
+
+  /** La base de producción antes de 0006, con un envío que ya mueve presupuesto. */
+  function db0005(): NodeD1Database {
+    const db = legacyDb();
+    applyMigrations(db, BEFORE);
+    db.sqlite.exec("UPDATE transfers SET budget = 1 WHERE user_id = 'frank'");
+    return db;
+  }
+
+  it('es la migración que sigue a la 0005', () => {
+    expect(BEFORE.at(-1)).toBe('0005_gold_accounts.sql');
+    expect(LATER.at(-1)).toBe(FILE);
+  });
+
+  it('los envíos que ya había quedan sin comisión; el resto de cada fila, y de la base, igual', () => {
+    const db = db0005();
+    const tables = db.sqlite
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE 'd1_%' ORDER BY name")
+      .all()
+      .map((row) => String(row.name));
+    const before = Object.fromEntries(tables.map((t) => [t, dump(db, t)]));
+    applyMigrations(db, [FILE]);
+    before.transfers = before.transfers!.map((row) => ({ ...row, fee: 0 }));
+    for (const table of tables) expect(dump(db, table), table).toEqual(before[table]);
+    expect(db.sqlite.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
+  });
+
+  it('los saldos no cambian; la marca `budget` que ya había pasa a mover presupuesto; y un INSERT sin `fee` nace en 0', async () => {
+    const sqlite = db0005();
+    const before = await loadState(asD1(sqlite), 'frank');
+    applyMigrations(sqlite, [FILE]);
+    const state = await loadState(asD1(sqlite), 'frank');
+    expect(state.months['2026-09']!.transfers.map((t) => [t.id, t.budget, t.fee])).toEqual([['x1', true, 0]]);
+    expect(balances(state, '2026-10').accounts.map((a) => a.balance)).toEqual(balances(before, '2026-10').accounts.map((a) => a.balance));
+    // El envío de septiembre (1,500 USD a 58.55) ahora resta de la US account lo que suma a la DR account.
+    const parts = monthCalc(state, '2026-09').budgetParts.map((p) => [p.account.id, p.fromTransfers]);
+    expect(parts).toEqual(expect.arrayContaining([['us', -1500], ['dr', 1500 * 58.55]]));
+
+    sqlite.sqlite.exec(`
+      INSERT INTO transfers (user_id, id, month_key, date, via, from_account_id, to_account_id, amount, rate, budget)
+      VALUES ('frank', 'x2', '2026-10', '2026-10-04', 'Remitly', 'us', 'dr', 100, 58.76, 0)
+    `);
+    expect(sqlite.sqlite.prepare("SELECT fee FROM transfers WHERE id = 'x2'").get()).toEqual({ fee: 0 });
+    expect(() => sqlite.sqlite.exec("UPDATE transfers SET fee = NULL WHERE id = 'x2'")).toThrow();
   });
 });
 

@@ -7,7 +7,7 @@ import type { AccountCurrency, Currency } from '../../shared/types';
 import { useI18n } from '../i18n';
 import { canHideAccount, canRemoveAccount, useFinanzas } from '../store';
 import { ringShades } from '../theme';
-import { AddButton, AddRow, CellNumber, CellSelect, CellText, cx, SheetTable, Td, DeleteButton } from '../ui';
+import { AddButton, AddRow, AddRowButton, CellNumber, CellSelect, CellText, cx, SheetTable, Td, DeleteButton, useAddRow } from '../ui';
 import { Donut, DonutCenter, LegendRow } from './Donut';
 import styles from './SummaryPanel.module.css';
 
@@ -89,13 +89,17 @@ const NEW_ACCOUNT = { name: '', opening: 0 };
 // las flechas del campo). Con él, la tabla se desplaza en horizontal dentro de su marco.
 const BALANCE_MIN_WIDTH = 104;
 
-/** Las cuentas visibles con su saldo y, al final, la fila para agregar otra. */
+/** Las cuentas visibles con su saldo y, al final, la fila para agregar otra, que abre el "+ Add account" de debajo del marco. */
 function AccountsTable({ rows }: { rows: readonly AccountBalance[] }) {
   const { state, main, latestMonth, actions } = useFinanzas();
   const { t } = useI18n();
   const [draft, setDraft] = useState(NEW_ACCOUNT);
   // La moneda de la cuenta nueva arranca en la principal; null = el usuario no la ha tocado.
   const [currency, setCurrency] = useState<AccountCurrency | null>(null);
+  const adding = useAddRow(() => {
+    setDraft(NEW_ACCOUNT);
+    setCurrency(null);
+  });
   // Solo aquí se ofrece el oro: una cuenta es lo único que puede estar en gramos.
   const currencyOptions = ACCOUNT_CURRENCIES.map((c) => (isGold(c) ? { value: c, label: t('goldGrams') } : c));
   const hasGold = state.accounts.some((a) => isGold(a.currency));
@@ -154,7 +158,7 @@ function AccountsTable({ rows }: { rows: readonly AccountBalance[] }) {
             </tr>
             );
           })}
-          <AddRow onAdd={add}>
+          <AddRow control={adding} onAdd={add}>
             <Td kind="edit">
               <CellText
                 value={draft.name}
@@ -179,12 +183,15 @@ function AccountsTable({ rows }: { rows: readonly AccountBalance[] }) {
               <CellSelect value={currency ?? main} options={currencyOptions} onCommit={setCurrency} mono dense label={t('newAccountCurrency')} />
             </Td>
             <Td kind="add">
-              <AddButton className={styles.addAccount}>{t('addAccount')}</AddButton>
+              <AddButton />
             </Td>
           </AddRow>
         </tbody>
       </SheetTable>
     </div>
+    <AddRowButton control={adding} variant="link" className={styles.reveal}>
+      {t('addAccount')}
+    </AddRowButton>
     {/* Aparte de las cuentas: dentro de la tabla parecía una cuenta más a medio llenar. */}
     {hasGold && (
       <div className={`${styles.accounts} ${styles.goldPrice}`}>
