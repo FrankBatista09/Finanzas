@@ -30,10 +30,11 @@ export function MesScreen() {
           <RatesCard />
         </div>
       </div>
-      {/* Los envíos tienen siete columnas con dos cuentas: van a todo el ancho para que quepan los nombres. */}
-      <TransfersCard />
-      {/* El dinero recibido fuera de los envíos: a todo el ancho, encima del historial. */}
-      <IncomeCard />
+      {/* Envíos e ingresos, uno al lado del otro con el mismo ancho y alto; cuando no caben, se apilan. */}
+      <div className={styles.pair}>
+        <TransfersCard />
+        <IncomeCard />
+      </div>
       <TransactionsCard />
       {!readOnly && <CloseBox />}
       {/* Borrar el mes, abierto o cerrado: discreto y al final. Solo abre el diálogo de confirmación, que vive en App. */}

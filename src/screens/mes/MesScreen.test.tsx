@@ -230,18 +230,14 @@ describe('mes abierto · October 2026', () => {
     expect(buttons(card)).toEqual(['×', '×', 'Add rate']);
   });
 
-  it('envíos: la tarjeta va a todo el ancho, fuera de las dos columnas y antes de los ingresos y del historial', () => {
-    // El bloque de dos columnas (gastos mensuales | categorías y tasas) se cierra antes de la tarjeta de envíos.
-    const columns = section(html, '<div class="_columns_', '>Transfers</h2>');
-    const cardStart = columns.lastIndexOf('<div class="_card_');
-    const block = columns.slice(0, cardStart);
-    expect(block.match(/<div\b/g)).toHaveLength(block.match(/<\/div>/g)!.length);
-    expect(block).toContain('class="_side_');
-    expect(block).toContain('>By category</h2>');
-    expect(block).toContain('>Month rates</h2>');
-    // La tarjeta es hija directa de la pila de la hoja, como el historial: sin clase de columna.
-    expect(columns.slice(cardStart)).toMatch(/^<div class="_card_\w+"><div class="_header_\w+"><h2 class="_title_\w+"$/);
-    const order = ['>Monthly expenses</h2>', '>By category</h2>', '>Month rates</h2>', '>Transfers</h2>', INCOME, HISTORY].map((x) => html.indexOf(x));
+  it('envíos e ingresos: una al lado de la otra en la misma rejilla, después de las dos columnas y antes del historial', () => {
+    // Las dos tarjetas son hijas directas de la rejilla `pair`, en ese orden, y nada más vive ahí.
+    const pair = section(html, '<div class="_pair_', HISTORY);
+    expect(pair).toMatch(/^<div class="_pair_\w+"><div class="_card_\w+">/);
+    expect(pair).toContain('>Transfers</h2>');
+    expect(pair).toContain(INCOME);
+    expect(pair).not.toContain('>Month rates</h2>');
+    const order = ['>Monthly expenses</h2>', '>By category</h2>', '>Month rates</h2>', '<div class="_pair_', '>Transfers</h2>', INCOME, HISTORY].map((x) => html.indexOf(x));
     expect(order.every((x) => x >= 0)).toBe(true);
     expect(order).toEqual([...order].sort((a, b) => a - b));
   });
