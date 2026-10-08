@@ -5,6 +5,7 @@
 import { skipToken, useQuery } from '@tanstack/react-query';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
+import type { CloseRequest } from '../../shared/api';
 import { APP_NAME } from '../../shared/constants';
 import { DEFAULT_LANGUAGE } from '../../shared/i18n';
 import type { AppUser, Language, MonthKey } from '../../shared/types';
@@ -242,12 +243,12 @@ export function FinanzasProvider({ stores, api, children }: FinanzasProviderProp
   }, [store, monthKey]);
 
   const confirmClose = useCallback(
-    async (withExcel: boolean) => {
+    async (withExcel: boolean, request?: CloseRequest) => {
       if (!store || !closeFor || closing) return;
       setClosing(true);
       try {
         await store.settle();
-        const res = await store.api.closeMonth(closeFor);
+        const res = await store.api.closeMonth(closeFor, request);
         store.applyServer((s) => putMonths(s, res.closed, res.next));
         if (shown.current === store) {
           setCloseFor(null);
@@ -329,7 +330,7 @@ export function FinanzasProvider({ stores, api, children }: FinanzasProviderProp
     devTools: session.data?.devTools ?? false,
     excelStatus,
     closeDialog: closeFor && closeFor === monthKey ? { key: closeFor, busy: closing } : null,
-    confirmClose: (withExcel) => void confirmClose(withExcel),
+    confirmClose: (withExcel, request) => void confirmClose(withExcel, request),
     cancelClose,
     deleteDialog: deleteFor && state?.months[deleteFor] ? { key: deleteFor, busy: deleting } : null,
     confirmDelete: () => void confirmDelete(),

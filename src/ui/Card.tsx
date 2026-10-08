@@ -36,6 +36,15 @@ export function CardHeader({ title, meta, wrap, inset, className }: CardHeaderPr
   );
 }
 
+/** Una línea de aclaración bajo la cabecera de una tarjeta (12px, atenuada): qué significa lo que se escribe en ella. */
+export function CardNote({ className, children, ...rest }: HTMLAttributes<HTMLParagraphElement>) {
+  return (
+    <p {...rest} className={cx(styles.note, className)}>
+      {children}
+    </p>
+  );
+}
+
 /** Columna con 20px de separación: la raíz de cada pantalla. */
 export function Stack({ className, children, ...rest }: HTMLAttributes<HTMLDivElement>) {
   return (

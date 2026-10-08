@@ -127,7 +127,7 @@ describe('de punta a punta: Excel', () => {
     expect(figures(state)).toEqual(figures(seedState()));
     expect(state.accounts.map((a) => [a.id, a.name, a.currency])).toEqual(DEFAULT_ACCOUNTS.map((a) => [a.id, a.name, a.currency]));
     // Los textos del usuario, tal cual (en español); categorías y métodos, con su nombre canónico.
-    expect(state.months['2026-10']!.tx[0]).toMatchObject({ desc: 'Compra semanal', cat: 'Groceries', method: 'Card' });
+    expect(state.months['2026-10']!.tx[0]).toMatchObject({ desc: 'Compra semanal', cat: 'Groceries', method: 'Debit card' });
     // El ingreso de cada mes es un ingreso en USD el día 1; los saldos del último mes son los del libro.
     expect(state.incomes.map((i) => [i.date, i.desc, i.accountId, i.amount, i.cur])).toEqual(
       ['2026-08-01', '2026-09-01', '2026-10-01'].map((date) => [date, IMPORTED_INCOME, 'us', 5800, 'USD']),
@@ -202,7 +202,7 @@ describe('de punta a punta: Excel', () => {
     const source = fresh();
     // Una cuarta meta, en español, para que el libro no sea uno de la versión 1 (más abajo).
     const mine = seedWithFormerGoalNames();
-    mine.goals.push({ id: 'carro', name: 'Carro', cur: 'USD', monthly: null, start: null, end: null, sort: 3 });
+    mine.goals.push({ id: 'carro', name: 'Carro', cur: 'USD', monthly: null, start: null, end: null, approxCur: null, sort: 3 });
     await replaceAll(source.db, FRANK.id, mine);
     const first = await exportXlsx(source.api);
 
@@ -358,8 +358,8 @@ describe('de punta a punta: lo que registra Claude llega a la web y al Excel', (
     const fromClaude = state.months['2026-10']!.tx.filter((t) => t.source === 'claude');
     expect(fromClaude.map((t) => [t.date, t.desc, t.cat, t.method, t.amount, t.cur, t.accountId])).toEqual([
       // Sin cuenta: la de por defecto de Frank ('dr'), en su moneda.
-      ['2026-10-07', 'Uber', 'Transport', 'Card', 850, 'DOP', 'dr'],
-      ['2026-10-06', 'Colmado', 'Food', 'Card', 12.5, 'USD', 'us'],
+      ['2026-10-07', 'Uber', 'Transport', 'Debit card', 850, 'DOP', 'dr'],
+      ['2026-10-06', 'Colmado', 'Food', 'Debit card', 12.5, 'USD', 'us'],
     ]);
     // Los dos gastos ya restaron de sus cuentas.
     expect(monthEnd(state, '2026-10')).toEqual([
@@ -369,8 +369,8 @@ describe('de punta a punta: lo que registra Claude llega a la web y al Excel', (
 
     const october = parseFinanzasXlsx(await exportXlsx(api)).months.find((m) => m.key === '2026-10')!;
     expect(october.tx).toHaveLength(9);
-    expect(october.tx).toContainEqual({ date: '2026-10-07', desc: 'Uber', place: '', cat: 'Transport', method: 'Card', amount: 850, cur: 'DOP', notes: '' });
-    expect(october.tx).toContainEqual({ date: '2026-10-06', desc: 'Colmado', place: '', cat: 'Food', method: 'Card', amount: 12.5, cur: 'USD', notes: '' });
+    expect(october.tx).toContainEqual({ date: '2026-10-07', desc: 'Uber', place: '', cat: 'Transport', method: 'Debit card', amount: 850, cur: 'DOP', notes: '' });
+    expect(october.tx).toContainEqual({ date: '2026-10-06', desc: 'Colmado', place: '', cat: 'Food', method: 'Debit card', amount: 12.5, cur: 'USD', notes: '' });
     expect(october.accounts.usd).toBeCloseTo(13482 - 12.5, 2);
 
     // Nada de eso llegó a las finanzas ni al libro de Eda.

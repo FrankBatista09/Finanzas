@@ -3,7 +3,8 @@
 
 import { CURRENCIES, VIAS } from '../../../shared/constants';
 import { fRate } from '../../../shared/format';
-import type { Account, Currency, FixedExpense, ISODate, Month, MonthKey, Transaction } from '../../../shared/types';
+import { firstDay } from '../../../shared/month';
+import type { Account, Currency, FixedExpense, ISODate, Month, MonthKey, MonthRate, Transaction } from '../../../shared/types';
 import type { AccountOption, Money, PairRate } from '../../store';
 
 // Topes de texto que exige el servidor. La celda no deja pasarse: así el guardado no se rechaza
@@ -53,14 +54,15 @@ export function labelled(values: readonly string[], label: (value: string) => st
 export type WithMoney<T> = { row: T } & Money;
 
 /**
- * Las filas con sus importes ya convertidos (`inBoth` de useFinanzas(), con las tasas del mes). A una fila
+ * Las filas con sus importes ya convertidos (`inBoth` de useFinanzas()): una fila con fecha propia (una
+ * transacción), con la tasa vigente en su fecha; una sin fecha (un gasto fijo), con la última del mes. A una fila
  * memorizada se le pasan las dos cifras y no la función, que cambia con cada cambio de estado.
  */
-export function withMoney<T extends { amount: number; cur: Currency }>(
+export function withMoney<T extends { amount: number; cur: Currency; date?: ISODate }>(
   rows: readonly T[],
-  inBoth: (amount: number, cur: Currency) => Money,
+  inBoth: (amount: number, cur: Currency, key?: MonthKey, date?: ISODate) => Money,
 ): WithMoney<T>[] {
-  return rows.map((row) => ({ row, ...inBoth(row.amount, row.cur) }));
+  return rows.map((row) => ({ row, ...inBoth(row.amount, row.cur, undefined, row.date) }));
 }
 
 /**
@@ -96,6 +98,52 @@ export function usedCurrencies(
  */
 export function shownRates(rates: readonly PairRate[], used: readonly Currency[]): PairRate[] {
   return rates.filter((r) => r.source === 'month' || (used.includes(r.from) && used.includes(r.to)));
+}
+
+const samePair = (r: { from: Currency; to: Currency }, from: Currency, to: Currency) =>
+  (r.from === from && r.to === to) || (r.from === to && r.to === from);
+
+/**
+ * Una fila de la tarjeta "Tasas del mes".
+ *  typed     una tasa escrita en este mes, con su fecha: se corrige y se quita.
+ *  resolved  la tasa vigente de un par que no tiene ninguna escrita en este mes (valor de respaldo, envíos, cruce
+ *            o un mes anterior): no hay nada guardado que quitar; escribir en ella crea la del par, desde `date`.
+ */
+export type RateRow =
+  | { kind: 'typed'; key: string; from: Currency; to: Currency; rate: number; date: ISODate }
+  | { kind: 'resolved'; key: string; from: Currency; to: Currency; rate: number; date: ISODate; info: PairRate };
+
+/**
+ * La fecha que se propone para una tasa nueva de ese par: `draftDate` (hoy si el mes es el actual; si no, su
+ * primer día) cuando el par ya tiene una tasa escrita vigente; si no tiene ninguna, el primer día del mes, para
+ * que la tasa cubra también las filas anteriores de este mes. `rates` son las de useFinanzas().
+ */
+export function newRateDate(from: Currency, to: Currency, rates: readonly PairRate[], monthKey: MonthKey, draftDate: ISODate): ISODate {
+  // RateInfo.date solo viene cuando la tasa vigente es una escrita (de este mes o de uno anterior).
+  const typed = rates.find((r) => samePair(r, from, to))?.date ?? null;
+  return typed === null ? firstDay(monthKey) : draftDate;
+}
+
+/**
+ * Las filas de la tarjeta: por cada par que se ve (`shown`, en su orden), sus tasas escritas en este mes por
+ * fecha (las de una misma fecha, como llegaron) o, si no tiene ninguna, la vigente con su origen. La clave de una
+ * fila es su par y su fecha: al escribir en una fila 'resolved' aparece en su sitio la 'typed' con esa misma
+ * clave, y el campo en el que se está escribiendo no se desmonta.
+ */
+export function rateRows(
+  shown: readonly PairRate[],
+  typed: readonly MonthRate[],
+  rates: readonly PairRate[],
+  monthKey: MonthKey,
+  draftDate: ISODate,
+): RateRow[] {
+  return shown.flatMap((pair): RateRow[] => {
+    const id = [pair.from, pair.to].sort().join('-');
+    const mine = typed.filter((r) => r.rate > 0 && samePair(r, pair.from, pair.to)).sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+    if (mine.length > 0) return mine.map((r) => ({ kind: 'typed', key: `${id}:${r.date}`, from: r.from, to: r.to, rate: r.rate, date: r.date }));
+    const date = newRateDate(pair.from, pair.to, rates, monthKey, draftDate);
+    return [{ kind: 'resolved', key: `${id}:${date}`, from: pair.from, to: pair.to, rate: pair.rate, date, info: pair }];
+  });
 }
 
 /**

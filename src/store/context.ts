@@ -6,10 +6,19 @@
 // (state.language) y traen los ayudantes atados a él (meses, categorías, métodos, origen de una tasa).
 
 import { createContext, useContext } from 'react';
-import type { ContributionPatch, FixedPatch, GoalPatch, IncomePatch, TransferPatch, TxPatch } from '../../shared/api';
-import type { Balances, MonthCalc, RateInfo } from '../../shared/calc';
+import type { CloseRequest, ContributionPatch, FixedPatch, GoalPatch, IncomePatch, TransferPatch, TxPatch } from '../../shared/api';
+import type { Balances, Leftover, MonthCalc, RateInfo } from '../../shared/calc';
 import type { Account, AppState, AppUser, Currency, ISODate, Language, Month, MonthKey, ThemeColors } from '../../shared/types';
-import type { AccountInput, ContributionInput, FixedInput, GoalInput, IncomeInput, TransferInput, TxInput } from './reducers';
+import type {
+  AccountInput,
+  BudgetEntryInput,
+  ContributionInput,
+  FixedInput,
+  GoalInput,
+  IncomeInput,
+  TransferInput,
+  TxInput,
+} from './reducers';
 import type { Sheet } from './url';
 import type { AccountOption, Money, PairRate } from './view';
 
@@ -57,18 +66,36 @@ export interface Actions {
 
   // ── El mes seleccionado ────────────────────────────────────────────────────
   /**
-   * La parte del presupuesto del mes seleccionado que sale de esa cuenta, en la moneda de la cuenta; 0 la quita.
-   * false si la cuenta no existe, el monto no es un número o el mes está cerrado.
+   * La parte del presupuesto del mes seleccionado que sale de esa cuenta, en la moneda de la cuenta, tal como se
+   * ve (con lo que le suman los ingresos que suben el presupuesto). El presupuesto no se sobrescribe: el servidor
+   * añade a su registro la diferencia. 0 deja en cero lo que suma el registro. false si la cuenta no existe, el
+   * monto no es un número >= 0, queda por debajo de lo que ya suman esos ingresos o el mes está cerrado.
    */
   setBudgetPart(accountId: string, amount: number): boolean;
   /**
-   * Escribe a mano la tasa de un par para el mes seleccionado: 1 `from` = `rate` `to`. Hay una sola por par:
-   * sustituye a la que hubiera, en el sentido que fuera. false si las monedas son la misma, la tasa no es > 0
-   * (una celda a medio escribir) o el mes está cerrado.
+   * Añade un movimiento al registro del presupuesto del mes seleccionado (suma o resta a la parte de una cuenta).
+   * false si la cuenta no existe, el monto es 0 o no es un número, la fecha no cae en el mes o el mes está cerrado.
    */
-  setMonthRate(from: Currency, to: Currency, rate: number): boolean;
-  /** Quita la tasa escrita de ese par (en cualquiera de los dos sentidos) del mes seleccionado. */
-  removeMonthRate(from: Currency, to: Currency): void;
+  addBudgetEntry(input: BudgetEntryInput): boolean;
+  /**
+   * Quita un movimiento del registro del presupuesto del mes seleccionado (no un ingreso: ese se edita como
+   * ingreso). false si no está, si el mes está cerrado o si se acaba de añadir y aún no tiene id del servidor.
+   */
+  removeBudgetEntry(id: string): boolean;
+  /**
+   * Suma al presupuesto del mes seleccionado lo que sobró del mes anterior (useFinanzas().leftover), una sola vez.
+   * false si no hay mes anterior, ya se sumó, sobró 0 o el mes está cerrado.
+   */
+  addLeftover(): boolean;
+  /**
+   * Escribe a mano la tasa de un par desde una fecha del mes seleccionado: 1 `from` = `rate` `to`. Hay una por par
+   * y fecha: sustituye a la de esa fecha, en el sentido que fuera; las de otras fechas siguen valiendo para lo
+   * registrado antes. false si las monedas son la misma, la tasa no es > 0 (una celda a medio escribir), la fecha
+   * no cae en el mes o el mes está cerrado.
+   */
+  setMonthRate(from: Currency, to: Currency, rate: number, date: ISODate): boolean;
+  /** Quita la tasa escrita de ese par (en cualquiera de los dos sentidos) y esa fecha del mes seleccionado. */
+  removeMonthRate(from: Currency, to: Currency, date: ISODate): void;
 
   /** Agrega al mes seleccionado. false si falta el concepto, el monto no es > 0 o la cuenta indicada no existe. */
   addFixed(input: FixedInput): boolean;
@@ -85,7 +112,7 @@ export interface Actions {
   /**
    * Agrega al mes seleccionado un envío de una cuenta a otra. false si la vía (texto libre) está en blanco, la fecha
    * no es válida, el monto no es > 0, alguna cuenta no existe, las dos son la misma o la tasa indicada no es > 0.
-   * Sin `rate` se usa la tasa del mes para ese par; entre cuentas de la misma moneda siempre es 1.
+   * Sin `rate` se usa la tasa vigente en la fecha del envío para ese par; entre cuentas de la misma moneda siempre es 1.
    */
   addTransfer(input: TransferInput): boolean;
   /**
@@ -97,7 +124,10 @@ export interface Actions {
   removeTransfer(id: string): void;
 
   // ── Ingresos, metas y aportes (no pertenecen a un mes) ─────────────────────
-  /** false si la fecha no es válida, el monto no es > 0 o la cuenta indicada no existe. Vale cualquier fecha, también de un mes cerrado. */
+  /**
+   * false si la fecha no es válida, el monto no es > 0 o la cuenta indicada no existe. Vale cualquier fecha, también
+   * de un mes cerrado. Con `budget: true` el ingreso sube además el presupuesto del mes de su fecha.
+   */
   addIncome(input: IncomeInput): boolean;
   /** Se ignoran una fecha no válida, un `amount` negativo y un `accountId` que no exista. */
   patchIncome(id: string, patch: IncomePatch): void;
@@ -110,7 +140,8 @@ export interface Actions {
   removeContribution(id: string): void;
 
   /**
-   * Crea una meta al final de la lista, en la moneda indicada (por defecto, la principal). false (y no hace nada)
+   * Crea una meta al final de la lista, en la moneda indicada (por defecto, la principal) y con su moneda "≈"
+   * (`approxCur`; null o sin indicar, la principal). false (y no hace nada)
    * si falta el nombre o el plan no cumple la regla: sin plan (monthly, start y end en null o sin definir) o con
    * los tres (monthly > 0, start <= end).
    */
@@ -166,15 +197,18 @@ export interface Finanzas {
   second: Currency;
   /**
    * Un importe en la moneda principal y en la segunda, con las tasas de un mes (por defecto, el seleccionado):
-   * las dos columnas de una tabla salen de una llamada. Lo que pertenece a un mes usa las de ese mes; un ingreso
-   * o un aporte, las del mes de su fecha: `inBoth(c.amount, c.cur, monthOf(c.date))`.
+   * las dos columnas de una tabla salen de una llamada. Con `date`, con la tasa vigente ese día: es lo que toca a
+   * una fila con fecha propia (una transacción: `inBoth(t.amount, t.cur, undefined, t.date)`); sin ella, con la
+   * última del mes (un gasto fijo, un total).
    * La función cambia con cada cambio de estado: a una fila memorizada se le pasan las cifras, no la función.
    */
-  inBoth(amount: number, cur: Currency, key?: MonthKey): Money;
+  inBoth(amount: number, cur: Currency, key?: MonthKey, date?: ISODate): Money;
   /** Las tasas del mes seleccionado, una por par de monedas y ya resueltas, con el origen de cada una (view.ts pairRates). */
   rates: readonly PairRate[];
-  /** La tasa `from` → `to` de un mes (por defecto, el seleccionado), con su origen: rateFor de shared/calc.ts. */
-  rateOf(from: Currency, to: Currency, key?: MonthKey): RateInfo;
+  /** La tasa `from` → `to` de un mes (por defecto, el seleccionado; con `date`, la vigente ese día), con su origen: rateFor de shared/calc.ts. */
+  rateOf(from: Currency, to: Currency, key?: MonthKey, date?: ISODate): RateInfo;
+  /** Lo que sobró del mes anterior al seleccionado y si ya se sumó a su presupuesto (shared/calc leftoverFor). */
+  leftover: Leftover;
 
   /** Todas las cuentas del usuario, también las ocultas, en su orden. */
   accounts: readonly Account[];
@@ -243,7 +277,8 @@ export interface Shell {
 
   /** Modal de cierre abierto para ese mes; `busy` mientras se está cerrando. */
   closeDialog: MonthDialog | null;
-  confirmClose(withExcel: boolean): void;
+  /** `request`: las partes iniciales del mes siguiente y si se le suma el sobrante; sin él, el servidor copia las de este mes. */
+  confirmClose(withExcel: boolean, request?: CloseRequest): void;
   cancelClose(): void;
 
   /** Diálogo de borrar mes abierto para ese mes; `busy` mientras se está borrando. */

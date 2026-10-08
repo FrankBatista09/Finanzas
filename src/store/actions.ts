@@ -1,11 +1,13 @@
 import type { SettingsUpdate } from '../../shared/api';
 import { visibleAccounts } from '../../shared/calc';
 import { isLanguage } from '../../shared/i18n';
+import { clampToMonth, todayISO } from '../../shared/month';
 import { isDefaultTheme, normalizeTheme } from '../../shared/theme';
-import type { Currency, MonthKey, ThemeColors } from '../../shared/types';
+import type { Currency, ISODate, MonthKey, ThemeColors } from '../../shared/types';
 import type { Actions } from './context';
 import {
   accountName,
+  budgetEntry,
   budgetPart,
   canHideAccount,
   canRemoveAccount,
@@ -15,8 +17,11 @@ import {
   fixedChange,
   goalChange,
   incomeChange,
+  leftoverEntry,
+  LOCAL_ENTRY,
   monthRate,
   newAccount,
+  newBudgetEntry,
   newContribution,
   newFixed,
   newGoal,
@@ -40,9 +45,16 @@ const sameTheme = (a: ThemeColors | null, b: ThemeColors | null) =>
 /**
  * La API de acciones de las pantallas, atada a la capa de datos de un usuario y al mes seleccionado. Todo se
  * valida aquí (con las reglas de reducers.ts), contra el estado que se ve en ese momento: lo que el servidor
- * rechazaría no llega a enviarse. Las filas nuevas salen con un id generado en el cliente.
+ * rechazaría no llega a enviarse. Las filas nuevas salen con un id generado en el cliente. `today` da la fecha de
+ * los movimientos del presupuesto que se escriben ahora: la misma que les pondrá el servidor (su zona horaria).
  */
-export function createActions(store: FinanzasStore, monthKey: MonthKey | null, flows: Flows, makeId: () => string = newId): Actions {
+export function createActions(
+  store: FinanzasStore,
+  monthKey: MonthKey | null,
+  flows: Flows,
+  makeId: () => string = newId,
+  today: () => ISODate = todayISO,
+): Actions {
   const settings = (patch: SettingsUpdate | null) => {
     if (patch && Object.keys(patch).length > 0) store.dispatch({ type: 'settings/patch', patch });
   };
@@ -109,21 +121,45 @@ export function createActions(store: FinanzasStore, monthKey: MonthKey | null, f
       const state = store.state;
       const patch = state && monthKey ? budgetPart(state, monthKey, accountId, amount) : null;
       if (!patch || !monthKey) return false;
-      store.dispatch({ type: 'month/patch', key: monthKey, patch });
+      store.dispatch({ type: 'month/patch', key: monthKey, patch, date: clampToMonth(today(), monthKey) });
       return true;
     },
-    setMonthRate(from, to, rate) {
+    addBudgetEntry(input) {
       const state = store.state;
-      const next = state && monthKey ? monthRate(state, monthKey, from, to, rate) : null;
+      const row = state && monthKey ? newBudgetEntry(state, monthKey, input, makeId(), today()) : null;
+      if (!row || !monthKey) return false;
+      store.dispatch({ type: 'budget/add', key: monthKey, row });
+      return true;
+    },
+    removeBudgetEntry(id) {
+      const state = store.state;
+      if (!state || !monthKey || !budgetEntry(state, monthKey, id)) return false;
+      // Una parte que aún esperaba su retraso se calculó contando con este movimiento: sale antes que el borrado.
+      store.flush();
+      store.dispatch({ type: 'budget/remove', key: monthKey, id });
+      return true;
+    },
+    addLeftover() {
+      const state = store.state;
+      const row = state && monthKey ? leftoverEntry(state, monthKey, `${LOCAL_ENTRY}${makeId()}`, today()) : null;
+      if (!row || !monthKey) return false;
+      // El sobrante sale de las cifras del mes anterior y de este: lo pendiente tiene que haber llegado antes.
+      store.flush();
+      store.dispatch({ type: 'budget/leftover', key: monthKey, row });
+      return true;
+    },
+    setMonthRate(from, to, rate, date) {
+      const state = store.state;
+      const next = state && monthKey ? monthRate(state, monthKey, from, to, rate, date) : null;
       if (!next || !monthKey) return false;
       store.dispatch({ type: 'rate/set', key: monthKey, rate: next });
       return true;
     },
-    removeMonthRate(from, to) {
+    removeMonthRate(from, to, date) {
       const state = store.state;
       // Se pide con el sentido en que se guardó: es el que nombra la tasa en el servidor.
-      const typed = state && monthKey ? typedRate(state, monthKey, from, to) : null;
-      if (typed && monthKey) store.dispatch({ type: 'rate/remove', key: monthKey, from: typed.from, to: typed.to });
+      const typed = state && monthKey ? typedRate(state, monthKey, from, to, date) : null;
+      if (typed && monthKey) store.dispatch({ type: 'rate/remove', key: monthKey, from: typed.from, to: typed.to, date: typed.date });
     },
 
     addFixed(input) {

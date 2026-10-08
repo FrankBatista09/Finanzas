@@ -184,7 +184,7 @@ describe('POST /api/ingest/transaction', () => {
         desc: 'Uber',
         place: '',
         cat: 'Food',
-        method: 'Card',
+        method: 'Debit card',
         amount: 850,
         // La cuenta por defecto de un usuario nuevo es la de su moneda principal (DOP), y el gasto va en su moneda.
         cur: 'DOP',
@@ -245,16 +245,24 @@ describe('POST /api/ingest/transaction', () => {
       expect(r.status, `${category} / ${method}`).toBe(201);
       return [r.body.transaction.cat, r.body.transaction.method];
     };
-    expect(await stored('Comida', 'Tarjeta')).toEqual(['Food', 'Card']);
+    expect(await stored('Comida', 'Tarjeta')).toEqual(['Food', 'Debit card']);
     expect(await stored('Supermercado', 'Transferencia')).toEqual(['Groceries', 'Transfer']);
-    expect(await stored('Yemek', 'Kart')).toEqual(['Food', 'Card']);
+    expect(await stored('Yemek', 'Kart')).toEqual(['Food', 'Debit card']);
     expect(await stored('Ulaşım', 'Banka uygulaması')).toEqual(['Transport', 'Bank app']);
     // Tampoco importan las mayúsculas ni los espacios, en ningún idioma.
     expect(await stored(' viajes ', 'APP DEL BANCO')).toEqual(['Travel', 'Bank app']);
-    expect(await stored('food', 'card')).toEqual(['Food', 'Card']);
+    expect(await stored('food', 'card')).toEqual(['Food', 'Debit card']);
     expect(await stored('Subscriptions', 'Bank app')).toEqual(['Subscriptions', 'Bank app']);
     // Lo que no es de las listas se guarda tal cual (recortado).
-    expect(await stored(' Mascotas ', 'Efectivo')).toEqual(['Mascotas', 'Efectivo']);
+    expect(await stored(' Mascotas ', ' Cheque ')).toEqual(['Mascotas', 'Cheque']);
+    // "Tarjeta", "Kart" o "card" a secas es la de débito; la de crédito y el efectivo, por su nombre.
+    expect(await stored('Comida', 'Tarjeta de débito')).toEqual(['Food', 'Debit card']);
+    expect(await stored('Ropa', 'Tarjeta de crédito')).toEqual(['Clothing', 'Credit card']);
+    expect(await stored('Giyim', 'Kredi kartı')).toEqual(['Clothing', 'Credit card']);
+    expect(await stored('Clothing', 'credit card')).toEqual(['Clothing', 'Credit card']);
+    expect(await stored('Comida', 'Efectivo')).toEqual(['Food', 'Cash']);
+    expect(await stored('Yemek', 'Nakit')).toEqual(['Food', 'Cash']);
+    expect(await stored('Food', 'cash')).toEqual(['Food', 'Cash']);
   });
 
   it('null o texto vacío en un campo opcional cuenta como "no vino"', async () => {
@@ -265,7 +273,7 @@ describe('POST /api/ingest/transaction', () => {
       AUTH,
     );
     expect(r.status).toBe(201);
-    expect(r.body.transaction).toMatchObject({ date: todayISO(), place: '', cat: 'Food', method: 'Card', cur: 'DOP', accountId: 'dr', notes: '' });
+    expect(r.body.transaction).toMatchObject({ date: todayISO(), place: '', cat: 'Food', method: 'Debit card', cur: 'DOP', accountId: 'dr', notes: '' });
   });
 
   it('crea el mes de la fecha copiando los fijos del mes anterior más cercano de ese usuario', async () => {

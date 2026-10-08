@@ -67,7 +67,7 @@ function usdMain(): AppState {
   return s;
 }
 
-const EN_HEADERS = ['Month', 'Income', 'Saved', '% saved', 'Date', 'Goal', 'Amount', 'Cur.', 'In goal', 'DOP', '', 'Date', 'Description', 'Account', 'Amount', 'Cur.', 'DOP', ''];
+const EN_HEADERS = ['Month', 'Income', 'Saved', '% saved', 'Date', 'Goal', 'Amount', 'Cur.', 'In goal', 'DOP', '', 'Date', 'Description', 'Account', 'Amount', 'Cur.', 'DOP', 'Adds to budget', ''];
 
 describe('AhorrosScreen (inglés, el idioma por defecto)', () => {
   const html = screen();
@@ -175,7 +175,7 @@ describe('AhorrosScreen (inglés, el idioma por defecto)', () => {
   });
 
   it('Income: el ingreso del mes seleccionado, fila de agregar arriba y la lista editable, del más reciente al más antiguo', () => {
-    expect(t).toContain('Income October 2026 340,808.00 DOP Date Description Account Amount Cur. DOP');
+    expect(t).toContain('Income October 2026 340,808.00 DOP Date Description Account Amount Cur. DOP Adds to budget');
     const tbody = body(html, 'Income');
     const rows = rowsOf(tbody);
     expect(rows).toHaveLength(4);
@@ -185,17 +185,25 @@ describe('AhorrosScreen (inglés, el idioma por defecto)', () => {
       expect.objectContaining({ type: 'date', value: '2026-10-07', 'aria-label': 'Income date' }),
       expect.objectContaining({ type: 'text', value: '', placeholder: 'Salary, payment…', maxlength: '200', 'aria-label': 'Description' }),
       expect.objectContaining({ type: 'number', step: 'any', value: '', placeholder: '0.00', 'aria-label': 'Amount' }),
+      expect.objectContaining({ type: 'checkbox', 'aria-label': 'The new income adds to the budget' }),
     ]);
     expect(els(add, 'select').map((s) => s['aria-label'])).toEqual(['Account', 'Currency']);
     // Las cuentas visibles, con la cuenta por defecto elegida y su moneda.
     expect(inner(add, 'select')).toEqual(['US account DR account', 'DOP USD TRY']);
     expect(add).toContain('<option value="dr" selected="">DR account</option>');
     expect(add).toContain('<option value="DOP" selected="">DOP</option>');
-    expect(els(add, 'td')).toContainEqual(expect.objectContaining({ colspan: '2' }));
+    // Una celda por columna: la de la cifra convertida va vacía y el botón ya no ocupa dos.
+    expect(els(add, 'td')).toHaveLength(8);
+    expect(els(add, 'td').some((td) => 'colspan' in td)).toBe(false);
+    expect(inner(add, 'td')[5]).toBe('');
     expect(inner(add, 'button')).toEqual(['Add income']);
 
     const first = rows[1]!;
-    expect(els(first, 'input').map((i) => `${i['aria-label']}=${i.value}`)).toEqual(['Income date=2026-10-01', 'Description=Salary', 'Amount=5800']);
+    expect(
+      els(first, 'input')
+        .filter((i) => i.type !== 'checkbox')
+        .map((i) => `${i['aria-label']}=${i.value}`),
+    ).toEqual(['Income date=2026-10-01', 'Description=Salary', 'Amount=5800']);
     expect(els(first, 'input')[1]).not.toHaveProperty('placeholder');
     expect(first).toContain('<option value="us" selected="">US account</option>');
     expect(first).toContain('<option value="USD" selected="">USD</option>');
@@ -207,6 +215,49 @@ describe('AhorrosScreen (inglés, el idioma por defecto)', () => {
     const deletes = els(tbody, 'button').filter((b) => b.title === 'Delete');
     expect(deletes).toHaveLength(3);
     expect(deletes[0]!['aria-label']).toBe('Delete income of 2026-10-01: 5,800.00 USD');
+  });
+
+  it('Income: la columna "Adds to budget", una casilla por ingreso y otra en la fila de agregar, desmarcadas', () => {
+    const table = els(html, 'table').find((x) => x['aria-label'] === 'Income')!;
+    expect(table.style).toContain('min-width:820px');
+    const headers = inner(html.slice(html.indexOf('aria-label="Income"')), 'th');
+    expect(headers).toEqual(['Date', 'Description', 'Account', 'Amount', 'Cur.', 'DOP', 'Adds to budget', '']);
+    const rows = rowsOf(body(html, 'Income'));
+    // Cada fila tiene tantas celdas como encabezados, y la casilla va en la penúltima, bajo "Adds to budget".
+    for (const row of rows) {
+      expect(els(row, 'td')).toHaveLength(headers.length);
+      const cells = row.split('<td').slice(1);
+      expect(cells.map((c) => c.includes('type="checkbox"'))).toEqual([false, false, false, false, false, false, true, false]);
+    }
+    const boxes = els(body(html, 'Income'), 'input').filter((i) => i.type === 'checkbox');
+    expect(boxes.map((b) => b['aria-label'])).toEqual([
+      'The new income adds to the budget',
+      'Adds to budget: income of 2026-10-01, 5,800.00 USD',
+      'Adds to budget: income of 2026-09-01, 5,800.00 USD',
+      'Adds to budget: income of 2026-08-01, 5,800.00 USD',
+    ]);
+    // En Savings un ingreso nuevo no sube el presupuesto salvo que se marque; los de ejemplo tampoco.
+    expect(boxes.some((b) => 'checked' in b)).toBe(false);
+    expect(boxes.some((b) => 'disabled' in b)).toBe(false);
+    // Las otras dos tablas no tienen casillas.
+    expect(els(body(html, 'Contributions'), 'input').some((i) => i.type === 'checkbox')).toBe(false);
+  });
+
+  it('Income: un ingreso que sube el presupuesto sale con su casilla marcada; la de la fila de agregar sigue desmarcada', () => {
+    const s = seedState();
+    s.incomes.find((i) => i.id === 'seed-in-2')!.budget = true;
+    s.incomes.push({ id: 'bono', date: '2026-10-05', desc: 'Bonus', accountId: 'dr', amount: 2500, cur: 'DOP', budget: true });
+    const marked = screen({ state: s });
+    const boxes = els(body(marked, 'Income'), 'input').filter((i) => i.type === 'checkbox');
+    expect(boxes.map((b) => `${b['aria-label']} ${'checked' in b}`)).toEqual([
+      'The new income adds to the budget false',
+      'Adds to budget: income of 2026-10-05, 2,500.00 DOP true',
+      'Adds to budget: income of 2026-10-01, 5,800.00 USD false',
+      'Adds to budget: income of 2026-09-01, 5,800.00 USD true',
+      'Adds to budget: income of 2026-08-01, 5,800.00 USD false',
+    ]);
+    // La casilla no cambia el ingreso del mes: entra a la cuenta igual (340,808 + 2,500).
+    expect(text(marked)).toContain('Income October 2026 343,308.00 DOP');
   });
 
   it('con un mes cerrado seleccionado solo cambia el ingreso del mes de la cabecera: nada aquí depende del mes', () => {
@@ -302,8 +353,8 @@ describe('AhorrosScreen con otras monedas', () => {
 
   it('una meta en TRY: la tarjeta en TRY, la moneda del aporte nuevo sigue a la meta y cada aporte sale en TRY', () => {
     const s = seedState();
-    s.months['2026-10']!.rates.push({ from: 'USD', to: 'TRY', rate: 40 });
-    s.goals = [{ id: 'tr', name: 'Istanbul', cur: 'TRY', monthly: 10000, start: '2026-10', end: '2027-09', sort: 0 }];
+    s.months['2026-10']!.rates.push({ from: 'USD', to: 'TRY', rate: 40, date: '2026-10-01' });
+    s.goals = [{ id: 'tr', name: 'Istanbul', cur: 'TRY', monthly: 10000, start: '2026-10', end: '2027-09', approxCur: null, sort: 0 }];
     s.contribs = [
       { id: 'a', goalId: 'tr', date: '2026-10-05', amount: 100, cur: 'USD' },
       { id: 'b', goalId: 'tr', date: '2026-10-04', amount: 2000, cur: 'TRY' },
@@ -323,10 +374,70 @@ describe('AhorrosScreen con otras monedas', () => {
     expect(html).not.toContain(styles.fallbackNote!);
   });
 
+  it('la línea "≈" de cada tarjeta va en la moneda que eligió la meta; si eligió la suya, no hay línea', () => {
+    const s = seedState();
+    s.months['2026-10']!.rates.push({ from: 'USD', to: 'TRY', rate: 40, date: '2026-10-01' });
+    goal(s, 'emergency').approxCur = 'TRY';
+    goal(s, 'personal').approxCur = 'USD';
+    const html = screen({ state: s });
+    const t = text(html);
+    // 1,200 USD × 40: en TRY, que no es ni la principal ni la segunda del usuario.
+    expect(t).toContain('Emergency fund Variable contributions Edit 1,200.00 USD ≈ 48,000 TRY 3 contributions recorded');
+    expect(t).toContain('Personal savings Variable contributions Edit 450.00 USD 2 contributions recorded');
+    // La que no eligió sigue en la principal.
+    expect(t).toContain('Trip to Turkey 3,000 USD / month Edit 9,000.00 USD ≈ 528,840 DOP 20% of 45,000 USD');
+    expect(t.split('≈')).toHaveLength(3);
+    // El resto de la hoja sigue en la moneda principal.
+    expect(t).toContain('Contributions Total 625,794.00 DOP');
+    expect(html).not.toContain(styles.fallbackNote!);
+
+    // Sin tasa de TRY escrita, la cifra de esa tarjeta se marca como hecha con la de respaldo (1 USD = 42 TRY).
+    const d = seedState();
+    goal(d, 'emergency').approxCur = 'TRY';
+    const marked = screen({ state: d });
+    expect(text(marked)).toContain('Emergency fund Variable contributions Edit 1,200.00 USD ≈ 50,400 TRY* 3 contributions recorded');
+    expect(els(marked, 'div').find((x) => x.class?.includes(styles.fallback!))).toMatchObject({ title: 'default value, not set yet' });
+
+    // Con USD de principal, la meta en USD que eligió DOP conserva su línea; las demás no tienen.
+    const u = usdMain();
+    goal(u, 'turkey').approxCur = 'DOP';
+    const usd = text(screen({ state: u }));
+    expect(usd).toContain('Trip to Turkey 3,000 USD / month Edit 9,000.00 USD ≈ 528,840 DOP 20% of 45,000 USD');
+    expect(usd.split('≈')).toHaveLength(2);
+  });
+
+  it('con dos tasas escritas en el mes, cada fila usa la vigente en su fecha y la línea "≈" la última', () => {
+    const s = seedState();
+    s.months['2026-10']!.rates = [
+      { from: 'USD', to: 'DOP', rate: 58.76, date: '2026-10-01' },
+      { from: 'USD', to: 'DOP', rate: 60, date: '2026-10-06' },
+    ];
+    s.incomes.push({ id: 'x', date: '2026-10-06', desc: 'Bonus', accountId: 'us', amount: 100, cur: 'USD', budget: false });
+    s.contribs.push({ id: 'y', goalId: 'personal', date: '2026-10-07', amount: 6000, cur: 'DOP' });
+    const html = screen({ state: s });
+    const t = text(html);
+    const incomes = rowsOf(body(html, 'Income'));
+    // El bono del día 6 a 60; el sueldo del día 1, a 58.76 como antes.
+    expect(text(incomes[1]!)).toContain('6,000.00');
+    expect(text(incomes[2]!)).toContain('340,808.00');
+    expect(t).toContain('Income October 2026 346,808.00 DOP');
+    const contribs = rowsOf(body(html, 'Contributions'));
+    // 6,000 DOP del día 7 son 100 USD en la meta; los 3,000 USD del día 3 siguen a 58.76.
+    expect(text(contribs[1]!)).toContain('100.00 USD 6,000.00');
+    expect(text(contribs[2]!)).toContain('3,000.00 USD 176,280.00');
+    expect(t).toContain('October 2026 346,808.00 211,660.00 61.0%');
+    // Las tarjetas: lo ahorrado (450 + 100 USD) a la última tasa del mes en curso, 60.
+    expect(t).toContain('Personal savings Variable contributions Edit 550.00 USD ≈ 33,000 DOP 3 contributions recorded');
+    expect(t).toContain('Emergency fund Variable contributions Edit 1,200.00 USD ≈ 72,000 DOP');
+    // Las dos son tasas del mes: nada que anotar en las filas de octubre.
+    expect(els(incomes[1]!, 'td').some((td) => 'title' in td)).toBe(false);
+    expect(els(contribs[1]!, 'td').some((td) => 'title' in td)).toBe(false);
+  });
+
   it('una cifra convertida con la tasa de respaldo va marcada, con su aviso al pie de la tabla', () => {
     const s = seedState();
     goal(s, 'personal').cur = 'TRY';
-    s.incomes.push({ id: 'x', date: '2026-09-10', desc: 'Kira', accountId: 'dr', amount: 4200, cur: 'TRY' });
+    s.incomes.push({ id: 'x', date: '2026-09-10', desc: 'Kira', accountId: 'dr', amount: 4200, cur: 'TRY', budget: false });
     const html = screen({ state: s });
     const t = text(html);
     const note = '* Converted with a default rate that has not been set yet.';
@@ -350,7 +461,7 @@ describe('AhorrosScreen con otras monedas', () => {
   });
 });
 
-const ES_HEADERS = ['Mes', 'Ingreso', 'Ahorrado', '% ahorro', 'Fecha', 'Meta', 'Monto', 'Mon.', 'En la meta', 'DOP', '', 'Fecha', 'Descripción', 'Cuenta', 'Monto', 'Mon.', 'DOP', ''];
+const ES_HEADERS = ['Mes', 'Ingreso', 'Ahorrado', '% ahorro', 'Fecha', 'Meta', 'Monto', 'Mon.', 'En la meta', 'DOP', '', 'Fecha', 'Descripción', 'Cuenta', 'Monto', 'Mon.', 'DOP', 'Suma al presupuesto', ''];
 
 describe('AhorrosScreen en español', () => {
   // Los datos de la app (guardados en inglés) con la interfaz en español: lo que escribe el usuario no se traduce.
@@ -387,15 +498,16 @@ describe('AhorrosScreen en español', () => {
   });
 
   it('los ingresos, uno por uno', () => {
-    expect(t).toContain('Ingresos Octubre 2026 340,808.00 DOP Fecha Descripción Cuenta Monto Mon. DOP');
+    expect(t).toContain('Ingresos Octubre 2026 340,808.00 DOP Fecha Descripción Cuenta Monto Mon. DOP Suma al presupuesto');
     const incomes = body(html, 'Ingresos');
     const add = rowsOf(incomes)[0]!;
-    expect(els(add, 'input').map((i) => i['aria-label'])).toEqual(['Fecha del ingreso', 'Descripción', 'Monto']);
+    expect(els(add, 'input').map((i) => i['aria-label'])).toEqual(['Fecha del ingreso', 'Descripción', 'Monto', 'El ingreso nuevo suma al presupuesto']);
     expect(els(add, 'input')[1]).toMatchObject({ placeholder: 'Sueldo, pago…' });
     expect(els(add, 'select').map((s) => s['aria-label'])).toEqual(['Cuenta', 'Moneda']);
     expect(inner(add, 'button')).toEqual(['Agregar ingreso']);
     // La descripción y el nombre de la cuenta son del usuario: salen como los escribió.
     expect(els(rowsOf(incomes)[1]!, 'input')[1]).toMatchObject({ value: 'Salary' });
+    expect(els(rowsOf(incomes)[1]!, 'input')[3]).toMatchObject({ type: 'checkbox', 'aria-label': 'Suma al presupuesto: ingreso del 2026-10-01, 5,800.00 USD' });
     expect(rowsOf(incomes)[1]).toContain('<option value="us" selected="">US account</option>');
     const deletes = els(incomes, 'button').filter((b) => b.title === 'Eliminar');
     expect(deletes.map((b) => b['aria-label'])).toEqual([
@@ -436,14 +548,14 @@ describe('AhorrosScreen en español', () => {
     expect(inner(empty, 'button').slice(0, 3)).toEqual(['+ Agregar meta', 'Agregar', 'Agregar ingreso']);
     expect(text(body(empty, 'Aportes')).trim()).toBe('Agrega primero una meta para registrar aportes. Agregar');
 
-    s.incomes.push({ id: 'x', date: '2026-09-10', desc: '', accountId: 'dr', amount: 4200, cur: 'TRY' });
+    s.incomes.push({ id: 'x', date: '2026-09-10', desc: '', accountId: 'dr', amount: 4200, cur: 'TRY', budget: false });
     const marked = screen({ state: s, lang: 'es' });
     expect(text(marked)).toContain('* Convertido con una tasa por defecto, aún sin definir.');
     expect(marked).toContain('title="valor por defecto, aún sin definir"');
   });
 });
 
-const TR_HEADERS = ['Ay', 'Gelir', 'Biriken', 'Birikim oranı', 'Tarih', 'Hedef', 'Tutar', 'Birim', 'Hedefte', 'DOP', '', 'Tarih', 'Açıklama', 'Hesap', 'Tutar', 'Birim', 'DOP', ''];
+const TR_HEADERS = ['Ay', 'Gelir', 'Biriken', 'Birikim oranı', 'Tarih', 'Hedef', 'Tutar', 'Birim', 'Hedefte', 'DOP', '', 'Tarih', 'Açıklama', 'Hesap', 'Tutar', 'Birim', 'DOP', 'Bütçeye eklenir', ''];
 
 describe('AhorrosScreen en turco', () => {
   // Los datos de la app (en inglés) con la interfaz en turco: los nombres de las metas no se traducen.
@@ -478,13 +590,14 @@ describe('AhorrosScreen en turco', () => {
   });
 
   it('los ingresos, uno por uno', () => {
-    expect(t).toContain('Gelirler Ekim 2026 340,808.00 DOP Tarih Açıklama Hesap Tutar Birim DOP');
+    expect(t).toContain('Gelirler Ekim 2026 340,808.00 DOP Tarih Açıklama Hesap Tutar Birim DOP Bütçeye eklenir');
     const incomes = body(html, 'Gelirler');
     const add = rowsOf(incomes)[0]!;
-    expect(els(add, 'input').map((i) => i['aria-label'])).toEqual(['Gelir tarihi', 'Açıklama', 'Tutar']);
+    expect(els(add, 'input').map((i) => i['aria-label'])).toEqual(['Gelir tarihi', 'Açıklama', 'Tutar', 'Yeni gelir bütçeye eklenir']);
     expect(els(add, 'input')[1]).toMatchObject({ placeholder: 'Maaş, ödeme…' });
     expect(els(add, 'select').map((s) => s['aria-label'])).toEqual(['Hesap', 'Para birimi']);
     expect(inner(add, 'button')).toEqual(['Gelir ekle']);
+    expect(els(rowsOf(incomes)[1]!, 'input')[3]).toMatchObject({ type: 'checkbox', 'aria-label': 'Bütçeye eklenir: 2026-10-01 geliri, 5,800.00 USD' });
     const deletes = els(incomes, 'button').filter((b) => b.title === 'Sil');
     expect(deletes).toHaveLength(3);
     expect(deletes[0]!['aria-label']).toBe('2026-10-01 tarihli geliri sil: 5,800.00 USD');
@@ -509,7 +622,7 @@ describe('AhorrosScreen en turco', () => {
     const empty = screen({ state: s, lang: 'tr' });
     expect(text(body(empty, 'Katkılar')).trim()).toBe('Katkı kaydetmek için önce bir hedef ekleyin. Ekle');
 
-    s.incomes.push({ id: 'x', date: '2026-09-10', desc: '', accountId: 'dr', amount: 4200, cur: 'TRY' });
+    s.incomes.push({ id: 'x', date: '2026-09-10', desc: '', accountId: 'dr', amount: 4200, cur: 'TRY', budget: false });
     expect(text(screen({ state: s, lang: 'tr' }))).toContain('* Henüz girilmemiş, varsayılan bir kurla çevrildi.');
   });
 });
@@ -523,16 +636,16 @@ describe('GoalDialog', () => {
     const html = dialog(null);
     expect(els(html, 'div').find((d) => d.role === 'dialog')).toMatchObject({ 'aria-modal': 'true', style: 'max-width:480px' });
     expect(inner(html, 'h2')).toEqual(['New goal']);
-    expect(labels(html)).toEqual(['Name', 'Currency', 'This goal has a target']);
+    expect(labels(html)).toEqual(['Name', 'Currency', 'Show equivalent in', 'This goal has a target']);
     const inputs = els(html, 'input');
     expect(inputs).toHaveLength(2);
     expect(inputs[0]).toMatchObject({ value: '', maxlength: '120', autocomplete: 'off' });
     expect(inputs[1]).toMatchObject({ type: 'checkbox' });
     expect('checked' in inputs[1]!).toBe(false);
-    // La moneda: las tres, con la principal del usuario elegida.
-    expect(inner(html, 'select')).toEqual(['DOP USD TRY']);
-    expect(selected(html)).toEqual(['DOP']);
-    expect(selected(dialog(null, { state: usdMain() }))).toEqual(['USD']);
+    // La moneda y la de la línea "≈": las tres en cada selector, con la principal del usuario elegida en los dos.
+    expect(inner(html, 'select')).toEqual(['DOP USD TRY', 'DOP USD TRY']);
+    expect(selected(html)).toEqual(['DOP', 'DOP']);
+    expect(selected(dialog(null, { state: usdMain() }))).toEqual(['USD', 'USD']);
     // Enter guarda: el contenido es un formulario y "Save" es su botón de envío.
     expect(els(html, 'form')).toHaveLength(1);
     expect(inner(html, 'button')).toEqual(['Cancel', 'Save']);
@@ -546,9 +659,9 @@ describe('GoalDialog', () => {
     const html = dialog(goal(state, 'emergency'));
     expect(inner(html, 'h2')).toEqual(['Edit goal']);
     expect(els(html, 'input')[0]).toMatchObject({ value: 'Emergency fund' });
-    expect(labels(html)).toEqual(['Name', 'Currency', 'This goal has a target']);
-    // Se abre en la moneda de la meta, no en la principal.
-    expect(selected(html)).toEqual(['USD']);
+    expect(labels(html)).toEqual(['Name', 'Currency', 'Show equivalent in', 'This goal has a target']);
+    // Se abre en la moneda de la meta, no en la principal; la línea "≈", sin elegir, en la principal.
+    expect(selected(html)).toEqual(['USD', 'DOP']);
     expect(inner(html, 'button')).toEqual(['Delete goal', 'Cancel', 'Save']);
     const remove = els(html, 'button')[0]!;
     expect(remove).toMatchObject({ type: 'button', disabled: '' });
@@ -559,26 +672,27 @@ describe('GoalDialog', () => {
 
   it('meta con objetivo: la moneda, los cuatro campos del plan, en su orden, y el resumen', () => {
     const html = dialog(goal(state, 'turkey'));
-    expect(labels(html)).toEqual(['Name', 'Currency', 'This goal has a target', 'Target amount (USD)', 'Start month', 'Target month', 'Monthly saving (USD)']);
+    expect(labels(html)).toEqual(['Name', 'Currency', 'Show equivalent in', 'This goal has a target', 'Target amount (USD)', 'Start month', 'Target month', 'Monthly saving (USD)']);
     const inputs = els(html, 'input');
     expect(inputs.map((i) => i.value ?? '')).toEqual(['Trip to Turkey', '', '45000', '3000']);
     expect('checked' in inputs[1]!).toBe(true);
     expect(inputs[2]).toMatchObject({ type: 'number', step: 'any', inputmode: 'decimal', placeholder: '0.00' });
     expect(inputs[3]).toMatchObject({ type: 'number', step: 'any', inputmode: 'decimal', placeholder: '0.00' });
-    // La moneda (con su etiqueta visible); mes y año de inicio; mes y año objetivo.
+    // La moneda y la de la línea "≈" (con su etiqueta visible); mes y año de inicio; mes y año objetivo.
     expect(els(html, 'select').map((s) => s['aria-label'])).toEqual([
+      undefined,
       undefined,
       'Start month: Month',
       'Start month: Year',
       'Target month: Month',
       'Target month: Year',
     ]);
-    expect(selected(html)).toEqual(['USD', 'August', '2026', 'October', '2027']);
+    expect(selected(html)).toEqual(['USD', 'DOP', 'August', '2026', 'October', '2027']);
     expect(text(html)).toContain('15 months · 3,000 USD / month');
     // Cada etiqueta apunta a su control.
     const ids = [...inputs.map((i) => i.id), ...els(html, 'select').map((s) => s.id)];
     const targets = els(html, 'label').filter((l) => l.for);
-    expect(targets).toHaveLength(6);
+    expect(targets).toHaveLength(7);
     for (const label of targets) expect(ids).toContain(label.for);
     expect(text(html)).toContain('Delete its 3 contributions first');
   });
@@ -587,7 +701,7 @@ describe('GoalDialog', () => {
     const s = seedState();
     goal(s, 'turkey').cur = 'TRY';
     const html = dialog(goal(s, 'turkey'), { state: s });
-    expect(labels(html)).toEqual(['Name', 'Currency', 'This goal has a target', 'Target amount (TRY)', 'Start month', 'Target month', 'Monthly saving (TRY)']);
+    expect(labels(html)).toEqual(['Name', 'Currency', 'Show equivalent in', 'This goal has a target', 'Target amount (TRY)', 'Start month', 'Target month', 'Monthly saving (TRY)']);
     expect(selected(html)[0]).toBe('TRY');
     expect(text(html)).toContain('15 months · 3,000 TRY / month');
     expect(text(html)).not.toContain('USD / month');
@@ -600,6 +714,34 @@ describe('GoalDialog', () => {
     expect(labels(tr)).toContain('Hedef tutar (DOP)');
     expect(labels(tr)).toContain('Aylık birikim (DOP)');
     expect(text(tr)).toContain('15 ay · 3,000 DOP / ay');
+  });
+
+  it('el selector "Show equivalent in": al lado de la moneda, con la que eligió la meta o, si no eligió, la principal', () => {
+    const s = seedState();
+    const html = dialog(goal(s, 'emergency'), { state: s });
+    // Es el segundo selector, con su etiqueta visible apuntándole, y ofrece las tres monedas.
+    const selects = els(html, 'select');
+    const label = els(html, 'label')[inner(html, 'label').indexOf('Show equivalent in')]!;
+    expect(label.for).toBe(selects[1]!.id);
+    expect(label.for).not.toBe(selects[0]!.id);
+    expect(inner(html, 'select').slice(0, 2)).toEqual(['DOP USD TRY', 'DOP USD TRY']);
+    expect(text(html)).toContain('Currency DOP USD TRY Show equivalent in DOP USD TRY This goal has a target');
+    // Sin elegir: la principal del usuario, sea cual sea.
+    expect(selected(html)).toEqual(['USD', 'DOP']);
+    expect(selected(dialog(goal(usdMain(), 'emergency'), { state: usdMain() }))).toEqual(['USD', 'USD']);
+    // Elegida: la de la meta, también si es la suya propia o si coincide con la segunda del usuario.
+    goal(s, 'emergency').approxCur = 'TRY';
+    expect(selected(dialog(goal(s, 'emergency'), { state: s }))).toEqual(['USD', 'TRY']);
+    goal(s, 'emergency').approxCur = 'USD';
+    expect(selected(dialog(goal(s, 'emergency'), { state: s }))).toEqual(['USD', 'USD']);
+    // No depende de la moneda de la meta ni de que tenga objetivo.
+    Object.assign(goal(s, 'turkey'), { cur: 'TRY', approxCur: 'USD' });
+    expect(selected(dialog(goal(s, 'turkey'), { state: s }))).toEqual(['TRY', 'USD', 'August', '2026', 'October', '2027']);
+    // En los otros idiomas cambia el rótulo, no lo elegido.
+    const es = dialog(goal(s, 'turkey'), { state: s, lang: 'es' });
+    expect(text(es)).toContain('Moneda DOP USD TRY Mostrar equivalente en DOP USD TRY');
+    expect(selected(es).slice(0, 2)).toEqual(['TRY', 'USD']);
+    expect(labels(dialog(goal(s, 'turkey'), { state: s, lang: 'tr' }))).toContain('Karşılığını göster');
   });
 
   it('una meta sin aportes sí se puede eliminar', () => {
@@ -643,12 +785,13 @@ describe('GoalDialog', () => {
   it('en español', () => {
     expect(inner(dialog(null, { lang: 'es' }), 'h2')).toEqual(['Nueva meta']);
     expect(inner(dialog(null, { lang: 'es' }), 'button')).toEqual(['Cancelar', 'Guardar']);
-    expect(labels(dialog(null, { lang: 'es' }))).toEqual(['Nombre', 'Moneda', 'Esta meta tiene un objetivo']);
+    expect(labels(dialog(null, { lang: 'es' }))).toEqual(['Nombre', 'Moneda', 'Mostrar equivalente en', 'Esta meta tiene un objetivo']);
     const html = dialog(goal(state, 'turkey'), { lang: 'es' });
     expect(inner(html, 'h2')).toEqual(['Editar meta']);
     expect(labels(html)).toEqual([
       'Nombre',
       'Moneda',
+      'Mostrar equivalente en',
       'Esta meta tiene un objetivo',
       'Monto objetivo (USD)',
       'Mes de inicio',
@@ -657,12 +800,13 @@ describe('GoalDialog', () => {
     ]);
     expect(els(html, 'select').map((sel) => sel['aria-label'])).toEqual([
       undefined,
+      undefined,
       'Mes de inicio: Mes',
       'Mes de inicio: Año',
       'Mes objetivo: Mes',
       'Mes objetivo: Año',
     ]);
-    expect(selected(html)).toEqual(['USD', 'Agosto', '2026', 'Octubre', '2027']);
+    expect(selected(html)).toEqual(['USD', 'DOP', 'Agosto', '2026', 'Octubre', '2027']);
     expect(text(html)).toContain('15 meses · 3,000 USD / mes');
     expect(text(html)).toContain('Eliminar meta Elimina primero sus 3 aportes Cancelar Guardar');
   });
@@ -675,14 +819,22 @@ describe('GoalDialog', () => {
     expect(labels(html)).toEqual([
       'Ad',
       'Para birimi',
+      'Karşılığını göster',
       'Bu hedefin belirli bir tutarı ve tarihi var',
       'Hedef tutar (USD)',
       'Başlangıç ayı',
       'Hedef ay',
       'Aylık birikim (USD)',
     ]);
-    expect(els(html, 'select').map((sel) => sel['aria-label'])).toEqual([undefined, 'Başlangıç ayı: Ay', 'Başlangıç ayı: Yıl', 'Hedef ay: Ay', 'Hedef ay: Yıl']);
-    expect(selected(html)).toEqual(['USD', 'Ağustos', '2026', 'Ekim', '2027']);
+    expect(els(html, 'select').map((sel) => sel['aria-label'])).toEqual([
+      undefined,
+      undefined,
+      'Başlangıç ayı: Ay',
+      'Başlangıç ayı: Yıl',
+      'Hedef ay: Ay',
+      'Hedef ay: Yıl',
+    ]);
+    expect(selected(html)).toEqual(['USD', 'DOP', 'Ağustos', '2026', 'Ekim', '2027']);
     expect(text(html)).toContain('15 ay · 3,000 USD / ay');
     expect(text(html)).toContain('Hedefi sil Önce 3 katkısını silin İptal Kaydet');
   });

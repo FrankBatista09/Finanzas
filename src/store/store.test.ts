@@ -4,7 +4,7 @@
 import { QueryClient, QueryObserver } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { balances, monthCalc } from '../../shared/calc';
-import { seedState } from '../../shared/seed';
+import { seedState, setBudgets } from '../../shared/seed';
 import type { AppState, AppUser, Month } from '../../shared/types';
 import { USER_HEADER } from '../../shared/users';
 import { createApiClient } from '../api/client';
@@ -41,7 +41,7 @@ const tick = () => vi.advanceTimersByTimeAsync(0);
 function edaState(): AppState {
   const state = seedState();
   state.language = 'tr';
-  state.months[OCT]!.budgets = { dr: 50000 };
+  setBudgets(state.months[OCT]!, { dr: 50000 });
   return state;
 }
 
@@ -357,7 +357,7 @@ describe('refetch', () => {
     h.store.dispatch({ type: 'fixed/patch', id: h.fixed('Netflix').id, patch: { paid: true } });
 
     // Llega un refresco (p. ej. al volver a la pestaña) con algo nuevo del servidor y sin nuestras ediciones.
-    h.server.state.months[OCT]!.budgets = { dr: 75000 };
+    setBudgets(h.server.state.months[OCT]!, { dr: 75000 });
     await h.store.refetch();
 
     expect(h.server.gets).toBe(2);
@@ -367,7 +367,7 @@ describe('refetch', () => {
   });
 
   it('una edición cancela el GET en vuelo: su respuesta ya no llega a la caché', async () => {
-    h.server.state.months[OCT]!.budgets = { dr: 1 };
+    setBudgets(h.server.state.months[OCT]!, { dr: 1 });
     h.server.holdGets = true;
     const refetch = h.store.refetch();
     await tick();
@@ -781,15 +781,39 @@ describe('metas', () => {
   it('addGoal crea la meta en el acto, con un id del cliente, y la manda con su moneda', () => {
     const actions = createActions(h.store, OCT, flows, () => 'goal-new');
     expect(actions.addGoal({ name: ' Car ', cur: 'TRY', ...plan })).toBe(true);
-    expect(h.view().goals.at(-1)).toEqual({ id: 'goal-new', name: 'Car', cur: 'TRY', ...plan, sort: 3 });
+    expect(h.view().goals.at(-1)).toEqual({ id: 'goal-new', name: 'Car', cur: 'TRY', ...plan, approxCur: null, sort: 3 });
     expect(h.calls).toHaveLength(1);
     expect(h.calls[0]).toMatchObject({ method: 'POST', path: '/api/goals', user: 'frank' });
-    expect(h.calls[0]!.body).toEqual({ id: 'goal-new', name: 'Car', cur: 'TRY', ...plan });
+    expect(h.calls[0]!.body).toEqual({ id: 'goal-new', name: 'Car', cur: 'TRY', ...plan, approxCur: null });
+  });
+
+  it('addGoal manda la moneda de la línea "≈" de la meta; patchGoal la cambia y la devuelve a la principal con null', async () => {
+    const actions = createActions(h.store, OCT, flows, () => 'goal-new');
+    expect(actions.addGoal({ name: 'Car', cur: 'USD', approxCur: 'TRY' })).toBe(true);
+    expect(h.view().goals.at(-1)).toMatchObject({ id: 'goal-new', cur: 'USD', approxCur: 'TRY' });
+    expect(h.calls[0]!.body).toEqual({ id: 'goal-new', name: 'Car', cur: 'USD', monthly: null, start: null, end: null, approxCur: 'TRY' });
+    expect(actions.addGoal({ name: 'Boat', approxCur: 'EUR' as 'USD' })).toBe(false);
+
+    expect(actions.patchGoal('goal-new', { approxCur: null })).toBe(true);
+    expect(h.view().goals.at(-1)!.approxCur).toBeNull();
+    // Lo que ya tiene no se manda.
+    expect(actions.patchGoal('goal-new', { approxCur: null })).toBe(true);
+    expect(actions.patchGoal('turkey', { approxCur: null })).toBe(true);
+    expect(actions.patchGoal('turkey', { approxCur: 'EUR' as 'USD' })).toBe(false);
+    expect(actions.patchGoal('turkey', { approxCur: 'DOP' })).toBe(true);
+    for (let i = 0; i < 3; i++) {
+      h.calls[i]!.ok();
+      await tick();
+    }
+    expect(h.summary()).toEqual(['POST /api/goals', 'PATCH /api/goals/goal-new', 'PATCH /api/goals/turkey']);
+    // null viaja como null: es un valor, no un campo que falta.
+    expect(h.calls[1]!.body).toEqual({ approxCur: null });
+    expect(h.calls[2]!.body).toEqual({ approxCur: 'DOP' });
   });
 
   it('una meta sin plan viaja con los tres campos en null y, sin moneda indicada, en la principal', () => {
     createActions(h.store, OCT, flows, () => 'goal-new').addGoal({ name: 'Rainy day' });
-    expect(h.calls[0]!.body).toEqual({ id: 'goal-new', name: 'Rainy day', cur: 'DOP', monthly: null, start: null, end: null });
+    expect(h.calls[0]!.body).toEqual({ id: 'goal-new', name: 'Rainy day', cur: 'DOP', monthly: null, start: null, end: null, approxCur: null });
   });
 
   it('una meta inválida ni se ve ni se envía', () => {
@@ -1086,64 +1110,380 @@ describe('presupuesto y tasas del mes', () => {
     expect(h.failures).toHaveLength(1);
   });
 
-  it('setMonthRate: la tasa de un par se ve en el acto y sale con un PUT, pasado el retraso, con el último valor', async () => {
+  it('setBudgetPart: no sobrescribe; añade al registro la diferencia, con fecha de hoy', async () => {
+    const actions = createActions(h.store, OCT, flows, undefined, () => '2026-10-09');
+    expect(actions.setBudgetPart('dr', 82000)).toBe(true);
+    expect(actions.setBudgetPart('us', 200)).toBe(true);
+    const log = h.view().months[OCT]!.budgetLog;
+    expect(log.slice(0, 2)).toEqual(seedState().months[OCT]!.budgetLog);
+    expect(log.slice(2).map((e) => [e.date, e.accountId, e.amount, e.kind])).toEqual([
+      ['2026-10-09', 'dr', 12000, 'adjust'],
+      ['2026-10-09', 'us', 200, 'initial'],
+    ]);
+    expect(log.slice(2).every((e) => e.id.startsWith('local-'))).toBe(true);
+    // Al servidor va la parte, no el movimiento: la diferencia la calcula él contra su registro.
+    h.store.flush();
+    expect(h.calls[0]!.body).toEqual({ budgets: { dr: 82000, us: 200 } });
+    // Escribir lo que ya suma no añade nada ni se queda a la vista.
+    h.calls[0]!.ok();
+    await tick();
+    expect(actions.setBudgetPart('dr', 70000)).toBe(true);
+    expect(h.view().months[OCT]!.budgetLog).toEqual(seedState().months[OCT]!.budgetLog);
+  });
+
+  it('setBudgetPart: si hoy cae fuera del mes seleccionado, la fecha se lleva al mes', () => {
+    createActions(h.store, OCT, flows, undefined, () => '2026-11-03').setBudgetPart('dr', 71000);
+    expect(h.view().months[OCT]!.budgetLog.at(-1)).toMatchObject({ date: '2026-10-31', amount: 1000 });
+    createActions(h.store, OCT, flows, undefined, () => '2026-09-30').setBudgetPart('us', 5);
+    expect(h.view().months[OCT]!.budgetLog.at(-1)).toMatchObject({ date: '2026-10-01', accountId: 'us', amount: 5 });
+  });
+
+  it('setBudgetPart: con un ingreso que sube el presupuesto, se escribe la parte como se ve y viaja lo que suma el registro', async () => {
+    h.server.state.incomes.push({ id: 'in-budget', date: '2026-10-10', desc: 'Freelance', accountId: 'dr', amount: 10000, cur: 'DOP', budget: true });
+    await h.store.refetch();
+    const part = () => monthCalc(h.view(), OCT).budgetParts.find((p) => p.account.id === 'dr')!;
+    expect(part()).toMatchObject({ amount: 80000, fromLog: 70000, fromIncomes: 10000 });
+
     const actions = createActions(h.store, OCT, flows);
-    for (const typed of [5, 59, 59.1]) expect(actions.setMonthRate('USD', 'DOP', typed)).toBe(true);
-    expect(h.view().months[OCT]!.rates).toEqual([{ from: 'USD', to: 'DOP', rate: 59.1 }]);
-    expect(monthCalc(h.view(), OCT).rate).toEqual({ rate: 59.1, source: 'month', monthKey: OCT });
+    expect(actions.setBudgetPart('dr', 85000)).toBe(true);
+    expect(part()).toMatchObject({ amount: 85000, fromLog: 75000, fromIncomes: 10000 });
+    // Por debajo de lo que ya ponen los ingresos no se puede: el registro quedaría en negativo.
+    expect(actions.setBudgetPart('dr', 9000)).toBe(false);
+    expect(part().amount).toBe(85000);
+    h.store.flush();
+    expect(h.calls).toHaveLength(1);
+    expect(h.calls[0]!.body).toEqual({ budgets: { dr: 75000 } });
+  });
+
+  it('addBudgetEntry: añade un movimiento al registro en el acto y lo manda sin esperar', () => {
+    const actions = createActions(h.store, OCT, flows, () => 'bg-new', () => '2026-10-09');
+    expect(actions.addBudgetEntry({ accountId: 'dr', amount: 2500, note: ' Gift ' })).toBe(true);
+    const row = { id: 'bg-new', date: '2026-10-09', accountId: 'dr', amount: 2500, kind: 'adjust', note: 'Gift' };
+    expect(h.view().months[OCT]!.budgetLog.at(-1)).toEqual(row);
+    expect(h.view().months[OCT]!.budgets).toEqual({ dr: 72500 });
+    expect(monthCalc(h.view(), OCT).budget).toBe(72500);
+    expect(h.calls).toHaveLength(1);
+    expect(h.calls[0]).toMatchObject({ method: 'POST', path: `/api/months/${OCT}/budget-log`, user: 'frank' });
+    expect(h.calls[0]!.body).toEqual(row);
+  });
+
+  it('addBudgetEntry: un recorte, con su fecha y su tipo; lo que no vale ni se ve ni se envía', async () => {
+    const actions = createActions(h.store, OCT, flows, () => 'bg-new', () => '2026-10-09');
+    expect(actions.addBudgetEntry({ accountId: 'us', amount: -40, date: '2026-10-20', kind: 'initial' })).toBe(true);
+    expect(h.calls[0]!.body).toEqual({ id: 'bg-new', date: '2026-10-20', accountId: 'us', amount: -40, kind: 'initial', note: '' });
+
+    expect(actions.addBudgetEntry({ accountId: 'dr', amount: 0 })).toBe(false);
+    expect(actions.addBudgetEntry({ accountId: 'dr', amount: Number.NaN })).toBe(false);
+    expect(actions.addBudgetEntry({ accountId: 'gone', amount: 5 })).toBe(false);
+    expect(actions.addBudgetEntry({ accountId: 'dr', amount: 5, date: '2026-11-01' })).toBe(false);
+    expect(createActions(h.store, '2026-09', flows).addBudgetEntry({ accountId: 'dr', amount: 5 })).toBe(false);
+    expect(createActions(h.store, null, flows).addBudgetEntry({ accountId: 'dr', amount: 5 })).toBe(false);
+    expect(h.store.pendingCount).toBe(1);
+
+    // Si el servidor lo rechaza, desaparece.
+    h.calls[0]!.fail(409, 'month_closed');
+    await tick();
+    expect(h.view().months[OCT]!.budgetLog).toEqual(seedState().months[OCT]!.budgetLog);
+    expect(h.failures[0]!.action).toMatchObject({ type: 'budget/add', key: OCT });
+  });
+
+  it('removeBudgetEntry: quita el movimiento en el acto y manda el DELETE', async () => {
+    const actions = createActions(h.store, OCT, flows);
+    // El ajuste del día 5 (5,000).
+    expect(actions.removeBudgetEntry('seed-bg-2026-10-2')).toBe(true);
+    expect(h.view().months[OCT]!.budgetLog.map((e) => e.id)).toEqual(['seed-bg-2026-10-1']);
+    expect(h.view().months[OCT]!.budgets).toEqual({ dr: 65000 });
+    expect(h.calls).toHaveLength(1);
+    expect(h.calls[0]).toMatchObject({ method: 'DELETE', path: `/api/months/${OCT}/budget-log/seed-bg-2026-10-2`, user: 'frank' });
+    expect(h.calls[0]!.body).toBeUndefined();
+    // Ya no está: pedirlo otra vez no hace nada.
+    expect(actions.removeBudgetEntry('seed-bg-2026-10-2')).toBe(false);
+    expect(h.store.pendingCount).toBe(1);
+
+    // Si el servidor ya no lo tenía (404), era lo que se quería.
+    h.calls[0]!.fail(404, 'not_found');
+    await tick();
+    expect(h.failures).toEqual([]);
+  });
+
+  it('removeBudgetEntry: false si no está, si el mes está cerrado o si aún no tiene id del servidor', () => {
+    const actions = createActions(h.store, OCT, flows);
+    expect(actions.removeBudgetEntry('nope')).toBe(false);
+    expect(createActions(h.store, '2026-09', flows).removeBudgetEntry('seed-bg-2026-09-1')).toBe(false);
+    expect(createActions(h.store, null, flows).removeBudgetEntry('seed-bg-2026-10-2')).toBe(false);
+    // El movimiento que acaba de añadir setBudgetPart es local: su id lo pone el servidor.
+    actions.setBudgetPart('us', 200);
+    const local = h.view().months[OCT]!.budgetLog.at(-1)!;
+    expect(local.id.startsWith('local-')).toBe(true);
+    expect(actions.removeBudgetEntry(local.id)).toBe(false);
+    expect(h.view().months[OCT]!.budgetLog).toHaveLength(3);
+    expect(h.calls).toEqual([]);
+  });
+
+  it('removeBudgetEntry: la parte que esperaba su retraso sale antes que el borrado', async () => {
+    const actions = createActions(h.store, OCT, flows);
+    actions.setBudgetPart('dr', 80000);
+    expect(h.calls).toEqual([]);
+    expect(actions.removeBudgetEntry('seed-bg-2026-10-2')).toBe(true);
+    // El PATCH (que contaba con ese movimiento) ya salió; el DELETE espera su turno.
+    expect(h.summary()).toEqual([`PATCH /api/months/${OCT}`]);
+    expect(h.calls[0]!.body).toEqual({ budgets: { dr: 80000 } });
+    // 80,000 menos los 5,000 del movimiento quitado, igual que hará el servidor.
+    expect(h.view().months[OCT]!.budgets).toEqual({ dr: 75000 });
+    h.calls[0]!.ok();
+    await tick();
+    expect(h.summary()).toEqual([`PATCH /api/months/${OCT}`, `DELETE /api/months/${OCT}/budget-log/seed-bg-2026-10-2`]);
+  });
+
+  it('si el servidor rechaza el borrado, el movimiento vuelve', async () => {
+    createActions(h.store, OCT, flows).removeBudgetEntry('seed-bg-2026-10-1');
+    expect(h.view().months[OCT]!.budgets).toEqual({ dr: 5000 });
+    h.calls[0]!.fail(409, 'month_closed');
+    await tick();
+    expect(h.view().months[OCT]!.budgetLog).toEqual(seedState().months[OCT]!.budgetLog);
+    expect(h.view().months[OCT]!.budgets).toEqual({ dr: 70000 });
+    expect(h.failures[0]!.action).toEqual({ type: 'budget/remove', key: OCT, id: 'seed-bg-2026-10-1' });
+  });
+
+  it('addLeftover: suma lo que sobró del mes anterior en el acto y lo pide con un POST sin cuerpo', () => {
+    const sep = monthCalc(h.view(), '2026-09').avail;
+    const actions = createActions(h.store, OCT, flows, () => 'lo', () => '2026-10-09');
+    expect(actions.addLeftover()).toBe(true);
+    // Lo que se ve mientras responde: en la cuenta por defecto, con un id local.
+    expect(h.view().months[OCT]!.budgetLog.at(-1)).toEqual({ id: 'local-lo', date: '2026-10-09', accountId: 'dr', amount: sep, kind: 'leftover', note: '' });
+    expect(monthCalc(h.view(), OCT).budget).toBeCloseTo(70000 + sep, 8);
+    expect(h.calls).toHaveLength(1);
+    expect(h.calls[0]).toMatchObject({ method: 'POST', path: `/api/months/${OCT}/leftover`, user: 'frank' });
+    // La cifra la calcula el servidor: no viaja.
+    expect(h.calls[0]!.body).toBeUndefined();
+    // Uno por mes: mientras esté a la vista no se puede repetir.
+    expect(actions.addLeftover()).toBe(false);
+    expect(h.store.pendingCount).toBe(1);
+  });
+
+  it('addLeftover: si el servidor dice que ya lo tenía (409), se deshace', async () => {
+    const actions = createActions(h.store, OCT, flows, () => 'lo');
+    expect(actions.addLeftover()).toBe(true);
+    expect(h.view().months[OCT]!.budgetLog).toHaveLength(3);
+    h.calls[0]!.fail(409, 'conflict');
+    await tick();
+    expect(h.view().months[OCT]!.budgetLog).toEqual(seedState().months[OCT]!.budgetLog);
+    expect(monthCalc(h.view(), OCT).budget).toBe(70000);
+    expect(h.failures).toHaveLength(1);
+    expect(h.failures[0]!.action).toMatchObject({ type: 'budget/leftover', key: OCT });
+    expect(h.failures[0]!.error).toMatchObject({ status: 409, code: 'conflict' });
+    expect(h.store.pendingCount).toBe(0);
+  });
+
+  it('addLeftover: confirmado, el refresco trae el movimiento del servidor y queda uno solo, ya con su id', async () => {
+    const sep = monthCalc(h.view(), '2026-09').avail;
+    const actions = createActions(h.store, OCT, flows, () => 'lo', () => '2026-10-09');
+    actions.addLeftover();
+    // Lo que hace el servidor: lo escribe con su propio id.
+    h.server.state.months[OCT]!.budgetLog.push({ id: 'srv-lo', date: '2026-10-09', accountId: 'dr', amount: sep, kind: 'leftover', note: '' });
+    h.calls[0]!.ok();
+    await tick();
+    expect(h.view().months[OCT]!.budgetLog.filter((e) => e.kind === 'leftover').map((e) => e.id)).toEqual(['srv-lo']);
+    // Ya sumado: no se ofrece otra vez; quitado (ahora sí tiene id), se puede volver a sumar.
+    expect(actions.addLeftover()).toBe(false);
+    expect(actions.removeBudgetEntry('srv-lo')).toBe(true);
+    expect(actions.addLeftover()).toBe(true);
+    expect(h.summary().slice(1)).toEqual([`DELETE /api/months/${OCT}/budget-log/srv-lo`]);
+  });
+
+  it('addLeftover: un refresco que ya lo trae mientras la petición sigue en vuelo no lo duplica', async () => {
+    const actions = createActions(h.store, OCT, flows, () => 'lo', () => '2026-10-09');
+    actions.addLeftover();
+    h.server.state.months[OCT]!.budgetLog.push({ id: 'srv-lo', date: '2026-10-09', accountId: 'dr', amount: 1234, kind: 'leftover', note: '' });
+    await h.store.refetch();
+    expect(h.view().months[OCT]!.budgetLog.filter((e) => e.kind === 'leftover').map((e) => [e.id, e.amount])).toEqual([['srv-lo', 1234]]);
+  });
+
+  it('addLeftover: lo que esperaba su retraso sale antes (el sobrante sale de esas cifras)', async () => {
+    const actions = createActions(h.store, OCT, flows, () => 'lo');
+    const id = h.tx(0).id;
+    actions.patchTx(id, { amount: 6000 });
+    expect(actions.addLeftover()).toBe(true);
+    expect(h.summary()).toEqual([`PATCH /api/transactions/${id}`]);
+    h.calls[0]!.ok();
+    await tick();
+    expect(h.summary()).toEqual([`PATCH /api/transactions/${id}`, `POST /api/months/${OCT}/leftover`]);
+  });
+
+  it('addLeftover: false si no hay mes anterior, el mes está cerrado, no sobró nada o no hay mes seleccionado', async () => {
+    expect(createActions(h.store, '2026-09', flows).addLeftover()).toBe(false); // cerrado
+    expect(createActions(h.store, '2026-11', flows).addLeftover()).toBe(false); // no existe
+    expect(createActions(h.store, null, flows).addLeftover()).toBe(false);
+
+    // Septiembre usó justo su presupuesto: no sobró nada.
+    const sep = h.server.state.months['2026-09']!;
+    sep.fixed = [];
+    sep.tx = [{ ...sep.tx[0]!, amount: 1000 }];
+    setBudgets(sep, { dr: 1000 });
+    await h.store.refetch();
+    expect(createActions(h.store, OCT, flows).addLeftover()).toBe(false);
+
+    // Octubre como único mes: no hay anterior.
+    for (const key of ['2026-08', '2026-09']) Reflect.deleteProperty(h.server.state.months, key);
+    await h.store.refetch();
+    expect(createActions(h.store, OCT, flows).addLeftover()).toBe(false);
+    expect(h.calls).toEqual([]);
+    expect(h.store.pendingCount).toBe(0);
+  });
+
+  it('el registro del presupuesto es de cada usuario', async () => {
+    const eda = await h.switchTo(EDA);
+    const actions = createActions(eda, OCT, flows, () => 'eda-bg', () => '2026-10-09');
+    actions.addBudgetEntry({ accountId: 'dr', amount: 100 });
+    actions.addLeftover();
+    h.calls[0]!.ok();
+    await tick();
+    expect(h.calls.map((c) => [c.method, c.path, c.user])).toEqual([
+      ['POST', `/api/months/${OCT}/budget-log`, 'eda'],
+      ['POST', `/api/months/${OCT}/leftover`, 'eda'],
+    ]);
+    expect(h.view().months[OCT]!.budgetLog).toEqual(seedState().months[OCT]!.budgetLog);
+  });
+
+  it('setMonthRate: la tasa de un par desde una fecha se ve en el acto y sale con un PUT, pasado el retraso, con el último valor', async () => {
+    const actions = createActions(h.store, OCT, flows);
+    for (const typed of [5, 59, 59.1]) expect(actions.setMonthRate('USD', 'DOP', typed, '2026-10-07')).toBe(true);
+    // Las de los días 1 y 6 siguen ahí: la nueva vale desde el 7.
+    expect(h.view().months[OCT]!.rates).toEqual([...seedState().months[OCT]!.rates, { from: 'USD', to: 'DOP', rate: 59.1, date: '2026-10-07' }]);
+    expect(monthCalc(h.view(), OCT).rate).toEqual({ rate: 59.1, source: 'month', monthKey: OCT, date: '2026-10-07' });
+    // Lo registrado antes no cambia: las transacciones de octubre son en DOP y el gasto fijo en USD usa la última.
     expect(h.calls).toEqual([]);
 
     await vi.advanceTimersByTimeAsync(400);
     expect(h.calls).toHaveLength(1);
     expect(h.calls[0]).toMatchObject({ method: 'PUT', path: `/api/months/${OCT}/rates`, user: 'frank' });
-    expect(h.calls[0]!.body).toEqual({ from: 'USD', to: 'DOP', rate: 59.1 });
+    expect(h.calls[0]!.body).toEqual({ from: 'USD', to: 'DOP', rate: 59.1, date: '2026-10-07' });
   });
 
-  it('setMonthRate: cada par tiene su propia tasa y su propio guardado', () => {
+  it('setMonthRate: escribir sobre una fecha que ya tenía tasa la sustituye, en su sitio y en el sentido nuevo', () => {
     const actions = createActions(h.store, OCT, flows);
-    actions.setMonthRate('USD', 'TRY', 40);
-    actions.setMonthRate('TRY', 'DOP', 1.47);
-    expect(h.store.pendingCount).toBe(2);
+    expect(actions.setMonthRate('DOP', 'USD', 0.0165, '2026-10-06')).toBe(true);
+    expect(h.view().months[OCT]!.rates).toEqual([
+      { from: 'USD', to: 'DOP', rate: 58.76, date: '2026-10-01' },
+      { from: 'DOP', to: 'USD', rate: 0.0165, date: '2026-10-06' },
+    ]);
     h.store.flush();
-    // Sale la primera; la segunda espera su turno.
-    expect(h.calls).toHaveLength(1);
-    expect(h.calls[0]!.body).toEqual({ from: 'USD', to: 'TRY', rate: 40 });
-    expect(h.view().months[OCT]!.rates).toHaveLength(3);
+    expect(h.summary()).toEqual([`PUT /api/months/${OCT}/rates`]);
+    expect(h.calls[0]!.body).toEqual({ from: 'DOP', to: 'USD', rate: 0.0165, date: '2026-10-06' });
   });
 
-  it('setMonthRate: una celda a medio escribir (0), el mismo par o un mes cerrado no se envían', () => {
+  it('setMonthRate: cada par y cada fecha tienen su propia tasa y su propio guardado', async () => {
     const actions = createActions(h.store, OCT, flows);
-    expect(actions.setMonthRate('USD', 'DOP', 0)).toBe(false);
-    expect(actions.setMonthRate('USD', 'DOP', -2)).toBe(false);
-    expect(actions.setMonthRate('USD', 'USD', 1)).toBe(false);
-    expect(createActions(h.store, '2026-08', flows).setMonthRate('USD', 'DOP', 58)).toBe(false);
+    actions.setMonthRate('USD', 'TRY', 40, '2026-10-07');
+    actions.setMonthRate('TRY', 'DOP', 1.47, '2026-10-07');
+    // El mismo par en dos fechas: dos filas, ninguna pisa a la otra mientras esperan.
+    actions.setMonthRate('USD', 'DOP', 59, '2026-10-07');
+    actions.setMonthRate('USD', 'DOP', 60, '2026-10-20');
+    expect(h.store.pendingCount).toBe(4);
+    expect(h.view().months[OCT]!.rates).toHaveLength(6);
+    h.store.flush();
+    // Sale la primera; las demás esperan su turno.
+    expect(h.calls).toHaveLength(1);
+    expect(h.calls[0]!.body).toEqual({ from: 'USD', to: 'TRY', rate: 40, date: '2026-10-07' });
+    for (let i = 0; i < 3; i++) {
+      h.calls[i]!.ok();
+      await tick();
+    }
+    expect(h.calls.map((c) => c.body)).toEqual([
+      { from: 'USD', to: 'TRY', rate: 40, date: '2026-10-07' },
+      { from: 'TRY', to: 'DOP', rate: 1.47, date: '2026-10-07' },
+      { from: 'USD', to: 'DOP', rate: 59, date: '2026-10-07' },
+      { from: 'USD', to: 'DOP', rate: 60, date: '2026-10-20' },
+    ]);
+  });
+
+  it('setMonthRate: una celda a medio escribir (0), el mismo par, una fecha de otro mes o un mes cerrado no se envían', () => {
+    const actions = createActions(h.store, OCT, flows);
+    expect(actions.setMonthRate('USD', 'DOP', 0, '2026-10-07')).toBe(false);
+    expect(actions.setMonthRate('USD', 'DOP', -2, '2026-10-07')).toBe(false);
+    expect(actions.setMonthRate('USD', 'USD', 1, '2026-10-07')).toBe(false);
+    expect(actions.setMonthRate('USD', 'DOP', 59, '2026-11-01')).toBe(false);
+    expect(actions.setMonthRate('USD', 'DOP', 59, '2026-09-30')).toBe(false);
+    expect(actions.setMonthRate('USD', 'DOP', 59, '2026-10-32')).toBe(false);
+    expect(createActions(h.store, '2026-08', flows).setMonthRate('USD', 'DOP', 58, '2026-08-07')).toBe(false);
+    expect(createActions(h.store, null, flows).setMonthRate('USD', 'DOP', 58, '2026-10-07')).toBe(false);
     expect(h.store.pendingCount).toBe(0);
     expect(h.view()).toEqual(seedState());
   });
 
-  it('removeMonthRate: borra la tasa escrita con el sentido en que se guardó y descarta la que esperaba', async () => {
+  it('removeMonthRate: borra la tasa de esa fecha con el sentido en que se guardó y descarta la que esperaba', async () => {
     const actions = createActions(h.store, OCT, flows);
-    actions.setMonthRate('USD', 'DOP', 59);
+    actions.setMonthRate('USD', 'DOP', 59, '2026-10-06');
     // Se pide al revés: la tasa guardada es USD → DOP.
-    actions.removeMonthRate('DOP', 'USD');
+    actions.removeMonthRate('DOP', 'USD', '2026-10-06');
+    // La del día 1 no se toca: es la que vuelve a valer.
+    expect(h.view().months[OCT]!.rates).toEqual([{ from: 'USD', to: 'DOP', rate: 58.76, date: '2026-10-01' }]);
+    expect(monthCalc(h.view(), OCT).rate).toMatchObject({ source: 'month', date: '2026-10-01' });
+    await vi.advanceTimersByTimeAsync(1000);
+    // El PUT que esperaba ya no sale; el DELETE lleva la fecha en la consulta.
+    expect(h.summary()).toEqual([`DELETE /api/months/${OCT}/rates/USD/DOP?date=2026-10-06`]);
+    expect(h.calls[0]!.body).toBeUndefined();
+
+    // Un par sin tasa escrita, una fecha sin tasa, o un mes cerrado: nada que quitar.
+    actions.removeMonthRate('USD', 'TRY', '2026-10-06');
+    actions.removeMonthRate('USD', 'DOP', '2026-10-03');
+    actions.removeMonthRate('USD', 'DOP', '2026-10-06');
+    createActions(h.store, '2026-09', flows).removeMonthRate('USD', 'DOP', '2026-10-01');
+    createActions(h.store, null, flows).removeMonthRate('USD', 'DOP', '2026-10-01');
+    expect(h.calls).toHaveLength(1);
+
+    // Quitada también la del día 1, el par vuelve a salir de los envíos del mes.
+    actions.removeMonthRate('USD', 'DOP', '2026-10-01');
     expect(h.view().months[OCT]!.rates).toEqual([]);
     expect(monthCalc(h.view(), OCT).rate.source).toBe('transfers');
-    await vi.advanceTimersByTimeAsync(1000);
-    expect(h.summary()).toEqual([`DELETE /api/months/${OCT}/rates/USD/DOP`]);
+    h.calls[0]!.ok();
+    await tick();
+    expect(h.summary()).toEqual([`DELETE /api/months/${OCT}/rates/USD/DOP?date=2026-10-06`, `DELETE /api/months/${OCT}/rates/USD/DOP?date=2026-10-01`]);
+  });
 
-    // Un par sin tasa escrita, o un mes cerrado: nada que quitar.
-    actions.removeMonthRate('USD', 'TRY');
-    createActions(h.store, '2026-09', flows).removeMonthRate('USD', 'DOP');
-    expect(h.calls).toHaveLength(1);
+  it('removeMonthRate: quitar la de una fecha no descarta la de otra fecha que esperaba su retraso', async () => {
+    const actions = createActions(h.store, OCT, flows);
+    actions.setMonthRate('USD', 'DOP', 59, '2026-10-07');
+    actions.removeMonthRate('USD', 'DOP', '2026-10-06');
+    expect(h.view().months[OCT]!.rates.map((r) => [r.date, r.rate])).toEqual([
+      ['2026-10-01', 58.76],
+      ['2026-10-07', 59],
+    ]);
+    h.calls[0]!.ok();
+    await vi.advanceTimersByTimeAsync(400);
+    expect(h.summary()).toEqual([`DELETE /api/months/${OCT}/rates/USD/DOP?date=2026-10-06`, `PUT /api/months/${OCT}/rates`]);
+    expect(h.calls[1]!.body).toEqual({ from: 'USD', to: 'DOP', rate: 59, date: '2026-10-07' });
+  });
+
+  it('removeMonthRate: una tasa guardada al revés se pide en su sentido', async () => {
+    h.server.state.months[OCT]!.rates = [{ from: 'DOP', to: 'USD', rate: 0.017, date: '2026-10-04' }];
+    await h.store.refetch();
+    createActions(h.store, OCT, flows).removeMonthRate('USD', 'DOP', '2026-10-04');
+    expect(h.summary()).toEqual([`DELETE /api/months/${OCT}/rates/DOP/USD?date=2026-10-04`]);
   });
 
   it('si el servidor rechaza la tasa, vuelve la anterior', async () => {
-    createActions(h.store, OCT, flows).setMonthRate('USD', 'DOP', 61);
+    createActions(h.store, OCT, flows).setMonthRate('USD', 'DOP', 61, '2026-10-06');
+    expect(h.view().months[OCT]!.rates[1]!.rate).toBe(61);
     h.store.flush();
     h.calls[0]!.fail(400, 'validation');
     await tick();
-    expect(h.view().months[OCT]!.rates).toEqual([{ from: 'USD', to: 'DOP', rate: 58.76 }]);
+    expect(h.view().months[OCT]!.rates).toEqual(seedState().months[OCT]!.rates);
     expect(h.failures[0]!.action).toMatchObject({ type: 'rate/set', key: OCT });
+  });
+
+  it('si el servidor rechaza quitar una tasa, vuelve a aparecer; si ya no la tenía (404), se da por quitada', async () => {
+    const actions = createActions(h.store, OCT, flows);
+    actions.removeMonthRate('USD', 'DOP', '2026-10-06');
+    h.calls[0]!.fail(409, 'month_closed');
+    await tick();
+    expect(h.view().months[OCT]!.rates).toEqual(seedState().months[OCT]!.rates);
+    expect(h.failures[0]!.action).toEqual({ type: 'rate/remove', key: OCT, from: 'USD', to: 'DOP', date: '2026-10-06' });
+
+    actions.removeMonthRate('USD', 'DOP', '2026-10-01');
+    h.calls[1]!.fail(404, 'not_found');
+    await tick();
+    expect(h.failures).toHaveLength(1);
   });
 });
 
@@ -1184,6 +1524,28 @@ describe('envíos', () => {
     expect(actions.addTransfer({ date: '2026-10-08', via: 'Remitly', fromAccountId: 'us', toAccountId: 'dr', amount: 300 })).toBe(true);
     expect(h.view().months[OCT]!.transfers.at(-1)).toMatchObject({ id: 'tr-new', amount: 300, rate: 58.76 });
     expect(h.calls[0]!.body).toMatchObject({ fromAccountId: 'us', toAccountId: 'dr', amount: 300, rate: 58.76 });
+  });
+
+  it('sin tasa, la que lleva es la vigente en la fecha del envío, no la última escrita', async () => {
+    // 58 desde el día 1 y 60 desde el día 6.
+    h.server.state.months[OCT]!.rates = [
+      { from: 'USD', to: 'DOP', rate: 58, date: '2026-10-01' },
+      { from: 'USD', to: 'DOP', rate: 60, date: '2026-10-06' },
+    ];
+    await h.store.refetch();
+    let n = 0;
+    const actions = createActions(h.store, OCT, flows, () => `tr-${++n}`);
+    const base = { via: 'Remitly', fromAccountId: 'us', toAccountId: 'dr', amount: 300 };
+    expect(actions.addTransfer({ ...base, date: '2026-10-03' })).toBe(true);
+    expect(actions.addTransfer({ ...base, date: '2026-10-08' })).toBe(true);
+    expect(h.view().months[OCT]!.transfers.slice(-2).map((t) => [t.date, t.rate])).toEqual([
+      ['2026-10-03', 58],
+      ['2026-10-08', 60],
+    ]);
+    expect(h.calls[0]!.body).toMatchObject({ id: 'tr-1', date: '2026-10-03', rate: 58 });
+    h.calls[0]!.ok();
+    await tick();
+    expect(h.calls[1]!.body).toMatchObject({ id: 'tr-2', date: '2026-10-08', rate: 60 });
   });
 
   it('patchTransfer: se edita como una celda más, con retraso y en un solo PATCH', async () => {
@@ -1239,11 +1601,41 @@ describe('ingresos', () => {
   it('addIncome registra el ingreso en el acto, con un id del cliente, y lo manda', () => {
     const actions = createActions(h.store, OCT, flows, () => 'in-new');
     expect(actions.addIncome({ date: '2026-10-15', desc: ' Bonus ', accountId: 'us', amount: 1000, cur: 'USD' })).toBe(true);
-    expect(h.view().incomes.at(-1)).toEqual({ id: 'in-new', date: '2026-10-15', desc: 'Bonus', accountId: 'us', amount: 1000, cur: 'USD' });
+    expect(h.view().incomes.at(-1)).toEqual({ id: 'in-new', date: '2026-10-15', desc: 'Bonus', accountId: 'us', amount: 1000, cur: 'USD', budget: false });
     expect(monthCalc(h.view(), OCT).income).toBeCloseTo(6800 * 58.76, 6);
     expect(h.calls).toHaveLength(1);
     expect(h.calls[0]).toMatchObject({ method: 'POST', path: '/api/incomes', user: 'frank' });
-    expect(h.calls[0]!.body).toEqual({ id: 'in-new', date: '2026-10-15', desc: 'Bonus', accountId: 'us', amount: 1000, cur: 'USD' });
+    expect(h.calls[0]!.body).toEqual({ id: 'in-new', date: '2026-10-15', desc: 'Bonus', accountId: 'us', amount: 1000, cur: 'USD', budget: false });
+  });
+
+  it('addIncome con budget: true lo manda marcado y sube el presupuesto del mes de su fecha en el acto', () => {
+    const actions = createActions(h.store, OCT, flows, () => 'in-new');
+    expect(actions.addIncome({ date: '2026-10-15', desc: 'Freelance', accountId: 'dr', amount: 100, cur: 'USD', budget: true })).toBe(true);
+    expect(h.view().incomes.at(-1)).toMatchObject({ id: 'in-new', budget: true });
+    expect(h.calls[0]!.body).toEqual({ id: 'in-new', date: '2026-10-15', desc: 'Freelance', accountId: 'dr', amount: 100, cur: 'USD', budget: true });
+    // 100 USD a la tasa de su fecha, en la parte de la DR account; el registro del mes no cambia.
+    expect(monthCalc(h.view(), OCT).budget).toBeCloseTo(70000 + 5876, 8);
+    expect(h.view().months[OCT]!.budgetLog).toEqual(seedState().months[OCT]!.budgetLog);
+    expect(h.view().months[OCT]!.budgets).toEqual({ dr: 70000 });
+  });
+
+  it('marcar un ingreso para el presupuesto es una casilla: sale sin esperar, y vale en un mes cerrado', async () => {
+    const actions = createActions(h.store, OCT, flows);
+    // El sueldo de septiembre: el mes está cerrado, pero el ingreso no pertenece a él.
+    actions.patchIncome('seed-in-2', { budget: true });
+    expect(h.calls).toHaveLength(1);
+    expect(h.calls[0]).toMatchObject({ method: 'PATCH', path: '/api/incomes/seed-in-2', body: { budget: true } });
+    expect(monthCalc(h.view(), '2026-09').budget).toBeGreaterThan(70000);
+    // Lo que no es un sí o un no se ignora.
+    actions.patchIncome('seed-in-3', { budget: 'yes' as unknown as boolean });
+    expect(h.store.pendingCount).toBe(1);
+
+    // Si el servidor lo rechaza, el presupuesto vuelve a como estaba.
+    h.calls[0]!.fail(400, 'validation');
+    await tick();
+    expect(h.view().incomes.find((i) => i.id === 'seed-in-2')!.budget).toBe(false);
+    expect(monthCalc(h.view(), '2026-09').budget).toBe(70000);
+    expect(h.failures).toHaveLength(1);
   });
 
   it('sin cuenta indicada entra a la cuenta por defecto, y vale con fecha de un mes cerrado', () => {
@@ -1494,7 +1886,7 @@ describe('borrar un mes', () => {
     const deleting = h.store.deleteMonth(OCT);
     await tick();
     // Lo que hace el servidor: borra el mes y, al abrir de nuevo, crea el actual en blanco.
-    const fresh: Month = { key: '2026-11', closed: false, closedAt: null, budgets: {}, rates: [], fixed: [], transfers: [], tx: [] };
+    const fresh: Month = { key: '2026-11', closed: false, closedAt: null, budgetLog: [], budgets: {}, rates: [], fixed: [], transfers: [], tx: [] };
     h.server.state.months = { '2026-11': fresh };
     h.calls[0]!.ok();
     await deleting;

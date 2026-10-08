@@ -39,9 +39,13 @@ export const CAT_NAMES: Record<Language, readonly string[]> = {
 /** Nombres de los métodos de pago en cada idioma, en el mismo orden que METHODS. */
 export const METHOD_NAMES: Record<Language, readonly string[]> = {
   en: METHODS,
-  es: ['Tarjeta', 'Transferencia', 'App del banco'],
-  tr: ['Kart', 'Havale', 'Banka uygulaması'],
+  es: ['Tarjeta de débito', 'Tarjeta de crédito', 'Transferencia', 'App del banco', 'Efectivo'],
+  tr: ['Banka kartı', 'Kredi kartı', 'Havale', 'Banka uygulaması', 'Nakit'],
 };
+
+// Antes había una sola tarjeta ('Card' / 'Tarjeta' / 'Kart'). Esas palabras siguen llegando: las dicta la gente a
+// Claude y están en los libros de Excel ya exportados (y en la lista de su hoja Config). Valen por la de débito.
+const LEGACY_METHODS: Readonly<Record<string, (typeof METHODS)[number]>> = { card: 'Debit card', tarjeta: 'Debit card', kart: 'Debit card' };
 
 /** La fila "Fixed expenses" de "By category" (no es una categoría guardada: la identifica CategorySum.fixed). */
 export const FIXED_CATEGORY_NAMES: Record<Language, string> = {
@@ -82,7 +86,20 @@ export function canonicalCat(text: string): string {
   return canonical(text, CATS, CAT_NAMES);
 }
 
-/** 'Tarjeta', 'Kart' o 'card' → 'Card'. */
+// Sin tildes y con la ı turca como i: así 'tarjeta de credito' y 'KREDİ KARTI' se reconocen igual que el nombre exacto.
+const foldLoose = (s: string) => fold(s).normalize('NFD').replace(/[\u0300-\u036f]/g, '').replaceAll('ı', 'i');
+
+/**
+ * 'Tarjeta de crédito', 'kredi kartı' o 'credit card' → 'Credit card'; 'Efectivo' o 'Nakit' → 'Cash'.
+ * Las palabras de antes ('Card', 'Tarjeta', 'Kart') → 'Debit card'. Lo que no se reconoce vuelve tal cual.
+ */
 export function canonicalMethod(text: string): string {
-  return canonical(text, METHODS, METHOD_NAMES);
+  const t = foldLoose(text);
+  const legacy = Object.hasOwn(LEGACY_METHODS, t) ? LEGACY_METHODS[t] : undefined;
+  if (legacy) return legacy;
+  for (const lang of Object.keys(METHOD_NAMES) as Language[]) {
+    const i = METHOD_NAMES[lang].findIndex((n) => foldLoose(n) === t);
+    if (i >= 0) return METHODS[i]!;
+  }
+  return text.trim();
 }

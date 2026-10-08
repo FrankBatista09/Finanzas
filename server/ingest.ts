@@ -79,10 +79,11 @@ export function matchAccount(accounts: readonly Account[], text: string, field =
  * Guarda la transacción en las finanzas del usuario `input.user`, que tiene que ser uno de `users` (los
  * configurados, ver server/users.ts configuredUsers); si `users` trae uno solo, es ese y `user` puede faltar.
  * Aplica los valores por defecto del contrato (fecha: hoy en la zona horaria del usuario; categoría 'Food';
- * método 'Card'; cuenta: la cuenta por defecto del usuario; moneda: la de esa cuenta) y la guarda en el mes de
+ * método 'Debit card'; cuenta: la cuenta por defecto del usuario; moneda: la de esa cuenta) y la guarda en el mes de
  * su fecha, creándolo si no existe. `account` es el id de una cuenta o su nombre (ver matchAccount).
  * Claude habla con cada persona en su idioma: una categoría o un método dichos en español o en turco
- * ('Comida', 'Kart') se guardan con su nombre canónico; lo que no es de la lista se guarda tal cual.
+ * ('Comida', 'Kredi kartı') se guardan con su nombre canónico; 'Tarjeta' o 'Kart' a secas, como 'Debit card';
+ * lo que no es de la lista se guarda tal cual.
  * Si el usuario nunca abrió la web, antes se le crean sus cuentas y metas iniciales.
  * Lanza ApiError: 400 `validation` si la entrada no cumple, el usuario falta o no existe o la cuenta no se
  * reconoce; 409 `month_closed` si ese mes está cerrado.

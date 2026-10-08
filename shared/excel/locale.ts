@@ -28,7 +28,10 @@ export interface ExcelLocale {
    * a las listas CHOOSE de las fórmulas; INDIRECT localiza cada hoja por ese nombre.
    */
   readonly months: readonly string[];
-  /** Listas de la hoja Config (desplegables del historial), en el orden de CATS y METHODS. */
+  /**
+   * Listas de la hoja Config (desplegables del historial): las diez categorías y los tres métodos del diseño
+   * original, no las listas de hoy (CATS, METHODS). Las filas sí llevan cualquier valor de hoy, traducido.
+   */
   readonly cats: readonly string[];
   readonly methods: readonly string[];
   /** Valores de la columna "Pagado". Van en una lista "a,b" y dentro de fórmulas: sin comas. */

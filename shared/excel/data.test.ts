@@ -68,7 +68,11 @@ describe('buildExportData · datos de ejemplo', () => {
   it('salvo los saldos, es la misma entrada con la que se hizo el libro del diseño', () => {
     // En el diseño original los saldos se escribían a mano; ahora salen de los movimientos.
     const withoutBalances = (d: ExportData) => ({ ...d, months: d.months.map(({ accounts: _accounts, ...m }) => m) });
-    expect(withoutBalances(data)).toEqual(withoutBalances(frozenExportData('en')));
+    // La entrada congelada no se toca: dice 'Card', el único método con tarjeta de entonces, que hoy es 'Debit card'.
+    const frozen = frozenExportData('en');
+    const today: ExportData = { ...frozen, months: frozen.months.map((m) => ({ ...m, tx: m.tx.map((t) => (t.method === 'Card' ? { ...t, method: 'Debit card' } : t)) })) };
+    expect(frozen.months.flatMap((m) => m.tx).filter((t) => t.method === 'Card')).toHaveLength(23);
+    expect(withoutBalances(data)).toEqual(withoutBalances(today));
     expect(data.months.map((m) => m.key)).toEqual(sortedKeys(state));
     expect(data.defaultRate).toBe(state.defaultRate);
   });
@@ -107,7 +111,7 @@ describe('buildExportData · datos de ejemplo', () => {
     expect(f2(bookTotalDOP(exported(data, '2026-10'), 58.76))).toBe('1,012,844.25');
     const oct = exported(data, '2026-10');
     expect(oct.fixed[4]).toEqual({ name: 'Claude', day: '5', amount: 106, cur: 'USD', paid: true });
-    expect(oct.tx[6]).toEqual({ date: '2026-10-07', desc: 'Coffee', place: 'Starbucks Ágora', cat: 'Food', method: 'Card', amount: 385, cur: 'DOP', notes: '' });
+    expect(oct.tx[6]).toEqual({ date: '2026-10-07', desc: 'Coffee', place: 'Starbucks Ágora', cat: 'Food', method: 'Debit card', amount: 385, cur: 'DOP', notes: '' });
     expect(data.goals[2]).toEqual({ name: 'Trip to Turkey', monthlyUSD: 3000, start: '2026-08', end: '2027-10' });
     expect(data.contribs).toHaveLength(8);
   });
@@ -120,7 +124,7 @@ describe('buildExportData · datos de ejemplo', () => {
 
   it('una tasa escrita a mano no viaja: el libro calcula la suya con los envíos del mes', () => {
     const s = seedState();
-    s.months['2026-10']!.rates = [{ from: 'USD', to: 'DOP', rate: 60 }];
+    s.months['2026-10']!.rates = [{ from: 'USD', to: 'DOP', rate: 60, date: '2026-10-01' }];
     const oct = exported(buildExportData(s), '2026-10');
     expect(rateFor(s, '2026-10', 'USD', 'DOP').rate).toBe(60);
     expect(bookRate(oct, s.defaultRate)).toBe(58.76);
@@ -150,8 +154,8 @@ describe('buildExportData · lo que el libro no sabe representar (TRY, más cuen
     const sources = (key: string) => [rateFor(state, key, 'USD', 'DOP').source, rateFor(state, key, 'USD', 'TRY').source, rateFor(state, key, 'TRY', 'DOP').source];
     expect(KEYS.map(sources)).toEqual([
       ['transfers', 'month', 'cross'],
-      ['transfers', 'transfers', 'cross'],
-      ['transfers', 'cross', 'transfers'],
+      ['transfers', 'month', 'cross'],
+      ['transfers', 'month', 'transfers'],
     ]);
   });
 
@@ -174,11 +178,11 @@ describe('buildExportData · lo que el libro no sabe representar (TRY, más cuen
   it('transacciones en TRY: convertidas a DOP, con el monto original al final de las notas', () => {
     const oct = exported(data, '2026-10');
     expect(oct.tx.slice(7)).toEqual([
-      { date: '2026-10-08', desc: 'Seat selection', place: '', cat: 'Travel', method: 'Card', amount: toDOP('2026-10', 2400.5, 'TRY'), cur: 'DOP', notes: 'Turkish Airlines · TRY 2,400.50' },
+      { date: '2026-10-08', desc: 'Seat selection', place: '', cat: 'Travel', method: 'Debit card', amount: toDOP('2026-10', 2400.5, 'TRY'), cur: 'DOP', notes: 'Turkish Airlines · TRY 2,400.50' },
       // La paga la cuenta en DOP, pero el gasto es en TRY: también se convierte.
-      { date: '2026-10-09', desc: 'Gift for Eda', place: '', cat: 'Home', method: 'Card', amount: toDOP('2026-10', 600, 'TRY'), cur: 'DOP', notes: 'TRY 600.00' },
-      { date: '2026-10-09', desc: 'Domain', place: '', cat: 'Subscriptions', method: 'Card', amount: 12.5, cur: 'USD', notes: '' },
-      { date: '2026-10-10', desc: 'Snacks', place: '', cat: 'Food', method: 'Card', amount: 200, cur: 'DOP', notes: '' },
+      { date: '2026-10-09', desc: 'Gift for Eda', place: '', cat: 'Home', method: 'Debit card', amount: toDOP('2026-10', 600, 'TRY'), cur: 'DOP', notes: 'TRY 600.00' },
+      { date: '2026-10-09', desc: 'Domain', place: '', cat: 'Subscriptions', method: 'Debit card', amount: 12.5, cur: 'USD', notes: '' },
+      { date: '2026-10-10', desc: 'Snacks', place: '', cat: 'Food', method: 'Debit card', amount: 200, cur: 'DOP', notes: '' },
     ]);
     // Cada mes con su tasa: la de septiembre no es la de octubre.
     const baklava = exported(data, '2026-09').tx[10]!;
@@ -338,9 +342,9 @@ describe('buildExportData · lo que el libro no sabe representar (TRY, más cuen
 describe('buildExportData · casos límite', () => {
   it('sin meses: no hay hojas de mes, y una meta en otra moneda se convierte con la tasa de respaldo', () => {
     const state: AppState = { ...newUserState(), months: {} };
-    state.goals.push({ id: 'tr', name: 'Bosphorus', cur: 'TRY', monthly: 4200, start: '2027-01', end: '2027-12', sort: 2 });
+    state.goals.push({ id: 'tr', name: 'Bosphorus', cur: 'TRY', monthly: 4200, start: '2027-01', end: '2027-12', approxCur: null, sort: 2 });
     state.contribs.push({ id: 'c1', goalId: 'tr', date: '2027-01-05', amount: 840, cur: 'TRY' }, { id: 'c2', goalId: 'gone', date: '2027-01-06', amount: 5, cur: 'DOP' });
-    expect(rateFor(state, '2027-01', 'TRY', 'USD')).toEqual({ rate: 1 / 42, source: 'default', monthKey: null });
+    expect(rateFor(state, '2027-01', 'TRY', 'USD')).toEqual({ rate: 1 / 42, source: 'default', monthKey: null, date: null });
     expect(buildExportData(state)).toEqual({
       months: [],
       goals: [
@@ -382,7 +386,7 @@ describe('buildExportData · casos límite', () => {
     // Con una tasa escrita para TRY ese mes, vuelve a cuadrar. (Un estado nuevo: calc memoriza las tasas por objeto.)
     const typed = seedState();
     typed.accounts.push({ ...state.accounts[2]! });
-    typed.months['2026-08']!.rates = [{ from: 'USD', to: 'TRY', rate: 42 }];
+    typed.months['2026-08']!.rates = [{ from: 'USD', to: 'TRY', rate: 42, date: '2026-08-01' }];
     expect(rateFor(typed, '2026-08', 'TRY', 'DOP').source).toBe('cross');
     expect(bookTotalDOP(exported(buildExportData(typed), '2026-08'), rate)).toBeCloseTo(balances(typed, '2026-08').totalMain, 6);
   });
@@ -479,13 +483,13 @@ describe('applyImportToState · Finanzas Personales v3.xlsx en un usuario nuevo'
       { monthKey: '2026-08', date: '2026-08-18', via: 'PayPal', fromAccountId: 'us', toAccountId: 'dr', amount: 300, rate: 57.1 },
     ]);
     // Sin tasa escrita, la del mes sale de esos envíos, como en el libro.
-    expect(rateFor(state, '2026-08', 'USD', 'DOP')).toEqual({ rate: (1500 * 58.4 + 300 * 57.1) / 1800, source: 'transfers', monthKey: '2026-08' });
-    expect(rateFor(state, '2026-10', 'USD', 'DOP')).toEqual({ rate: 58.76, source: 'transfers', monthKey: '2026-10' });
+    expect(rateFor(state, '2026-08', 'USD', 'DOP')).toEqual({ rate: (1500 * 58.4 + 300 * 57.1) / 1800, source: 'transfers', monthKey: '2026-08', date: null });
+    expect(rateFor(state, '2026-10', 'USD', 'DOP')).toEqual({ rate: 58.76, source: 'transfers', monthKey: '2026-10', date: null });
   });
 
   it('el ingreso de cada mes pasa a ser un ingreso en USD el día 1, a la cuenta en USD', () => {
     expect(state.incomes.map(({ id: _id, ...i }) => i)).toEqual(
-      KEYS.map((key) => ({ date: `${key}-01`, desc: 'Income (imported)', accountId: 'us', amount: 5800, cur: 'USD' })),
+      KEYS.map((key) => ({ date: `${key}-01`, desc: 'Income (imported)', accountId: 'us', amount: 5800, cur: 'USD', budget: false })),
     );
     expect(IMPORTED_INCOME).toBe('Income (imported)');
     for (const key of KEYS) expect(incomeInMonth(state, key, 'USD'), key).toBe(5800);
@@ -516,9 +520,9 @@ describe('applyImportToState · Finanzas Personales v3.xlsx en un usuario nuevo'
 
   it('metas y aportes: las tres del libro (dos ya las tenía) y sus ocho aportes', () => {
     expect(state.goals).toEqual([
-      { id: 'emergency', name: 'Emergency fund', cur: 'USD', monthly: null, start: null, end: null, sort: 0 },
-      { id: 'personal', name: 'Personal savings', cur: 'USD', monthly: null, start: null, end: null, sort: 1 },
-      { id: expect.stringMatching(/^new-\d+$/), name: 'Trip to Turkey', cur: 'USD', monthly: 3000, start: '2026-08', end: '2027-10', sort: 2 },
+      { id: 'emergency', name: 'Emergency fund', cur: 'USD', monthly: null, start: null, end: null, approxCur: null, sort: 0 },
+      { id: 'personal', name: 'Personal savings', cur: 'USD', monthly: null, start: null, end: null, approxCur: null, sort: 1 },
+      { id: expect.stringMatching(/^new-\d+$/), name: 'Trip to Turkey', cur: 'USD', monthly: 3000, start: '2026-08', end: '2027-10', approxCur: null, sort: 2 },
     ]);
     expect(state.contribs).toHaveLength(8);
     expect(goalsProgress(state).map((g) => [g.name, g.saved, g.contribCount])).toEqual([
@@ -558,9 +562,9 @@ describe('applyImportToState · Finanzas Personales v3.xlsx en el usuario de eje
       expect(m.fixed.map((f) => f.name), file.key).toEqual(file.fixed.map((f) => f.name));
       expect(m.rates).toEqual([]);
     }
-    // Los textos del libro (en español) sustituyen a los de ejemplo, y la tasa escrita de octubre desaparece.
+    // Los textos del libro (en español) sustituyen a los de ejemplo, y las tasas escritas de octubre desaparecen.
     expect(state.months['2026-10']!.fixed[0]!.name).toBe('Luz');
-    expect(base.months['2026-10']!.rates).toHaveLength(1);
+    expect(base.months['2026-10']!.rates).toHaveLength(2);
   });
 
   it('los saldos al final del último mes son los del libro, no los que tenía', () => {
@@ -605,8 +609,12 @@ describe('applyImportToState · meses', () => {
       key: '2026-07',
       closed: true,
       closedAt: '2026-08-01T04:00:00.000Z',
+      budgetLog: [
+        { id: 'july-dr', date: '2026-07-01', accountId: 'dr', amount: 50000, kind: 'initial', note: '' },
+        { id: 'july-us', date: '2026-07-01', accountId: 'us', amount: 20, kind: 'initial', note: '' },
+      ],
       budgets: { dr: 50000, us: 20 },
-      rates: [{ from: 'USD', to: 'DOP', rate: 59.1 }],
+      rates: [{ from: 'USD', to: 'DOP', rate: 59.1, date: '2026-07-01' }],
       fixed: [],
       transfers: [],
       tx: [{ ...base.months['2026-08']!.tx[0]!, id: 'july-1', monthKey: '2026-07', date: '2026-07-15', amount: 9999 }],
@@ -642,6 +650,8 @@ describe('applyImportToState · meses', () => {
       key: '2026-10',
       closed: false,
       closedAt: null,
+      // Un solo movimiento inicial en la cuenta en DOP, con un id fijo por mes (no sale de newId).
+      budgetLog: [{ id: 'imported-budget-2026-10', date: '2026-10-01', accountId: 'dr', amount: 65000, kind: 'initial', note: '' }],
       budgets: { dr: 65000 },
       rates: [],
       fixed: [{ id: 'new-1', monthKey: '2026-10', name: 'Luz', day: '', amount: 1500, cur: 'DOP', paid: true, accountId: 'dr', sort: 0 }],
@@ -697,7 +707,7 @@ describe('applyImportToState · meses', () => {
       newUserState(),
       payloadOf([
         importMonth('2026-10', {
-          tx: [{ date: '2026-10-03', desc: 'Simit', place: '', cat: 'Food', method: 'Card', amount: 84, cur: 'TRY', notes: '' }],
+          tx: [{ date: '2026-10-03', desc: 'Simit', place: '', cat: 'Food', method: 'Debit card', amount: 84, cur: 'TRY', notes: '' }],
           accounts: { usd: 0, dop: 1000 },
         }),
       ]),
@@ -716,7 +726,7 @@ describe('applyImportToState · cuentas', () => {
       incomeUSD: 500,
       fixed: [{ name: 'Claude', day: '5', amount: 106, cur: 'USD', paid: true }],
       transfers: [{ date: '2026-10-02', via: 'Remitly', usd: 100, rate: 60 }],
-      tx: [{ date: '2026-10-03', desc: 'Café', place: '', cat: 'Food', method: 'Card', amount: 250, cur: 'DOP', notes: '' }],
+      tx: [{ date: '2026-10-03', desc: 'Café', place: '', cat: 'Food', method: 'Debit card', amount: 250, cur: 'DOP', notes: '' }],
     }),
   ]);
 
@@ -835,7 +845,7 @@ describe('applyImportToState · ingreso del mes', () => {
 
   it('reimportar con otro ingreso sustituye al anterior y conserva su id', () => {
     const first = applyImportToState(newUserState(), file(5800), ids('a'));
-    expect(first.incomes).toEqual([{ id: 'a-1', date: '2026-10-01', desc: 'Income (imported)', accountId: 'us', amount: 5800, cur: 'USD' }]);
+    expect(first.incomes).toEqual([{ id: 'a-1', date: '2026-10-01', desc: 'Income (imported)', accountId: 'us', amount: 5800, cur: 'USD', budget: false }]);
     const second = applyImportToState(first, file(6100), ids('b'));
     expect(second.incomes).toEqual([{ ...first.incomes[0]!, amount: 6100 }]);
     // El saldo sigue siendo el del libro: el inicial compensa la diferencia.
@@ -853,11 +863,11 @@ describe('applyImportToState · ingreso del mes', () => {
   it('solo toca el ingreso importado de los meses que vienen en el archivo', () => {
     const base = newUserState();
     base.incomes.push(
-      { id: 'sep', date: '2026-09-01', desc: IMPORTED_INCOME, accountId: 'us', amount: 111, cur: 'USD' },
-      { id: 'salary', date: '2026-10-01', desc: 'Salary', accountId: 'us', amount: 5800, cur: 'USD' },
-      { id: 'oct', date: '2026-10-01', desc: IMPORTED_INCOME, accountId: 'dr', amount: 222, cur: 'DOP' },
-      { id: 'oct-2', date: '2026-10-20', desc: IMPORTED_INCOME, accountId: 'us', amount: 333, cur: 'USD' },
-      { id: 'gift', date: '2026-10-09', desc: 'Gift', accountId: 'dr', amount: 1000, cur: 'DOP' },
+      { id: 'sep', date: '2026-09-01', desc: IMPORTED_INCOME, accountId: 'us', amount: 111, cur: 'USD', budget: false },
+      { id: 'salary', date: '2026-10-01', desc: 'Salary', accountId: 'us', amount: 5800, cur: 'USD', budget: false },
+      { id: 'oct', date: '2026-10-01', desc: IMPORTED_INCOME, accountId: 'dr', amount: 222, cur: 'DOP', budget: false },
+      { id: 'oct-2', date: '2026-10-20', desc: IMPORTED_INCOME, accountId: 'us', amount: 333, cur: 'USD', budget: false },
+      { id: 'gift', date: '2026-10-09', desc: 'Gift', accountId: 'dr', amount: 1000, cur: 'DOP', budget: false },
     );
     // El libro dice 6,400 USD en octubre; el usuario ya tiene 5,800 USD y 1,000 DOP (a la tasa de respaldo, 58.76).
     const state = applyImportToState(deepFreeze(base), file(6400), ids());
@@ -867,7 +877,7 @@ describe('applyImportToState · ingreso del mes', () => {
       base.incomes[1],
       base.incomes[4],
       // Los dos importados de octubre se van y queda uno, con el id del primero y solo lo que le falta al total.
-      { id: 'oct', date: '2026-10-01', desc: IMPORTED_INCOME, accountId: 'us', amount: expect.closeTo(600 - 1000 / 58.76, 8), cur: 'USD' },
+      { id: 'oct', date: '2026-10-01', desc: IMPORTED_INCOME, accountId: 'us', amount: expect.closeTo(600 - 1000 / 58.76, 8), cur: 'USD', budget: false },
     ]);
     expect(incomeInMonth(state, '2026-10', 'USD')).toBeCloseTo(6400, 8);
   });
@@ -875,8 +885,8 @@ describe('applyImportToState · ingreso del mes', () => {
   it('si el libro trae menos de lo que el usuario ya tiene registrado, no crea ninguno ni reduce los suyos', () => {
     const base = newUserState();
     base.incomes.push(
-      { id: 'salary', date: '2026-10-01', desc: 'Salary', accountId: 'us', amount: 5800, cur: 'USD' },
-      { id: 'oct', date: '2026-10-01', desc: IMPORTED_INCOME, accountId: 'us', amount: 222, cur: 'USD' },
+      { id: 'salary', date: '2026-10-01', desc: 'Salary', accountId: 'us', amount: 5800, cur: 'USD', budget: false },
+      { id: 'oct', date: '2026-10-01', desc: IMPORTED_INCOME, accountId: 'us', amount: 222, cur: 'USD', budget: false },
     );
     for (const amount of [400, 5800, 5800.004]) {
       expect(applyImportToState(deepFreeze(base), file(amount), ids()).incomes, String(amount)).toEqual([base.incomes[0]]);
@@ -885,13 +895,13 @@ describe('applyImportToState · ingreso del mes', () => {
 });
 
 describe('applyImportToState · metas y aportes', () => {
-  const goal = (id: string, name: string, over: Partial<Goal> = {}): Goal => ({ id, name, cur: 'USD', monthly: null, start: null, end: null, sort: 0, ...over });
+  const goal = (id: string, name: string, over: Partial<Goal> = {}): Goal => ({ id, name, cur: 'USD', monthly: null, start: null, end: null, approxCur: null, sort: 0, ...over });
   const base = (): AppState => {
     const s = seedState();
     s.goals.push(
-      goal('car', 'Car', { monthly: 200, start: '2026-01', end: '2026-12', sort: 3 }),
-      goal('flat', 'Istanbul flat', { cur: 'TRY', monthly: 10000, start: '2026-09', end: '2027-08', sort: 4 }),
-      goal('lira', 'Lira cushion', { cur: 'TRY', monthly: 900, start: '2026-09', end: '2027-08', sort: 5 }),
+      goal('car', 'Car', { monthly: 200, start: '2026-01', end: '2026-12', approxCur: null, sort: 3 }),
+      goal('flat', 'Istanbul flat', { cur: 'TRY', monthly: 10000, start: '2026-09', end: '2027-08', approxCur: null, sort: 4 }),
+      goal('lira', 'Lira cushion', { cur: 'TRY', monthly: 900, start: '2026-09', end: '2027-08', approxCur: null, sort: 5 }),
     );
     return s;
   };
@@ -959,7 +969,7 @@ describe('applyImportToState · metas y aportes', () => {
       ids(),
     );
     expect(state.goals.slice(0, 6)).toEqual(before.goals);
-    expect(state.goals[6]).toEqual({ id: 'new-2', name: 'Bike', cur: 'USD', monthly: null, start: null, end: null, sort: 6 });
+    expect(state.goals[6]).toEqual({ id: 'new-2', name: 'Bike', cur: 'USD', monthly: null, start: null, end: null, approxCur: null, sort: 6 });
     expect(state.contribs).toEqual([
       { id: 'new-1', goalId: 'turkey', date: '2026-10-01', amount: 100, cur: 'USD' },
       { id: 'new-3', goalId: 'new-2', date: '2026-10-02', amount: 2500, cur: 'DOP' },

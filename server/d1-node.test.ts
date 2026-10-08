@@ -24,8 +24,8 @@ describe('adaptador D1 sobre node:sqlite', () => {
     const tables: Record<string, number> = {
       months: 2,
       accounts: 2,
-      month_budgets: 3,
-      month_rates: 4,
+      month_budget_log: 2,
+      month_rates: 5,
       fixed_expenses: 2,
       transactions: 2,
       transfers: 2,
@@ -146,8 +146,12 @@ describe('adaptador D1 sobre node:sqlite', () => {
     await db.prepare("INSERT INTO accounts (user_id, id, name, currency) VALUES ('frank', 'a', 'x', 'TRY')").run();
     const failing = [
       "INSERT INTO accounts (user_id, id, name, currency) VALUES ('frank', 'b', 'x', 'EUR')",
-      "INSERT INTO month_rates (user_id, month_key, from_currency, to_currency, rate) VALUES ('frank', '2026-10', 'USD', 'DOP', 0)",
-      "INSERT INTO month_rates (user_id, month_key, from_currency, to_currency, rate) VALUES ('frank', '2026-10', 'USD', 'USD', 1)",
+      "INSERT INTO month_rates (user_id, month_key, from_currency, to_currency, date, rate) VALUES ('frank', '2026-10', 'USD', 'DOP', '2026-10-01', 0)",
+      "INSERT INTO month_rates (user_id, month_key, from_currency, to_currency, date, rate) VALUES ('frank', '2026-10', 'USD', 'USD', '2026-10-01', 1)",
+      // La fecha de una tasa y la de un movimiento del presupuesto caen dentro de su mes.
+      "INSERT INTO month_rates (user_id, month_key, from_currency, to_currency, date, rate) VALUES ('frank', '2026-10', 'USD', 'DOP', '2026-11-01', 58)",
+      "INSERT INTO month_budget_log (user_id, id, month_key, date, account_id, amount) VALUES ('frank', 'b1', '2026-10', '2026-09-30', 'a', 1)",
+      "INSERT INTO month_budget_log (user_id, id, month_key, date, account_id, amount, kind) VALUES ('frank', 'b2', '2026-10', '2026-10-01', 'a', 1, 'bonus')",
       "INSERT INTO transfers (user_id, id, month_key, date, via, from_account_id, to_account_id, amount, rate) VALUES ('frank', 't', '2026-10', '2026-10-01', 'x', 'a', 'a', 1, 1)",
     ];
     for (const sql of failing) await expect(db.prepare(sql).run(), sql).rejects.toThrow(/CHECK constraint failed.*SQLITE_CONSTRAINT/);

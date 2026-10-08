@@ -16,6 +16,8 @@ interface RateCellProps {
   /** Vacío cuando el valor es 0 (la fila de agregar una tasa: así se ve el placeholder). */
   blankZero?: boolean;
   placeholder?: string;
+  /** Cómo se ve la tasa fuera de edición; por defecto, rateText. Una tasa calculada (no escrita) trae decimales de sobra: se pasa showRate. */
+  format?: (rate: number) => string;
 }
 
 /**
@@ -24,10 +26,10 @@ interface RateCellProps {
  * CellNumber no deja elegir el formato; por eso esta celda repite su input con el borrador y los estilos de src/ui.
  * El día que CellNumber acepte un formato, sobra.
  */
-export function RateCell({ value, onCommit, label, minWidth, readOnly, blankZero, placeholder }: RateCellProps) {
+export function RateCell({ value, onCommit, label, minWidth, readOnly, blankZero, placeholder, format = rateText }: RateCellProps) {
   const draft = useDraft({
     value,
-    format: (rate: number) => (blankZero && !rate ? '' : rateText(rate)),
+    format: (rate: number) => (blankZero && !rate ? '' : format(rate)),
     // Igual que NumberField: algo a medio escribir que aún no es un número no se confirma.
     parse: (text, input) => (input?.validity.badInput ? undefined : parseAmount(text)),
     onCommit,

@@ -52,10 +52,17 @@ export const MES = defineStrings({
 
     // Tasas del mes
     pairRate: 'Rate {from} → {to}',
-    deleteRate: 'Delete rate {from} → {to}',
     newRateFrom: 'Currency the new rate converts from',
     newRateTo: 'Currency the new rate converts to',
     newRate: 'New rate',
+    rateSince: 'Since',
+    ratesNote: 'A new rate applies from its date on. Earlier transactions keep the rate they had.',
+    pairRateSince: 'Rate {from} → {to} since {date}',
+    deleteRateSince: 'Delete rate {from} → {to} of {date}',
+    newRateDate: 'Date the new rate applies from',
+    
+    // Ingresos del mes
+    incomeNote: 'Money received outside transfers. With "Adds to budget" checked, it also raises this month\'s budget.',
 
     // Historial
     txTitle: 'Transaction history',
@@ -128,10 +135,16 @@ export const MES = defineStrings({
     rateOf: 'Tasa de {name}',
 
     pairRate: 'Tasa {from} → {to}',
-    deleteRate: 'Eliminar tasa {from} → {to}',
     newRateFrom: 'Moneda de origen de la nueva tasa',
     newRateTo: 'Moneda de destino de la nueva tasa',
     newRate: 'Nueva tasa',
+    rateSince: 'Vigente desde',
+    ratesNote: 'Una tasa nueva vale desde su fecha. Las transacciones anteriores conservan la que tenían.',
+    pairRateSince: 'Tasa {from} → {to} desde el {date}',
+    deleteRateSince: 'Eliminar tasa {from} → {to} del {date}',
+    newRateDate: 'Fecha desde la que vale la tasa nueva',
+    
+    incomeNote: 'Dinero recibido fuera de los envíos. Con «Suma al presupuesto» marcado, sube además el presupuesto de este mes.',
 
     txTitle: 'Historial de transacciones',
     txMeta: { one: '{count} transacción · total', other: '{count} transacciones · total' },
@@ -202,10 +215,16 @@ export const MES = defineStrings({
     rateOf: 'Kur: {name}',
 
     pairRate: 'Kur {from} → {to}',
-    deleteRate: '{from} → {to} kurunu sil',
     newRateFrom: 'Yeni kurun kaynak para birimi',
     newRateTo: 'Yeni kurun hedef para birimi',
     newRate: 'Yeni kur',
+    rateSince: 'Başlangıç',
+    ratesNote: 'Yeni kur, tarihinden itibaren geçerlidir. Önceki işlemler kendi kurunu korur.',
+    pairRateSince: 'Kur {from} → {to}, {date} tarihinden itibaren',
+    deleteRateSince: 'Kuru sil: {from} → {to}, {date}',
+    newRateDate: 'Yeni kurun geçerli olacağı tarih',
+    
+    incomeNote: 'Transferler dışında alınan para. "Bütçeye eklenir" işaretliyse bu ayın bütçesini de artırır.',
 
     txTitle: 'İşlem geçmişi',
     txMeta: { one: '{count} işlem · toplam', other: '{count} işlem · toplam' },

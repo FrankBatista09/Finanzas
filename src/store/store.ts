@@ -51,6 +51,7 @@ const IMMEDIATE_FIELDS: ReadonlySet<string> = new Set([
   'mainCurrency',
   'secondCurrency',
   'defaultAccountId',
+  'budget',
 ]);
 
 export interface SaveFailure {
@@ -300,7 +301,17 @@ export class FinanzasStore {
       case 'rate/set':
         return api.putMonthRate(action.key, action.rate, opts);
       case 'rate/remove':
-        return api.deleteMonthRate(action.key, action.from, action.to, opts);
+        return api.deleteMonthRate(action.key, action.from, action.to, action.date, opts);
+      case 'budget/add': {
+        const { id, date, accountId, amount, kind, note } = action.row;
+        // 'leftover' no se escribe por aquí: tiene su propia acción.
+        return api.addBudgetEntry(action.key, { id, date, accountId, amount, kind: kind === 'initial' ? 'initial' : 'adjust', note }, opts);
+      }
+      case 'budget/remove':
+        return api.deleteBudgetEntry(action.key, action.id, opts);
+      case 'budget/leftover':
+        // La cifra la calcula el servidor; `row` es solo lo que se ve mientras responde.
+        return api.addLeftover(action.key, opts);
       case 'fixed/add': {
         const { id, monthKey, name, day, amount, cur, paid, accountId } = action.row;
         return api.createFixed({ id, monthKey, name, day, amount, cur, paid, accountId }, opts);
@@ -326,16 +337,16 @@ export class FinanzasStore {
       case 'transfer/remove':
         return api.deleteTransfer(action.id, opts);
       case 'income/add': {
-        const { id, date, desc, accountId, amount, cur } = action.row;
-        return api.createIncome({ id, date, desc, accountId, amount, cur }, opts);
+        const { id, date, desc, accountId, amount, cur, budget } = action.row;
+        return api.createIncome({ id, date, desc, accountId, amount, cur, budget }, opts);
       }
       case 'income/patch':
         return api.patchIncome(action.id, action.patch, opts);
       case 'income/remove':
         return api.deleteIncome(action.id, opts);
       case 'goal/add': {
-        const { id, name, cur, monthly, start, end } = action.row;
-        return api.createGoal({ id, name, cur, monthly, start, end }, opts);
+        const { id, name, cur, monthly, start, end, approxCur } = action.row;
+        return api.createGoal({ id, name, cur, monthly, start, end, approxCur }, opts);
       }
       case 'goal/patch':
         return api.patchGoal(action.id, action.patch, opts);

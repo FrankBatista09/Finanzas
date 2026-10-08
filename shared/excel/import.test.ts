@@ -51,7 +51,8 @@ function normalize(p: ImportPayload): ImportPayload {
 
 /**
  * Lo que debe salir al importar un libro generado a partir de `data`, esté en el idioma que esté: los mismos
- * datos (categorías y métodos con su nombre canónico, que es como vienen en `data`) y las metas en su orden.
+ * datos (categorías y métodos con su nombre canónico, que es como vienen en `data`; el 'Card' de las entradas
+ * congeladas, como 'Debit card') y las metas en su orden.
  */
 function expectedPayload(data: ExportData): ImportPayload {
   const months = sorted(data.months, (m) => m.key);
@@ -69,7 +70,7 @@ function expectedPayload(data: ExportData): ImportPayload {
         desc: t.desc,
         place: t.place,
         cat: t.cat,
-        method: t.method,
+        method: todayMethod(t.method),
         amount: t.amount ?? 0,
         cur: t.cur,
         notes: t.notes,
@@ -95,7 +96,10 @@ const CAT_ES: Record<string, string> = {
   Education: 'Educación',
   Travel: 'Viajes',
 };
-const METHOD_ES: Record<string, string> = { Card: 'Tarjeta', Transfer: 'Transferencia', 'Bank app': 'App del banco' };
+// La única tarjeta de entonces ('Tarjeta') es hoy la de débito.
+const METHOD_ES: Record<string, string> = { 'Debit card': 'Tarjeta', Transfer: 'Transferencia', 'Bank app': 'App del banco' };
+/** Las entradas congeladas en inglés dicen 'Card', el método de cuando se hicieron: hoy se lee como 'Debit card'. */
+const todayMethod = (method: string) => (method === 'Card' ? 'Debit card' : method);
 const GOAL_ES: Record<string, string> = {
   'Emergency fund': 'Fondo de emergencia',
   'Personal savings': 'Ahorro personal',
@@ -113,7 +117,7 @@ function asVersion1(data: ExportData): ExportData {
     ...data,
     months: data.months.map((m) => ({
       ...m,
-      tx: m.tx.map((t) => ({ ...t, cat: CAT_ES[t.cat] ?? t.cat, method: METHOD_ES[t.method] ?? t.method })),
+      tx: m.tx.map((t) => ({ ...t, cat: CAT_ES[t.cat] ?? t.cat, method: METHOD_ES[todayMethod(t.method)] ?? t.method })),
     })),
     goals: data.goals.map((g) => ({ ...g, name: GOAL_ES[g.name] ?? g.name })),
     contribs: data.contribs.map((c) => ({ ...c, goalName: GOAL_ES[c.goalName] ?? c.goalName })),
@@ -223,7 +227,7 @@ function savings(
   return { contribs, goals };
 }
 
-const TX_DEFAULTS = { place: '', cat: 'Food', method: 'Card', cur: 'DOP' as Currency, notes: '' };
+const TX_DEFAULTS = { place: '', cat: 'Food', method: 'Debit card', cur: 'DOP' as Currency, notes: '' };
 
 /** El error que lanza `fn`, comprobando que es un ImportError. */
 function importError(fn: () => unknown): ImportError {
@@ -283,7 +287,7 @@ describe('libros de design_handoff/referencia (versión 1, en español)', () => 
     expect(oct.fixed.filter((f) => f.paid).map((f) => f.name)).toEqual(['Luz', 'Internet', 'Seguro médico', 'Pago nevera', 'Claude', 'Unicaribe']);
     expect(oct.transfers).toEqual([{ date: '2026-10-02', via: 'Remitly', usd: 1500, rate: 58.76 }]);
     expect(oct.tx).toHaveLength(7);
-    expect(oct.tx).toContainEqual({ date: '2026-10-07', desc: 'Café', place: 'Starbucks Ágora', cat: 'Food', method: 'Card', amount: 385, cur: 'DOP', notes: '' });
+    expect(oct.tx).toContainEqual({ date: '2026-10-07', desc: 'Café', place: 'Starbucks Ágora', cat: 'Food', method: 'Debit card', amount: 385, cur: 'DOP', notes: '' });
     expect(payload.months[0]!.tx).toContainEqual({ date: '2026-08-21', desc: 'Consulta', place: 'Centro Médico', cat: 'Health', method: 'Transfer', amount: 2500, cur: 'DOP', notes: 'Copago seguro' });
     expect(payload.contribs).toHaveLength(8);
     expect(payload.contribs).toContainEqual({ date: '2026-09-18', goalName: 'Personal savings', amount: 200, cur: 'USD' });
@@ -381,15 +385,15 @@ const custom: ExportData = {
       ],
       tx: [
         // Categoría y método fuera de las listas: texto del usuario, queda como está en cualquier idioma.
-        { date: '2025-12-24', desc: 'Cena de Nochebuena', place: 'Casa', cat: 'Categoría propia', method: 'Efectivo', amount: 7300, cur: 'DOP', notes: 'ñ á é í ó ú ü ¿? ¡! € RD$ ğ ş ı İ ö ç' },
-        { date: '2025-12-01', desc: 'Café & pan <integral>', place: 'Panadería "La Única"', cat: 'Food', method: 'Card', amount: 385.5, cur: 'DOP', notes: "l'apóstrofo > todo" },
-        { date: '2025-12-05', desc: 'Hosting', place: 'Hetzner', cat: 'Subscriptions', method: 'Card', amount: 12.99, cur: 'USD', notes: 'Factura #A-17 & recibo' },
+        { date: '2025-12-24', desc: 'Cena de Nochebuena', place: 'Casa', cat: 'Categoría propia', method: 'Cheque', amount: 7300, cur: 'DOP', notes: 'ñ á é í ó ú ü ¿? ¡! € RD$ ğ ş ı İ ö ç' },
+        { date: '2025-12-01', desc: 'Café & pan <integral>', place: 'Panadería "La Única"', cat: 'Food', method: 'Debit card', amount: 385.5, cur: 'DOP', notes: "l'apóstrofo > todo" },
+        { date: '2025-12-05', desc: 'Hosting', place: 'Hetzner', cat: 'Subscriptions', method: 'Debit card', amount: 12.99, cur: 'USD', notes: 'Factura #A-17 & recibo' },
         { date: '2025-12-05', desc: 'Sin lugar ni notas', place: '', cat: 'Transport', method: 'Bank app', amount: 250, cur: 'DOP', notes: '' },
-        { date: '2025-12-05', desc: 'Vuelo SDQ → IST', place: 'Turkish Airlines', cat: 'Travel', method: 'Card', amount: 1480.4, cur: 'USD', notes: 'línea 1\nlínea 2' },
+        { date: '2025-12-05', desc: 'Vuelo SDQ → IST', place: 'Turkish Airlines', cat: 'Travel', method: 'Debit card', amount: 1480.4, cur: 'USD', notes: 'línea 1\nlínea 2' },
         // Una descripción que es el nombre de una categoría en otro idioma no se toca: no es una categoría.
-        { date: '2025-12-06', desc: 'Comida', place: 'Yemek', cat: 'Groceries', method: 'Card', amount: 640, cur: 'DOP', notes: 'Tarjeta' },
-        { date: '2025-12-07', desc: 'Lentes', place: 'Óptica', cat: 'Health', method: 'Card', amount: 4100, cur: 'DOP', notes: '' },
-        { date: '2025-12-08', desc: 'Abrigo', place: '', cat: 'Clothing', method: 'Card', amount: 2300, cur: 'DOP', notes: '' },
+        { date: '2025-12-06', desc: 'Comida', place: 'Yemek', cat: 'Groceries', method: 'Debit card', amount: 640, cur: 'DOP', notes: 'Tarjeta' },
+        { date: '2025-12-07', desc: 'Lentes', place: 'Óptica', cat: 'Health', method: 'Debit card', amount: 4100, cur: 'DOP', notes: '' },
+        { date: '2025-12-08', desc: 'Abrigo', place: '', cat: 'Clothing', method: 'Debit card', amount: 2300, cur: 'DOP', notes: '' },
         { date: '2025-12-09', desc: 'Curso', place: '', cat: 'Education', method: 'Transfer', amount: 49, cur: 'USD', notes: '' },
         { date: '2025-12-10', desc: 'Cine', place: '', cat: 'Entertainment', method: 'Bank app', amount: 900, cur: 'DOP', notes: '' },
         // La hoja manda sobre la fecha: un cargo de enero anotado en diciembre sigue en diciembre.
@@ -583,8 +587,8 @@ describe('ida y vuelta con el exportador de referencia (libro de la versión 1)'
 
     // Valores literales: lo que era de una lista vuelve en inglés; lo que escribió el usuario, como estaba.
     const dec = payload.months[0]!;
-    expect(dec.tx).toContainEqual({ date: '2025-12-24', desc: 'Cena de Nochebuena', place: 'Casa', cat: 'Categoría propia', method: 'Efectivo', amount: 7300, cur: 'DOP', notes: 'ñ á é í ó ú ü ¿? ¡! € RD$ ğ ş ı İ ö ç' });
-    expect(dec.tx).toContainEqual({ date: '2025-12-06', desc: 'Comida', place: 'Yemek', cat: 'Groceries', method: 'Card', amount: 640, cur: 'DOP', notes: 'Tarjeta' });
+    expect(dec.tx).toContainEqual({ date: '2025-12-24', desc: 'Cena de Nochebuena', place: 'Casa', cat: 'Categoría propia', method: 'Cheque', amount: 7300, cur: 'DOP', notes: 'ñ á é í ó ú ü ¿? ¡! € RD$ ğ ş ı İ ö ç' });
+    expect(dec.tx).toContainEqual({ date: '2025-12-06', desc: 'Comida', place: 'Yemek', cat: 'Groceries', method: 'Debit card', amount: 640, cur: 'DOP', notes: 'Tarjeta' });
     expect(dec.tx).toContainEqual({ date: '2025-12-05', desc: 'Sin lugar ni notas', place: '', cat: 'Transport', method: 'Bank app', amount: 250, cur: 'DOP', notes: '' });
     expect(dec.transfers[4]).toEqual({ date: '2025-12-18', via: 'Banco de mi tía & Cía', usd: 50, rate: 57 });
     expect(dec.fixed.slice(6, 9)).toEqual([
@@ -658,7 +662,7 @@ describe('ida y vuelta con el exportador de referencia (libro de la versión 1)'
             desc: `Compra ${i}`,
             place: i % 3 ? 'Colmado & más' : '',
             cat: i % 4 ? 'Food' : 'Groceries',
-            method: i % 2 ? 'Card' : 'Bank app',
+            method: i % 2 ? 'Debit card' : 'Bank app',
             amount: i + 0.5,
             cur: (i % 7 ? 'DOP' : 'USD') as Currency,
             notes: i % 5 ? '' : `nota ${i}`,
@@ -701,7 +705,7 @@ describe.each(LANGS)('ida y vuelta con el exportador de la app, libro en "%s"', 
     const oct = payload.months[2]!;
     expect(oct.fixed[4]).toEqual({ name: 'Claude', day: '5', amount: 106, cur: 'USD', paid: true });
     expect(oct.fixed.filter((f) => f.paid).map((f) => f.name)).toEqual(['Electricity', 'Internet', 'Health insurance', 'Fridge payment', 'Claude', 'Unicaribe']);
-    expect(oct.tx).toContainEqual({ date: '2026-10-07', desc: 'Coffee', place: 'Starbucks Ágora', cat: 'Food', method: 'Card', amount: 385, cur: 'DOP', notes: '' });
+    expect(oct.tx).toContainEqual({ date: '2026-10-07', desc: 'Coffee', place: 'Starbucks Ágora', cat: 'Food', method: 'Debit card', amount: 385, cur: 'DOP', notes: '' });
     expect(oct.tx).toContainEqual({ date: '2026-10-04', desc: 'Movies', place: 'Caribbean Cinemas', cat: 'Entertainment', method: 'Bank app', amount: 900, cur: 'DOP', notes: '' });
     expect(payload.months[0]!.tx).toContainEqual({ date: '2026-08-21', desc: 'Doctor visit', place: 'Centro Médico', cat: 'Health', method: 'Transfer', amount: 2500, cur: 'DOP', notes: 'Insurance copay' });
     expect(payload.goals).toEqual(TODAY_GOALS);
@@ -1110,7 +1114,7 @@ describe('historial de transacciones', () => {
     });
     expect(m.tx).toEqual([
       { date: '2027-01-02', desc: 'Compra semanal', place: 'Jumbo', cat: 'Groceries', method: 'Bank app', amount: 4680, cur: 'DOP', notes: 'con nota' },
-      // Sin categoría ni método: Food y Card, los mismos valores por defecto que al registrar un gasto.
+      // Sin categoría ni método: Food y Debit card, los mismos valores por defecto que al registrar un gasto.
       { ...TX_DEFAULTS, date: '2027-01-01', desc: 'Solo descripción', amount: 0 },
       { ...TX_DEFAULTS, date: '2027-01-01', desc: '', amount: 99.9 },
       { ...TX_DEFAULTS, date: '2027-01-20', desc: 'Fecha ISO como texto', amount: 1250.5, cur: 'USD' },
@@ -1122,21 +1126,34 @@ describe('historial de transacciones', () => {
 
   it('categoría y método: nombre canónico si es de la lista en cualquier idioma; si no, como está escrito', () => {
     const rows: [cat: TestCell, method: TestCell, expected: [string, string]][] = [
-      ['Comida', 'Tarjeta', ['Food', 'Card']],
-      ['Yemek', 'Kart', ['Food', 'Card']],
-      ['Food', 'Card', ['Food', 'Card']],
+      // La tarjeta única de los libros de antes (y de la lista de la hoja Config) es hoy la de débito.
+      ['Comida', 'Tarjeta', ['Food', 'Debit card']],
+      ['Yemek', 'Kart', ['Food', 'Debit card']],
+      ['Food', 'Card', ['Food', 'Debit card']],
+      ['Comida', 'Tarjeta de débito', ['Food', 'Debit card']],
+      ['Yemek', 'Banka kartı', ['Food', 'Debit card']],
+      ['Food', 'Debit card', ['Food', 'Debit card']],
+      ['Ropa', 'Tarjeta de crédito', ['Clothing', 'Credit card']],
+      ['Giyim', 'Kredi kartı', ['Clothing', 'Credit card']],
+      ['Clothing', 'credit card', ['Clothing', 'Credit card']],
+      ['Hogar', 'Efectivo', ['Home', 'Cash']],
+      ['Ev', 'Nakit', ['Home', 'Cash']],
+      ['Home', 'cash', ['Home', 'Cash']],
       ['Supermercado', 'Transferencia', ['Groceries', 'Transfer']],
       ['Market', 'Havale', ['Groceries', 'Transfer']],
       ['Ulaşım', 'Banka uygulaması', ['Transport', 'Bank app']],
       ['Educación', 'App del banco', ['Education', 'Bank app']],
       ['Eğitim', 'Bank app', ['Education', 'Bank app']],
       // Mayúsculas y espacios de más no cambian lo que es.
-      [' viajes ', 'TARJETA', ['Travel', 'Card']],
-      ['SEYAHAT', ' kart', ['Travel', 'Card']],
+      [' viajes ', 'TARJETA', ['Travel', 'Debit card']],
+      ['SEYAHAT', ' kart', ['Travel', 'Debit card']],
+      // Tampoco las tildes que faltan.
+      ['Viajes', 'tarjeta de credito', ['Travel', 'Credit card']],
+      ['Seyahat', 'KREDİ KARTI', ['Travel', 'Credit card']],
       // Fuera de las listas: texto del usuario.
-      ['Mascotas', 'Efectivo', ['Mascotas', 'Efectivo']],
-      ['Comida rápida', 'Tarjeta de crédito', ['Comida rápida', 'Tarjeta de crédito']],
-      ['Evcil hayvan', 'Nakit', ['Evcil hayvan', 'Nakit']],
+      ['Mascotas', 'Cheque', ['Mascotas', 'Cheque']],
+      ['Comida rápida', 'Tarjeta de regalo', ['Comida rápida', 'Tarjeta de regalo']],
+      ['Evcil hayvan', 'Çek', ['Evcil hayvan', 'Çek']],
       [2027, true, ['2027', 'TRUE']],
     ];
     const cells: Record<string, TestCell> = {};

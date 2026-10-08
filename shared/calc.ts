@@ -1,14 +1,28 @@
 // Cálculos puros sobre AppState: tasas, saldos de cuentas, el mes, las metas y los ingresos.
 // Devuelven números; el formato (f2/f0), los textos y los colores los pone quien los muestre.
 //
-// Todo importe se guarda en su moneda original. Aquí se convierte, siempre con las tasas de un mes concreto:
-//  · lo que pertenece a un mes (gastos, transacciones, envíos, presupuesto) usa las tasas de ese mes;
-//  · un ingreso o un aporte usa las del mes de su fecha;
-//  · un saldo se expresa en otra moneda con las tasas del mes que se está mirando.
+// Todo importe se guarda en su moneda original. Aquí se convierte, siempre con la tasa de una fecha concreta:
+//  · lo que tiene fecha propia (transacciones, ingresos, aportes, la tasa por defecto de un envío) usa la tasa
+//    vigente en SU fecha: escribir hoy una tasa nueva no cambia lo que ya estaba registrado;
+//  · lo que es del mes entero (gastos fijos, partes del presupuesto, totales) usa la última tasa del mes;
+//  · un saldo se expresa en otra moneda con la última tasa del mes que se está mirando.
 
 import { DEFAULT_USD_RATES } from './constants';
-import { monthOf, monthSpan } from './month';
-import type { Account, AppState, Contribution, Currency, Goal, Income, Month, MonthKey, Transfer } from './types';
+import { firstDay, monthOf, monthSpan } from './month';
+import type {
+  Account,
+  AppState,
+  BudgetEntry,
+  BudgetEntryKind,
+  Contribution,
+  Currency,
+  Goal,
+  Income,
+  ISODate,
+  Month,
+  MonthKey,
+  Transfer,
+} from './types';
 
 export function sortedKeys(state: AppState): MonthKey[] {
   return Object.keys(state.months).sort();
@@ -52,10 +66,11 @@ export function defaultAccount(state: AppState): Account | null {
 /**
  * De dónde salió una tasa, de más a menos fiable:
  *  same      misma moneda (1)
- *  month     escrita a mano para ese mes (o la inversa de la escrita)
+ *  month     escrita a mano (o la inversa de la escrita), con fecha en ese mes y vigente en la fecha pedida
  *  transfers promedio ponderado de los envíos de ese mes entre esas dos monedas
- *  cross     cruzando por la tercera moneda con tasas de ese mes
- *  previous  cualquiera de las anteriores, pero de un mes anterior (el más reciente que la tenga)
+ *  cross     cruzando por la tercera moneda (cada tramo: la escrita vigente o, si no, los envíos de ese mes)
+ *  previous  de un mes anterior: la última escrita, que sigue vigente (`date` dice de cuándo es), o, si nunca
+ *            se escribió ninguna, los envíos o el cruce del mes anterior más reciente que los tenga
  *  default   valor fijo de respaldo: nadie la ha escrito nunca. La interfaz debe avisarlo.
  */
 export type RateSource = 'same' | 'month' | 'transfers' | 'cross' | 'previous' | 'default';
@@ -66,18 +81,58 @@ export interface RateInfo {
   source: RateSource;
   /** Mes del que salió la tasa; null para 'same' y 'default'. */
   monthKey: MonthKey | null;
+  /** Fecha de la tasa escrita a mano que se usó; null si la tasa no es una escrita ('month' siempre la trae). */
+  date: ISODate | null;
 }
 
-type Direct = { rate: number; source: 'month' | 'transfers' } | null;
+interface TypedRate {
+  from: Currency;
+  to: Currency;
+  rate: number;
+  date: ISODate;
+  monthKey: MonthKey;
+}
 
-/** Tasa que el propio mes da para un par, sin cruzar monedas: la escrita (o su inversa) o la de sus envíos. */
-function directRate(month: Month, accounts: Map<string, Account>, from: Currency, to: Currency): Direct {
-  for (const r of month.rates) {
-    if (!(r.rate > 0)) continue;
-    if (r.from === from && r.to === to) return { rate: r.rate, source: 'month' };
-    if (r.from === to && r.to === from) return { rate: 1 / r.rate, source: 'month' };
+const pairId = (a: Currency, b: Currency) => (a < b ? `${a}/${b}` : `${b}/${a}`);
+
+// Las tasas se piden una vez por fila y por columna; se memorizan por objeto de estado (el estado no se muta:
+// cada cambio produce uno nuevo, así que la memoria nunca queda desfasada).
+const typedMemo = new WeakMap<AppState, Map<string, TypedRate[]>>();
+const rateMemo = new WeakMap<AppState, Map<string, RateInfo>>();
+
+/** Todas las tasas escritas del histórico, por par (sin sentido) y ordenadas por fecha. */
+function typedRates(state: AppState): Map<string, TypedRate[]> {
+  let byPair = typedMemo.get(state);
+  if (byPair) return byPair;
+  byPair = new Map();
+  for (const key of sortedKeys(state)) {
+    for (const r of state.months[key]!.rates) {
+      if (!(r.rate > 0) || r.from === r.to) continue;
+      const id = pairId(r.from, r.to);
+      const list = byPair.get(id) ?? [];
+      // Una tasa sin fecha (datos de antes de que la tuvieran) vale desde el primer día de su mes.
+      list.push({ from: r.from, to: r.to, rate: r.rate, date: r.date ?? firstDay(key), monthKey: key });
+      byPair.set(id, list);
+    }
   }
-  // Envíos del mes entre las dos monedas, en cualquier sentido: lo que salió en `from` frente a lo que entró en `to`.
+  // Orden estable: con la misma fecha queda después la que se escribió después, y es la que vale.
+  for (const list of byPair.values()) list.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+  typedMemo.set(state, byPair);
+  return byPair;
+}
+
+/** La tasa escrita vigente en `date` para ese par: la última con fecha <= `date`, de cualquier mes. */
+function typedAt(state: AppState, from: Currency, to: Currency, date: ISODate): { rate: number; date: ISODate; monthKey: MonthKey } | null {
+  let hit: TypedRate | null = null;
+  for (const r of typedRates(state).get(pairId(from, to)) ?? []) {
+    if (r.date > date) break;
+    hit = r;
+  }
+  return hit && { rate: hit.from === from ? hit.rate : 1 / hit.rate, date: hit.date, monthKey: hit.monthKey };
+}
+
+/** Tasa que dan los envíos de un mes entre dos monedas, en cualquier sentido: lo que salió en `from` frente a lo que entró en `to`. */
+function transfersRate(month: Month, accounts: Map<string, Account>, from: Currency, to: Currency): number | null {
   let sumFrom = 0;
   let sumTo = 0;
   for (const t of month.transfers) {
@@ -92,60 +147,80 @@ function directRate(month: Month, accounts: Map<string, Account>, from: Currency
       sumFrom += t.amount * t.rate;
     }
   }
-  return sumFrom > 0 && sumTo > 0 ? { rate: sumTo / sumFrom, source: 'transfers' } : null;
+  return sumFrom > 0 && sumTo > 0 ? sumTo / sumFrom : null;
 }
 
 const ALL: readonly Currency[] = ['DOP', 'USD', 'TRY'];
 
-function monthRate(month: Month, accounts: Map<string, Account>, from: Currency, to: Currency): Direct | { rate: number; source: 'cross' } {
-  const direct = directRate(month, accounts, from, to);
-  if (direct) return direct;
-  for (const via of ALL) {
-    if (via === from || via === to) continue;
-    const a = directRate(month, accounts, from, via);
-    const b = a && directRate(month, accounts, via, to);
-    if (a && b) return { rate: a.rate * b.rate, source: 'cross' };
-  }
-  return null;
-}
-
-// Las tasas se piden una vez por fila y por columna; se memorizan por objeto de estado (el estado no se muta:
-// cada cambio produce uno nuevo, así que la memoria nunca queda desfasada).
-const rateMemo = new WeakMap<AppState, Map<string, RateInfo>>();
-
 /**
- * Tasa para convertir `from` → `to` con las cifras del mes `key`. Nunca falla: si ni ese mes ni ninguno anterior
- * la tienen, devuelve el valor de respaldo con source 'default'. Acepta claves sin mes registrado (un ingreso con
- * fecha de un mes que no existe): usa el mes registrado anterior más cercano.
+ * Tasa para convertir `from` → `to` en la fecha `date` (por defecto, el final del mes `key`: la última tasa del
+ * mes). Nunca falla. Se resuelve en este orden:
+ *  1. la tasa escrita vigente en `date`: la última escrita para el par con fecha <= `date`, sea del mes `key`
+ *     ('month') o de uno anterior ('previous'). Una tasa escrita después de `date` no cuenta: por eso escribir
+ *     una tasa nueva no cambia lo convertido en filas anteriores;
+ *  2. si no hay ninguna vigente: los envíos del mes `key`; cruzando por la tercera moneda; lo mismo en el mes
+ *     registrado anterior más reciente que lo tenga; y, al final, el valor de respaldo ('default').
+ * Acepta claves sin mes registrado (un ingreso con fecha de un mes que no existe): usa los anteriores.
+ * `key` es el mes al que pertenece la fila (el de sus envíos); `date`, la fecha de la fila.
  */
-export function rateFor(state: AppState, key: MonthKey, from: Currency, to: Currency): RateInfo {
-  if (from === to) return { rate: 1, source: 'same', monthKey: null };
+export function rateFor(state: AppState, key: MonthKey, from: Currency, to: Currency, date?: ISODate): RateInfo {
+  if (from === to) return { rate: 1, source: 'same', monthKey: null, date: null };
+  // '-31' es una cota: ninguna fecha del mes la supera al comparar como texto.
+  const at = date ?? `${key}-31`;
   let memo = rateMemo.get(state);
   if (!memo) rateMemo.set(state, (memo = new Map()));
-  const id = `${key}|${from}|${to}`;
+  const id = `${key}|${at}|${from}|${to}`;
   const hit = memo.get(id);
   if (hit) return hit;
 
-  const accounts = accountsById(state);
-  const keys = sortedKeys(state);
   let found: RateInfo | null = null;
-  for (let i = keys.length - 1; i >= 0 && !found; i--) {
-    const k = keys[i]!;
-    if (k > key) continue;
-    const r = monthRate(state.months[k]!, accounts, from, to);
-    if (r) found = { rate: r.rate, source: k === key ? r.source : 'previous', monthKey: k };
+  const typed = typedAt(state, from, to, at);
+  if (typed) {
+    found = { rate: typed.rate, source: typed.monthKey === key ? 'month' : 'previous', monthKey: typed.monthKey, date: typed.date };
+  } else {
+    const accounts = accountsById(state);
+    const keys = sortedKeys(state);
+    for (let i = keys.length - 1; i >= 0 && !found; i--) {
+      const k = keys[i]!;
+      if (k > key) continue;
+      const month = state.months[k]!;
+      const own = k === key;
+      const direct = transfersRate(month, accounts, from, to);
+      if (direct) {
+        found = { rate: direct, source: own ? 'transfers' : 'previous', monthKey: k, date: null };
+        break;
+      }
+      const leg = (a: Currency, b: Currency) => typedAt(state, a, b, at)?.rate ?? transfersRate(month, accounts, a, b);
+      for (const via of ALL) {
+        if (via === from || via === to) continue;
+        const a = leg(from, via);
+        const b = a && leg(via, to);
+        if (a && b) {
+          found = { rate: a * b, source: own ? 'cross' : 'previous', monthKey: k, date: null };
+          break;
+        }
+      }
+    }
   }
   if (!found) {
     const usd = { ...DEFAULT_USD_RATES, DOP: state.defaultRate > 0 ? state.defaultRate : DEFAULT_USD_RATES.DOP };
-    found = { rate: usd[to] / usd[from], source: 'default', monthKey: null };
+    found = { rate: usd[to] / usd[from], source: 'default', monthKey: null, date: null };
   }
   memo.set(id, found);
   return found;
 }
 
-/** `amount` de `from` expresado en `to`, con las tasas del mes `key`. */
-export function convert(state: AppState, key: MonthKey, amount: number, from: Currency, to: Currency): number {
-  return from === to ? amount || 0 : (amount || 0) * rateFor(state, key, from, to).rate;
+/**
+ * `amount` de `from` expresado en `to`. Sin `date`, con la última tasa del mes `key` (gastos fijos, presupuesto,
+ * totales, saldos); con `date`, con la tasa vigente ese día (una fila con fecha propia).
+ */
+export function convert(state: AppState, key: MonthKey, amount: number, from: Currency, to: Currency, date?: ISODate): number {
+  return from === to ? amount || 0 : (amount || 0) * rateFor(state, key, from, to, date).rate;
+}
+
+/** Como `convert`, para lo que no pertenece a un mes (ingresos, aportes): con la tasa vigente en `date`. */
+export function convertOn(state: AppState, date: ISODate, amount: number, from: Currency, to: Currency): number {
+  return convert(state, monthOf(date), amount, from, to, date);
 }
 
 /** Lo que entra a la cuenta de destino de un envío, en su moneda. */
@@ -177,26 +252,27 @@ export interface Balances {
  *  + ingresos (por su fecha)          − transacciones pagadas desde ella
  *  + envíos que le entran             − gastos fijos marcados como pagados desde ella
  *                                     − envíos que salen de ella
- * Un movimiento en otra moneda entra o sale convertido con la tasa de su propio mes. Los aportes a metas no
- * mueven saldos (son un apartado). Un movimiento cuya cuenta ya no existe se ignora.
+ * Un movimiento en otra moneda entra o sale convertido con la tasa vigente en su fecha (un gasto fijo, que no
+ * tiene fecha, con la última de su mes). Los aportes a metas no mueven saldos (son un apartado). Un movimiento
+ * cuya cuenta ya no existe se ignora.
  */
 export function balances(state: AppState, asOf: MonthKey): Balances {
   const byId = accountsById(state);
   const sum = new Map<string, number>(state.accounts.map((a) => [a.id, a.opening || 0]));
-  const move = (accountId: string, key: MonthKey, amount: number, cur: Currency, sign: 1 | -1) => {
+  const move = (accountId: string, key: MonthKey, amount: number, cur: Currency, sign: 1 | -1, date?: ISODate) => {
     const acc = byId.get(accountId);
     if (!acc) return;
-    sum.set(acc.id, sum.get(acc.id)! + sign * convert(state, key, amount, cur, acc.currency));
+    sum.set(acc.id, sum.get(acc.id)! + sign * convert(state, key, amount, cur, acc.currency, date));
   };
 
   for (const inc of state.incomes) {
     const k = monthOf(inc.date);
-    if (k <= asOf) move(inc.accountId, k, inc.amount, inc.cur, 1);
+    if (k <= asOf) move(inc.accountId, k, inc.amount, inc.cur, 1, inc.date);
   }
   for (const key of sortedKeys(state)) {
     if (key > asOf) break;
     const m = state.months[key]!;
-    for (const t of m.tx) move(t.accountId, key, t.amount, t.cur, -1);
+    for (const t of m.tx) move(t.accountId, key, t.amount, t.cur, -1, t.date);
     for (const f of m.fixed) if (f.paid) move(f.accountId, key, f.amount, f.cur, -1);
     for (const t of m.transfers) {
       const from = byId.get(t.fromAccountId);
@@ -249,8 +325,13 @@ export const FIXED_CATEGORY = 'Fixed expenses';
 
 export interface BudgetPart {
   account: Account;
-  /** Parte del presupuesto que sale de esta cuenta, en su moneda. */
+  /** Parte del presupuesto que sale de esta cuenta, en su moneda: fromLog + fromIncomes. */
   amount: number;
+  /** Lo que viene del registro del presupuesto (Month.budgetLog): es lo que se edita con PATCH { budgets }. */
+  fromLog: number;
+  /** Lo que suman los ingresos del mes con `budget: true` que entran a esta cuenta, en su moneda. */
+  fromIncomes: number;
+  /** `amount` en la moneda principal, con la última tasa del mes. */
   inMain: number;
 }
 
@@ -279,7 +360,7 @@ export interface MonthCalc {
   /** fijosPagados + transacciones */
   used: number;
   usedSecond: number;
-  /** Presupuesto del mes: Σ de las partes por cuenta. */
+  /** Presupuesto del mes: Σ de las partes por cuenta (registro + ingresos que suben el presupuesto). */
   budget: number;
   budgetSecond: number;
   /** Una fila por cuenta visible (y por cualquier cuenta oculta que tenga parte), en el orden de las cuentas. */
@@ -306,18 +387,116 @@ export interface MonthCalc {
   catMax: number;
 }
 
-/** Ingresos con fecha en ese mes, sumados en `to` con las tasas del propio mes. */
+/** Ingresos con fecha en ese mes, sumados en `to`, cada uno con la tasa vigente en su fecha. */
 export function incomeInMonth(state: AppState, key: MonthKey, to: Currency = state.mainCurrency): number {
   return state.incomes
     .filter((i) => monthOf(i.date) === key)
-    .reduce((a, i) => a + convert(state, key, i.amount, i.cur, to), 0);
+    .reduce((a, i) => a + convert(state, key, i.amount, i.cur, to, i.date), 0);
 }
 
-/** Aportes a metas con fecha en ese mes, sumados en `to` con las tasas del propio mes. */
+/** Aportes a metas con fecha en ese mes, sumados en `to`, cada uno con la tasa vigente en su fecha. */
 export function savedInMonth(state: AppState, key: MonthKey, to: Currency = state.mainCurrency): number {
   return state.contribs
     .filter((c) => monthOf(c.date) === key)
-    .reduce((a, c) => a + convert(state, key, c.amount, c.cur, to), 0);
+    .reduce((a, c) => a + convert(state, key, c.amount, c.cur, to, c.date), 0);
+}
+
+// ── Presupuesto ──────────────────────────────────────────────────────────────
+
+/**
+ * Quita el ruido de la coma flotante de una suma de montos (0.1 + 0.2 → 0.3) sin recortar los decimales de un
+ * monto que sale de convertir (el sobrante llevado a otra moneda).
+ */
+const tidy = (n: number) => Math.round(n * 1e9) / 1e9;
+
+/**
+ * Month.budgets a partir de Month.budgetLog: accountId → suma de sus movimientos, en la moneda de la cuenta.
+ * Las cuentas que suman 0 no aparecen. No incluye los ingresos que suben el presupuesto.
+ */
+export function budgetsFromLog(log: readonly Pick<BudgetEntry, 'accountId' | 'amount'>[]): Record<string, number> {
+  const sum = new Map<string, number>();
+  for (const e of log) sum.set(e.accountId, (sum.get(e.accountId) ?? 0) + (e.amount || 0));
+  const out: Record<string, number> = {};
+  for (const [accountId, amount] of sum) if (tidy(amount) !== 0) out[accountId] = tidy(amount);
+  return out;
+}
+
+/** Los ingresos que suben el presupuesto de ese mes: los de `budget: true` con fecha en él. */
+export function budgetIncomes(state: AppState, key: MonthKey): Income[] {
+  return state.incomes.filter((i) => i.budget && monthOf(i.date) === key);
+}
+
+/** Lo que un ingreso con `budget: true` le suma a la parte de `account`: su monto en la moneda de la cuenta, a la tasa de su fecha. */
+function incomeInAccount(state: AppState, income: Income, account: Account): number {
+  return convertOn(state, income.date, income.amount, income.cur, account.currency);
+}
+
+export interface BudgetHistoryRow {
+  /** Los tres tipos del registro, o 'income': un ingreso con `budget: true`. */
+  kind: BudgetEntryKind | 'income';
+  /** Id del BudgetEntry o, si kind es 'income', del ingreso. */
+  id: string;
+  date: ISODate;
+  account: Account;
+  /** En la moneda de la cuenta (un ingreso en otra moneda, ya convertido a la tasa de su fecha). Puede ser negativo. */
+  amount: number;
+  /** La nota del movimiento o la descripción del ingreso. */
+  note: string;
+  /** `amount` en la moneda principal, con la última tasa del mes. */
+  inMain: number;
+  /** Presupuesto acumulado hasta esta fila incluida, en la moneda principal. El de la última fila es monthCalc().budget. */
+  total: number;
+}
+
+/**
+ * La historia del presupuesto del mes en una sola lista cronológica: los movimientos del registro y los ingresos
+ * que lo suben, con el total acumulado en la moneda principal. Con la misma fecha van primero los movimientos
+ * del registro, en su orden, y después los ingresos. Lo de una cuenta que ya no existe no sale (tampoco cuenta
+ * en monthCalc). Un mes sin registrar da una lista vacía.
+ */
+export function budgetHistory(state: AppState, key: MonthKey): BudgetHistoryRow[] {
+  const m = state.months[key];
+  if (!m) return [];
+  const byId = accountsById(state);
+  const rows: Omit<BudgetHistoryRow, 'inMain' | 'total'>[] = [];
+  for (const e of m.budgetLog) {
+    const account = byId.get(e.accountId);
+    if (account) rows.push({ kind: e.kind, id: e.id, date: e.date, account, amount: e.amount || 0, note: e.note });
+  }
+  for (const i of budgetIncomes(state, key)) {
+    const account = byId.get(i.accountId);
+    if (account) rows.push({ kind: 'income', id: i.id, date: i.date, account, amount: incomeInAccount(state, i, account), note: i.desc });
+  }
+  // Orden estable: con la misma fecha se conserva el de arriba.
+  rows.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+  let total = 0;
+  return rows.map((r) => {
+    const inMain = convert(state, key, r.amount, r.account.currency, state.mainCurrency);
+    total += inMain;
+    return { ...r, inMain, total };
+  });
+}
+
+export interface Leftover {
+  /** El mes registrado anterior más cercano a `key`; null si no hay ninguno. */
+  previousKey: MonthKey | null;
+  /** Lo que sobró en ese mes: su `avail` (presupuesto − usado), en la moneda principal. Puede ser negativo. null sin mes anterior. */
+  leftover: number | null;
+  /** true si el mes `key` ya tiene un movimiento 'leftover' en su registro: el sobrante ya se sumó. */
+  added: boolean;
+}
+
+/** El sobrante del mes anterior a `key` y si `key` ya lo tiene sumado a su presupuesto. */
+export function leftoverFor(state: AppState, key: MonthKey): Leftover {
+  const previousKey =
+    sortedKeys(state)
+      .filter((k) => k < key)
+      .at(-1) ?? null;
+  return {
+    previousKey,
+    leftover: previousKey === null ? null : monthCalc(state, previousKey).avail,
+    added: state.months[key]?.budgetLog.some((e) => e.kind === 'leftover') ?? false,
+  };
 }
 
 export function monthCalc(state: AppState, key: MonthKey): MonthCalc {
@@ -343,18 +522,24 @@ export function monthCalc(state: AppState, key: MonthKey): MonthCalc {
   let varSpent = 0;
   const byCat = new Map<string, number>();
   for (const t of m.tx) {
-    const v = toMain(t.amount, t.cur);
+    // Cada transacción, con la tasa vigente en su fecha.
+    const v = convert(state, key, t.amount, t.cur, main, t.date);
     varSpent += v;
     byCat.set(t.cat, (byCat.get(t.cat) ?? 0) + v);
   }
 
+  // El registro es la fuente de verdad (no Month.budgets, que es su suma ya hecha).
+  const fromLog = budgetsFromLog(m.budgetLog);
+  const raising = budgetIncomes(state, key);
   const budgetParts: BudgetPart[] = [...state.accounts]
     .sort((a, b) => a.sort - b.sort)
-    .filter((a) => !a.hidden || (m.budgets[a.id] ?? 0) !== 0)
     .map((account) => {
-      const amount = m.budgets[account.id] ?? 0;
-      return { account, amount, inMain: toMain(amount, account.currency) };
-    });
+      const log = fromLog[account.id] ?? 0;
+      const incomes = raising.filter((i) => i.accountId === account.id).reduce((a, i) => a + incomeInAccount(state, i, account), 0);
+      const amount = log + incomes;
+      return { account, amount, fromLog: log, fromIncomes: incomes, inMain: toMain(amount, account.currency) };
+    })
+    .filter((p) => !p.account.hidden || p.amount !== 0 || p.fromLog !== 0);
   const budget = budgetParts.reduce((a, p) => a + p.inMain, 0);
 
   const used = fixedPaid + varSpent;
@@ -440,9 +625,9 @@ export function donut(
 
 // ── Ahorros ──────────────────────────────────────────────────────────────────
 
-/** Aporte expresado en `to` (por defecto, la moneda de su meta se pasa aparte), con la tasa del mes de su fecha. */
+/** Aporte expresado en `to` (la moneda de su meta se pasa aparte), con la tasa vigente en su fecha. */
 export function contribIn(state: AppState, c: Pick<Contribution, 'amount' | 'cur' | 'date'>, to: Currency): number {
-  return convert(state, monthOf(c.date), c.amount, c.cur, to);
+  return convertOn(state, c.date, c.amount, c.cur, to);
 }
 
 export interface GoalTarget {
@@ -465,8 +650,12 @@ export interface GoalProgress {
   /** Moneda de la meta. `saved` y `target` van en ella. */
   cur: Currency;
   saved: number;
-  /** Lo ahorrado en la moneda principal, a la tasa del mes en curso. */
+  /** Lo ahorrado en la moneda principal, a la última tasa del mes en curso. Es lo que suma totalSaved. */
   savedMain: number;
+  /** Moneda de la línea "≈" de la meta: Goal.approxCur o, si es null, la moneda principal. */
+  approxCur: Currency;
+  /** Lo ahorrado en `approxCur`, a la última tasa del mes en curso. Si approxCur es la principal, igual a savedMain. */
+  savedApprox: number;
   contribCount: number;
   /** null = meta de aportes variables. */
   target: GoalTarget | null;
@@ -476,12 +665,17 @@ export function goalProgress(state: AppState, goal: Goal): GoalProgress {
   const cur = currentKey(state);
   const mine = state.contribs.filter((c) => c.goalId === goal.id);
   const saved = mine.reduce((a, c) => a + contribIn(state, c, goal.cur), 0);
+  const approxCur = goal.approxCur ?? state.mainCurrency;
+  // Sin ningún mes no hay con qué convertir: queda la cifra tal cual, como siempre.
+  const inCur = (to: Currency) => (cur ? convert(state, cur, saved, goal.cur, to) : saved);
   const base = {
     id: goal.id,
     name: goal.name,
     cur: goal.cur,
     saved,
-    savedMain: cur ? convert(state, cur, saved, goal.cur, state.mainCurrency) : saved,
+    savedMain: inCur(state.mainCurrency),
+    approxCur,
+    savedApprox: inCur(approxCur),
     contribCount: mine.length,
   };
   if (!goal.monthly || !goal.start || !goal.end) return { ...base, target: null };

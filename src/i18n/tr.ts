@@ -45,6 +45,7 @@ export const tr: Shape<typeof en> = {
   saved: 'Biriken',
   pctSaved: 'Birikim oranı',
   deleteMonth: 'Ayı sil',
+  addsToBudget: 'Bütçeye eklenir',
 
   // ── De dónde salió una tasa ────────────────────────────────────────────────
   rateTyped: 'bu ay için girildi',
@@ -119,6 +120,18 @@ export const tr: Shape<typeof en> = {
   usedSoFar: 'Bugüne kadar kullanılan',
   availableAfterFixed: 'Bekleyen sabitlerden sonra kalan',
   usedIn: '{currency} olarak kullanılan',
+  
+  leftoverFromLast: 'Geçen aydan kalan:',
+  addToBudget: 'Bütçeye ekle',
+  leftoverAdded: 'eklendi',
+  budgetHistory: 'Bütçe geçmişi',
+  budgetHistoryEmpty: 'Henüz bütçe hareketi yok.',
+  budgetKind: 'Tür',
+  budgetKindInitial: 'Başlangıç',
+  budgetKindAdjust: 'Düzeltme',
+  budgetKindLeftover: 'Devreden',
+  budgetKindIncome: 'Gelir',
+  deleteBudgetEntry: 'Sil: {kind}, {date}, {amount} {currency}',
 
   // ── Dinero total y cuentas ─────────────────────────────────────────────────
   totalMoney: 'Toplam para',
@@ -143,6 +156,9 @@ export const tr: Shape<typeof en> = {
     "{next}, aynı aylık giderlerle ve ödenmemiş olarak oluşturulacak. Excel'e de eklensin mi? {next} dahil tüm ayları içeren dosya indirilecek.",
   closeOnlyPage: 'Yalnızca sayfada',
   closeWithExcel: "Evet, Excel'e ekle",
+  closeBudgetIntro: '{next} bütçesi hesap başına şu tutarlarla başlar:',
+  closeBudgetOf: '{account} bütçesi ({currency})',
+  closeAddLeftover: 'Bu ayın kalanını ({amount} {currency}) {next} bütçesine ekle',
 
   // ── Diálogo de borrar mes ──────────────────────────────────────────────────
   deleteMonthTitle: '{month} silinsin mi?',

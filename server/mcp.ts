@@ -31,7 +31,20 @@
 // corrija; los errores JSON-RPC quedan para los fallos del protocolo.
 
 import { z } from 'zod';
-import { accountsById, balances, convert, currentKey, defaultAccount, incomeInMonth, monthCalc, rateFor, sortedKeys, transferReceived } from '../shared/calc';
+import {
+  accountsById,
+  balances,
+  budgetHistory,
+  convert,
+  currentKey,
+  defaultAccount,
+  incomeInMonth,
+  leftoverFor,
+  monthCalc,
+  rateFor,
+  sortedKeys,
+  transferReceived,
+} from '../shared/calc';
 import type { AccountBalance, Balances, MonthCalc, RateInfo, RateSource } from '../shared/calc';
 import { APP_NAME, CATS, METHODS, TIMEZONE, VIAS } from '../shared/constants';
 import { f0, f2, fRate } from '../shared/format';
@@ -239,11 +252,11 @@ function instructions(users: readonly AppUser[]): string {
     who,
     `Money: each person has their own accounts (a name and a currency: ${CURRENCY_CODES.join(', ')}) and their own main currency, in which budget and totals are shown. Nobody types a balance: every movement changes it. An expense is subtracted from the account it is paid from, which is the person's default account unless they name another one. An income adds to an account. A transfer moves money from one account to another. Call list_accounts when you need to know which accounts exist.`,
     'Language: these tools answer in English only; talk to each person in their own language. People may dictate in Spanish or Turkish: pass descriptions, places, notes, account names and names of fixed expenses exactly as they said them, without translating.',
-    'Currency: when the person names a currency (dollars, pesos, lira), record the amount in the currency they said, even if it is not the currency of the account: the server converts with the rates of that month. If they name none, omit `currency` and the currency of the account is used. Never convert an amount yourself.',
+    'Currency: when the person names a currency (dollars, pesos, lira), record the amount in the currency they said, even if it is not the currency of the account: the server converts with the rate in effect on the date of the record. If they name none, omit `currency` and the currency of the account is used. Never convert an amount yourself.',
     `Date: by default, today in ${TIMEZONE}. If the person gives no date or says "today", omit \`date\` and the server uses today's. Dates are YYYY-MM-DD and months are YYYY-MM. Each record goes to the month of its date. For relative dates ("yesterday", "on Friday") start from today's date as returned by month_summary or list_accounts.`,
     `Categories: ${CATS.join(', ')}. Always choose the one that best describes the expense; if none is given it is ${CATS[0]}.`,
     `Payment methods: ${METHODS.join(', ')}. If none is given it is ${METHODS[0]}.`,
-    'Categories and payment methods are stored under these English names. Pass the English name; the Spanish or Turkish name ("Comida", "Yemek", "Tarjeta", "Kart") is also accepted and stored as the English one.',
+    'Categories and payment methods are stored under these English names. Pass the English name; the Spanish or Turkish name ("Comida", "Yemek", "Tarjeta", "Kart") is also accepted and stored as the English one. A plain "card" ("tarjeta", "kart") is stored as Debit card; when the person says it was a credit card ("tarjeta de credito", "kredi karti"), pass Credit card.',
     `Transfers: \`via\` is the service used, as free text (${VIAS.join(', ')} or any other; ${VIAS[0]} by default). Between accounts of different currencies the rate is what arrives per unit sent (for example, the DOP received per USD).`,
     'Rates: each month has its own rates between currencies. When a tool says that a rate is a default value, nobody has set it yet: tell the person, because the converted amounts are only approximate until they type the rate of the month in the web app.',
     'Fixed expenses (the "Monthly expenses" list of the app): the same items every month (electricity, internet, subscriptions…). They are not recorded as transactions: mark them as paid with mark_fixed_paid.',
@@ -261,9 +274,17 @@ function money(amount: number, cur: Currency): string {
   return `${f2(amount)} ${cur}`;
 }
 
-/** Un importe y, si está en otra moneda que `to`, también su equivalente con las tasas del mes `key`. */
-function moneyIn(state: AppState, key: MonthKey, amount: number, cur: Currency, to: Currency): string {
-  return cur === to ? money(amount, cur) : `${money(amount, cur)} (${money(convert(state, key, amount, cur, to), to)})`;
+/**
+ * Un importe y, si está en otra moneda que `to`, también su equivalente: con la tasa vigente en `date` si la
+ * fila tiene fecha propia, o con la última del mes `key` si no.
+ */
+function moneyIn(state: AppState, key: MonthKey, amount: number, cur: Currency, to: Currency, date?: ISODate): string {
+  return cur === to ? money(amount, cur) : `${money(amount, cur)} (${money(convert(state, key, amount, cur, to, date), to)})`;
+}
+
+/** Un importe con su signo a la vista: "+5,000.00 DOP", "-1,200.00 DOP". */
+function signed(amount: number, cur: Currency): string {
+  return `${amount < 0 ? '-' : '+'}${money(Math.abs(amount), cur)}`;
 }
 
 function monthTitle(m: Pick<Month, 'key' | 'closed'>): string {
@@ -300,6 +321,8 @@ interface RateLine {
   source: RateSource;
   /** Mes del que salió la tasa (shared/calc.ts RateInfo). */
   monthKey: MonthKey | null;
+  /** Fecha desde la que vale, si es una tasa escrita a mano; null si salió de otro sitio. */
+  date: ISODate | null;
   /** De dónde salió, dicho en claro: es lo que avisa de una tasa que no es la del mes. */
   note: string;
 }
@@ -309,13 +332,15 @@ function rateNote(info: RateInfo, from: Currency, to: Currency): string {
     case 'same':
       return 'same currency';
     case 'month':
-      return 'typed for this month';
+      return info.date ? `typed on ${info.date}` : 'typed for this month';
     case 'transfers':
       return "from this month's transfers";
     case 'cross':
       // Con tres monedas, la que no es ninguna de las dos.
       return `crossed through ${CURRENCY_CODES.find((c) => c !== from && c !== to) ?? 'another currency'}`;
     case 'previous':
+      // Una escrita en un mes anterior sigue vigente hasta que se escriba otra.
+      if (info.date) return `typed on ${info.date}, still in effect`;
       return info.monthKey ? `from ${label(info.monthKey)}` : 'from an earlier month';
     case 'default':
       return 'default value, not set yet';
@@ -323,13 +348,13 @@ function rateNote(info: RateInfo, from: Currency, to: Currency): string {
 }
 
 /**
- * La tasa del mes entre dos monedas, en el sentido en que se lee (la que vale más primero: "USD to DOP: 58.76"
- * y no "DOP to USD: 0.02", que con dos decimales no dice nada).
+ * La tasa entre dos monedas, en el sentido en que se lee (la que vale más primero: "USD to DOP: 58.76" y no
+ * "DOP to USD: 0.02", que con dos decimales no dice nada). Sin `date`, la última del mes; con ella, la vigente ese día.
  */
-function rateLine(state: AppState, key: MonthKey, a: Currency, b: Currency): RateLine {
-  const direct = rateFor(state, key, a, b);
-  const [from, to, info] = direct.rate >= 1 ? [a, b, direct] : [b, a, rateFor(state, key, b, a)];
-  return { from, to, rate: info.rate, source: info.source, monthKey: info.monthKey, note: rateNote(info, from, to) };
+function rateLine(state: AppState, key: MonthKey, a: Currency, b: Currency, date?: ISODate): RateLine {
+  const direct = rateFor(state, key, a, b, date);
+  const [from, to, info] = direct.rate >= 1 ? [a, b, direct] : [b, a, rateFor(state, key, b, a, date)];
+  return { from, to, rate: info.rate, source: info.source, monthKey: info.monthKey, date: info.date, note: rateNote(info, from, to) };
 }
 
 function rateText(r: RateLine): string {
@@ -345,10 +370,10 @@ function pairText(from: Currency, to: Currency, rate: number): string {
  * Aviso de que lo convertido es aproximado: alguna de las conversiones de `cur` a las monedas de `to` en el
  * mes `key` sale del valor de respaldo, porque nadie ha escrito esa tasa. Una frase por par; ninguna si no pasa.
  */
-function approxNotes(state: AppState, key: MonthKey, cur: Currency, to: readonly Currency[]): string[] {
+function approxNotes(state: AppState, key: MonthKey, cur: Currency, to: readonly Currency[], date?: ISODate): string[] {
   return [...new Set(to)]
     .filter((other) => other !== cur)
-    .map((other) => rateLine(state, key, cur, other))
+    .map((other) => rateLine(state, key, cur, other, date))
     .filter((r) => r.source === 'default')
     .map((r) => `Note: the rate ${r.from} to ${r.to} (${fRate(r.rate)}) is a default value, not set yet, so the converted amounts are only approximate.`);
 }
@@ -454,9 +479,9 @@ function accountData(account: Account, b: AccountBalance | null) {
 }
 
 /** La cuenta a la que entra o de la que sale `amount`, y cuánto es en su moneda si se dijo en otra. */
-function accountPart(state: AppState | null, key: MonthKey, account: Account, amount: number, cur: Currency): string {
+function accountPart(state: AppState | null, key: MonthKey, account: Account, amount: number, cur: Currency, date?: ISODate): string {
   if (!state || cur === account.currency) return account.name;
-  return `${account.name} (${money(convert(state, key, amount, cur, account.currency), account.currency)})`;
+  return `${account.name} (${money(convert(state, key, amount, cur, account.currency, date), account.currency)})`;
 }
 
 /** La cuenta que nombra la persona o, si no nombra ninguna, su cuenta por defecto. */
@@ -582,7 +607,7 @@ const addTransferArgs = z.strictObject({
   rate: positive()
     .optional()
     .describe(
-      "What arrives per unit sent: 1 unit of the origin currency = `rate` units of the destination currency, for example 58.76 from USD to DOP. If the person gives the amount that arrived, it is arrived ÷ sent. Omit it if they give neither: the month's rate for the two currencies is used. Between accounts of the same currency, omit it.",
+      "What arrives per unit sent: 1 unit of the origin currency = `rate` units of the destination currency, for example 58.76 from USD to DOP. If the person gives the amount that arrived, it is arrived ÷ sent. Omit it if they give neither: the rate in effect on that date for the two currencies is used. Between accounts of the same currency, omit it.",
     ),
   via: requiredText(MAX_LEN.label)
     .default(VIAS[0])
@@ -602,6 +627,12 @@ const addIncomeArgs = z.strictObject({
     .optional()
     .describe(`Date the money was received, YYYY-MM-DD. Omit it if the person gave no date or said "today": today in ${TIMEZONE} is used.`),
   description: text(MAX_LEN.desc).optional().describe('What the income was, in a few words and as the person said it: "Salary", "Freelance", "Gift".'),
+  add_to_budget: z
+    .boolean({ error: 'must be true or false' })
+    .default(false)
+    .describe(
+      "true only if the person says this money should also raise the budget of the month of its date (for example \"add it to this month's budget\"). By default false: the income enters the account and the budget stays as it is.",
+    ),
 });
 
 const listAccountsArgs = z.strictObject({});
@@ -691,7 +722,7 @@ const addTransaction = defineTool({
   description: [
     'Records an expense (a transaction) in the finances of `user`, in the month of its date, and subtracts it from the account it is paid from. Use it when the person says they spent, paid or bought something, for example "I spent 850 on Uber today with my card".',
     `Apart from \`user\`, only \`description\` and \`amount\` are required. Defaults: the person's default account, the currency of that account, today's date in ${TIMEZONE}, category ${CATS[0]} and method ${METHODS[0]}; even so, always choose the category that best describes the expense.`,
-    'Pass `account` only if the person names the account it was paid from, and `currency` only if they name a currency: the amount is recorded in the currency they said, without converting, even if the account is in another one (the account is charged the equivalent at the rates of that month).',
+    'Pass `account` only if the person names the account it was paid from, and `currency` only if they name a currency: the amount is recorded in the currency they said, without converting, even if the account is in another one (the account is charged the equivalent at the rate in effect on that date).',
     'Category and method are stored under their English names; a Spanish or Turkish name is also accepted. Description, place and notes are kept exactly as given.',
     'The answer says which account it was paid from and the new balance of that account. If the month of the date does not exist, it is created (only near today: a date in another year is rejected); if it is closed, the call fails.',
     "Each call creates a new transaction: do not repeat it for the same expense. Do not use it for the month's fixed expenses (use mark_fixed_paid), for money moved between accounts (use add_transfer) or for money received (use add_income).",
@@ -715,17 +746,17 @@ const addTransaction = defineTool({
     const parts = [
       t.desc,
       t.place,
-      after ? moneyIn(after.state, t.monthKey, t.amount, t.cur, after.calc.main) : money(t.amount, t.cur),
+      after ? moneyIn(after.state, t.monthKey, t.amount, t.cur, after.calc.main, t.date) : money(t.amount, t.cur),
       t.cat,
       t.method,
       `${t.date} (${label(t.monthKey)})`,
-      after && paidFrom && `paid from ${accountPart(after.state, t.monthKey, paidFrom.account, t.amount, t.cur)}`,
+      after && paidFrom && `paid from ${accountPart(after.state, t.monthKey, paidFrom.account, t.amount, t.cur, t.date)}`,
     ];
     const sentences = [`Recorded for ${user.name}: ${parts.filter(Boolean).join(SEP)}.`];
     if (monthCreated) sentences.push(`The month ${label(t.monthKey)} was created.`);
     if (after) sentences.push(usedLine(after.calc));
     if (paidFrom) sentences.push(balanceSentence(paidFrom));
-    if (after) sentences.push(...approxNotes(after.state, t.monthKey, t.cur, [after.calc.main, ...(paidFrom ? [paidFrom.account.currency] : [])]));
+    if (after) sentences.push(...approxNotes(after.state, t.monthKey, t.cur, [after.calc.main, ...(paidFrom ? [paidFrom.account.currency] : [])], t.date));
     return {
       text: sentences.join(' '),
       data: {
@@ -760,7 +791,7 @@ const listTransactions = defineTool({
     const sorted = m.tx
       .map((t, i) => ({ t, i }))
       .sort((a, b) => (a.t.date < b.t.date ? 1 : a.t.date > b.t.date ? -1 : b.i - a.i))
-      .map(({ t }) => ({ ...t, inMain: convert(state, m.key, t.amount, t.cur, main), account: accounts.get(t.accountId)?.name ?? null }));
+      .map(({ t }) => ({ ...t, inMain: convert(state, m.key, t.amount, t.cur, main, t.date), account: accounts.get(t.accountId)?.name ?? null }));
     const shown = sorted.slice(0, limit);
     const total = sorted.reduce((a, t) => a + t.inMain, 0);
 
@@ -771,7 +802,7 @@ const listTransactions = defineTool({
             `${heading(user, m)}: ${sorted.length} ${sorted.length === 1 ? 'transaction' : 'transactions'}${SEP}${money(total, main)} in total.` +
               (shown.length === sorted.length ? '' : shown.length === 1 ? ' Showing the most recent one.' : ` Showing the ${shown.length} most recent.`),
             ...shown.map((t) =>
-              [t.date, t.desc, t.place, moneyIn(state, m.key, t.amount, t.cur, main), t.cat, t.method, t.account, t.notes && `Notes: ${t.notes}`]
+              [t.date, t.desc, t.place, moneyIn(state, m.key, t.amount, t.cur, main, t.date), t.cat, t.method, t.account, t.notes && `Notes: ${t.notes}`]
                 .filter(Boolean)
                 .join(SEP),
             ),
@@ -793,13 +824,17 @@ const listTransactions = defineTool({
   },
 });
 
+/** Cómo se nombra cada fila de la historia del presupuesto. */
+const HISTORY_KIND = { initial: 'initial', adjust: 'adjustment', leftover: 'leftover', income: 'income' } as const;
+
 const monthSummary = defineTool({
   name: 'month_summary',
   title: 'Month summary',
   description: [
-    "Summary of one month in the finances of `user`, with every amount in the person's main currency: budget and the part of it that comes out of each account, used, available, fixed expenses paid and pending (with the names of the ones still to pay), spending by category, the month's income and income minus used, the balance of each account and the month's rates.",
-    'Use it when the person asks how the month is going, how much is left, what is still to be paid or how much they have.',
-    'When a rate is not the month\'s own, the "Month rates" line says where it came from; "default value, not set yet" means the converted amounts are only approximate.',
+    "Summary of one month in the finances of `user`, with every amount in the person's main currency: budget and the part of it that comes out of each account, how the budget got there (its history: the initial amount, later adjustments, the leftover of the previous month and the incomes added to it, each with its date), used, available, fixed expenses paid and pending (with the names of the ones still to pay), spending by category, the month's income and income minus used, the balance of each account and the month's rates.",
+    'Use it when the person asks how the month is going, how much is left, what is still to be paid, how much they have or why the budget changed.',
+    'If the previous month ended with money left over (or overspent) and it has not been added to this month\'s budget, a "Leftover" line says how much; adding it is done in the app.',
+    'Rates carry the date they apply from: an amount is converted with the rate in effect on its own date, so a rate typed later does not change earlier records. The "Month rates" line gives the latest rate of the month and where it came from; "default value, not set yet" means the converted amounts are only approximate.',
     `It also says what today's date is for the users. By default: ${IN_PROGRESS}.`,
   ].join(' '),
   schema: monthSummaryArgs,
@@ -832,16 +867,33 @@ const monthSummary = defineTool({
       ...incomes.map((i) => i.cur),
     ]);
 
+    const history = budgetHistory(state, m.key);
+    const left = leftoverFor(state, m.key);
+    // Las tasas escritas con fecha en el mes: cada una vale desde su fecha hasta la siguiente del par.
+    const typed = m.rates.filter((r) => r.rate > 0);
+
     const lines = [
       `${heading(user, m)}${SEP}amounts in ${main}`,
       c.budget === 0 && parts.length === 0
         ? `Budget: ${money(0, main)} (no budget set)`
         : `Budget: ${both(c.budget, c.budgetSecond)}${SEP}by account: ${parts.map((p) => `${p.account.name} ${moneyIn(state, m.key, p.amount, p.account.currency, main)}`).join('; ')}`,
+    ];
+    if (history.length > 0) {
+      lines.push(
+        `Budget history: ${history
+          .map((h) => `${h.date} ${HISTORY_KIND[h.kind]} ${h.account.name} ${signed(h.amount, h.account.currency)}${h.note ? ` (${h.note})` : ''}`)
+          .join('; ')}`,
+      );
+    }
+    if (left.previousKey !== null && left.leftover !== null && !left.added) {
+      lines.push(`Leftover of ${label(left.previousKey)}: ${money(left.leftover, main)}, not added to this month's budget.`);
+    }
+    lines.push(
       `Used so far: ${both(c.used, c.usedSecond)}`,
       `Available: ${money(c.avail, main)}`,
       `Available after pending fixed: ${money(c.after, main)}`,
       `Monthly expenses: ${c.paidCount} of ${c.fixedCount} paid${SEP}Fixed paid: ${money(c.fixedPaid, main)}${SEP}Fixed pending: ${money(c.pending, main)}`,
-    ];
+    );
     if (pending.length > 0) {
       lines.push(`Still to pay: ${pending.map((f) => `${f.name} ${moneyIn(state, m.key, f.amount, f.cur, main)}${f.day ? `, day ${f.day}` : ''}`).join('; ')}`);
     }
@@ -855,8 +907,11 @@ const monthSummary = defineTool({
         ? `Account balances at the end of ${label(m.key)}: ${visible.map((b) => `${b.account.name} ${moneyIn(state, m.key, b.balance, b.account.currency, main)}`).join('; ')}${SEP}Total money: ${both(all.totalMain, all.totalSecond)}`
         : `Account balances at the end of ${label(m.key)}: no visible accounts.`,
       `Month rates: ${rates.map(rateText).join('; ')}`,
-      `Today is ${today}.`,
     );
+    if (typed.length > 0) {
+      lines.push(`Rates typed in ${label(m.key)}: ${typed.map((r) => `${pairText(r.from, r.to, r.rate)} from ${r.date}`).join('; ')}`);
+    }
+    lines.push(`Today is ${today}.`);
     return {
       text: lines.join('\n'),
       data: {
@@ -868,7 +923,28 @@ const monthSummary = defineTool({
         secondCurrency: second,
         budget: c.budget,
         budgetSecond: c.budgetSecond,
-        budgetParts: parts.map((p) => ({ accountId: p.account.id, name: p.account.name, currency: p.account.currency, amount: p.amount, inMain: p.inMain })),
+        budgetParts: parts.map((p) => ({
+          accountId: p.account.id,
+          name: p.account.name,
+          currency: p.account.currency,
+          amount: p.amount,
+          fromLog: p.fromLog,
+          fromIncomes: p.fromIncomes,
+          inMain: p.inMain,
+        })),
+        budgetHistory: history.map((h) => ({
+          kind: h.kind,
+          id: h.id,
+          date: h.date,
+          accountId: h.account.id,
+          account: h.account.name,
+          amount: h.amount,
+          currency: h.account.currency,
+          note: h.note,
+          inMain: h.inMain,
+          total: h.total,
+        })),
+        leftover: { previousMonth: left.previousKey, amount: left.leftover, added: left.added },
         used: c.used,
         usedSecond: c.usedSecond,
         available: c.avail,
@@ -880,6 +956,7 @@ const monthSummary = defineTool({
         accounts: visible.map((b) => ({ ...accountData(b.account, b), inMain: b.inMain })),
         totalMoney: { main: all.totalMain, second: all.totalSecond },
         rates,
+        typedRates: typed,
       },
     };
   },
@@ -891,7 +968,7 @@ const addTransfer = defineTool({
   description: [
     'Records money moved from one account to another in the finances of `user`: it leaves `from_account` and arrives in `to_account`. Use it when the person says they sent, exchanged, withdrew or moved money between their accounts, for example dollars sent to their pesos account.',
     'It is not an expense and does not count as used. `amount` is what leaves, in the currency of the origin account; what arrives is amount × rate, in the currency of the destination account.',
-    "Between accounts of different currencies pass `rate` if the person says it or says how much arrived; if it is omitted, the month's rate for the two currencies is used and the answer says where it came from. The transfers of a month also set that month's rate between the two currencies, unless the person typed one. Between accounts of the same currency the same amount arrives.",
+    "Between accounts of different currencies pass `rate` if the person says it or says how much arrived; if it is omitted, the rate in effect on that date for the two currencies is used and the answer says where it came from. The transfers of a month also set that month's rate between the two currencies while the person has never typed one. Between accounts of the same currency the same amount arrives.",
     `Defaults: via ${VIAS[0]} and today's date in ${TIMEZONE}. \`via\` is free text: the name of the service used (${VIAS.join(', ')} or any other). If the month of the date does not exist, it is created (only near today); if it is closed, the call fails.`,
     'The answer states what left, what arrived and the new balance of both accounts. Each call creates a new transfer: do not repeat it for the same transfer.',
   ].join(' '),
@@ -917,9 +994,9 @@ const addTransfer = defineTool({
 
     const { month, created } = await ensureMonth(db, user.id, key);
     if (month.closed) throw monthClosedError(key);
-    // Sin tasa vale la del mes para ese par. Se resuelve aquí (y no dentro de createTransfer) para poder decir
-    // de dónde salió: una vez guardado el envío, la tasa del mes ya saldría de él.
-    const assumed = same || given !== undefined ? null : rateFor(await loadState(db, user.id), key, from.currency, to.currency);
+    // Sin tasa vale la vigente en la fecha del envío para ese par. Se resuelve aquí (y no dentro de
+    // createTransfer) para poder decir de dónde salió: una vez guardado el envío, la tasa del mes podría salir de él.
+    const assumed = same || given !== undefined ? null : rateFor(await loadState(db, user.id), key, from.currency, to.currency, date);
     const rate = same ? 1 : (given ?? assumed?.rate);
     // Las reglas del contrato (shared/api.ts) las pone el mismo esquema que usa POST /api/transfers.
     const transfer = await createTransfer(
@@ -939,7 +1016,7 @@ const addTransfer = defineTool({
     if (created) sentences.push(`The month ${label(key)} was created.`);
     if (assumed) {
       sentences.push(
-        `No rate was given: the month's rate was used (${rateNote(assumed, from.currency, to.currency)}).` +
+        `No rate was given: the rate in effect on that date was used (${rateNote(assumed, from.currency, to.currency)}).` +
           (assumed.source === 'default' ? ' Nobody has set that rate yet, so the amount that arrived is only approximate: ask the person how much arrived.' : ''),
       );
     }
@@ -967,12 +1044,13 @@ const addIncome = defineTool({
     'Records money received (an income: salary, a payment, a gift…) in the finances of `user` and adds it to the account it enters. Use it when the person says they were paid or received money.',
     `Apart from \`user\`, only \`amount\` is required. Defaults: the person's default account, the currency of that account and today's date in ${TIMEZONE}. Pass \`account\` if the person names the account the money entered, and \`currency\` only if they name a currency: the amount is recorded in the currency they said, without converting.`,
     "The month's income is the sum of the incomes dated in it. An income does not belong to a month sheet, so it can also be recorded with a date in a closed month; a date in another year is rejected.",
+    "With `add_to_budget: true` the income also raises the budget of the month of its date, in the part of the account it enters, by its amount (converted to the currency of that account at the rate in effect on its date); the answer then states the month's budget. Use it only when the person asks for it.",
     "The answer states the new balance of the account and the month's income so far. Each call creates a new income: do not repeat it for the same one. Do not use it for money moved between the person's own accounts (use add_transfer).",
   ].join(' '),
   schema: addIncomeArgs,
   readOnly: false,
   idempotent: false,
-  async run({ amount, currency: cur, account: named, date: givenDate, description }, ctx) {
+  async run({ amount, currency: cur, account: named, date: givenDate, description, add_to_budget }, ctx) {
     const { db, now, user } = ctx;
     if (givenDate) await assertReachable(ctx, givenDate);
     const date = givenDate ?? todayISO(now);
@@ -983,7 +1061,7 @@ const addIncome = defineTool({
     const income = await createIncome(
       db,
       user.id,
-      parse(incomeCreateSchema, { date, desc: description ?? '', accountId: account.id, amount, cur: cur ?? account.currency }),
+      parse(incomeCreateSchema, { date, desc: description ?? '', accountId: account.id, amount, cur: cur ?? account.currency, budget: add_to_budget }),
     );
     const after = await afterWrite(ctx, (state) => ({
       state,
@@ -991,26 +1069,37 @@ const addIncome = defineTool({
       balance: balanceOf(balancesNow(state, now, key).all, account.id),
       monthIncome: incomeInMonth(state, key),
       count: state.incomes.filter((i) => monthOf(i.date) === key).length,
+      // El presupuesto solo existe si el mes está registrado: un ingreso no crea el mes de su fecha.
+      budget: state.months[key] ? monthCalc(state, key).budget : null,
     }));
 
     const parts = [
       income.desc,
-      after ? moneyIn(after.state, key, income.amount, income.cur, after.main) : money(income.amount, income.cur),
-      `into ${accountPart(after?.state ?? null, key, account, income.amount, income.cur)}`,
+      after ? moneyIn(after.state, key, income.amount, income.cur, after.main, income.date) : money(income.amount, income.cur),
+      `into ${accountPart(after?.state ?? null, key, account, income.amount, income.cur, income.date)}`,
       `${income.date} (${label(key)})`,
     ];
     const sentences = [`Income recorded for ${user.name}: ${parts.filter(Boolean).join(SEP)}.`];
     if (after?.balance) sentences.push(balanceSentence(after.balance));
     if (after) {
       sentences.push(`Income in ${label(key)} so far: ${money(after.monthIncome, after.main)}.`);
-      sentences.push(...approxNotes(after.state, key, income.cur, [after.main, account.currency]));
+      if (income.budget) {
+        sentences.push(
+          after.budget === null
+            ? `It is marked to raise the budget of ${label(key)}, a month that does not exist yet: it will count when the month is created.`
+            : `It was also added to the budget of ${label(key)}, now ${money(after.budget, after.main)}.`,
+        );
+      }
+      sentences.push(...approxNotes(after.state, key, income.cur, [after.main, account.currency], income.date));
     }
     return {
       text: sentences.join(' '),
       data: {
         income,
         account: accountData(account, after?.balance ?? null),
-        month: after ? { key, label: label(key), currency: after.main, income: after.monthIncome, incomeCount: after.count } : null,
+        month: after
+          ? { key, label: label(key), currency: after.main, income: after.monthIncome, incomeCount: after.count, budget: after.budget }
+          : null,
       },
     };
   },

@@ -147,6 +147,65 @@
   min-width: 80px;
 }
 
+/* "Leftover from last month": la cifra y, a su derecha, el botón para sumarla (o "added"). */
+.leftover {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 6px 10px;
+  font-size: var(--fs-num);
+  color: var(--text-soft);
+}
+
+.leftoverAdd {
+  border: 1px solid var(--border-dashed);
+  border-radius: var(--radius);
+  padding: 3px 9px;
+  background: transparent;
+  color: var(--accent-text);
+  font: 600 var(--fs-meta) var(--font-ui);
+  cursor: pointer;
+}
+
+.leftoverAdd:hover {
+  border-color: var(--accent);
+}
+
+.leftoverAdd:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.leftoverAdded {
+  font-size: var(--fs-meta);
+  color: var(--text-muted);
+}
+
+/* "Budget history": una caja propia debajo del panel (dentro de la rejilla, una celda a todo el ancho impediría
+   que las columnas vacías se plegaran), con la tabla en el mismo marco que las cuentas. */
+.history {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.historyEmpty {
+  font-size: var(--fs-meta);
+  color: var(--text-muted);
+}
+
+/* La nota del movimiento o la descripción del ingreso, detrás de su tipo. */
+.historyNote {
+  margin-left: 8px;
+  font-size: var(--fs-meta);
+  color: var(--text-muted);
+}
+
 .incomeLeft {
   display: flex;
   justify-content: space-between;

@@ -5,7 +5,11 @@
 //    SEGUNDA moneda para las líneas "≈".
 //  · Cuentas propias de cada usuario (nombre + moneda). El saldo de una cuenta no se escribe mes a mes: es su
 //    saldo inicial más todo lo que la mueve (ingresos, gastos pagados desde ella, envíos que salen o entran).
-//  · Tasas del mes escritas a mano por par de monedas; shared/calc.ts resuelve cualquier conversión.
+//  · Tasas escritas a mano por par de monedas, cada una con su fecha: una fila se convierte con la tasa vigente
+//    en SU fecha, así que escribir una tasa nueva no cambia lo ya registrado. shared/calc.ts resuelve cualquier
+//    conversión.
+//  · El presupuesto del mes es la suma de un registro de movimientos con fecha (más los ingresos marcados para
+//    sumarle), no un número que se sobrescribe: así queda la historia de cómo cambió.
 //  · Cada fila guarda su monto y moneda originales; lo convertido nunca se persiste.
 
 export type Currency = 'DOP' | 'USD' | 'TRY';
@@ -60,11 +64,36 @@ export interface Account {
   sort: number;
 }
 
-/** Tasa del mes escrita a mano: 1 `from` = `rate` `to`. */
+/**
+ * Tasa escrita a mano: 1 `from` = `rate` `to`, vigente desde `date` (incluida) hasta la siguiente tasa escrita
+ * para ese par, sea de este mes o de uno posterior. Un mes puede tener varias del mismo par: una por fecha.
+ */
 export interface MonthRate {
   from: Currency;
   to: Currency;
   rate: number;
+  /** Desde cuándo vale. Cae dentro del mes que la guarda. */
+  date: ISODate;
+}
+
+/**
+ *  initial   la parte con la que arranca una cuenta en el mes (al crear el mes, o la primera vez que se escribe)
+ *  adjust    un cambio posterior, a mano
+ *  leftover  lo que sobró del mes anterior, sumado a este (como mucho uno por mes)
+ */
+export type BudgetEntryKind = 'initial' | 'adjust' | 'leftover';
+
+/** Un movimiento del presupuesto del mes. El presupuesto de una cuenta es la suma de los suyos. */
+export interface BudgetEntry {
+  id: string;
+  /** Cae dentro del mes. */
+  date: ISODate;
+  accountId: string;
+  /** En la moneda de la cuenta. Puede ser negativo (un recorte, o un sobrante negativo). */
+  amount: number;
+  kind: BudgetEntryKind;
+  /** Texto libre; '' si no se escribió. */
+  note: string;
 }
 
 export interface FixedExpense {
@@ -92,7 +121,7 @@ export interface Transaction {
   method: string;
   amount: number;
   cur: Currency;
-  /** Cuenta de la que sale el gasto: le resta el monto, convertido a la moneda de la cuenta con la tasa del mes. */
+  /** Cuenta de la que sale el gasto: le resta el monto, convertido a la moneda de la cuenta con la tasa vigente en `date`. */
   accountId: string;
   notes: string;
   source: TxSource;
@@ -121,8 +150,14 @@ export interface Income {
   desc: string;
   accountId: string;
   amount: number;
-  /** Moneda en la que se cobró; a la cuenta entra convertido a su moneda con la tasa del mes de `date`. */
+  /** Moneda en la que se cobró; a la cuenta entra convertido a su moneda con la tasa vigente en `date`. */
   cur: Currency;
+  /**
+   * true: además de entrar a la cuenta, sube el presupuesto del mes de `date`, en la parte de su cuenta, por su
+   * monto convertido a la moneda de la cuenta con la tasa vigente en `date`. No genera ningún BudgetEntry: lo
+   * suma shared/calc.ts (monthCalc, budgetHistory).
+   */
+  budget: boolean;
 }
 
 export interface Month {
@@ -130,11 +165,17 @@ export interface Month {
   closed: boolean;
   closedAt: string | null;
   /**
-   * Presupuesto del mes, repartido por la cuenta de la que sale: accountId → monto en la moneda de esa cuenta.
-   * No son saldos. El total es la suma convertida a la moneda principal (monthCalc().budget).
+   * Registro del presupuesto del mes, por fecha. Es la fuente de verdad: shared/calc.ts calcula con él (más los
+   * ingresos con `budget: true`). No son saldos.
+   */
+  budgetLog: BudgetEntry[];
+  /**
+   * DERIVADO de `budgetLog` (calc.budgetsFromLog): accountId → suma de sus movimientos, en la moneda de la
+   * cuenta; las cuentas que suman 0 no aparecen. No incluye los ingresos que suben el presupuesto. El servidor
+   * lo calcula al leer y nunca lo guarda; quien cambie `budgetLog` en memoria debe recalcularlo.
    */
   budgets: Record<string, number>;
-  /** Tasas escritas a mano para este mes. Los pares que falten los resuelve shared/calc.ts (rateFor). */
+  /** Tasas escritas a mano con fecha en este mes, por fecha. Lo que falte lo resuelve shared/calc.ts (rateFor). */
   rates: MonthRate[];
   fixed: FixedExpense[];
   transfers: Transfer[];
@@ -154,6 +195,11 @@ export interface Goal {
   monthly: number | null;
   start: MonthKey | null;
   end: MonthKey | null;
+  /**
+   * Moneda en la que también se muestra lo ahorrado (la línea "≈" de la meta). null = la moneda principal del
+   * usuario. Puede ser cualquiera, también la de la propia meta (la interfaz entonces no muestra la línea).
+   */
+  approxCur: Currency | null;
   sort: number;
 }
 
@@ -163,7 +209,7 @@ export interface Contribution {
   goalId: string;
   date: ISODate;
   amount: number;
-  /** Moneda del aporte; se convierte a la de la meta con la tasa del mes de su fecha. */
+  /** Moneda del aporte; se convierte a la de la meta con la tasa vigente en su fecha. */
   cur: Currency;
 }
 

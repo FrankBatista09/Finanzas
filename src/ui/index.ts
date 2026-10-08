@@ -26,7 +26,7 @@
 
 export { AddButton, DeleteButton } from './buttons';
 export type { AddButtonProps, DeleteButtonProps } from './buttons';
-export { Card, CardHeader, Stack } from './Card';
+export { Card, CardHeader, CardNote, Stack } from './Card';
 export type { CardHeaderProps, CardProps } from './Card';
 export { CellCheckbox, CellDate, CellNumber, CellSelect, CellText, NumberField } from './cells';
 export type {

@@ -38,10 +38,18 @@
 //
 //   GET    /api/months                        → MonthSummary[]
 //   GET    /api/months/:key                   → Month
-//   PATCH  /api/months/:key      MonthPatch   → Month             (partes del presupuesto por cuenta)
-//   PUT    /api/months/:key/rates MonthRate   → Month             (escribe la tasa de un par; una sola por par)
-//   DELETE /api/months/:key/rates/:from/:to   → Month             (quita la tasa escrita de ese par)
-//   POST   /api/months/:key/close             → CloseResponse     (cierra y crea el siguiente, en un batch de D1)
+//   PATCH  /api/months/:key      MonthPatch   → Month             (fija la parte del presupuesto de una cuenta: el
+//                                                                  servidor añade al registro la diferencia)
+//   POST   /api/months/:key/budget-log BudgetEntryCreate → Month  (201; añade un movimiento al registro del presupuesto)
+//   DELETE /api/months/:key/budget-log/:id    → Month             (quita ese movimiento; 404 si el mes no lo tiene)
+//   POST   /api/months/:key/leftover          → Month             (201; suma a este mes lo que sobró del anterior:
+//                                                                  409 conflict si ya lo tiene, 400 si no hay mes anterior)
+//   PUT    /api/months/:key/rates MonthRate   → Month             (escribe la tasa de un par desde una fecha del mes;
+//                                                                  una por par y fecha: repetir la fecha la sustituye)
+//   DELETE /api/months/:key/rates/:from/:to?date=YYYY-MM-DD → Month (quita la tasa de ese par y esa fecha, esté
+//                                                                  guardada en un sentido o en el otro)
+//   POST   /api/months/:key/close CloseRequest? → CloseResponse   (cierra y crea el siguiente, en un batch de D1;
+//                                                                  el cuerpo es opcional)
 //   POST   /api/months/:key/reopen            → Month
 //   DELETE /api/months/:key                   → OkResponse        (borra el mes con sus gastos, transacciones,
 //                                                                  envíos, presupuesto y tasas; abierto o cerrado)
@@ -78,12 +86,34 @@
 //
 // Reglas de escritura
 //   · Un mes cerrado es de solo lectura: crear/editar/borrar sus fijos, transacciones o envíos, y cambiar su
-//     presupuesto o sus tasas → 409 month_closed. Sí se puede reabrir y borrar.
+//     presupuesto (también su registro y el sobrante) o sus tasas → 409 month_closed. Sí se puede reabrir y borrar.
+//     Un ingreso con `budget: true` no pertenece al mes: se puede crear o editar aunque el mes esté cerrado, y
+//     cambia el presupuesto de ese mes.
 //   · Ingresos y aportes no pertenecen a un mes: se pueden crear, editar y borrar siempre, con cualquier fecha.
 //   · El cliente puede mandar `id` al crear (actualizaciones optimistas sin reconciliar ids). Si falta, lo genera el servidor.
 //   · Montos: números finitos; amount > 0 al crear y >= 0 al editar; rate > 0. Las partes del presupuesto son >= 0
-//     (0 quita la parte) y el saldo inicial de una cuenta puede ser cualquier número finito, también negativo.
+//     (0 deja la parte en cero) y el saldo inicial de una cuenta puede ser cualquier número finito, también
+//     negativo. El monto de un movimiento del presupuesto puede ser negativo, pero no 0.
 //     Quitar una tasa que no estaba escrita no es un error: responde el mes tal cual.
+//   · Tasas: cada una lleva su fecha, que tiene que caer dentro del mes de la ruta (si no, 400 validation). Una
+//     fila se convierte con la tasa vigente en su fecha (shared/calc.ts rateFor), así que escribir una tasa con
+//     fecha de hoy no cambia lo registrado antes. DELETE exige ?date= (sin él, 400).
+//   · Presupuesto: el del mes es la suma de su registro (Month.budgetLog) más los ingresos del mes con
+//     `budget: true`. Month.budgets es la suma del registro por cuenta, ya hecha (sin los ingresos); nunca se
+//     guarda. PATCH { budgets: { cuenta: monto } } sigue significando "la parte de esta cuenta es este monto":
+//     el servidor añade un movimiento con la diferencia respecto a la suma del registro de esa cuenta (tipo
+//     'initial' si la cuenta no tenía movimientos en el mes, si no 'adjust'; ninguno si la diferencia es 0), con
+//     fecha de hoy en America/Santo_Domingo, llevada al mes si cae fuera. Las fechas del registro caen siempre
+//     dentro de su mes.
+//   · Sobrante: lo que sobró de un mes es su `avail` (presupuesto − usado) en la moneda principal
+//     (shared/calc.ts leftoverFor). POST …/leftover lo suma al mes de la ruta como un movimiento 'leftover' en la
+//     cuenta por defecto del usuario, convertido a la moneda de esa cuenta con la última tasa del mes; si es
+//     negativo, el movimiento es negativo. Un mes tiene como mucho uno (409 conflict al repetir); borrarlo con
+//     DELETE …/budget-log/:id permite volver a sumarlo.
+//   · Cerrar: el mes siguiente, si no existe, se crea con los gastos fijos sin pagar y un movimiento 'initial'
+//     por cuenta, con fecha de su primer día: las partes de CloseRequest.budgets o, si no vienen, las del mes
+//     que se cierra (la suma de su registro, sin los ingresos). Con addLeftover: true se le suma además el
+//     sobrante del mes que se cierra, como en …/leftover. Si el mes siguiente ya existe no se le toca nada.
 //   · Cuentas: toda fila que referencia una cuenta (fijo, transacción, envío, ingreso, parte del presupuesto) debe
 //     nombrar una cuenta existente del usuario → si no, 400 validation. Si al crear un fijo, una transacción o un
 //     ingreso falta `accountId`, se usa la cuenta por defecto (defaultAccount en shared/calc.ts). Un envío necesita
@@ -189,17 +219,44 @@ export interface MonthSummary {
 
 export interface MonthPatch {
   /**
-   * Partes del presupuesto que cambian: accountId → monto en la moneda de esa cuenta. Las cuentas que no vengan
-   * conservan su parte; 0 la quita.
+   * Partes del presupuesto que cambian: accountId → monto en la moneda de esa cuenta (>= 0). Es el monto en que
+   * debe quedar la suma del registro de esa cuenta (BudgetPart.fromLog, sin los ingresos que suben el
+   * presupuesto): el servidor añade un movimiento con la diferencia. Las cuentas que no vengan no cambian.
    */
   budgets?: Record<string, number>;
+}
+
+/** Un movimiento del presupuesto escrito a mano (POST /api/months/:key/budget-log). */
+export interface BudgetEntryCreate {
+  id?: string;
+  /** Tiene que caer dentro del mes. Por defecto, hoy en America/Santo_Domingo, llevado al mes si cae fuera. */
+  date?: ISODate;
+  /** Una cuenta del usuario. */
+  accountId: string;
+  /** En la moneda de la cuenta. Puede ser negativo; no puede ser 0. */
+  amount: number;
+  /** Por defecto 'adjust'. El sobrante ('leftover') no se escribe a mano: POST /api/months/:key/leftover. */
+  kind?: 'initial' | 'adjust';
+  note?: string;
+}
+
+/** Cuerpo opcional de POST /api/months/:key/close. Solo cuenta si el cierre crea el mes siguiente. */
+export interface CloseRequest {
+  /**
+   * Partes iniciales del mes siguiente: accountId → monto (>= 0; 0 = sin parte). Si no viene, se copian las
+   * del mes que se cierra (la suma de su registro por cuenta, sin los ingresos que suben el presupuesto).
+   */
+  budgets?: Record<string, number>;
+  /** true: suma además al mes siguiente lo que sobró del que se cierra (un movimiento 'leftover'). Por defecto false. */
+  addLeftover?: boolean;
 }
 
 export interface CloseResponse {
   closed: Month;
   /**
    * El mes siguiente (recién creado, o el existente si ya estaba). Al crearlo copia los gastos fijos sin marcar
-   * como pagados (con su cuenta) y las partes del presupuesto; las tasas no se copian (las resuelve rateFor).
+   * como pagados (con su cuenta) y arranca su presupuesto (ver CloseRequest); las tasas no se copian: la última
+   * escrita sigue vigente hasta que se escriba otra (rateFor).
    */
   next: Month;
 }
@@ -242,7 +299,7 @@ export interface TransferCreate {
   toAccountId: string;
   /** Lo que sale, en la moneda de la cuenta de origen. */
   amount: number;
-  /** 1 moneda de origen = rate moneda de destino. Si falta: la tasa del mes para ese par. */
+  /** 1 moneda de origen = rate moneda de destino. Si falta: la tasa vigente en `date` para ese par. */
   rate?: number;
 }
 export type TransferPatch = Partial<Pick<Transfer, 'date' | 'via' | 'fromAccountId' | 'toAccountId' | 'amount' | 'rate'>>;
@@ -254,8 +311,10 @@ export interface IncomeCreate {
   accountId?: string;
   amount: number;
   cur: Currency;
+  /** true: el ingreso sube además el presupuesto del mes de su fecha (Income.budget). Por defecto false. */
+  budget?: boolean;
 }
-export type IncomePatch = Partial<Pick<Income, 'date' | 'desc' | 'accountId' | 'amount' | 'cur'>>;
+export type IncomePatch = Partial<Pick<Income, 'date' | 'desc' | 'accountId' | 'amount' | 'cur' | 'budget'>>;
 
 export interface GoalCreate {
   id?: string;
@@ -265,8 +324,10 @@ export interface GoalCreate {
   monthly?: number | null;
   start?: MonthKey | null;
   end?: MonthKey | null;
+  /** Moneda de la línea "≈" de la meta; null o ausente = la moneda principal del usuario. */
+  approxCur?: Currency | null;
 }
-export type GoalPatch = Partial<Pick<Goal, 'name' | 'cur' | 'monthly' | 'start' | 'end' | 'sort'>>;
+export type GoalPatch = Partial<Pick<Goal, 'name' | 'cur' | 'monthly' | 'start' | 'end' | 'approxCur' | 'sort'>>;
 
 export interface ContributionCreate {
   id?: string;
@@ -290,7 +351,7 @@ export interface IngestTransaction {
   place?: string;
   /** Por defecto 'Food'. */
   category?: string;
-  /** Por defecto 'Card'. */
+  /** Por defecto 'Debit card'. */
   method?: string;
   amount: number;
   /** Por defecto, la moneda de la cuenta de la que sale. */

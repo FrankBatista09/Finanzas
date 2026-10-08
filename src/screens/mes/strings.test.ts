@@ -41,7 +41,11 @@ describe('inglés', () => {
     expect(en('toOf', { name: 'Remitly 02/10' })).toBe('Account Remitly 02/10 goes to');
     expect(en('rateOf', { name: 'Remitly 02/10' })).toBe('Rate of Remitly 02/10');
     expect(en('pairRate', { from: 'USD', to: 'DOP' })).toBe('Rate USD → DOP');
-    expect(en('deleteRate', { from: 'USD', to: 'DOP' })).toBe('Delete rate USD → DOP');
+    expect(en('pairRateSince', { from: 'USD', to: 'DOP', date: '01/10' })).toBe('Rate USD → DOP since 01/10');
+    expect(en('deleteRateSince', { from: 'USD', to: 'DOP', date: '01/10' })).toBe('Delete rate USD → DOP of 01/10');
+    expect(en('rateSince')).toBe('Since');
+    expect(en('newRateDate')).toBe('Date the new rate applies from');
+    expect(en('ratesNote')).toBe('A new rate applies from its date on. Earlier transactions keep the rate they had.');
     expect(en('amountsIn', { currency: 'DOP' })).toBe('Amounts in DOP');
   });
 });
@@ -74,7 +78,11 @@ describe('español: los textos de la versión 1', () => {
     expect(es('fromOf', { name: 'Remitly 02/10' })).toBe('Cuenta de la que sale Remitly 02/10');
     expect(es('toOf', { name: 'Remitly 02/10' })).toBe('Cuenta a la que llega Remitly 02/10');
     expect(es('pairRate', { from: 'USD', to: 'DOP' })).toBe('Tasa USD → DOP');
-    expect(es('deleteRate', { from: 'USD', to: 'TRY' })).toBe('Eliminar tasa USD → TRY');
+    expect(es('pairRateSince', { from: 'USD', to: 'TRY', date: '06/10' })).toBe('Tasa USD → TRY desde el 06/10');
+    expect(es('deleteRateSince', { from: 'USD', to: 'TRY', date: '06/10' })).toBe('Eliminar tasa USD → TRY del 06/10');
+    expect(es('rateSince')).toBe('Vigente desde');
+    expect(es('newRateDate')).toBe('Fecha desde la que vale la tasa nueva');
+    expect(es('ratesNote')).toBe('Una tasa nueva vale desde su fecha. Las transacciones anteriores conservan la que tenían.');
     expect(es('amountsIn', { currency: 'USD' })).toBe('Importes en USD');
   });
 
@@ -127,8 +135,29 @@ describe('turco', () => {
     expect(tr('transfersTitle')).toBe('Transferler');
     expect(tr('accountOf', { name: 'Netflix' })).toBe('Hesap: Netflix');
     expect(tr('pairRate', { from: 'USD', to: 'TRY' })).toBe('Kur USD → TRY');
-    expect(tr('deleteRate', { from: 'USD', to: 'TRY' })).toBe('USD → TRY kurunu sil');
+    expect(tr('pairRateSince', { from: 'USD', to: 'TRY', date: '06/10' })).toBe('Kur USD → TRY, 06/10 tarihinden itibaren');
+    expect(tr('deleteRateSince', { from: 'USD', to: 'TRY', date: '06/10' })).toBe('Kuru sil: USD → TRY, 06/10');
+    expect(tr('rateSince')).toBe('Başlangıç');
+    expect(tr('newRateDate')).toBe('Yeni kurun geçerli olacağı tarih');
+    expect(tr('ratesNote')).toBe('Yeni kur, tarihinden itibaren geçerlidir. Önceki işlemler kendi kurunu korur.');
     expect(tr('amountsIn', { currency: 'TRY' })).toBe('Tutarlar TRY cinsinden');
+  });
+});
+
+describe('ingresos del mes', () => {
+  it('la nota de la tarjeta nombra la casilla con el texto que lleva en cada idioma', () => {
+    expect(en('incomeNote')).toBe('Money received outside transfers. With "Adds to budget" checked, it also raises this month\'s budget.');
+    expect(es('incomeNote')).toBe('Dinero recibido fuera de los envíos. Con «Suma al presupuesto» marcado, sube además el presupuesto de este mes.');
+    expect(tr('incomeNote')).toBe('Transferler dışında alınan para. "Bütçeye eklenir" işaretliyse bu ayın bütçesini de artırır.');
+    // El nombre de la casilla es el del texto común (la cabecera de su columna).
+    for (const lang of ['en', 'es', 'tr'] as const) {
+      expect(translator(MES, lang)('incomeNote')).toContain(createI18n(lang).t('addsToBudget'));
+    }
+  });
+
+  it('la tasa suelta que se quitaba sin fecha ya no existe: cada tasa se nombra con la suya', () => {
+    expect(Object.keys(MES.en)).not.toContain('deleteRate');
+    expect(Object.keys(MES.en)).toEqual(expect.arrayContaining(['pairRate', 'pairRateSince', 'deleteRateSince', 'rateSince', 'ratesNote', 'newRateDate']));
   });
 });
 

@@ -21,6 +21,7 @@ import {
   pickRateCurrency,
   pickTransferAccount,
   prefillRate,
+  rateDate,
   ratePair,
   swapSides,
   transferInput,
@@ -131,7 +132,7 @@ describe('transacción', () => {
   };
 
   it('arranca en Food / Card (los nombres canónicos, que son los que se guardan), sin fecha, moneda ni cuenta propias', () => {
-    expect(newTxDraft()).toEqual({ date: null, desc: '', place: '', cat: 'Food', method: 'Card', amount: 0, cur: null, accountId: null, notes: '' });
+    expect(newTxDraft()).toEqual({ date: null, desc: '', place: '', cat: 'Food', method: 'Debit card', amount: 0, cur: null, accountId: null, notes: '' });
   });
 
   it('necesita descripción y monto mayor que 0; lugar y notas son opcionales', () => {
@@ -257,9 +258,24 @@ describe('envío: la tasa propuesta', () => {
     expect(transferRate(newTransferDraft(), transferContext(state, '2026-09'))).toEqual({ rate: 58.57, locked: false });
   });
 
+  it('con varias tasas escritas en el mes, propone la vigente en la fecha del envío', () => {
+    const state = seedState();
+    state.months['2026-10']!.rates = [
+      { from: 'USD', to: 'DOP', rate: 58, date: '2026-10-01' },
+      { from: 'USD', to: 'DOP', rate: 60, date: '2026-10-05' },
+    ];
+    // Como arma la tarjeta su contexto: la tasa del par en la fecha del borrador.
+    const on = (date: string): TransferContext => ({ ...transferContext(state), rateOf: (from, to) => rateFor(state, '2026-10', from, to, date).rate });
+    expect(transferRate(newTransferDraft(), on('2026-10-04'))).toEqual({ rate: 58, locked: false });
+    expect(transferRate(newTransferDraft(), on('2026-10-05'))).toEqual({ rate: 60, locked: false });
+    expect(transferInput({ ...newTransferDraft(), amount: 100 }, '2026-10-04', on('2026-10-04'))).toMatchObject({ date: '2026-10-04', rate: 58 });
+    // Sin fecha, la última del mes.
+    expect(transferRate(newTransferDraft(), transferContext(state)).rate).toBe(60);
+  });
+
   it('sigue a las cuentas mientras el usuario no escriba la suya', () => {
     const state = stateWith(account('tr', 'TRY', 2));
-    state.months['2026-10']!.rates.push({ from: 'USD', to: 'TRY', rate: 41.5 });
+    state.months['2026-10']!.rates.push({ from: 'USD', to: 'TRY', rate: 41.5, date: '2026-10-01' });
     const ctx = transferContext(state);
     let draft = newTransferDraft();
     expect(transferRate(draft, ctx).rate).toBe(58.76);
@@ -402,7 +418,7 @@ describe('tasa del mes: la fila de agregar', () => {
   });
 
   it('el par elegido manda', () => {
-    expect(ratePair({ pair: ['TRY', 'DOP'], rate: 0 }, pairRates(seedState(), '2026-10'), 'DOP', 'USD')).toEqual(['TRY', 'DOP']);
+    expect(ratePair({ pair: ['TRY', 'DOP'], rate: 0, date: null }, pairRates(seedState(), '2026-10'), 'DOP', 'USD')).toEqual(['TRY', 'DOP']);
   });
 
   it('las dos monedas son distintas: elegir la del otro lado invierte el par', () => {
@@ -413,11 +429,49 @@ describe('tasa del mes: la fila de agregar', () => {
     expect(pickRateCurrency(['USD', 'DOP'], 'from', 'USD')).toEqual(['USD', 'DOP']);
   });
 
+  it('el borrador vacío no trae par, tasa ni fecha', () => {
+    expect(EMPTY_RATE).toEqual({ pair: null, rate: 0, date: null });
+  });
+
+  it('la fecha sin tocar: hoy si el par ya tiene una tasa escrita vigente y el mes es el actual', () => {
+    const rates = pairRates(seedState(), '2026-10');
+    expect(rateDate(EMPTY_RATE, ['USD', 'DOP'], rates, '2026-10', '2026-10-07')).toBe('2026-10-07');
+    // El par invertido es el mismo par.
+    expect(rateDate(EMPTY_RATE, ['DOP', 'USD'], rates, '2026-10', '2026-10-07')).toBe('2026-10-07');
+  });
+
+  it('la fecha sin tocar: el primer día del mes si el mes seleccionado no es el actual', () => {
+    const rates = pairRates(seedState(), '2026-10');
+    // draftDate ya es el día 1 cuando hoy no cae en el mes seleccionado (buildFinanzas).
+    expect(rateDate(EMPTY_RATE, ['USD', 'DOP'], rates, '2026-10', '2026-10-01')).toBe('2026-10-01');
+  });
+
+  it('la fecha sin tocar: el primer día del mes si el par no tiene ninguna tasa escrita, aunque hoy sea otro día', () => {
+    const state = seedState();
+    const rates = pairRates(state, '2026-10');
+    expect(rateDate(EMPTY_RATE, ['TRY', 'DOP'], rates, '2026-10', '2026-10-07')).toBe('2026-10-01');
+    expect(rateDate(EMPTY_RATE, ['USD', 'TRY'], rates, '2026-10', '2026-10-07')).toBe('2026-10-01');
+    // Septiembre saca la suya de los envíos: tampoco hay escrita.
+    expect(rateDate(EMPTY_RATE, ['USD', 'DOP'], pairRates(state, '2026-09'), '2026-09', '2026-09-20')).toBe('2026-09-01');
+  });
+
+  it('la fecha sigue al par mientras no se elija una; la elegida manda', () => {
+    const rates = pairRates(seedState(), '2026-10');
+    const pairs = [ratePair(EMPTY_RATE, rates, 'DOP', 'USD'), pickRateCurrency(['TRY', 'DOP'], 'from', 'USD')];
+    expect(pairs).toEqual([
+      ['TRY', 'DOP'],
+      ['USD', 'DOP'],
+    ]);
+    expect(pairs.map((pair) => rateDate(EMPTY_RATE, pair, rates, '2026-10', '2026-10-07'))).toEqual(['2026-10-01', '2026-10-07']);
+    const chosen = { ...EMPTY_RATE, date: '2026-10-03' };
+    expect(pairs.map((pair) => rateDate(chosen, pair, rates, '2026-10', '2026-10-07'))).toEqual(['2026-10-03', '2026-10-03']);
+  });
+
   it('necesita una tasa mayor que 0', () => {
-    expect(canAddRate({ pair: null, rate: 58.76 })).toBe(true);
-    expect(canAddRate({ pair: ['USD', 'TRY'], rate: 0.024 })).toBe(true);
+    expect(canAddRate({ pair: null, rate: 58.76, date: null })).toBe(true);
+    expect(canAddRate({ pair: ['USD', 'TRY'], rate: 0.024, date: '2026-10-03' })).toBe(true);
     expect(canAddRate(EMPTY_RATE)).toBe(false);
-    expect(canAddRate({ pair: null, rate: -1 })).toBe(false);
-    expect(canAddRate({ pair: null, rate: Number.NaN })).toBe(false);
+    expect(canAddRate({ pair: null, rate: -1, date: null })).toBe(false);
+    expect(canAddRate({ pair: null, rate: Number.NaN, date: null })).toBe(false);
   });
 });

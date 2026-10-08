@@ -51,6 +51,7 @@ const usdGoal = (id: string, name: string, sort: number, plan: Pick<Goal, 'month
   id,
   name,
   cur: 'USD',
+  approxCur: null,
   ...plan,
   sort,
 });
@@ -89,7 +90,7 @@ function sampleState(): AppState {
     desc: 'Domain',
     place: 'Namecheap',
     cat: 'Pets',
-    method: 'Card',
+    method: 'Debit card',
     amount: 12.5,
     cur: 'USD',
     accountId: 'us',

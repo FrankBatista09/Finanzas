@@ -38,8 +38,9 @@ export function TransfersCard() {
   const currencies = useMemo(() => new Map(state.accounts.map((a) => [a.id, a.currency])), [state.accounts]);
 
   // Las cuentas y la tasa del borrador se resuelven con lo que hay ahora: sin tocar, siguen a la cuenta por
-  // defecto y a la tasa del mes.
-  const ctx: TransferContext = { accounts, visible: visibleAccounts, defaultAccount, rateOf: (from, to) => rateOf(from, to).rate };
+  // defecto y a la tasa vigente en la fecha del borrador (la que le pondría el servidor a un envío sin tasa).
+  const date = draft.date ?? draftDate;
+  const ctx: TransferContext = { accounts, visible: visibleAccounts, defaultAccount, rateOf: (from, to) => rateOf(from, to, undefined, date).rate };
   const sides = transferSides(draft, ctx);
   const rate = transferRate(draft, ctx);
   const fromId = sides.from?.id ?? '';

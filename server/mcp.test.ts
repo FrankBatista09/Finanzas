@@ -9,6 +9,8 @@ import { seedState } from '../shared/seed';
 import type { AppState, FixedExpense, Income, MonthKey, Transaction, Transfer } from '../shared/types';
 import {
   closeMonth,
+  addBudgetEntry,
+  addLeftover,
   createAccount,
   createFixed,
   getMonth,
@@ -461,6 +463,9 @@ describe('/mcp: initialize y métodos básicos', () => {
       expect(text, word).toContain(word);
     }
     expect(text).not.toMatch(SPANISH);
+    // La tarjeta a secas es la de débito, que además es el método por defecto.
+    expect(text).toContain('Payment methods: Debit card, Credit card, Transfer, Bank app, Cash. If none is given it is Debit card.');
+    expect(text).toContain('A plain "card" ("tarjeta", "kart") is stored as Debit card');
   });
 
   it('las instrucciones explican el modelo de dinero: cuentas, moneda principal y qué mueve cada registro', async () => {
@@ -630,7 +635,7 @@ describe('/mcp: protocolo sin handshake (2026-07-28)', () => {
       content: [
           {
             type: 'text',
-            text: 'Recorded for Frank: Uber · 850.00 DOP · Transport · Card · 2026-10-07 (October 2026) · paid from DR account. Used so far: 49,999.71 of 70,000 DOP. DR account balance: 219,791.93 DOP.',
+            text: 'Recorded for Frank: Uber · 850.00 DOP · Transport · Debit card · 2026-10-07 (October 2026) · paid from DR account. Used so far: 49,999.71 of 70,000 DOP. DR account balance: 219,791.93 DOP.',
           },
         ],
       structuredContent: expect.objectContaining({ user: FRANK, monthCreated: false }),
@@ -868,7 +873,7 @@ describe('/mcp: tools/list', () => {
     expect(tx.properties.account.description).toContain('default account');
     // Las listas son las canónicas en inglés, aunque se acepten también en español y en turco.
     expect(tx.properties.category).toMatchObject({ type: 'string', enum: [...CATS], default: 'Food' });
-    expect(tx.properties.method).toMatchObject({ type: 'string', enum: [...METHODS], default: 'Card' });
+    expect(tx.properties.method).toMatchObject({ type: 'string', enum: [...METHODS], default: 'Debit card' });
     expect(tx.properties.date).toMatchObject({ type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$' });
     expect(tx.properties.description).toMatchObject({ minLength: 1, maxLength: 200 });
 
@@ -899,7 +904,8 @@ describe('/mcp: tools/list', () => {
     expect(paid.properties.paid).toMatchObject({ type: 'boolean', default: true });
 
     const income = byName.add_income;
-    expect(Object.keys(income.properties)).toEqual(['user', 'amount', 'currency', 'account', 'date', 'description']);
+    expect(Object.keys(income.properties)).toEqual(['user', 'amount', 'currency', 'account', 'date', 'description', 'add_to_budget']);
+    expect(income.properties.add_to_budget).toMatchObject({ type: 'boolean', default: false });
     expect(income.required).toEqual(['user', 'amount']);
     expect(income.properties.currency).toMatchObject({ type: 'string', enum: ['DOP', 'USD', 'TRY'] });
     expect(income.properties.description).toMatchObject({ type: 'string', maxLength: 200 });
@@ -1080,11 +1086,11 @@ describe('de quién son las finanzas: `user`', () => {
     const eda = await callRaw(env, 'add_transaction', { ...expense, user: E });
     // Frank tiene tres meses y presupuesto; para Eda es su primer registro.
     expect(frank.text).toBe(
-      'Recorded for Frank: Uber · 850.00 DOP · Transport · Card · 2026-10-07 (October 2026) · paid from DR account. Used so far: 49,999.71 of 70,000 DOP. DR account balance: 219,791.93 DOP.',
+      'Recorded for Frank: Uber · 850.00 DOP · Transport · Debit card · 2026-10-07 (October 2026) · paid from DR account. Used so far: 49,999.71 of 70,000 DOP. DR account balance: 219,791.93 DOP.',
     );
     // Eda estrena sus propias cuentas (las iniciales, en cero): la suya también se llama "DR account", pero es otra.
     expect(eda.text).toBe(
-      'Recorded for Eda: Uber · 850.00 DOP · Transport · Card · 2026-10-07 (October 2026) · paid from DR account. The month October 2026 was created. Used so far: 850.00 DOP (no budget set). DR account balance: -850.00 DOP.',
+      'Recorded for Eda: Uber · 850.00 DOP · Transport · Debit card · 2026-10-07 (October 2026) · paid from DR account. The month October 2026 was created. Used so far: 850.00 DOP (no budget set). DR account balance: -850.00 DOP.',
     );
     expect(frank.data).toMatchObject({ user: FRANK, monthCreated: false, month: { budget: 70000 }, account: { id: 'dr' } });
     expect(eda.data).toMatchObject({ user: EDA, monthCreated: true, month: { budget: 0, used: 850 }, account: { id: 'dr', balance: -850 } });
@@ -1120,7 +1126,7 @@ describe('de quién son las finanzas: `user`', () => {
     expect(edaSummary[0]).toBe('Eda · October 2026 · amounts in DOP');
     expect(edaSummary).toContain("Month rates: USD to DOP: 60.00 (from this month's transfers)");
     expect(frankSummary[0]).toBe('Frank · October 2026 · amounts in DOP');
-    expect(frankSummary).toContain('Month rates: USD to DOP: 58.76 (typed for this month)');
+    expect(frankSummary).toContain('Month rates: USD to DOP: 58.76 (typed on 2026-10-06)');
     expect((await getMonth(db, F, '2026-10'))!.transfers).toHaveLength(1);
 
     const edaList = await callRaw(env, 'list_transactions', { user: E });
@@ -1173,7 +1179,7 @@ describe('de quién son las finanzas: `user`', () => {
 
     const added = await callRaw(env, 'add_transaction', { description: 'Uber', amount: 850 });
     expect(added.text).toBe(
-      'Recorded for Frank: Uber · 850.00 DOP · Food · Card · 2026-10-07 (October 2026) · paid from DR account. Used so far: 49,999.71 of 70,000 DOP. DR account balance: 219,791.93 DOP.',
+      'Recorded for Frank: Uber · 850.00 DOP · Food · Debit card · 2026-10-07 (October 2026) · paid from DR account. Used so far: 49,999.71 of 70,000 DOP. DR account balance: 219,791.93 DOP.',
     );
     expect(added.data!.user).toEqual(FRANK);
     expect(count(sqlite, 'transactions', F)).toBe(28);
@@ -1196,7 +1202,7 @@ describe('de quién son las finanzas: `user`', () => {
     const { env, sqlite } = makeEnv({ USERS: undefined });
     const r = await callRaw(env, 'add_transaction', { description: 'Uber', amount: 850 });
     expect(r.text).toBe(
-      'Recorded for Me: Uber · 850.00 DOP · Food · Card · 2026-10-07 (October 2026) · paid from DR account. The month October 2026 was created. Used so far: 850.00 DOP (no budget set). DR account balance: -850.00 DOP.',
+      'Recorded for Me: Uber · 850.00 DOP · Food · Debit card · 2026-10-07 (October 2026) · paid from DR account. The month October 2026 was created. Used so far: 850.00 DOP (no budget set). DR account balance: -850.00 DOP.',
     );
     expect(r.data!.user).toEqual({ id: 'me', name: 'Me' });
     expect(count(sqlite, 'transactions', 'me')).toBe(1);
@@ -1210,7 +1216,7 @@ describe('add_transaction', () => {
     const r = await call(env, 'add_transaction', { description: 'Uber', amount: 850, category: 'Transport', method: 'Card' });
     expect(r.isError).toBe(false);
     expect(r.text).toBe(
-      'Recorded for Frank: Uber · 850.00 DOP · Transport · Card · 2026-10-07 (October 2026) · paid from DR account. Used so far: 49,999.71 of 70,000 DOP. DR account balance: 219,791.93 DOP.',
+      'Recorded for Frank: Uber · 850.00 DOP · Transport · Debit card · 2026-10-07 (October 2026) · paid from DR account. Used so far: 49,999.71 of 70,000 DOP. DR account balance: 219,791.93 DOP.',
     );
 
     const stored = (await getMonth(db, F, '2026-10'))!.tx.at(-1)!;
@@ -1221,7 +1227,7 @@ describe('add_transaction', () => {
       desc: 'Uber',
       place: '',
       cat: 'Transport',
-      method: 'Card',
+      method: 'Debit card',
       amount: 850,
       cur: 'DOP',
       // Sin decir cuenta, sale de la cuenta por defecto del usuario.
@@ -1245,9 +1251,9 @@ describe('add_transaction', () => {
     const { env } = await seeded();
     const r = await call(env, 'add_transaction', { description: '  Empanadas  ', amount: 150.5 });
     expect(r.text).toBe(
-      'Recorded for Frank: Empanadas · 150.50 DOP · Food · Card · 2026-10-07 (October 2026) · paid from DR account. Used so far: 49,300.21 of 70,000 DOP. DR account balance: 220,491.43 DOP.',
+      'Recorded for Frank: Empanadas · 150.50 DOP · Food · Debit card · 2026-10-07 (October 2026) · paid from DR account. Used so far: 49,300.21 of 70,000 DOP. DR account balance: 220,491.43 DOP.',
     );
-    expect(r.data!.transaction).toMatchObject({ desc: 'Empanadas', cat: 'Food', method: 'Card', cur: 'DOP', accountId: 'dr', date: '2026-10-07', place: '', notes: '' });
+    expect(r.data!.transaction).toMatchObject({ desc: 'Empanadas', cat: 'Food', method: 'Debit card', cur: 'DOP', accountId: 'dr', date: '2026-10-07', place: '', notes: '' });
   });
 
   it('respeta todos los campos; un monto en otra moneda se muestra también en la principal y en la de la cuenta', async () => {
@@ -1272,13 +1278,24 @@ describe('add_transaction', () => {
   it('categoría y método dichos en español o en turco se guardan con su nombre canónico', async () => {
     const { env, db } = await seeded();
     const cases: [category: string, method: string, cat: string, stored: string][] = [
-      ['Transporte', 'Tarjeta', 'Transport', 'Card'],
-      ['Ulaşım', 'Kart', 'Transport', 'Card'],
+      // "Tarjeta", "Kart" o "card" a secas: la de débito.
+      ['Transporte', 'Tarjeta', 'Transport', 'Debit card'],
+      ['Ulaşım', 'Kart', 'Transport', 'Debit card'],
+      ['Transport', 'card', 'Transport', 'Debit card'],
+      ['Transporte', 'Tarjeta de débito', 'Transport', 'Debit card'],
+      ['Ulaşım', 'Banka kartı', 'Transport', 'Debit card'],
+      ['Ropa', 'Tarjeta de crédito', 'Clothing', 'Credit card'],
+      ['Giyim', 'Kredi kartı', 'Clothing', 'Credit card'],
+      ['Clothing', 'credit card', 'Clothing', 'Credit card'],
+      ['Ropa', 'tarjeta de credito', 'Clothing', 'Credit card'],
+      ['Comida', 'Efectivo', 'Food', 'Cash'],
+      ['Yemek', 'Nakit', 'Food', 'Cash'],
+      ['Food', 'cash', 'Food', 'Cash'],
       ['supermercado', 'app del banco', 'Groceries', 'Bank app'],
       ['Market', 'Banka uygulaması', 'Groceries', 'Bank app'],
       [' YEMEK ', 'Havale', 'Food', 'Transfer'],
       ['Educación', 'TRANSFERENCIA', 'Education', 'Transfer'],
-      ['Eğlence', 'kart', 'Entertainment', 'Card'],
+      ['Eğlence', 'kart', 'Entertainment', 'Debit card'],
       // En inglés, también sin importar las mayúsculas.
       ['travel', 'bank APP', 'Travel', 'Bank app'],
     ];
@@ -1306,7 +1323,7 @@ describe('add_transaction', () => {
     const { env } = await seeded();
     const r = await call(env, 'add_transaction', { description: 'Pan', amount: 90, currency: null, date: '', place: null, category: '  ', method: null, notes: '' });
     expect(r.isError).toBe(false);
-    expect(r.data!.transaction).toMatchObject({ date: '2026-10-07', place: '', cat: 'Food', method: 'Card', cur: 'DOP', notes: '' });
+    expect(r.data!.transaction).toMatchObject({ date: '2026-10-07', place: '', cat: 'Food', method: 'Debit card', cur: 'DOP', notes: '' });
   });
 
   it('"hoy" es la fecha en República Dominicana, no en UTC', async () => {
@@ -1327,7 +1344,7 @@ describe('add_transaction', () => {
     const { env, sqlite } = makeEnv();
     const r = await call(env, 'add_transaction', { description: 'Uber', amount: 850 });
     expect(r.text).toBe(
-      'Recorded for Frank: Uber · 850.00 DOP · Food · Card · 2026-10-07 (October 2026) · paid from DR account. The month October 2026 was created. Used so far: 850.00 DOP (no budget set). DR account balance: -850.00 DOP.',
+      'Recorded for Frank: Uber · 850.00 DOP · Food · Debit card · 2026-10-07 (October 2026) · paid from DR account. The month October 2026 was created. Used so far: 850.00 DOP (no budget set). DR account balance: -850.00 DOP.',
     );
     expect(r.data!.monthCreated).toBe(true);
     expect(count(sqlite, 'months')).toBe(1);
@@ -1338,7 +1355,7 @@ describe('add_transaction', () => {
     const { env, db } = await seeded();
     const r = await call(env, 'add_transaction', { description: 'Regalo', amount: 1500, date: '2026-11-03' });
     expect(r.text).toBe(
-      'Recorded for Frank: Regalo · 1,500.00 DOP · Food · Card · 2026-11-03 (November 2026) · paid from DR account. The month November 2026 was created. Used so far: 1,500.00 of 70,000 DOP. DR account balance: 219,141.93 DOP.',
+      'Recorded for Frank: Regalo · 1,500.00 DOP · Food · Debit card · 2026-11-03 (November 2026) · paid from DR account. The month November 2026 was created. Used so far: 1,500.00 of 70,000 DOP. DR account balance: 219,141.93 DOP.',
     );
     // El saldo es el de ahora: ya cuenta el gasto, aunque tenga fecha del mes siguiente.
     expect(r.data!.account.balance).toBe(await balanceOf(db, 'dr', F, '2026-11'));
@@ -1373,8 +1390,8 @@ describe('add_transaction', () => {
       // Fuera de las listas no se acepta en ningún idioma: después no se podría elegir en la aplicación.
       [{ description: 'x', amount: 10, category: 'Gasolina' }, `category: must be one of: ${CATS.join(', ')}`],
       [{ description: 'x', amount: 10, category: 5 }, `category: must be one of: ${CATS.join(', ')}`],
-      [{ description: 'x', amount: 10, method: 'Efectivo' }, `method: must be one of: ${METHODS.join(', ')}`],
-      [{ description: 'x', amount: 10, method: 'Nakit' }, `method: must be one of: ${METHODS.join(', ')}`],
+      [{ description: 'x', amount: 10, method: 'Cheque' }, `method: must be one of: ${METHODS.join(', ')}`],
+      [{ description: 'x', amount: 10, method: 'Çek' }, `method: must be one of: ${METHODS.join(', ')}`],
       [{ description: 'x', amount: 10, monthKey: '2026-10' }, 'monthKey'],
       [{ description: 'x'.repeat(201), amount: 10 }, 'description: allows up to 200 characters'],
     ];
@@ -1412,7 +1429,7 @@ describe('add_transaction', () => {
   it('a un mes que ya existe se puede escribir aunque quede lejos de hoy; el de otro usuario no cuenta', async () => {
     const t = makeEnv();
     const state = seedState();
-    state.months['2025-01'] = { ...state.months['2026-10']!, key: '2025-01', fixed: [], transfers: [], tx: [] };
+    state.months['2025-01'] = { ...state.months['2026-10']!, key: '2025-01', budgetLog: [], budgets: {}, rates: [], fixed: [], transfers: [], tx: [] };
     await replaceAll(t.db, F, state);
     const r = await call(t.env, 'add_transaction', { description: 'Atrasado', amount: 300, date: '2025-01-20' });
     expect(r.isError).toBe(false);
@@ -1431,7 +1448,7 @@ describe('add_transaction', () => {
     const t = await seeded();
     const r = await call(failsAfterWrite(t, 'transactions'), 'add_transaction', { description: 'Uber', amount: 12, currency: 'USD' });
     expect(r.isError).toBe(false);
-    expect(r.text).toBe('Recorded for Frank: Uber · 12.00 USD · Food · Card · 2026-10-07 (October 2026).');
+    expect(r.text).toBe('Recorded for Frank: Uber · 12.00 USD · Food · Debit card · 2026-10-07 (October 2026).');
     expect(r.data).toMatchObject({ user: FRANK, transaction: { desc: 'Uber', amount: 12 }, month: null });
     expect(count(t.sqlite, 'transactions', F)).toBe(28);
     expect(log).toHaveBeenCalledOnce();
@@ -1445,13 +1462,13 @@ describe('list_transactions', () => {
     expect(r.isError).toBe(false);
     expect(r.text.split('\n')).toEqual([
       'Frank · October 2026: 7 transactions · 10,845.00 DOP in total.',
-      '2026-10-07 · Coffee · Starbucks Ágora · 385.00 DOP · Food · Card · DR account',
-      '2026-10-06 · Gas · Texaco · 2,000.00 DOP · Transport · Card · DR account',
-      '2026-10-05 · Pharmacy · Farmacia Carol · 1,240.00 DOP · Health · Card · DR account',
+      '2026-10-07 · Coffee · Starbucks Ágora · 385.00 DOP · Food · Debit card · DR account',
+      '2026-10-06 · Gas · Texaco · 2,000.00 DOP · Transport · Debit card · DR account',
+      '2026-10-05 · Pharmacy · Farmacia Carol · 1,240.00 DOP · Health · Debit card · DR account',
       '2026-10-04 · Movies · Caribbean Cinemas · 900.00 DOP · Entertainment · Bank app · DR account',
-      '2026-10-03 · Lunch · Adrian Tropical · 1,150.00 DOP · Food · Card · DR account',
-      '2026-10-02 · Uber to work · Uber · 320.00 DOP · Transport · Card · DR account',
-      '2026-10-01 · Weekly groceries · Supermercado Nacional · 4,850.00 DOP · Groceries · Card · DR account',
+      '2026-10-03 · Lunch · Adrian Tropical · 1,150.00 DOP · Food · Debit card · DR account',
+      '2026-10-02 · Uber to work · Uber · 320.00 DOP · Transport · Debit card · DR account',
+      '2026-10-01 · Weekly groceries · Supermercado Nacional · 4,850.00 DOP · Groceries · Debit card · DR account',
     ]);
     expect(r.data).toMatchObject({ user: FRANK, month: '2026-10', label: 'October 2026', closed: false, today: '2026-10-07', currency: 'DOP', count: 7, total: 10845, shown: 7 });
     const listed = r.data!.transactions as (Transaction & { inMain: number; account: string | null })[];
@@ -1475,9 +1492,9 @@ describe('list_transactions', () => {
     await call(env, 'add_transaction', { description: 'Segundo', amount: 20, account: 'US account', notes: 'propina incluida' });
     const lines = (await call(env, 'list_transactions', { limit: 3 })).text.split('\n');
     expect(lines.slice(1)).toEqual([
-      '2026-10-07 · Segundo · 20.00 USD (1,175.20 DOP) · Food · Card · US account · Notes: propina incluida',
-      '2026-10-07 · Primero · 10.00 DOP · Food · Card · DR account',
-      '2026-10-07 · Coffee · Starbucks Ágora · 385.00 DOP · Food · Card · DR account',
+      '2026-10-07 · Segundo · 20.00 USD (1,175.20 DOP) · Food · Debit card · US account · Notes: propina incluida',
+      '2026-10-07 · Primero · 10.00 DOP · Food · Debit card · DR account',
+      '2026-10-07 · Coffee · Starbucks Ágora · 385.00 DOP · Food · Debit card · DR account',
     ]);
     expect(lines[0]).toContain('9 transactions · 12,030.20 DOP in total.');
   });
@@ -1487,7 +1504,7 @@ describe('list_transactions', () => {
     const r = await call(env, 'list_transactions', { month: '2026-08', limit: 1 });
     expect(r.text.split('\n')).toEqual([
       'Frank · August 2026 · closed: 10 transactions · 27,850.00 DOP in total. Showing the most recent one.',
-      '2026-08-29 · Gas · Shell · 2,000.00 DOP · Transport · Card · DR account',
+      '2026-08-29 · Gas · Shell · 2,000.00 DOP · Transport · Debit card · DR account',
     ]);
     expect(r.data).toMatchObject({ month: '2026-08', closed: true, count: 10 });
   });
@@ -1502,7 +1519,7 @@ describe('list_transactions', () => {
     await call(env, 'add_transaction', { description: 'Uber', amount: 850 });
     expect((await call(env, 'list_transactions')).text.split('\n')).toEqual([
       'Frank · October 2026: 1 transaction · 850.00 DOP in total.',
-      '2026-10-07 · Uber · 850.00 DOP · Food · Card · DR account',
+      '2026-10-07 · Uber · 850.00 DOP · Food · Debit card · DR account',
     ]);
   });
 
@@ -1543,6 +1560,10 @@ describe('month_summary', () => {
     expect(r.text.split('\n')).toEqual([
       'Frank · October 2026 · amounts in DOP',
       'Budget: 70,000.00 DOP (1,191.29 USD) · by account: DR account 70,000.00 DOP',
+      // Cómo llegó a 70,000: 65,000 iniciales y un ajuste de 5,000 el día 5.
+      'Budget history: 2026-10-01 initial DR account +65,000.00 DOP; 2026-10-05 adjustment DR account +5,000.00 DOP (Car repair)',
+      // Septiembre: 70,000 − (35,872.66 + 106 USD × 58.57 + 24,555) usados.
+      "Leftover of September 2026: 3,363.46 DOP, not added to this month's budget.",
       'Used so far: 49,149.71 DOP (836.45 USD)',
       'Available: 20,850.29 DOP',
       'Available after pending fixed: 17,129.43 DOP',
@@ -1552,7 +1573,8 @@ describe('month_summary', () => {
       'By category: Fixed expenses 38,304.71 DOP · Groceries 4,850.00 DOP · Transport 2,320.00 DOP · Food 1,535.00 DOP · Health 1,240.00 DOP · Entertainment 900.00 DOP',
       'Month income: 340,808.00 DOP · Income − used: 291,658.29 DOP',
       'Account balances at the end of October 2026: US account 13,482.00 USD (792,202.32 DOP); DR account 220,641.93 DOP · Total money: 1,012,844.25 DOP (17,236.97 USD)',
-      'Month rates: USD to DOP: 58.76 (typed for this month)',
+      'Month rates: USD to DOP: 58.76 (typed on 2026-10-06)',
+      'Rates typed in October 2026: 1 USD = 58.76 DOP from 2026-10-01; 1 USD = 58.76 DOP from 2026-10-06',
       'Today is 2026-10-07.',
     ]);
 
@@ -1567,7 +1589,12 @@ describe('month_summary', () => {
       secondCurrency: 'USD',
       budget: 70000,
       budgetSecond: near(70000 / 58.76),
-      budgetParts: [{ accountId: 'dr', name: 'DR account', currency: 'DOP', amount: 70000, inMain: 70000 }],
+      budgetParts: [{ accountId: 'dr', name: 'DR account', currency: 'DOP', amount: 70000, fromLog: 70000, fromIncomes: 0, inMain: 70000 }],
+      budgetHistory: [
+        { kind: 'initial', id: 'seed-bg-2026-10-1', date: '2026-10-01', accountId: 'dr', account: 'DR account', amount: 65000, currency: 'DOP', note: '', inMain: 65000, total: 65000 },
+        { kind: 'adjust', id: 'seed-bg-2026-10-2', date: '2026-10-05', accountId: 'dr', account: 'DR account', amount: 5000, currency: 'DOP', note: 'Car repair', inMain: 5000, total: 70000 },
+      ],
+      leftover: { previousMonth: '2026-09', amount: near(70000 - (35872.66 + (106 * 134721) / 2300 + 24555)), added: false },
       used: near(49149.71),
       usedSecond: near(49149.71 / 58.76),
       available: near(20850.29),
@@ -1600,7 +1627,11 @@ describe('month_summary', () => {
         { id: 'dr', name: 'DR account', currency: 'DOP', balance: near(220641.93), inMain: near(220641.93) },
       ],
       totalMoney: { main: near(1012844.25), second: near(13482 + 220641.93 / 58.76) },
-      rates: [{ from: 'USD', to: 'DOP', rate: 58.76, source: 'month', monthKey: '2026-10', note: 'typed for this month' }],
+      rates: [{ from: 'USD', to: 'DOP', rate: 58.76, source: 'month', monthKey: '2026-10', date: '2026-10-06', note: 'typed on 2026-10-06' }],
+      typedRates: [
+        { from: 'USD', to: 'DOP', rate: 58.76, date: '2026-10-01' },
+        { from: 'USD', to: 'DOP', rate: 58.76, date: '2026-10-06' },
+      ],
     });
     // Los saldos y el total son los de shared/calc.ts.
     const expected = balances(await loadState(db, F), '2026-10');
@@ -1666,7 +1697,7 @@ describe('month_summary', () => {
 
   it('si el mes del calendario se cerró antes de tiempo, resume el siguiente (y el cerrado, si se pide)', async () => {
     const { env, db } = await seeded();
-    await closeMonth(db, F, '2026-10', NOW);
+    await closeMonth(db, F, '2026-10', {}, NOW);
     const r = await call(env, 'month_summary');
     expect(r.data).toMatchObject({ month: '2026-11', closed: false, today: '2026-10-07', fixed: { count: 11, paidCount: 0 } });
     expect((await call(env, 'month_summary', { month: '2026-10' })).data).toMatchObject({ month: '2026-10', closed: true });
@@ -1761,20 +1792,20 @@ describe('add_transfer', () => {
     const { env, db } = await seeded();
     const r = await call(env, 'add_transfer', { ...US_TO_DR, amount: 100 });
     expect(r.text).toBe(
-      "Transfer recorded for Frank: 100.00 USD left US account, 5,876.00 DOP arrived in DR account (1 USD = 58.76 DOP) · Remitly · 2026-10-07 (October 2026). No rate was given: the month's rate was used (typed for this month). US account balance: 13,382.00 USD. DR account balance: 226,517.93 DOP.",
+      "Transfer recorded for Frank: 100.00 USD left US account, 5,876.00 DOP arrived in DR account (1 USD = 58.76 DOP) · Remitly · 2026-10-07 (October 2026). No rate was given: the rate in effect on that date was used (typed on 2026-10-06). US account balance: 13,382.00 USD. DR account balance: 226,517.93 DOP.",
     );
     expect(r.data).toMatchObject({ transfer: { rate: 58.76 }, rateSource: 'month', received: { amount: expect.closeTo(5876, 8), currency: 'DOP' } });
 
-    // En noviembre nadie ha escrito tasa ni hay envíos: vale la de octubre, y lo dice.
+    // En noviembre nadie ha escrito tasa: sigue vigente la última de octubre, y lo dice.
     const november = await call(env, 'add_transfer', { ...US_TO_DR, amount: 100, date: '2026-11-02' });
-    expect(november.text).toContain("No rate was given: the month's rate was used (from October 2026).");
+    expect(november.text).toContain('No rate was given: the rate in effect on that date was used (typed on 2026-10-06, still in effect).');
     expect(november.data).toMatchObject({ transfer: { rate: 58.76 }, rateSource: 'previous' });
 
     // Una tasa que nadie ha puesto nunca es un valor de respaldo: lo que llegó es aproximado y hay que preguntarlo.
     await createAccount(db, F, { id: 'tr', name: 'TR account', currency: 'TRY' });
     const lira = await call(env, 'add_transfer', { from_account: 'US account', to_account: 'TR account', amount: 100 });
     expect(lira.text).toBe(
-      "Transfer recorded for Frank: 100.00 USD left US account, 4,200.00 TRY arrived in TR account (1 USD = 42.00 TRY) · Remitly · 2026-10-07 (October 2026). No rate was given: the month's rate was used (default value, not set yet). Nobody has set that rate yet, so the amount that arrived is only approximate: ask the person how much arrived. US account balance: 13,182.00 USD. TR account balance: 4,200.00 TRY.",
+      "Transfer recorded for Frank: 100.00 USD left US account, 4,200.00 TRY arrived in TR account (1 USD = 42.00 TRY) · Remitly · 2026-10-07 (October 2026). No rate was given: the rate in effect on that date was used (default value, not set yet). Nobody has set that rate yet, so the amount that arrived is only approximate: ask the person how much arrived. US account balance: 13,182.00 USD. TR account balance: 4,200.00 TRY.",
     );
     expect(lira.data).toMatchObject({ rateSource: 'default', received: { amount: 4200, currency: 'TRY' } });
     expect(lira.data!.to.balance).toBe(await balanceOf(db, 'tr', F, '2026-11'));
@@ -1798,7 +1829,7 @@ describe('add_transfer', () => {
     // Pasar dinero entre cuentas propias no cambia el total, ni la tasa del mes.
     const summary = await call(env, 'month_summary');
     expect(summary.data!.totalMoney.main).toBeCloseTo(1012844.25, 6);
-    expect(summary.text).toContain('Month rates: USD to DOP: 58.76 (typed for this month)');
+    expect(summary.text).toContain('Month rates: USD to DOP: 58.76 (typed on 2026-10-06)');
 
     // Una tasa distinta de 1 inventaría o perdería dinero: no se acepta. Decir 1 no molesta.
     expect(await fails(env, 'add_transfer', { from_account: 'dr', to_account: 'ahorro', amount: 100, rate: 58.76 })).toBe(
@@ -2087,7 +2118,7 @@ describe('mark_fixed_paid', () => {
 
   it('si el mes del calendario se cerró antes de tiempo, marca el gasto del mes siguiente', async () => {
     const { env, db } = await seeded();
-    await closeMonth(db, F, '2026-10', NOW);
+    await closeMonth(db, F, '2026-10', {}, NOW);
     const r = await call(env, 'mark_fixed_paid', { name: 'Electricity' });
     expect(r.text).toBe(
       'Paid for Frank: Electricity · 1,337.15 DOP · November 2026 · paid from DR account. Monthly expenses: 1 of 11 paid · Fixed pending: 40,688.42 DOP. Used so far: 1,337.15 of 70,000 DOP. DR account balance: 219,304.78 DOP.',
@@ -2131,7 +2162,7 @@ describe('add_transaction: cuentas y monedas', () => {
     const { env, db } = await seeded();
     const r = await call(env, 'add_transaction', { description: 'Netflix', amount: 20, account: 'US account', category: 'Subscriptions' });
     expect(r.text).toBe(
-      'Recorded for Frank: Netflix · 20.00 USD (1,175.20 DOP) · Subscriptions · Card · 2026-10-07 (October 2026) · paid from US account. Used so far: 50,324.91 of 70,000 DOP. US account balance: 13,462.00 USD.',
+      'Recorded for Frank: Netflix · 20.00 USD (1,175.20 DOP) · Subscriptions · Debit card · 2026-10-07 (October 2026) · paid from US account. Used so far: 50,324.91 of 70,000 DOP. US account balance: 13,462.00 USD.',
     );
     expect(r.data!.transaction).toMatchObject({ amount: 20, cur: 'USD', accountId: 'us' });
     expect(r.data!.account).toEqual({ id: 'us', name: 'US account', currency: 'USD', balance: await balanceOf(db, 'us') });
@@ -2192,17 +2223,17 @@ describe('add_transaction: cuentas y monedas', () => {
     const r = await call(env, 'add_transaction', { description: 'Uber', amount: 15 });
     // Y sin `currency`, en la moneda de esa cuenta.
     expect(r.text).toBe(
-      'Recorded for Frank: Uber · 15.00 USD (881.40 DOP) · Food · Card · 2026-10-07 (October 2026) · paid from US account. Used so far: 50,031.11 of 70,000 DOP. US account balance: 13,467.00 USD.',
+      'Recorded for Frank: Uber · 15.00 USD (881.40 DOP) · Food · Debit card · 2026-10-07 (October 2026) · paid from US account. Used so far: 50,031.11 of 70,000 DOP. US account balance: 13,467.00 USD.',
     );
     expect(r.data!.transaction).toMatchObject({ cur: 'USD', accountId: 'us' });
   });
 
   it('un monto en liras se guarda en liras y resta de la cuenta convertido con la tasa del mes', async () => {
     const { env, db } = await seeded();
-    await setMonthRate(db, F, '2026-10', { from: 'TRY', to: 'DOP', rate: 1.5 });
+    await setMonthRate(db, F, '2026-10', { from: 'TRY', to: 'DOP', rate: 1.5, date: '2026-10-01' });
     const r = await call(env, 'add_transaction', { description: 'Çay', amount: 500, currency: 'TRY' });
     expect(r.text).toBe(
-      'Recorded for Frank: Çay · 500.00 TRY (750.00 DOP) · Food · Card · 2026-10-07 (October 2026) · paid from DR account (750.00 DOP). Used so far: 49,899.71 of 70,000 DOP. DR account balance: 219,891.93 DOP.',
+      'Recorded for Frank: Çay · 500.00 TRY (750.00 DOP) · Food · Debit card · 2026-10-07 (October 2026) · paid from DR account (750.00 DOP). Used so far: 49,899.71 of 70,000 DOP. DR account balance: 219,891.93 DOP.',
     );
     // Lo guardado es lo que dijo la persona, sin convertir.
     expect(r.data!.transaction).toMatchObject({ amount: 500, cur: 'TRY', accountId: 'dr' });
@@ -2216,7 +2247,7 @@ describe('add_transaction: cuentas y monedas', () => {
     const r = await call(env, 'add_transaction', { description: 'Çay', amount: 500, currency: 'TRY' });
     // 1 USD = 42 TRY de respaldo y 58.76 DOP: 500 TRY = 699.52 DOP.
     expect(r.text).toBe(
-      'Recorded for Frank: Çay · 500.00 TRY (699.52 DOP) · Food · Card · 2026-10-07 (October 2026) · paid from DR account (699.52 DOP). Used so far: 49,849.23 of 70,000 DOP. DR account balance: 219,942.41 DOP. Note: the rate TRY to DOP (1.40) is a default value, not set yet, so the converted amounts are only approximate.',
+      'Recorded for Frank: Çay · 500.00 TRY (699.52 DOP) · Food · Debit card · 2026-10-07 (October 2026) · paid from DR account (699.52 DOP). Used so far: 49,849.23 of 70,000 DOP. DR account balance: 219,942.41 DOP. Note: the rate TRY to DOP (1.40) is a default value, not set yet, so the converted amounts are only approximate.',
     );
     expect(r.data!.account.balance).toBe(await balanceOf(db, 'dr'));
     // Con las monedas de siempre no hay nada que avisar.
@@ -2226,18 +2257,18 @@ describe('add_transaction: cuentas y monedas', () => {
   it('una cuenta en liras: el gasto sale en liras y su saldo se dice en liras', async () => {
     const { env, db } = await seeded();
     await createAccount(db, F, { id: 'tr', name: 'TR account', currency: 'TRY', opening: 10000 });
-    await setMonthRate(db, F, '2026-10', { from: 'USD', to: 'TRY', rate: 40 });
+    await setMonthRate(db, F, '2026-10', { from: 'USD', to: 'TRY', rate: 40, date: '2026-10-01' });
     const r = await call(env, 'add_transaction', { description: 'Market', amount: 1200, account: 'TR account', category: 'Market' });
     // Sin tasa directa entre liras y pesos, se cruza por el dólar: 1,200 ÷ 40 × 58.76.
     expect(r.text).toBe(
-      'Recorded for Frank: Market · 1,200.00 TRY (1,762.80 DOP) · Groceries · Card · 2026-10-07 (October 2026) · paid from TR account. Used so far: 50,912.51 of 70,000 DOP. TR account balance: 8,800.00 TRY.',
+      'Recorded for Frank: Market · 1,200.00 TRY (1,762.80 DOP) · Groceries · Debit card · 2026-10-07 (October 2026) · paid from TR account. Used so far: 50,912.51 of 70,000 DOP. TR account balance: 8,800.00 TRY.',
     );
     expect(r.data!.account).toEqual({ id: 'tr', name: 'TR account', currency: 'TRY', balance: 8800 });
     expect(await balanceOf(db, 'tr')).toBe(8800);
 
     // Dólares pagados desde la cuenta en liras: se guardan en dólares y a la cuenta le restan liras.
     const usd = await call(env, 'add_transaction', { description: 'Hotel', amount: 50, currency: 'USD', account: 'tr' });
-    expect(usd.text).toContain('Hotel · 50.00 USD (2,938.00 DOP) · Food · Card · 2026-10-07 (October 2026) · paid from TR account (2,000.00 TRY).');
+    expect(usd.text).toContain('Hotel · 50.00 USD (2,938.00 DOP) · Food · Debit card · 2026-10-07 (October 2026) · paid from TR account (2,000.00 TRY).');
     expect(usd.text).toContain('TR account balance: 6,800.00 TRY.');
     expect(usd.data!.account.balance).toBe(await balanceOf(db, 'tr'));
   });
@@ -2250,7 +2281,7 @@ describe('add_transaction: cuentas y monedas', () => {
     expect(c.main).toBe('USD');
     // El gasto sigue saliendo de la cuenta por defecto (la de pesos), en pesos; el usado se dice en dólares.
     expect(r.text).toBe(
-      `Recorded for Frank: Uber · 587.60 DOP (10.00 USD) · Food · Card · 2026-10-07 (October 2026) · paid from DR account. Used so far: ${f2(c.used)} of 1,191 USD. DR account balance: 220,054.33 DOP.`,
+      `Recorded for Frank: Uber · 587.60 DOP (10.00 USD) · Food · Debit card · 2026-10-07 (October 2026) · paid from DR account. Used so far: ${f2(c.used)} of 1,191 USD. DR account balance: 220,054.33 DOP.`,
     );
     expect(r.data!.month).toMatchObject({ currency: 'USD', used: c.used, budget: c.budget });
   });
@@ -2288,22 +2319,24 @@ describe('month_summary: presupuesto por cuenta, monedas y tasas', () => {
 
     // Una cuenta en liras y nadie ha escrito su tasa: valor de respaldo, dicho en claro.
     await createAccount(db, F, { id: 'tr', name: 'TR account', currency: 'TRY', opening: 4200 });
-    expect(await ratesOf()).toBe('Month rates: USD to DOP: 58.76 (typed for this month); TRY to DOP: 1.40 (default value, not set yet)');
+    expect(await ratesOf()).toBe('Month rates: USD to DOP: 58.76 (typed on 2026-10-06); TRY to DOP: 1.40 (default value, not set yet)');
     const fallback = await call(env, 'month_summary');
-    expect(fallback.data!.rates[1]).toEqual({ from: 'TRY', to: 'DOP', rate: expect.closeTo(58.76 / 42, 10), source: 'default', monthKey: null, note: 'default value, not set yet' });
+    expect(fallback.data!.rates[1]).toEqual({ from: 'TRY', to: 'DOP', rate: expect.closeTo(58.76 / 42, 10), source: 'default', monthKey: null, date: null, note: 'default value, not set yet' });
     expect(fallback.text).toContain('TR account 4,200.00 TRY (5,876.00 DOP)');
 
     // Con la tasa dólar → lira del mes, la de liras a pesos se cruza por el dólar.
-    await setMonthRate(db, F, '2026-10', { from: 'USD', to: 'TRY', rate: 40 });
-    expect(await ratesOf()).toBe('Month rates: USD to DOP: 58.76 (typed for this month); TRY to DOP: 1.47 (crossed through USD)');
+    await setMonthRate(db, F, '2026-10', { from: 'USD', to: 'TRY', rate: 40, date: '2026-10-01' });
+    expect(await ratesOf()).toBe('Month rates: USD to DOP: 58.76 (typed on 2026-10-06); TRY to DOP: 1.47 (crossed through USD)');
 
     // Escrita para el mes, en cualquiera de los dos sentidos.
-    await setMonthRate(db, F, '2026-10', { from: 'DOP', to: 'TRY', rate: 0.8 });
-    expect(await ratesOf()).toBe('Month rates: USD to DOP: 58.76 (typed for this month); TRY to DOP: 1.25 (typed for this month)');
+    await setMonthRate(db, F, '2026-10', { from: 'DOP', to: 'TRY', rate: 0.8, date: '2026-10-01' });
+    expect(await ratesOf()).toBe('Month rates: USD to DOP: 58.76 (typed on 2026-10-06); TRY to DOP: 1.25 (typed on 2026-10-01)');
 
-    // Noviembre no tiene tasas ni envíos: valen las de octubre, y lo dice.
+    // Noviembre no tiene tasas propias: siguen vigentes las últimas escritas en octubre, y dice de cuándo son.
     await call(env, 'add_transaction', { description: 'Regalo', amount: 1500, date: '2026-11-03' });
-    expect(await ratesOf('2026-11')).toBe('Month rates: USD to DOP: 58.76 (from October 2026); TRY to DOP: 1.25 (from October 2026)');
+    expect(await ratesOf('2026-11')).toBe(
+      'Month rates: USD to DOP: 58.76 (typed on 2026-10-06, still in effect); TRY to DOP: 1.25 (typed on 2026-10-01, still in effect)',
+    );
     // Agosto es anterior a todo eso: su tasa del dólar sale de sus envíos y para la lira solo queda el valor de respaldo.
     expect(await ratesOf('2026-08')).toBe("Month rates: USD to DOP: 58.18 (from this month's transfers); TRY to DOP: 1.40 (default value, not set yet)");
   });
@@ -2311,7 +2344,7 @@ describe('month_summary: presupuesto por cuenta, monedas y tasas', () => {
   it('todo va en la moneda principal del usuario, con su código, y la segunda entre paréntesis', async () => {
     const { env, db } = await seeded();
     await createAccount(db, F, { id: 'tr', name: 'TR account', currency: 'TRY', opening: 4000 });
-    await setMonthRate(db, F, '2026-10', { from: 'USD', to: 'TRY', rate: 40 });
+    await setMonthRate(db, F, '2026-10', { from: 'USD', to: 'TRY', rate: 40, date: '2026-10-01' });
     await updateSettings(db, F, { mainCurrency: 'TRY', secondCurrency: 'USD' });
     const state = await loadState(db, F);
     const c = monthCalc(state, '2026-10');
@@ -2323,22 +2356,25 @@ describe('month_summary: presupuesto por cuenta, monedas y tasas', () => {
     expect(lines[0]).toBe('Frank · October 2026 · amounts in TRY');
     // 70,000 DOP ÷ 58.76 × 40 liras.
     expect(lines[1]).toBe('Budget: 47,651.46 TRY (1,191.29 USD) · by account: DR account 70,000.00 DOP (47,651.46 TRY)');
-    expect(lines[2]).toBe(`Used so far: ${f2(c.used)} TRY (836.45 USD)`);
-    expect(lines[3]).toBe(`Available: ${f2(c.avail)} TRY`);
+    // La historia va en la moneda de cada cuenta.
+    expect(lines[2]).toBe('Budget history: 2026-10-01 initial DR account +65,000.00 DOP; 2026-10-05 adjustment DR account +5,000.00 DOP (Car repair)');
+    expect(lines[3]).toMatch(/^Leftover of September 2026: [\d,.]+ TRY, not added to this month's budget\.$/);
+    expect(lines[4]).toBe(`Used so far: ${f2(c.used)} TRY (836.45 USD)`);
+    expect(lines[5]).toBe(`Available: ${f2(c.avail)} TRY`);
     expect(lines).toContain(`Transactions: 7 (${f2(c.varSpent)} TRY)`);
     expect(lines).toContain(`Month income: 232,000.00 TRY · Income − used: ${f2(c.incomeLeft)} TRY`);
     expect(lines).toContain(
       `Account balances at the end of October 2026: US account 13,482.00 USD (539,280.00 TRY); DR account 220,641.93 DOP (${f2(b.accounts[1]!.inMain)} TRY); TR account 4,000.00 TRY · Total money: ${f2(b.totalMain)} TRY (${f2(b.totalSecond)} USD)`,
     );
     // Cada tasa se lee en el sentido en que vale más de 1: "TRY to DOP: 1.47", no "DOP to TRY: 0.68".
-    expect(lines).toContain('Month rates: TRY to DOP: 1.47 (crossed through USD); USD to TRY: 40.00 (typed for this month)');
+    expect(lines).toContain('Month rates: TRY to DOP: 1.47 (crossed through USD); USD to TRY: 40.00 (typed on 2026-10-01)');
     expect(r.text).toContain('Still to pay: Google One 121.56 DOP (82.75 TRY), day 16;');
     expect(r.data).toMatchObject({ currency: 'TRY', secondCurrency: 'USD', budget: c.budget, used: c.used, usedSecond: c.usedSecond, totalMoney: { main: b.totalMain, second: b.totalSecond } });
 
     // Y las transacciones, igual.
     const list = (await call(env, 'list_transactions', { limit: 1 })).text.split('\n');
     expect(list[0]).toBe(`Frank · October 2026: 7 transactions · ${f2(c.varSpent)} TRY in total. Showing the most recent one.`);
-    expect(list[1]).toBe('2026-10-07 · Coffee · Starbucks Ágora · 385.00 DOP (262.08 TRY) · Food · Card · DR account');
+    expect(list[1]).toBe('2026-10-07 · Coffee · Starbucks Ágora · 385.00 DOP (262.08 TRY) · Food · Debit card · DR account');
   });
 
   it('las cuentas ocultas no salen en los saldos ni cuentan en el total', async () => {
@@ -2367,12 +2403,13 @@ describe('add_income', () => {
       accountId: 'dr',
       amount: 2500,
       cur: 'DOP',
+      budget: false,
     } satisfies Record<keyof Income, unknown>);
     expect(r.data).toEqual({
       user: FRANK,
       income: stored,
       account: { id: 'dr', name: 'DR account', currency: 'DOP', balance: await balanceOf(db, 'dr') },
-      month: { key: '2026-10', label: 'October 2026', currency: 'DOP', income: expect.closeTo(343308, 6), incomeCount: 2 },
+      month: { key: '2026-10', label: 'October 2026', currency: 'DOP', income: expect.closeTo(343308, 6), incomeCount: 2, budget: 70000 },
     });
     expect(r.data!.account.balance).toBeCloseTo(220641.93 + 2500, 6);
     // Un ingreso no es un gasto ni toca el mes: solo hay una fila más en incomes.
@@ -2410,7 +2447,7 @@ describe('add_income', () => {
   it('un ingreso en liras, a una cuenta en liras o a otra', async () => {
     const { env, db } = await seeded();
     await createAccount(db, F, { id: 'tr', name: 'TR account', currency: 'TRY' });
-    await setMonthRate(db, F, '2026-10', { from: 'TRY', to: 'DOP', rate: 1.5 });
+    await setMonthRate(db, F, '2026-10', { from: 'TRY', to: 'DOP', rate: 1.5, date: '2026-10-01' });
     const own = await call(env, 'add_income', { amount: 30000, account: 'TR account', description: 'Maaş' });
     expect(own.text).toBe(
       'Income recorded for Frank: Maaş · 30,000.00 TRY (45,000.00 DOP) · into TR account · 2026-10-07 (October 2026). TR account balance: 30,000.00 TRY. Income in October 2026 so far: 385,808.00 DOP.',
@@ -2515,6 +2552,114 @@ describe('add_income', () => {
   });
 });
 
+describe('presupuesto con historia, sobrante e ingresos que lo suben', () => {
+  it('add_income con add_to_budget: el ingreso entra a la cuenta y además sube el presupuesto del mes, y lo dice', async () => {
+    const { env, db } = await seeded();
+    const r = await call(env, 'add_income', { amount: 2500, description: 'Bonus', add_to_budget: true });
+    expect(r.isError).toBe(false);
+    expect(r.text).toBe(
+      'Income recorded for Frank: Bonus · 2,500.00 DOP · into DR account · 2026-10-07 (October 2026). DR account balance: 223,141.93 DOP. Income in October 2026 so far: 343,308.00 DOP. It was also added to the budget of October 2026, now 72,500.00 DOP.',
+    );
+    expect(r.data!.income).toMatchObject({ desc: 'Bonus', amount: 2500, cur: 'DOP', accountId: 'dr', budget: true });
+    expect(r.data!.month).toMatchObject({ key: '2026-10', budget: 72500 });
+    expect((await listIncomes(db, F)).at(-1)!.budget).toBe(true);
+    // No se escribe en el registro: lo suma el cálculo.
+    expect((await getMonth(db, F, '2026-10'))!.budgetLog).toHaveLength(2);
+    const c = monthCalc(await loadState(db, F), '2026-10');
+    expect([c.budget, f2(c.avail)]).toEqual([72500, '23,350.29']);
+
+    // Sin pedirlo (o con false), el presupuesto no se mueve y la respuesta no lo menciona.
+    const plain = await call(env, 'add_income', { amount: 100, add_to_budget: false });
+    expect(plain.text).not.toContain('budget');
+    expect(plain.data!.income.budget).toBe(false);
+    expect(monthCalc(await loadState(db, F), '2026-10').budget).toBe(72500);
+    expect(await fails(env, 'add_income', { amount: 100, add_to_budget: 'yes' })).toBe('Invalid data: add_to_budget: must be true or false');
+  });
+
+  it('add_income con add_to_budget en otra moneda: sube lo que vale en la moneda de la cuenta, a la tasa de su fecha', async () => {
+    const { env, db } = await seeded();
+    // 100 USD a la DR account el día 7: 5,876 DOP.
+    const r = await call(env, 'add_income', { amount: 100, currency: 'USD', account: 'DR account', description: 'Gig', add_to_budget: true });
+    expect(r.text).toContain('Gig · 100.00 USD (5,876.00 DOP) · into DR account (5,876.00 DOP)');
+    expect(r.text).toContain('It was also added to the budget of October 2026, now 75,876.00 DOP.');
+    // Se escribe 60 desde el día 8: lo del día 7 no cambia.
+    await setMonthRate(db, F, '2026-10', { from: 'USD', to: 'DOP', rate: 60, date: '2026-10-08' });
+    expect(monthCalc(await loadState(db, F), '2026-10').budget).toBeCloseTo(75876, 8);
+  });
+
+  it('add_income con add_to_budget en un mes que todavía no existe: queda marcado y lo dice', async () => {
+    const { env, db } = await seeded();
+    const r = await call(env, 'add_income', { amount: 1000, date: '2026-11-02', add_to_budget: true });
+    expect(r.text).toContain('It is marked to raise the budget of November 2026, a month that does not exist yet: it will count when the month is created.');
+    expect(r.data!.month).toMatchObject({ key: '2026-11', budget: null });
+    expect(await getMonth(db, F, '2026-11')).toBeNull();
+  });
+
+  it('month_summary cuenta la historia del presupuesto: inicial, ajustes, sobrante e ingresos, por fecha', async () => {
+    const { env, db } = await seeded();
+    await addBudgetEntry(db, F, '2026-10', { accountId: 'dr', amount: -1200, date: '2026-10-06', note: 'Less eating out' }, NOW);
+    await addLeftover(db, F, '2026-10', NOW);
+    await call(env, 'add_income', { amount: 100, currency: 'USD', account: 'DR account', description: 'Gig', date: '2026-10-03', add_to_budget: true });
+
+    const r = await call(env, 'month_summary');
+    const lines = r.text.split('\n');
+    // 65,000 + 5,876 + 5,000 − 1,200 + 3,363.46 (lo que sobró en septiembre).
+    expect(lines[1]).toBe('Budget: 78,039.46 DOP (1,328.11 USD) · by account: DR account 78,039.46 DOP');
+    expect(lines[2]).toBe(
+      'Budget history: 2026-10-01 initial DR account +65,000.00 DOP; 2026-10-03 income DR account +5,876.00 DOP (Gig); 2026-10-05 adjustment DR account +5,000.00 DOP (Car repair); 2026-10-06 adjustment DR account -1,200.00 DOP (Less eating out); 2026-10-07 leftover DR account +3,363.46 DOP',
+    );
+    // Ya sumado, el sobrante no se vuelve a ofrecer.
+    expect(r.text).not.toContain('Leftover of');
+    expect(lines[3]).toBe('Used so far: 49,149.71 DOP (836.45 USD)');
+    expect(r.data!.leftover).toMatchObject({ previousMonth: '2026-09', added: true });
+    expect(r.data!.budgetHistory.map((h: { kind: string; total: number }) => [h.kind, Math.round(h.total * 100) / 100])).toEqual([
+      ['initial', 65000],
+      ['income', 70876],
+      ['adjust', 75876],
+      ['adjust', 74676],
+      ['leftover', 78039.46],
+    ]);
+    expect(r.data!.budgetParts).toEqual([
+      { accountId: 'dr', name: 'DR account', currency: 'DOP', amount: expect.closeTo(78039.46, 2), fromLog: expect.closeTo(72163.46, 2), fromIncomes: 5876, inMain: expect.closeTo(78039.46, 2) },
+    ]);
+    expect(r.data!.budget).toBe(monthCalc(await loadState(db, F), '2026-10').budget);
+  });
+
+  it('month_summary: el primer mes no tiene sobrante que ofrecer; uno negativo se dice en negativo', async () => {
+    const { env, db } = await seeded();
+    const august = await call(env, 'month_summary', { month: '2026-08' });
+    expect(august.text).not.toContain('Leftover');
+    expect(august.data!.leftover).toEqual({ previousMonth: null, amount: null, added: false });
+    expect(august.text).toContain('Budget history: 2026-08-01 initial DR account +70,000.00 DOP');
+
+    // Un gasto de 30,000 en octubre lo deja en −9,149.71 disponibles: es lo que hereda noviembre.
+    await call(env, 'add_transaction', { description: 'Roof', amount: 30000 });
+    await call(env, 'add_transaction', { description: 'Regalo', amount: 10, date: '2026-11-02' });
+    const november = await call(env, 'month_summary', { month: '2026-11' });
+    expect(november.text).toContain("Leftover of October 2026: -9,149.71 DOP, not added to this month's budget.");
+    expect((await getMonth(db, F, '2026-11'))!.budgets).toEqual({ dr: 70000 });
+  });
+
+  it('month_summary: las tasas llevan su fecha, y cada importe va con la vigente en la suya', async () => {
+    const { env, db } = await seeded();
+    // 10 USD pagados desde la cuenta en DOP el día 2 (a 58.76); el día 8 se escribe 60.
+    await call(env, 'add_transaction', { description: 'Domain', amount: 10, currency: 'USD', date: '2026-10-02' });
+    await setMonthRate(db, F, '2026-10', { from: 'USD', to: 'DOP', rate: 60, date: '2026-10-08' });
+    const r = await call(env, 'month_summary', {}, new Date('2026-10-08T16:00:00Z'));
+    expect(r.text).toContain('Month rates: USD to DOP: 60.00 (typed on 2026-10-08)');
+    expect(r.text).toContain('Rates typed in October 2026: 1 USD = 58.76 DOP from 2026-10-01; 1 USD = 58.76 DOP from 2026-10-06; 1 USD = 60.00 DOP from 2026-10-08');
+    expect(r.data!.rates).toEqual([{ from: 'USD', to: 'DOP', rate: 60, source: 'month', monthKey: '2026-10', date: '2026-10-08', note: 'typed on 2026-10-08' }]);
+    // La transacción del día 2 sigue valiendo 587.60; el fijo en USD (del mes entero) ya va a 60.
+    expect(r.text).toContain('Transactions: 8 (11,432.60 DOP)');
+    expect(r.data!.fixed.paid).toBeCloseTo(32076.15 + 106 * 60, 6);
+    const list = await call(env, 'list_transactions', { limit: 20 });
+    expect(list.text).toContain('2026-10-02 · Domain · 10.00 USD (587.60 DOP) · Food · Debit card · DR account');
+    // Una del día 8 se registra a 60 y lo dice.
+    const today = await call(env, 'add_transaction', { description: 'Hosting', amount: 10, currency: 'USD' }, new Date('2026-10-08T16:00:00Z'));
+    expect(today.text).toContain('Hosting · 10.00 USD (600.00 DOP) · Food · Debit card · 2026-10-08 (October 2026) · paid from DR account (600.00 DOP)');
+  });
+});
+
 describe('list_accounts', () => {
   it('lista las cuentas visibles con su moneda y su saldo, cuál es la de por defecto y el total en las dos monedas', async () => {
     const { env, db, sqlite } = await seeded();
@@ -2525,7 +2670,7 @@ describe('list_accounts', () => {
       'US account · USD · balance 13,482.00 USD (792,202.32 DOP)',
       'DR account · DOP · balance 220,641.93 DOP · default account',
       'Total money: 1,012,844.25 DOP (17,236.97 USD)',
-      'Rates used (October 2026): USD to DOP: 58.76 (typed for this month)',
+      'Rates used (October 2026): USD to DOP: 58.76 (typed on 2026-10-06)',
       'Today is 2026-10-07.',
     ]);
 
@@ -2544,7 +2689,7 @@ describe('list_accounts', () => {
       ],
       totalMoney: { main: b.totalMain, second: b.totalSecond },
       hiddenCount: 0,
-      rates: [{ from: 'USD', to: 'DOP', rate: 58.76, source: 'month', monthKey: '2026-10', note: 'typed for this month' }],
+      rates: [{ from: 'USD', to: 'DOP', rate: 58.76, source: 'month', monthKey: '2026-10', date: '2026-10-06', note: 'typed on 2026-10-06' }],
     });
     // Es de solo lectura.
     expect(await loadState(db, F)).toEqual(await loadState(db, E));
@@ -2569,7 +2714,7 @@ describe('list_accounts', () => {
     const next = await call(env, 'list_accounts');
     expect(next.data).toMatchObject({ asOf: '2026-11' });
     expect(next.data!.accounts[1].balance).toBe(await balanceOf(db, 'dr', F, '2026-11'));
-    expect(next.text).toContain('Rates used (November 2026): USD to DOP: 58.76 (from October 2026)');
+    expect(next.text).toContain('Rates used (November 2026): USD to DOP: 58.76 (typed on 2026-10-06, still in effect)');
   });
 
   it('cuentas en tres monedas, la de por defecto que eligió el usuario, y las ocultas fuera de la lista y del total', async () => {
@@ -2588,7 +2733,7 @@ describe('list_accounts', () => {
       'Türkiye hesabı · TRY · balance 8,400.00 TRY (11,752.00 DOP)',
       'Total money: 1,024,596.25 DOP (17,436.97 USD)',
       'Hidden accounts, not listed and not counted in the total: 1.',
-      'Rates used (October 2026): USD to DOP: 58.76 (typed for this month); TRY to DOP: 1.40 (default value, not set yet)',
+      'Rates used (October 2026): USD to DOP: 58.76 (typed on 2026-10-06); TRY to DOP: 1.40 (default value, not set yet)',
       'Today is 2026-10-07.',
     ]);
     expect(r.data).toMatchObject({ defaultAccountId: 'us', hiddenCount: 1 });
@@ -2616,7 +2761,7 @@ describe('list_accounts', () => {
       'US account · USD · balance 13,482.00 USD',
       'DR account · DOP · balance 220,641.93 DOP (3,754.97 USD) · default account',
       `Total money: 17,236.97 USD (${f2(b.totalSecond)} TRY)`,
-      'Rates used (October 2026): USD to DOP: 58.76 (typed for this month); USD to TRY: 42.00 (default value, not set yet)',
+      'Rates used (October 2026): USD to DOP: 58.76 (typed on 2026-10-06); USD to TRY: 42.00 (default value, not set yet)',
       'Today is 2026-10-07.',
     ]);
     expect(b.totalSecond).toBeCloseTo(17236.968 * 42, 0);
