@@ -208,6 +208,22 @@ describe('mes abierto · October 2026', () => {
     expect(buttons(card)).toEqual(['×', 'Add rate']);
   });
 
+  it('envíos: la tarjeta va a todo el ancho, fuera de las dos columnas y antes del historial', () => {
+    // El bloque de dos columnas (gastos mensuales | categorías y tasas) se cierra antes de la tarjeta de envíos.
+    const columns = section(html, '<div class="_columns_', '>Transfers</h2>');
+    const cardStart = columns.lastIndexOf('<div class="_card_');
+    const block = columns.slice(0, cardStart);
+    expect(block.match(/<div\b/g)).toHaveLength(block.match(/<\/div>/g)!.length);
+    expect(block).toContain('class="_side_');
+    expect(block).toContain('>By category</h2>');
+    expect(block).toContain('>Month rates</h2>');
+    // La tarjeta es hija directa de la pila de la hoja, como el historial: sin clase de columna.
+    expect(columns.slice(cardStart)).toMatch(/^<div class="_card_\w+"><div class="_header_\w+"><h2 class="_title_\w+"$/);
+    const order = ['>Monthly expenses</h2>', '>By category</h2>', '>Month rates</h2>', '>Transfers</h2>', '>Transaction history</h2>'].map((x) => html.indexOf(x));
+    expect(order.every((x) => x >= 0)).toBe(true);
+    expect(order).toEqual([...order].sort((a, b) => a - b));
+  });
+
   it('envíos: cada fila se edita en su sitio, con sus cuentas, su tasa y lo recibido', () => {
     const card = section(html, 'Transfers', 'Transaction history');
     expect(bare(card)).toContain('Transfers Date Via From Amount To Rate Received USD 88,140.00 DOP × Add');
@@ -305,7 +321,8 @@ describe('mes abierto · October 2026', () => {
     expect(draftRow).toContain(
       '<option value="Card" selected="">Card</option><option value="Transfer">Transfer</option><option value="Bank app">Bank app</option>',
     );
-    expect([...draftRow.matchAll(/<option /g)]).toHaveLength(10 + 3 + 3 + 2);
+    expect([...draftRow.matchAll(/<option /g)]).toHaveLength(11 + 3 + 3 + 2);
+    expect(draftRow).toContain('<option value="Travel">Travel</option><option value="Other">Other</option></select>');
     expect(selected(draftRow, 'Account of the new transaction')).toBe('dr');
     expect(selected(draftRow, 'Currency of the new transaction')).toBe('DOP');
     expect(selected(card, 'Account of Coffee')).toBe('dr');
@@ -613,7 +630,7 @@ describe('casos límite', () => {
     const html = render('2026-10', { state });
     const card = section(html, 'Transaction history', 'Closing the month');
     // Van al final de su lista y son la opción seleccionada; el resto de las filas no las ofrece.
-    expect(card).toContain('<option value="Travel">Travel</option><option value="Pets" selected="">Pets</option></select>');
+    expect(card).toContain('<option value="Other">Other</option><option value="Pets" selected="">Pets</option></select>');
     expect(card).toContain('<option value="Bank app">Bank app</option><option value="Cash" selected="">Cash</option></select>');
     expect([...card.matchAll(/value="Pets"/g)]).toHaveLength(1);
     expect([...card.matchAll(/value="Cash"/g)]).toHaveLength(1);
@@ -685,7 +702,7 @@ describe('en español', () => {
     coffee.cat = 'Pets';
     coffee.method = 'Cash';
     const out = render('2026-10', { lang: 'es', state });
-    expect(out).toContain('<option value="Travel">Viajes</option><option value="Pets" selected="">Pets</option></select>');
+    expect(out).toContain('<option value="Other">Otros</option><option value="Pets" selected="">Pets</option></select>');
     expect(out).toContain('<option value="Bank app">App del banco</option><option value="Cash" selected="">Cash</option></select>');
     expect(text(out)).toContain('Pets 385');
   });

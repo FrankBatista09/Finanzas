@@ -69,6 +69,8 @@ export const en = {
   excelLoaded: 'Loaded: {file}',
   excelFailed: 'Could not read the file',
   downloadExcel: 'Download Excel',
+  allMonths: 'All months',
+  downloadMonths: 'Download ({count})',
   excel: 'Excel',
   excelNote: 'The Excel file is a summary in USD and DOP, with two accounts, until it is redesigned.',
   monthRate: 'Month rate',

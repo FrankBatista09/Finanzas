@@ -6,11 +6,17 @@ import type { ImportPayload } from '../../shared/api';
 import { buildExportData } from '../../shared/excel/data';
 import { buildFinanzasXlsx, excelLocale, XLSX_MIME, xlsxFilename } from '../../shared/excel/export';
 import { parseFinanzasXlsx } from '../../shared/excel/import';
-import type { AppState, AppUser } from '../../shared/types';
+import type { AppState, AppUser, MonthKey } from '../../shared/types';
 
-/** El libro completo (una hoja por mes, ahorros y configuración) listo para descargar, en el idioma del usuario. */
-export function excelBlob(state: AppState): Blob {
-  return new Blob([buildFinanzasXlsx(buildExportData(state), { locale: excelLocale(state.language) })], { type: XLSX_MIME });
+/**
+ * El libro (una hoja por mes, ahorros y configuración) listo para descargar, en el idioma del usuario.
+ * `months`, si viene, deja solo esas hojas de mes. Los datos se calculan con todo el histórico (saldos, tasas)
+ * y después se filtran: quitar un mes del libro no cambia las cifras de los demás.
+ */
+export function excelBlob(state: AppState, months?: readonly MonthKey[]): Blob {
+  const data = buildExportData(state);
+  if (months) data.months = data.months.filter((m) => months.includes(m.key));
+  return new Blob([buildFinanzasXlsx(data, { locale: excelLocale(state.language) })], { type: XLSX_MIME });
 }
 
 /** Nombre del archivo que descarga ese usuario. */

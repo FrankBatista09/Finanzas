@@ -113,7 +113,7 @@ describe('optionsWith', () => {
   it('un valor de fuera se agrega al final, sin tocar la lista base', () => {
     expect(optionsWith(CATS, 'Pets')).toEqual([...CATS, 'Pets']);
     expect(optionsWith(METHODS, 'Cash')).toEqual(['Card', 'Transfer', 'Bank app', 'Cash']);
-    expect(CATS).toHaveLength(10);
+    expect(CATS).toHaveLength(11);
     expect(METHODS).toHaveLength(3);
   });
 

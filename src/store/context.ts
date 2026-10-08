@@ -137,7 +137,7 @@ export interface Actions {
   /** Lee el .xlsx en el navegador, manda su contenido al servidor, recarga el estado y selecciona el último mes importado. Nunca rechaza. */
   importExcel(file: File): Promise<void>;
   /** Guarda lo pendiente y descarga el Excel del usuario, generado en el navegador, en su idioma, con el estado del servidor. Nunca rechaza (si falla, avisa). */
-  downloadExcel(): Promise<void>;
+  downloadExcel(months?: readonly MonthKey[]): Promise<void>;
   /** Solo si el servidor expone /api/dev/*: carga los datos de ejemplo del usuario actual. */
   devSeed(): Promise<void>;
   /** Solo si el servidor expone /api/dev/*: deja en blanco al usuario actual. */

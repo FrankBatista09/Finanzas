@@ -6,9 +6,11 @@ import { describe, expect, it } from 'vitest';
 import type { ApiErrorCode } from '../../shared/api';
 import { buildExportData } from '../../shared/excel/data';
 import { buildFinanzasXlsx, excelLocale } from '../../shared/excel/export';
+import { readBook } from '../../shared/excel/export-testkit';
 import { ImportError } from '../../shared/excel/import';
 import { LANGUAGES } from '../../shared/i18n';
 import { seedState } from '../../shared/seed';
+import type { MonthKey } from '../../shared/types';
 import { ApiError, NetworkError } from '../api/client';
 import { createI18n } from '../i18n';
 import { excelBlob, excelFilename, readExcel } from './excel';
@@ -55,6 +57,82 @@ describe('excelBlob', () => {
     expect(es.includes('Octubre 2026')).toBe(true);
     expect(tr.includes('Ekim 2026')).toBe(true);
     expect(en.includes('Octubre 2026')).toBe(false);
+  });
+
+  describe('con meses elegidos', () => {
+    const book = async (blob: Blob) => readBook(new Uint8Array(await blob.arrayBuffer()));
+    /** Lo que cada celda de la hoja guarda: valor y fórmula (el índice de estilo depende del resto del libro). */
+    const content = (sheet: { cells: Map<string, { formula: string | null; value: unknown }> }) =>
+      [...sheet.cells].map(([ref, c]) => [ref, c.formula, c.value]);
+
+    it('el libro lleva solo las hojas de esos meses, además de ahorros y Config', async () => {
+      const names = async (months?: Parameters<typeof excelBlob>[1]) => (await book(excelBlob(seedState(), months))).sheets.map((x) => x.name);
+      expect(await names()).toEqual(['August 2026', 'September 2026', 'October 2026', 'Savings', 'Config']);
+      expect(await names(['2026-09'])).toEqual(['September 2026', 'Savings', 'Config']);
+      expect(await names(['2026-08', '2026-10'])).toEqual(['August 2026', 'October 2026', 'Savings', 'Config']);
+      // El orden de la selección no importa: las hojas van siempre de la más antigua a la más reciente.
+      expect(await names(['2026-10', '2026-08'])).toEqual(['August 2026', 'October 2026', 'Savings', 'Config']);
+      // Un mes que el usuario no tiene no inventa una hoja.
+      expect(await names(['2026-10', '2027-01'])).toEqual(['October 2026', 'Savings', 'Config']);
+    });
+
+    it('todos los meses elegidos es, byte a byte, el libro completo', async () => {
+      const full = await bytes(excelBlob(seedState()));
+      expect((await bytes(excelBlob(seedState(), ['2026-08', '2026-09', '2026-10']))).equals(full)).toBe(true);
+      expect((await bytes(excelBlob(seedState(), ['2026-09', '2026-10']))).equals(full)).toBe(false);
+    });
+
+    it('las cifras de un mes no cambian por dejar fuera los demás: salen de todo el histórico', async () => {
+      for (const { id: language } of LANGUAGES) {
+        const state = { ...seedState(), language };
+        const data = buildExportData(state);
+        const full = await book(excelBlob(state));
+        for (const keys of [['2026-10'], ['2026-09'], ['2026-08', '2026-10']] as MonthKey[][]) {
+          const blob = excelBlob(state, keys);
+          // Es el libro de shared/excel con los datos completos, menos los meses que no se eligieron.
+          const direct = buildFinanzasXlsx({ ...data, months: data.months.filter((m) => keys.includes(m.key)) }, { locale: excelLocale(language) });
+          expect((await bytes(blob)).equals(Buffer.from(direct)), `${language} ${keys.join()}`).toBe(true);
+          // Cada hoja que queda es, celda a celda, la del libro completo.
+          const part = await book(blob);
+          const months = part.sheets.slice(0, -2);
+          expect(months).toHaveLength(keys.length);
+          for (const sheet of months) expect(content(sheet), `${language} ${sheet.name}`).toEqual(content(full.sheet(sheet.name)));
+        }
+      }
+    });
+
+    it('los saldos de octubre siguen arrastrando agosto y septiembre aunque no vayan en el libro', async () => {
+      const state = seedState();
+      const only = await readExcel(excelBlob(state, ['2026-10']));
+      expect(only.months.map((m) => m.key)).toEqual(['2026-10']);
+      const all = await readExcel(excelBlob(state));
+      expect(only.months[0]).toEqual(all.months.find((m) => m.key === '2026-10'));
+      expect(only.months[0]!.accounts.usd).toBeCloseTo(13482, 6);
+      expect(only.months[0]!.accounts.dop).toBeCloseTo(220641.93, 2);
+      // Un gasto de agosto, que no va en el libro, baja igualmente el saldo con el que llega octubre.
+      const less = seedState();
+      less.months['2026-08']!.tx.push({ ...less.months['2026-08']!.tx[0]!, id: 'extra', amount: 1000, cur: 'DOP', accountId: 'dr' });
+      const after = await readExcel(excelBlob(less, ['2026-10']));
+      expect(after.months[0]!.accounts.dop).toBeCloseTo(only.months[0]!.accounts.dop! - 1000, 6);
+      // Las metas y todos los aportes van siempre, también los de los meses que no se eligieron.
+      expect(only.goals).toEqual(all.goals);
+      expect(only.contribs).toEqual(all.contribs);
+      expect(only.contribs).toHaveLength(8);
+    });
+
+    it('no modifica el estado ni lo que devuelve buildExportData para el libro completo', async () => {
+      const state = seedState();
+      const before = JSON.stringify(state);
+      const full = await bytes(excelBlob(state));
+      excelBlob(state, ['2026-09']);
+      expect(JSON.stringify(state)).toBe(before);
+      expect((await bytes(excelBlob(state))).equals(full)).toBe(true);
+    });
+
+    it('el mes actual de Config es el último de los elegidos', async () => {
+      const config = (await book(excelBlob(seedState(), ['2026-08', '2026-09']))).sheet('Config');
+      expect(config.cells.get('C5')?.value).toBe('September 2026');
+    });
   });
 
   it('el archivo lleva el nombre del usuario', () => {

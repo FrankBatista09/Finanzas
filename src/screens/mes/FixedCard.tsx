@@ -139,6 +139,7 @@ export function FixedCard({ className }: { className?: string }) {
                 <CellSelect
                   value={draftAccountId}
                   options={accountOptions(draftAccountId)}
+                  minWidth={130}
                   onCommit={(accountId) => setDraft((d) => ({ ...d, accountId }))}
                   label={s('newFixedAccount')}
                 />
