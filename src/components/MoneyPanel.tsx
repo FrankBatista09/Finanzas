@@ -107,6 +107,7 @@ function AccountsTable({ rows }: { rows: readonly AccountBalance[] }) {
   };
 
   return (
+    <>
     <div className={styles.accounts}>
       <SheetTable label={t('accounts')}>
         <tbody>
@@ -133,9 +134,7 @@ function AccountsTable({ rows }: { rows: readonly AccountBalance[] }) {
                   label={gold ? t('balanceOfGold', { account: account.name }) : t('balanceOf', { account: account.name, currency: account.currency })}
                 />
               </Td>
-              <Td kind="mono" tone="muted" title={gold ? t('gold') : undefined}>
-                {gold ? GOLD_UNIT : account.currency}
-              </Td>
+              <Td kind="mono" tone="muted">{gold ? t('goldGrams') : account.currency}</Td>
               <Td kind="action" className={styles.linkCol}>
                 {canHideAccount(state, account.id) && (
                   <button
@@ -155,7 +154,6 @@ function AccountsTable({ rows }: { rows: readonly AccountBalance[] }) {
             </tr>
             );
           })}
-          {hasGold && <GoldPriceRow />}
           <AddRow onAdd={add}>
             <Td kind="edit">
               <CellText
@@ -187,6 +185,17 @@ function AccountsTable({ rows }: { rows: readonly AccountBalance[] }) {
         </tbody>
       </SheetTable>
     </div>
+    {/* Aparte de las cuentas: dentro de la tabla parecía una cuenta más a medio llenar. */}
+    {hasGold && (
+      <div className={`${styles.accounts} ${styles.goldPrice}`}>
+        <SheetTable label={t('goldPriceAmount')}>
+          <tbody>
+            <GoldPriceRow />
+          </tbody>
+        </SheetTable>
+      </div>
+    )}
+    </>
   );
 }
 
@@ -229,7 +238,6 @@ function GoldPriceRow() {
           label={t('goldPriceCurrency')}
         />
       </Td>
-      <Td />
     </tr>
   );
 }
