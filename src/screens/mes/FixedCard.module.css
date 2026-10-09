@@ -3,6 +3,11 @@
   white-space: nowrap;
 }
 
+/* Tighter horizontal cell padding (th, td and the cell editors all read this token) so every column fits a 1440px screen without sideways scroll. */
+.table {
+  --pad-cell: 7px 6px;
+}
+
 /* Selector depth beats the shared .th padding regardless of bundle order. */
 .table thead .paid {
   /* Less side padding than other headers: the column is only as wide as its checkbox. */
@@ -32,7 +37,9 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  min-width: 0;
+  /* width 0 + min-width 100%: the name's length does not push the column wider, the cell decides and the name truncates. */
+  width: 0;
+  min-width: 100%;
   font-weight: 500;
 }
 
@@ -63,7 +70,11 @@
 }
 
 .cardTag {
-  flex: none;
+  /* Gives way before the name does when the Item column is tight. */
+  flex: 0 4 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   padding: 1px 6px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -77,5 +88,10 @@
   max-width: 130px;
   overflow: hidden;
   white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* An input only shows an ellipsis while it is not focused, which is when the cut name needs signalling. */
+.item {
   text-overflow: ellipsis;
 }

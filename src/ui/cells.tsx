@@ -48,6 +48,8 @@ export interface CellTextProps extends InputBase {
   suggestions?: readonly string[];
   /** 'blur' para textos obligatorios: lo borrado a medias nunca se guarda (ni "N" al vaciar "Netflix"). */
   commitOn?: CommitOn;
+  /** Native tooltip, for when a long value is cut with an ellipsis. */
+  title?: string;
 }
 
 export function CellText({
@@ -63,6 +65,7 @@ export function CellText({
   maxLength,
   suggestions,
   commitOn,
+  title,
   className,
 }: CellTextProps) {
   const draft = useDraft({ value, format: same, parse: same, onCommit, commitOn });
@@ -86,6 +89,7 @@ export function CellText({
         placeholder={placeholder}
         maxLength={maxLength}
         aria-label={label}
+        title={title}
         autoComplete="off"
         list={offers ? listId : undefined}
       />
