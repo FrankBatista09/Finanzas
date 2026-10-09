@@ -54,16 +54,24 @@ export const AHORROS = defineStrings({
     deleteIncome: 'Delete income of {date}: {amount} {cur}',
     incomeBudgetOf: 'Adds to budget: income of {date}, {amount} {cur}',
     newIncomeBudget: 'The new income adds to the budget',
+    recurring: 'Recurring',
+    incomeRecurringOf: 'Recurring: income of {date}, {amount} {cur}',
+    newIncomeRecurring: 'The new income repeats every month',
+    incomeMonth: 'Income month',
 
     // ── Aportes ──────────────────────────────────────────────────────────────
     contribsTitle: 'Contributions',
     inGoal: 'In goal',
     contribDate: 'Contribution date',
+    fromAccount: 'From account',
+    noAccount: '— none —',
     deleteContrib: 'Delete contribution of {date} to {goal}: {amount} {cur}',
     noGoals: 'Add a goal first to record contributions.',
     addContribution: 'Add contribution',
 
     // ── Tasas ────────────────────────────────────────────────────────────────
+    rateManual: 'Manual',
+    rateOf: 'Rate: {currency} per 1 {from}',
     // Al pie de una tabla con alguna cifra convertida con la tasa fija de respaldo (marcada con *).
     fallbackNote: '* Converted with a default rate that has not been set yet.',
   },
@@ -109,14 +117,22 @@ export const AHORROS = defineStrings({
     deleteIncome: 'Eliminar ingreso del {date}: {amount} {cur}',
     incomeBudgetOf: 'Suma al presupuesto: ingreso del {date}, {amount} {cur}',
     newIncomeBudget: 'El ingreso nuevo suma al presupuesto',
+    recurring: 'Recurrente',
+    incomeRecurringOf: 'Recurrente: ingreso del {date}, {amount} {cur}',
+    newIncomeRecurring: 'El ingreso nuevo se repite cada mes',
+    incomeMonth: 'Mes de los ingresos',
 
     contribsTitle: 'Aportes',
     inGoal: 'En la meta',
     contribDate: 'Fecha del aporte',
+    fromAccount: 'Desde cuenta',
+    noAccount: '— ninguna —',
     deleteContrib: 'Eliminar aporte del {date} a {goal}: {amount} {cur}',
     noGoals: 'Agrega primero una meta para registrar aportes.',
     addContribution: 'Agregar aporte',
 
+    rateManual: 'Manual',
+    rateOf: 'Tasa: {currency} por 1 {from}',
     fallbackNote: '* Convertido con una tasa por defecto, aún sin definir.',
   },
 
@@ -163,14 +179,22 @@ export const AHORROS = defineStrings({
     deleteIncome: '{date} tarihli geliri sil: {amount} {cur}',
     incomeBudgetOf: 'Bütçeye eklenir: {date} geliri, {amount} {cur}',
     newIncomeBudget: 'Yeni gelir bütçeye eklenir',
+    recurring: 'Düzenli',
+    incomeRecurringOf: 'Düzenli: {date} geliri, {amount} {cur}',
+    newIncomeRecurring: 'Yeni gelir her ay tekrarlanır',
+    incomeMonth: 'Gelir ayı',
 
     contribsTitle: 'Katkılar',
     inGoal: 'Hedefte',
     contribDate: 'Katkı tarihi',
+    fromAccount: 'Hesaptan',
+    noAccount: '— yok —',
     deleteContrib: '{date} tarihli {goal} katkısını sil: {amount} {cur}',
     noGoals: 'Katkı kaydetmek için önce bir hedef ekleyin.',
     addContribution: 'Katkı ekle',
 
+    rateManual: 'Manuel',
+    rateOf: 'Kur: 1 {from} için {currency}',
     fallbackNote: '* Henüz girilmemiş, varsayılan bir kurla çevrildi.',
   },
 });

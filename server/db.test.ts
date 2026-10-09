@@ -180,8 +180,8 @@ describe('loadState / replaceAll', () => {
     other.defaultAccountId = 'tr';
     other.accounts.push({ id: 'tr', name: 'TR account', currency: 'TRY', opening: -150.5, hidden: true, sort: 2 });
     other.goals = [{ id: 'g1', name: 'Única', cur: 'TRY', monthly: null, start: null, end: null, approxCur: null, sort: 0 }];
-    other.contribs = [{ id: 'c1', goalId: 'g1', date: '2026-10-01', amount: 10, cur: 'TRY' }];
-    other.incomes = [{ id: 'i1', date: '2027-03-15', desc: 'Maaş', accountId: 'tr', amount: 90000, cur: 'TRY', budget: true }];
+    other.contribs = [{ id: 'c1', goalId: 'g1', date: '2026-10-01', amount: 10, cur: 'TRY', rate: null, accountId: null }];
+    other.incomes = [{ id: 'i1', date: '2027-03-15', desc: 'Maaş', accountId: 'tr', amount: 90000, cur: 'TRY', budget: true, rate: null, recurring: false }];
     setBudgets(other.months['2026-10']!, { dr: 50000, tr: 12000.5 });
     other.months['2026-10']!.budgetLog.push({ id: 'cut', date: '2026-10-09', accountId: 'tr', amount: -2000.5, kind: 'adjust', note: 'Menos' });
     other.months['2026-10']!.budgets = { dr: 50000, tr: 10000 };
@@ -1574,13 +1574,13 @@ describe('ingresos', () => {
     expect(await listIncomes(db, F)).toEqual(seedState().incomes);
 
     const created = await createIncome(db, F, { date: '2026-10-15', desc: 'Freelance', accountId: 'us', amount: 400, cur: 'USD' });
-    expect(created).toEqual({ id: expect.stringMatching(/^[A-Za-z0-9_-]{1,64}$/), date: '2026-10-15', desc: 'Freelance', accountId: 'us', amount: 400, cur: 'USD', budget: false });
+    expect(created).toEqual({ id: expect.stringMatching(/^[A-Za-z0-9_-]{1,64}$/), date: '2026-10-15', desc: 'Freelance', accountId: 'us', amount: 400, cur: 'USD', budget: false, rate: null, recurring: false });
     expect(monthCalc(await loadState(db, F), '2026-10').income).toBeCloseTo((5800 + 400) * 58.76, 6);
     expect(await balance(db, F, 'us')).toBeCloseTo(13482 + 400, 8);
 
     // En otra moneda y a otra cuenta: entra convertido con la tasa del mes de su fecha.
     const patched = await patchIncome(db, F, created.id, { date: '2026-10-16', desc: '', accountId: 'dr', amount: 1000, cur: 'TRY' });
-    expect(patched).toEqual({ id: created.id, date: '2026-10-16', desc: '', accountId: 'dr', amount: 1000, cur: 'TRY', budget: false });
+    expect(patched).toEqual({ id: created.id, date: '2026-10-16', desc: '', accountId: 'dr', amount: 1000, cur: 'TRY', budget: false, rate: null, recurring: false });
     expect(await balance(db, F, 'us')).toBeCloseTo(13482, 8);
     expect(await balance(db, F, 'dr')).toBeCloseTo(220641.93 + (1000 * 58.76) / 42, 6);
     expect((await patchIncome(db, F, created.id, { amount: 0 })).amount).toBe(0);
@@ -1595,7 +1595,7 @@ describe('ingresos', () => {
   it('sin descripción queda vacía; el id puede venir del cliente y repetido es un 409', async () => {
     const { db } = await seeded();
     expect(await createIncome(db, F, { id: 'in-1', date: '2026-10-15', amount: 1, cur: 'DOP' })).toEqual({
-      id: 'in-1', date: '2026-10-15', desc: '', accountId: 'dr', amount: 1, cur: 'DOP', budget: false,
+      id: 'in-1', date: '2026-10-15', desc: '', accountId: 'dr', amount: 1, cur: 'DOP', budget: false, rate: null, recurring: false,
     });
     await expect(createIncome(db, F, { id: 'in-1', date: '2026-10-15', amount: 1, cur: 'DOP' })).rejects.toMatchObject(conflict);
     await expect(createIncome(db, F, { id: 'seed-in-1', date: '2026-10-15', amount: 1, cur: 'DOP' })).rejects.toMatchObject(conflict);
@@ -1966,7 +1966,7 @@ describe('applyImport', () => {
     const state = seedState();
     state.accounts = Array.from({ length: 40 }, (_, i) => ({ id: `a${i}`, name: `Cuenta ${i}`, currency: 'DOP' as const, opening: i, hidden: false, sort: i }));
     state.defaultAccountId = 'a0';
-    state.incomes = Array.from({ length: 80 }, (_, i) => ({ id: `i${i}`, date: `${keys[i]!}-01`, desc: '', accountId: `a${i % 40}`, amount: 1, cur: 'USD' as const, budget: i % 2 === 0 }));
+    state.incomes = Array.from({ length: 80 }, (_, i) => ({ id: `i${i}`, date: `${keys[i]!}-01`, desc: '', accountId: `a${i % 40}`, amount: 1, cur: 'USD' as const, budget: i % 2 === 0, rate: null, recurring: false }));
     state.months = Object.fromEntries(
       keys.map((key) => {
         const month: Month = {

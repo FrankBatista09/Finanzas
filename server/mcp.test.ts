@@ -919,7 +919,7 @@ describe('/mcp: tools/list', () => {
     expect(paid.properties.paid).toMatchObject({ type: 'boolean', default: true });
 
     const income = byName.add_income;
-    expect(Object.keys(income.properties)).toEqual(['user', 'amount', 'currency', 'account', 'date', 'description', 'add_to_budget']);
+    expect(Object.keys(income.properties)).toEqual(['user', 'amount', 'currency', 'account', 'date', 'description', 'add_to_budget', 'rate', 'recurring']);
     expect(income.properties.add_to_budget).toMatchObject({ type: 'boolean', default: false });
     expect(income.required).toEqual(['user', 'amount']);
     expect(income.properties.currency).toMatchObject({ type: 'string', enum: ['DOP', 'USD', 'TRY'] });
@@ -2427,6 +2427,8 @@ describe('add_income', () => {
       amount: 2500,
       cur: 'DOP',
       budget: false,
+      rate: null,
+      recurring: false,
     } satisfies Record<keyof Income, unknown>);
     expect(r.data).toEqual({
       user: FRANK,

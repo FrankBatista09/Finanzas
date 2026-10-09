@@ -159,7 +159,7 @@ export function seedState(): AppState {
       ['2026-10-03', 'turkey', 3000],
       ['2026-10-03', 'emergency', 500],
     ] as [string, string, number][]
-  ).map(([date, goalId, amount], i) => ({ id: `seed-ct-${i + 1}`, goalId, date, amount, cur: 'USD' }));
+  ).map(([date, goalId, amount], i) => ({ id: `seed-ct-${i + 1}`, goalId, date, amount, cur: 'USD', rate: null, accountId: null }));
 
   const incomes: Income[] = ['2026-08', '2026-09', '2026-10'].map((k, i) => ({
     id: `seed-in-${i + 1}`,
@@ -169,6 +169,8 @@ export function seedState(): AppState {
     amount: 5800,
     cur: 'USD',
     budget: false,
+    rate: null,
+    recurring: false,
   }));
 
   return {

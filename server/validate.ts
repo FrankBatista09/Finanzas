@@ -273,6 +273,8 @@ export const incomeCreateSchema = z
     amount: positive(),
     cur: accountCurrency(),
     budget: bool().optional(),
+    rate: positive().nullable().optional(),
+    recurring: bool().optional(),
   })
   .refine(goldNoBudget, { error: GOLD_NO_BUDGET, path: ['budget'] }) satisfies z.ZodType<IncomeCreate>;
 
@@ -284,6 +286,8 @@ export const incomePatchSchema = z
     amount: nonNegative().optional(),
     cur: accountCurrency().optional(),
     budget: bool().optional(),
+    rate: positive().nullable().optional(),
+    recurring: bool().optional(),
   })
   .refine(goldNoBudget, { error: GOLD_NO_BUDGET, path: ['budget'] }) satisfies z.ZodType<IncomePatch>;
 
@@ -370,6 +374,8 @@ export const contributionCreateSchema = z.strictObject({
   date: isoDate(),
   amount: positive(),
   cur: currency(),
+  rate: positive().nullable().optional(),
+  accountId: id().nullable().optional(),
 }) satisfies z.ZodType<ContributionCreate>;
 
 export const contributionPatchSchema = z.strictObject({
@@ -377,6 +383,8 @@ export const contributionPatchSchema = z.strictObject({
   date: isoDate().optional(),
   amount: nonNegative().optional(),
   cur: currency().optional(),
+  rate: positive().nullable().optional(),
+  accountId: id().nullable().optional(),
 }) satisfies z.ZodType<ContributionPatch>;
 
 // ── Registro desde Claude ────────────────────────────────────────────────────

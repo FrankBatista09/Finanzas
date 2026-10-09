@@ -337,8 +337,12 @@ export interface IncomeCreate {
   cur: AccountCurrency;
   /** true: el ingreso sube además el presupuesto del mes de su fecha (Income.budget). Por defecto false. Nunca en una cuenta de oro. */
   budget?: boolean;
+  /** Tasa propia (Income.rate): > 0, o null/ausente = automática. */
+  rate?: number | null;
+  /** true: se copia a cada mes nuevo (Income.recurring). Por defecto false. */
+  recurring?: boolean;
 }
-export type IncomePatch = Partial<Pick<Income, 'date' | 'desc' | 'accountId' | 'amount' | 'cur' | 'budget'>>;
+export type IncomePatch = Partial<Pick<Income, 'date' | 'desc' | 'accountId' | 'amount' | 'cur' | 'budget' | 'rate' | 'recurring'>>;
 
 export interface GoalCreate {
   id?: string;
@@ -359,8 +363,12 @@ export interface ContributionCreate {
   date: ISODate;
   amount: number;
   cur: Currency;
+  /** Tasa propia (Contribution.rate): > 0, o null/ausente = automática. */
+  rate?: number | null;
+  /** Cuenta de dinero de la que sale (Contribution.accountId); null o ausente = ninguna. */
+  accountId?: string | null;
 }
-export type ContributionPatch = Partial<Pick<Contribution, 'goalId' | 'date' | 'amount' | 'cur'>>;
+export type ContributionPatch = Partial<Pick<Contribution, 'goalId' | 'date' | 'amount' | 'cur' | 'rate' | 'accountId'>>;
 
 /**
  * Lo que Claude manda al registrar un gasto. Solo `description` y `amount` son obligatorios

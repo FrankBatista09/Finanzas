@@ -121,7 +121,7 @@ describe('oro: saldo inicial, ingresos en gramos y precio', () => {
     const income = { date: '2026-10-05', desc: 'Bought', accountId: 'gold', amount: 25.125 };
     const ok = await api.post<Income>('/api/incomes', { ...income, id: 'g1', cur: 'XAU' });
     expect(ok.status).toBe(201);
-    expect(ok.body).toEqual({ ...income, id: 'g1', cur: 'XAU', budget: false });
+    expect(ok.body).toEqual({ ...income, id: 'g1', cur: 'XAU', budget: false, rate: null, recurring: false });
 
     const invalid = (detail: string) => ({ status: 400, error: { code: 'validation', message: `Invalid data: ${detail}` } });
     const cases: [method: 'post' | 'patch', path: string, body: unknown, detail: string][] = [

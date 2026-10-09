@@ -337,8 +337,8 @@ export class FinanzasStore {
       case 'transfer/remove':
         return api.deleteTransfer(action.id, opts);
       case 'income/add': {
-        const { id, date, desc, accountId, amount, cur, budget } = action.row;
-        return api.createIncome({ id, date, desc, accountId, amount, cur, budget }, opts);
+        const { id, date, desc, accountId, amount, cur, budget, rate, recurring } = action.row;
+        return api.createIncome({ id, date, desc, accountId, amount, cur, budget, rate, recurring }, opts);
       }
       case 'income/patch':
         return api.patchIncome(action.id, action.patch, opts);
@@ -353,8 +353,8 @@ export class FinanzasStore {
       case 'goal/remove':
         return api.deleteGoal(action.id, opts);
       case 'contribution/add': {
-        const { id, goalId, date, amount, cur } = action.row;
-        return api.createContribution({ id, goalId, date, amount, cur }, opts);
+        const { id, goalId, date, amount, cur, rate, accountId } = action.row;
+        return api.createContribution({ id, goalId, date, amount, cur, rate, accountId }, opts);
       }
       case 'contribution/patch':
         return api.patchContribution(action.id, action.patch, opts);

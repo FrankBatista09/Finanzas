@@ -6,7 +6,8 @@ import { useFinanzas } from '../../store';
 import type { AddRowControl } from '../../ui';
 import { AddButton, AddRow, CellCheckbox, CellDate, CellNumber, CellSelect, CellText, DeleteButton, SheetTable, Td, Th } from '../../ui';
 import { Converted, FallbackNote } from './Converted';
-import { afterIncomeAdd, incomeDraftInput, resolveIncomeDraft } from './model';
+import { RateCell } from './RateCell';
+import { afterIncomeAdd, autoRate, incomeDraftInput, resolveIncomeDraft } from './model';
 import type { IncomeDraft, IncomeItemView } from './model';
 import { AHORROS } from './strings';
 
@@ -33,6 +34,8 @@ export interface IncomeTableProps {
    * sin equivalente y sin casilla de presupuesto. En la hoja del mes el oro no aparece.
    */
   gold?: boolean;
+  /** Se llama con la fecha de cada ingreso agregado (Savings salta al mes de un ingreso que cae fuera del que se ve). */
+  onAdded?: (date: ISODate) => void;
 }
 
 /**
@@ -41,7 +44,7 @@ export interface IncomeTableProps {
  * "Adds to budget" sube además el presupuesto del mes de su fecha. No pertenecen a un mes: en Savings se agregan,
  * editan y eliminan aunque el mes seleccionado esté cerrado.
  */
-export function IncomeTable({ label, rows, empty, date, adding, readOnly = false, compact = false, gold = false }: IncomeTableProps) {
+export function IncomeTable({ label, rows, empty, date, adding, readOnly = false, compact = false, gold = false, onAdded }: IncomeTableProps) {
   const { main, accountOptions: moneyOptions, incomeAccountOptions, actions } = useFinanzas();
   const accountOptions = gold ? incomeAccountOptions : moneyOptions;
   const { t } = useI18n();
@@ -49,7 +52,7 @@ export function IncomeTable({ label, rows, empty, date, adding, readOnly = false
 
   return (
     <>
-      <SheetTable label={label} minWidth={compact ? 560 : 820}>
+      <SheetTable label={label} minWidth={compact ? 560 : 1000}>
         <thead>
           <tr>
             <Th width={compact ? 104 : 128}>{t('date')}</Th>
@@ -57,6 +60,7 @@ export function IncomeTable({ label, rows, empty, date, adding, readOnly = false
             <Th>{t('account')}</Th>
             <Th align="right">{t('amount')}</Th>
             <Th width={compact ? 44 : 60}>{t('currencyShort')}</Th>
+            {!compact && <Th>{t('rate')}</Th>}
             {!compact && <Th align="right">{main}</Th>}
             {compact ? (
               <Th align="center" title={t('addsToBudget')} aria-label={t('addsToBudget')}>
@@ -65,12 +69,13 @@ export function IncomeTable({ label, rows, empty, date, adding, readOnly = false
             ) : (
               <Th align="center">{t('addsToBudget')}</Th>
             )}
+            {!compact && <Th align="center">{s('recurring')}</Th>}
             <Th blank width={28} />
           </tr>
         </thead>
         <tbody>
           {/* Cerrada se desmonta: su borrador se descarta con ella. */}
-          {!readOnly && adding.open && <IncomeAddRow empty={empty} date={date} adding={adding} compact={compact} gold={gold} />}
+          {!readOnly && adding.open && <IncomeAddRow empty={empty} date={date} adding={adding} compact={compact} gold={gold} onAdded={onAdded} />}
           {rows.map((r) => {
             const grams = isGold(r.cur);
             const named = { date: r.date, amount: r.amountText, cur: grams ? GOLD_UNIT : r.cur };
@@ -119,6 +124,16 @@ export function IncomeTable({ label, rows, empty, date, adding, readOnly = false
                     />
                   </Td>
                 )}
+                {!compact && (
+                  <RateCell
+                    cur={r.cur === 'XAU' ? main : r.cur}
+                    main={main}
+                    rate={r.rate}
+                    auto={r.rateAuto}
+                    onCommit={(rate) => actions.patchIncome(r.id, { rate })}
+                    disabled={readOnly}
+                  />
+                )}
                 {!compact && <Converted value={r.main} note={r.mainNote} />}
                 <Td kind="center">
                   <CellCheckbox
@@ -128,6 +143,16 @@ export function IncomeTable({ label, rows, empty, date, adding, readOnly = false
                     label={s('incomeBudgetOf', named)}
                   />
                 </Td>
+                {!compact && (
+                  <Td kind="center">
+                    <CellCheckbox
+                      checked={r.recurring}
+                      onCommit={(recurring) => actions.patchIncome(r.id, { recurring })}
+                      disabled={readOnly}
+                      label={s('incomeRecurringOf', named)}
+                    />
+                  </Td>
+                )}
                 <Td kind="action">
                   {!readOnly && <DeleteButton compact onClick={() => actions.removeIncome(r.id)} label={s('deleteIncome', named)} />}
                 </Td>
@@ -143,8 +168,8 @@ export function IncomeTable({ label, rows, empty, date, adding, readOnly = false
 }
 
 /** Fila de agregar. El borrador vive aquí para que escribir en ella no repinte la lista. */
-function IncomeAddRow({ empty, date, adding, compact, gold }: Pick<IncomeTableProps, 'empty' | 'date' | 'adding' | 'compact' | 'gold'>) {
-  const { state, accountOptions: moneyOptions, incomeAccountOptions, actions } = useFinanzas();
+function IncomeAddRow({ empty, date, adding, compact, gold, onAdded }: Pick<IncomeTableProps, 'empty' | 'date' | 'adding' | 'compact' | 'gold' | 'onAdded'>) {
+  const { state, main, accountOptions: moneyOptions, incomeAccountOptions, actions } = useFinanzas();
   const accountOptions = gold ? incomeAccountOptions : moneyOptions;
   const { t } = useI18n();
   const s = useStrings(AHORROS);
@@ -155,6 +180,7 @@ function IncomeAddRow({ empty, date, adding, compact, gold }: Pick<IncomeTablePr
   const add = () => {
     const input = incomeDraftInput(draft, state, date, gold);
     if (!input || !actions.addIncome(input)) return false;
+    onAdded?.(input.date);
     setDraft(afterIncomeAdd);
   };
 
@@ -201,11 +227,25 @@ function IncomeAddRow({ empty, date, adding, compact, gold }: Pick<IncomeTablePr
           <CellSelect value={shown.cur} options={CURRENCIES} onCommit={(cur) => setDraft((d) => ({ ...d, cur }))} mono dense label={t('currency')} />
         </Td>
       )}
+      {!compact && (
+        <RateCell
+          cur={isGold(shown.cur) ? main : shown.cur}
+          main={main}
+          rate={shown.rate}
+          auto={autoRate(state, shown.date, shown.cur)}
+          onCommit={(rate) => setDraft((d) => ({ ...d, rate }))}
+        />
+      )}
       {/* La columna de la cifra convertida queda vacía: todavía no hay ingreso que convertir. */}
       {!compact && <Td />}
       <Td kind="center">
         <CellCheckbox checked={shown.budget} onCommit={(budget) => setDraft((d) => ({ ...d, budget }))} disabled={grams} label={s('newIncomeBudget')} />
       </Td>
+      {!compact && (
+        <Td kind="center">
+          <CellCheckbox checked={shown.recurring} onCommit={(recurring) => setDraft((d) => ({ ...d, recurring }))} label={s('newIncomeRecurring')} />
+        </Td>
+      )}
       <Td kind="add">
         {/* El botón largo ("Add income") es ya el de la cabecera, que abre esta fila: aquí va el "Add" corto. */}
         <AddButton aria-label={t('addIncome')} />

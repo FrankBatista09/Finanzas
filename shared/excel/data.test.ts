@@ -489,7 +489,7 @@ describe('applyImportToState · Finanzas Personales v3.xlsx en un usuario nuevo'
 
   it('el ingreso de cada mes pasa a ser un ingreso en USD el día 1, a la cuenta en USD', () => {
     expect(state.incomes.map(({ id: _id, ...i }) => i)).toEqual(
-      KEYS.map((key) => ({ date: `${key}-01`, desc: 'Income (imported)', accountId: 'us', amount: 5800, cur: 'USD', budget: false })),
+      KEYS.map((key) => ({ date: `${key}-01`, desc: 'Income (imported)', accountId: 'us', amount: 5800, cur: 'USD', budget: false, rate: null, recurring: false })),
     );
     expect(IMPORTED_INCOME).toBe('Income (imported)');
     for (const key of KEYS) expect(incomeInMonth(state, key, 'USD'), key).toBe(5800);
@@ -845,7 +845,7 @@ describe('applyImportToState · ingreso del mes', () => {
 
   it('reimportar con otro ingreso sustituye al anterior y conserva su id', () => {
     const first = applyImportToState(newUserState(), file(5800), ids('a'));
-    expect(first.incomes).toEqual([{ id: 'a-1', date: '2026-10-01', desc: 'Income (imported)', accountId: 'us', amount: 5800, cur: 'USD', budget: false }]);
+    expect(first.incomes).toEqual([{ id: 'a-1', date: '2026-10-01', desc: 'Income (imported)', accountId: 'us', amount: 5800, cur: 'USD', budget: false, rate: null, recurring: false }]);
     const second = applyImportToState(first, file(6100), ids('b'));
     expect(second.incomes).toEqual([{ ...first.incomes[0]!, amount: 6100 }]);
     // El saldo sigue siendo el del libro: el inicial compensa la diferencia.
@@ -863,7 +863,7 @@ describe('applyImportToState · ingreso del mes', () => {
   it('solo toca el ingreso importado de los meses que vienen en el archivo', () => {
     const base = newUserState();
     base.incomes.push(
-      { id: 'sep', date: '2026-09-01', desc: IMPORTED_INCOME, accountId: 'us', amount: 111, cur: 'USD', budget: false },
+      { id: 'sep', date: '2026-09-01', desc: IMPORTED_INCOME, accountId: 'us', amount: 111, cur: 'USD', budget: false, rate: null, recurring: false },
       { id: 'salary', date: '2026-10-01', desc: 'Salary', accountId: 'us', amount: 5800, cur: 'USD', budget: false },
       { id: 'oct', date: '2026-10-01', desc: IMPORTED_INCOME, accountId: 'dr', amount: 222, cur: 'DOP', budget: false },
       { id: 'oct-2', date: '2026-10-20', desc: IMPORTED_INCOME, accountId: 'us', amount: 333, cur: 'USD', budget: false },
@@ -877,7 +877,7 @@ describe('applyImportToState · ingreso del mes', () => {
       base.incomes[1],
       base.incomes[4],
       // Los dos importados de octubre se van y queda uno, con el id del primero y solo lo que le falta al total.
-      { id: 'oct', date: '2026-10-01', desc: IMPORTED_INCOME, accountId: 'us', amount: expect.closeTo(600 - 1000 / 58.76, 8), cur: 'USD', budget: false },
+      { id: 'oct', date: '2026-10-01', desc: IMPORTED_INCOME, accountId: 'us', amount: expect.closeTo(600 - 1000 / 58.76, 8), cur: 'USD', budget: false, rate: null, recurring: false },
     ]);
     expect(incomeInMonth(state, '2026-10', 'USD')).toBeCloseTo(6400, 8);
   });
@@ -971,9 +971,9 @@ describe('applyImportToState · metas y aportes', () => {
     expect(state.goals.slice(0, 6)).toEqual(before.goals);
     expect(state.goals[6]).toEqual({ id: 'new-2', name: 'Bike', cur: 'USD', monthly: null, start: null, end: null, approxCur: null, sort: 6 });
     expect(state.contribs).toEqual([
-      { id: 'new-1', goalId: 'turkey', date: '2026-10-01', amount: 100, cur: 'USD' },
-      { id: 'new-3', goalId: 'new-2', date: '2026-10-02', amount: 2500, cur: 'DOP' },
-      { id: 'new-4', goalId: 'new-2', date: '2026-10-03', amount: 10, cur: 'USD' },
+      { id: 'new-1', goalId: 'turkey', date: '2026-10-01', amount: 100, cur: 'USD', rate: null, accountId: null },
+      { id: 'new-3', goalId: 'new-2', date: '2026-10-02', amount: 2500, cur: 'DOP', rate: null, accountId: null },
+      { id: 'new-4', goalId: 'new-2', date: '2026-10-03', amount: 10, cur: 'USD', rate: null, accountId: null },
     ]);
     // Una lista vacía es "el libro no tiene aportes": se quitan todos. Con null no se tocan.
     expect(applyImportToState(before, { months: [], goals: null, contribs: [] }, ids()).contribs).toEqual([]);

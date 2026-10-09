@@ -1417,12 +1417,12 @@ describe('ingresos', () => {
 
     const created = await api.post<Income>('/api/incomes', { ...income, desc: '  Freelance ' });
     expect(created.status).toBe(201);
-    expect(created.body).toEqual({ id: expect.stringMatching(/^[A-Za-z0-9_-]{1,64}$/), ...income, budget: false });
+    expect(created.body).toEqual({ id: expect.stringMatching(/^[A-Za-z0-9_-]{1,64}$/), ...income, budget: false, rate: null, recurring: false });
     const id = created.body.id;
 
     const patched = await api.patch<Income>(`/api/incomes/${id}`, { date: '2026-10-16', desc: '', accountId: 'dr', amount: 23500, cur: 'DOP' });
     expect(patched.status).toBe(200);
-    expect(patched.body).toEqual({ id, date: '2026-10-16', desc: '', accountId: 'dr', amount: 23500, cur: 'DOP', budget: false });
+    expect(patched.body).toEqual({ id, date: '2026-10-16', desc: '', accountId: 'dr', amount: 23500, cur: 'DOP', budget: false, rate: null, recurring: false });
     expect((await api.patch<Income>(`/api/incomes/${id}`, { amount: 0 })).body.amount).toBe(0);
     expect((await api.patch<Income>(`/api/incomes/${id}`, {})).body).toEqual({ ...patched.body, amount: 0 });
     // Sale en el estado, con los demás.
@@ -1760,11 +1760,11 @@ describe('aportes', () => {
 
     const created = await api.post<Contribution>('/api/contributions', contribution);
     expect(created.status).toBe(201);
-    expect(created.body).toEqual({ id: expect.any(String), ...contribution });
+    expect(created.body).toEqual({ id: expect.any(String), ...contribution, rate: null, accountId: null });
     const id = created.body.id;
 
     const patched = await api.patch<Contribution>(`/api/contributions/${id}`, { goalId: 'personal', date: '2026-10-08', amount: 9000, cur: 'DOP' });
-    expect(patched.body).toEqual({ id, goalId: 'personal', date: '2026-10-08', amount: 9000, cur: 'DOP' });
+    expect(patched.body).toEqual({ id, goalId: 'personal', date: '2026-10-08', amount: 9000, cur: 'DOP', rate: null, accountId: null });
     expect((await api.patch<Contribution>(`/api/contributions/${id}`, { amount: 0 })).body.amount).toBe(0);
     // En cualquiera de las tres monedas.
     expect((await api.patch<Contribution>(`/api/contributions/${id}`, { amount: 4200, cur: 'TRY' })).body).toMatchObject({ amount: 4200, cur: 'TRY' });

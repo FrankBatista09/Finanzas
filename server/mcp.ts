@@ -688,6 +688,11 @@ const addIncomeArgs = z.strictObject({
     .describe(
       "true only if the person says this money should also raise the budget of the month of its date (for example \"add it to this month's budget\"). By default false: the income enters the account and the budget stays as it is. Not allowed for a gold account.",
     ),
+  rate: positive().optional().describe("Only if the person says at what rate this money was exchanged: amount of their main currency per 1 unit of `currency` (for example 61.2 for USD when the main currency is DOP). Omit it to use the rate of the month. Ignored when the currency is the main currency."),
+  recurring: z
+    .boolean({ error: 'must be true or false' })
+    .optional()
+    .describe('true only if the person says this income repeats every month (a salary): a copy is then created when each new month starts. Omit it otherwise.'),
 });
 
 const listAccountsArgs = z.strictObject({});
@@ -1150,7 +1155,7 @@ const addIncome = defineTool({
   schema: addIncomeArgs,
   readOnly: false,
   idempotent: false,
-  async run({ amount, currency: cur, account: named, date: givenDate, description, add_to_budget }, ctx) {
+  async run({ amount, currency: cur, account: named, date: givenDate, description, add_to_budget, rate, recurring }, ctx) {
     const { db, now, user } = ctx;
     if (givenDate) await assertReachable(ctx, givenDate);
     const date = givenDate ?? todayISO(now);
@@ -1161,7 +1166,7 @@ const addIncome = defineTool({
     const income = await createIncome(
       db,
       user.id,
-      parse(incomeCreateSchema, { date, desc: description ?? '', accountId: account.id, amount, cur: cur ?? account.currency, budget: add_to_budget }),
+      parse(incomeCreateSchema, { date, desc: description ?? '', accountId: account.id, amount, cur: cur ?? account.currency, budget: add_to_budget, rate, recurring }),
     );
     const after = await afterWrite(ctx, (state) => ({
       state,

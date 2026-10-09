@@ -175,12 +175,12 @@
 }
 
 .income {
-  flex: 1 1 440px;
+  flex: 1 1 340px;
   min-width: 0;
 }
 
 .contribs {
-  flex: 1 1 480px;
+  flex: 2 1 640px;
   min-width: 0;
 }
 
@@ -204,4 +204,57 @@
   padding: 8px 12px 10px;
   font-size: var(--fs-meta);
   color: var(--error);
+}
+
+/* ── Tasa propia de un ingreso o un aporte ─────────────────────────────────── */
+
+/* El selector («Month rate» / «Manual») y, a su lado, la tasa vigente atenuada o el campo para escribirla. */
+.rateCell {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.rateCell select {
+  flex: 0 1 auto;
+  width: auto;
+  min-width: 0;
+}
+
+.rateCell input {
+  min-width: 0;
+  width: 64px;
+}
+
+.rateAuto {
+  font-family: var(--font-mono);
+  font-size: var(--fs-meta);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+  padding-right: 8px;
+  white-space: nowrap;
+}
+
+/* ── Selector de mes de la tabla de ingresos ───────────────────────────────── */
+
+.monthPicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-right: var(--gap-8);
+}
+
+.monthPicker button,
+.monthPicker select {
+  border: 1px solid var(--border);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  padding: 2px 6px;
+  cursor: pointer;
+}
+
+.monthPicker button:disabled {
+  opacity: 0.4;
+  cursor: default;
 }

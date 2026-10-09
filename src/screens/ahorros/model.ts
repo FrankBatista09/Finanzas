@@ -8,12 +8,14 @@
 
 import {
   contribIn,
-  convertOn,
   currentKey,
   defaultAccount,
   goalsProgress,
+  incomeIn,
+  incomeInMonth,
   incomeRows,
   isMoneyIncome,
+  ownRate,
   moneyAccounts,
   rateFor,
   sortedIncomes,
@@ -22,7 +24,7 @@ import {
 import type { GoalProgress, IncomeRow } from '../../../shared/calc';
 import { GOLD, isGold, MAX_LEN } from '../../../shared/constants';
 import { f0, f2, fGrams, fPct } from '../../../shared/format';
-import { isISODate, monthOf } from '../../../shared/month';
+import { firstDay, isISODate, monthOf } from '../../../shared/month';
 import type { AccountCurrency, AppState, Currency, Goal, ISODate, Language, MonthKey } from '../../../shared/types';
 import { createI18n, translator } from '../../i18n';
 import type { ContributionInput } from '../../store';
@@ -39,6 +41,15 @@ export interface RateNote {
 }
 
 export const NO_NOTE: RateNote = { hint: '', fallback: false };
+
+/**
+ * La tasa automática de una fila (moneda principal por 1 de `cur`, la vigente en su fecha), que es la que se
+ * ve atenuada junto al control "Rate"; null si la fila no tiene control: su moneda es la principal o son gramos.
+ */
+export function autoRate(state: AppState, date: ISODate, cur: AccountCurrency): number | null {
+  if (isGold(cur) || cur === state.mainCurrency) return null;
+  return rateFor(state, monthOf(date), cur, state.mainCurrency, date).rate;
+}
 
 /** La nota de la conversión `from` → `to` con las tasas del mes `key`: la última del mes o, con `date`, la vigente ese día. */
 export function rateNote(state: AppState, key: MonthKey, from: Currency, to: Currency, lang: Language, date?: ISODate): RateNote {
@@ -209,7 +220,12 @@ export interface IncomeItemView {
   cur: AccountCurrency;
   /** true: además de entrar a la cuenta, sube el presupuesto del mes de su fecha (la casilla "Adds to budget"). */
   budget: boolean;
-  /** En la moneda principal, con la tasa vigente en su fecha. Una raya si son gramos de oro: no son dinero cobrado. */
+  /** Tasa propia (null = la del mes) y la automática que se mostraría; `rateAuto` null = sin control de tasa. */
+  rate: number | null;
+  rateAuto: number | null;
+  /** La casilla "Recurring". */
+  recurring: boolean;
+  /** En la moneda principal, con su tasa propia o la vigente en su fecha. Una raya si son gramos de oro: no son dinero cobrado. */
   main: string;
   mainNote: RateNote;
 }
@@ -219,14 +235,17 @@ export interface IncomeItemView {
  * solo los que tienen fecha en ese mes (la tarjeta "Income" de la hoja del mes) y solo los de dinero: los gramos
  * que entran a una cuenta de oro se ven en Savings, no en la hoja del mes.
  */
-export function incomeItems(state: AppState, lang: Language, monthKey?: MonthKey): IncomeItemView[] {
+export function incomeItems(state: AppState, lang: Language, monthKey?: MonthKey, withGold = false): IncomeItemView[] {
   const main = state.mainCurrency;
   const all = sortedIncomes(state);
-  return (monthKey === undefined ? all : all.filter(isMoneyIncome).filter((i) => monthOf(i.date) === monthKey)).map((i) => {
+  const shown =
+    monthKey === undefined ? all : (withGold ? all : all.filter(isMoneyIncome)).filter((i) => monthOf(i.date) === monthKey);
+  return shown.map((i) => {
     const key = monthOf(i.date);
+    const recurring = i.recurring === true;
     if (!isMoneyIncome(i)) {
       const base = { id: i.id, date: i.date, desc: i.desc, accountId: i.accountId, amount: i.amount, cur: i.cur, budget: false };
-      return { ...base, amountText: fGrams(i.amount), main: '—', mainNote: NO_NOTE };
+      return { ...base, rate: null, rateAuto: null, recurring, amountText: fGrams(i.amount), main: '—', mainNote: NO_NOTE };
     }
     return {
       id: i.id,
@@ -237,8 +256,12 @@ export function incomeItems(state: AppState, lang: Language, monthKey?: MonthKey
       amountText: f2(i.amount),
       cur: i.cur,
       budget: i.budget,
-      main: f2(convertOn(state, i.date, i.amount, i.cur, main)),
-      mainNote: rateNote(state, key, i.cur, main, lang, i.date),
+      rate: ownRate(state, i),
+      rateAuto: autoRate(state, i.date, i.cur),
+      recurring,
+      main: f2(incomeIn(state, i, main)),
+      // Con tasa propia no hay de dónde salió la tasa que explicar: la escribió el usuario.
+      mainNote: ownRate(state, i) ? NO_NOTE : rateNote(state, key, i.cur, main, lang, i.date),
     };
   });
 }
@@ -255,10 +278,14 @@ export interface IncomeDraft {
   cur: Currency | null;
   /** La casilla "Adds to budget" de la fila de agregar. */
   budget: boolean;
+  /** Tasa propia; null = la del mes. */
+  rate: number | null;
+  /** La casilla "Recurring". */
+  recurring: boolean;
 }
 
 /** La fila de agregar de Savings: el ingreso entra a la cuenta y no toca el presupuesto. */
-export const EMPTY_INCOME: IncomeDraft = { date: null, desc: '', accountId: null, amount: 0, cur: null, budget: false };
+export const EMPTY_INCOME: IncomeDraft = { date: null, desc: '', accountId: null, amount: 0, cur: null, budget: false, rate: null, recurring: false };
 
 /** La fila de agregar de la hoja del mes: el ingreso sube además el presupuesto de ese mes, salvo que se desmarque. */
 export const EMPTY_MONTH_INCOME: IncomeDraft = { ...EMPTY_INCOME, budget: true };
@@ -273,6 +300,9 @@ export interface IncomeDraftView {
   /** XAU si la cuenta es de oro: el monto son gramos. */
   cur: AccountCurrency;
   budget: boolean;
+  /** Solo si la moneda no es la principal ni oro; si no, null. */
+  rate: number | null;
+  recurring: boolean;
 }
 
 /**
@@ -285,8 +315,9 @@ export function resolveIncomeDraft(draft: IncomeDraft, state: AppState, today: I
   const offered = gold ? visibleAccounts(state) : moneyAccounts(state);
   const account = offered.find((a) => a.id === draft.accountId) ?? defaultAccount(state);
   const base = { date: draft.date ?? today, desc: draft.desc, accountId: account?.id ?? '', amount: draft.amount };
-  if (account && isGold(account.currency)) return { ...base, cur: GOLD, budget: false };
-  return { ...base, cur: draft.cur ?? account?.currency ?? state.mainCurrency, budget: draft.budget };
+  if (account && isGold(account.currency)) return { ...base, cur: GOLD, budget: false, rate: null, recurring: draft.recurring };
+  const cur = draft.cur ?? account?.currency ?? state.mainCurrency;
+  return { ...base, cur, budget: draft.budget, rate: cur === state.mainCurrency ? null : draft.rate, recurring: draft.recurring };
 }
 
 /**
@@ -300,9 +331,33 @@ export function incomeDraftInput(draft: IncomeDraft, state: AppState, today: ISO
   return ok ? { ...input, desc } : null;
 }
 
-/** Después de agregar se limpia lo propio de cada ingreso; fecha, cuenta, moneda y la casilla del presupuesto se quedan para el siguiente. */
+/**
+ * Después de agregar se limpia lo propio de cada ingreso (también su tasa y su casilla "Recurring": son de esa
+ * operación); fecha, cuenta, moneda y la casilla del presupuesto se quedan para el siguiente.
+ */
 export function afterIncomeAdd(draft: IncomeDraft): IncomeDraft {
-  return { ...draft, desc: '', amount: 0 };
+  return { ...draft, desc: '', amount: 0, rate: null, recurring: false };
+}
+
+// ── El mes de la tabla de ingresos de Savings ────────────────────────────────
+
+/**
+ * Los meses que ofrece el selector de la tabla de ingresos, del más antiguo al más reciente: los registrados, los
+ * que tienen algún ingreso y el que se está viendo (que puede no ser ninguno de los dos).
+ */
+export function incomeMonthKeys(state: AppState, selected: MonthKey): MonthKey[] {
+  const keys = new Set<MonthKey>([...Object.keys(state.months), ...state.incomes.map((i) => monthOf(i.date)), selected]);
+  return [...keys].sort();
+}
+
+/** La fecha que propone la fila de agregar en ese mes: hoy si es el mes en curso; si no, su día 1 (como la hoja del mes). */
+export function monthDraftDate(key: MonthKey, today: ISODate): ISODate {
+  return monthOf(today) === key ? today : firstDay(key);
+}
+
+/** La suma de los ingresos de dinero de ese mes en la moneda principal (lo que dice la cabecera de la tabla). */
+export function incomeTotalOf(state: AppState, key: MonthKey): number {
+  return incomeInMonth(state, key);
 }
 
 // ── Aportes ──────────────────────────────────────────────────────────────────
@@ -318,6 +373,11 @@ export interface ContributionRowView {
   /** El mismo monto con formato, para el nombre del botón de eliminar. */
   amountText: string;
   cur: Currency;
+  /** Tasa propia (null = la del mes) y la automática; `rateAuto` null = sin control (la moneda es la principal). */
+  rate: number | null;
+  rateAuto: number | null;
+  /** Cuenta de la que sale ('' = ninguna). */
+  accountId: string;
   /** En la moneda de su meta, con el código ('3,000.00 USD'); una raya si la meta ya no existe. */
   inGoal: string;
   goalNote: RateNote;
@@ -343,10 +403,13 @@ export function contributionRows(state: AppState, lang: Language): ContributionR
         amount: c.amount,
         amountText: f2(c.amount),
         cur: c.cur,
+        rate: ownRate(state, c),
+        rateAuto: autoRate(state, c.date, c.cur),
+        accountId: c.accountId ?? '',
         inGoal: goal ? `${f2(contribIn(state, c, goal.cur))} ${goal.cur}` : '—',
         goalNote: goal ? rateNote(state, key, c.cur, goal.cur, lang, c.date) : NO_NOTE,
         main: f2(contribIn(state, c, main)),
-        mainNote: rateNote(state, key, c.cur, main, lang, c.date),
+        mainNote: ownRate(state, c) ? NO_NOTE : rateNote(state, key, c.cur, main, lang, c.date),
       };
     });
 }
@@ -362,9 +425,13 @@ export interface ContributionDraft {
   amount: number;
   /** null = la moneda de la meta elegida: la sigue hasta que el usuario elige otra. */
   cur: Currency | null;
+  /** Tasa propia; null = la del mes. */
+  rate: number | null;
+  /** null = ninguna cuenta: el aporte no mueve saldos. */
+  accountId: string | null;
 }
 
-export const EMPTY_DRAFT: ContributionDraft = { date: null, goalId: null, amount: 0, cur: null };
+export const EMPTY_DRAFT: ContributionDraft = { date: null, goalId: null, amount: 0, cur: null, rate: null, accountId: null };
 
 type GoalRef = Pick<Goal, 'id' | 'name' | 'sort'>;
 type GoalCur = GoalRef & Pick<Goal, 'cur'>;
@@ -387,17 +454,26 @@ export function goalOptionsFor(goals: readonly GoalRef[], goalId: string): { val
 export function resolveDraft(draft: ContributionDraft, goals: readonly GoalCur[], today: ISODate, fallbackCur: Currency = 'USD'): ContributionInput {
   const sorted = [...goals].sort((a, b) => a.sort - b.sort);
   const goal = sorted.find((g) => g.id === draft.goalId) ?? sorted[0];
-  return { goalId: goal?.id ?? '', date: draft.date ?? today, amount: draft.amount, cur: draft.cur ?? goal?.cur ?? fallbackCur };
+  const cur = draft.cur ?? goal?.cur ?? fallbackCur;
+  // Sin control de tasa (la moneda es la principal) no se guarda ninguna.
+  return {
+    goalId: goal?.id ?? '',
+    date: draft.date ?? today,
+    amount: draft.amount,
+    cur,
+    rate: cur === fallbackCur ? null : draft.rate,
+    accountId: draft.accountId,
+  };
 }
 
 /** El aporte listo para guardar, o null si no se puede agregar: hace falta una meta, una fecha válida y un monto > 0. */
-export function draftInput(draft: ContributionDraft, goals: readonly GoalCur[], today: ISODate): ContributionInput | null {
-  const input = resolveDraft(draft, goals, today);
+export function draftInput(draft: ContributionDraft, goals: readonly GoalCur[], today: ISODate, main: Currency = 'USD'): ContributionInput | null {
+  const input = resolveDraft(draft, goals, today, main);
   const ok = input.goalId !== '' && isISODate(input.date) && Number.isFinite(input.amount) && input.amount > 0;
   return ok ? input : null;
 }
 
-/** Después de agregar solo se limpia el monto: fecha, meta y moneda se quedan para el siguiente aporte. */
+/** Después de agregar se limpian el monto y la tasa propia (son de ese aporte): fecha, meta, moneda y cuenta se quedan para el siguiente. */
 export function afterAdd(draft: ContributionDraft): ContributionDraft {
-  return { ...draft, amount: 0 };
+  return { ...draft, amount: 0, rate: null };
 }
