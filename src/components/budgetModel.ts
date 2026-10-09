@@ -269,7 +269,7 @@ export interface SummaryRow {
 const dayMonth = (date: ISODate) => `${date.slice(8)}/${date.slice(5, 7)}`;
 
 /**
- * The rows of the "Month summary" card, or its compact form in the close dialog (additions collapsed into one
+ * The rows of the month summary list, or its compact form in the close dialog (additions collapsed into one
  * "Added during the month" row). Zero lines are left out; the closing three (total, spent, remaining) always show.
  */
 export function summaryRows(b: BudgetSummary, compact = false): SummaryRow[] {
