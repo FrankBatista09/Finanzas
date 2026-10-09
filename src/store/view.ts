@@ -59,12 +59,8 @@ export function pairRates(state: AppState, key: MonthKey): PairRate[] {
   });
 }
 
-/**
- * Las cuentas de dinero visibles que tienen algo: saldo distinto de cero en `key` o alguna fila que las nombra
- * (ingreso, envío, gasto, pago de tarjeta, aporte, presupuesto). Una cuenta vacía y sin movimientos no hace que
- * su moneda necesite una tasa: todavía no hay dinero en ella.
- */
-export function accountsInUse<T extends { id: string }>(state: AppState, key: MonthKey, visible: readonly T[]): T[] {
+/** Ids de las cuentas que alguna fila nombra (ingreso, envío, gasto, pago de tarjeta, aporte, presupuesto). */
+function namedAccountIds(state: AppState): Set<string> {
   const named = new Set<string>();
   for (const i of state.incomes) named.add(i.accountId);
   for (const c of state.contribs) if (c.accountId) named.add(c.accountId);
@@ -76,8 +72,28 @@ export function accountsInUse<T extends { id: string }>(state: AppState, key: Mo
     for (const t of m.transfers) named.add(t.fromAccountId).add(t.toAccountId);
     for (const c of m.cards ?? []) for (const p of c.payments) named.add(p.accountId);
   }
+  return named;
+}
+
+/**
+ * Las cuentas de dinero visibles que tienen algo: saldo distinto de cero en `key` o alguna fila que las nombra
+ * (ingreso, envío, gasto, pago de tarjeta, aporte, presupuesto). Una cuenta vacía y sin movimientos no hace que
+ * su moneda necesite una tasa: todavía no hay dinero en ella.
+ */
+export function accountsInUse<T extends { id: string }>(state: AppState, key: MonthKey, visible: readonly T[]): T[] {
+  const named = namedAccountIds(state);
   const nonZero = new Set(balances(state, key).accounts.filter((b) => b.balance !== 0).map((b) => b.account.id));
   return visible.filter((a) => named.has(a.id) || nonZero.has(a.id));
+}
+
+/**
+ * Si el usuario tiene algo que convertir: dinero en alguna cuenta (saldo inicial o movimientos) o cualquier fila
+ * (también un aporte a una meta sin cuenta). Sin esto, ni la segunda moneda pide una tasa: no hay importes.
+ */
+export function hasActivity(state: AppState, key: MonthKey): boolean {
+  if (state.contribs.length > 0 || namedAccountIds(state).size > 0) return true;
+  if (Object.values(state.months[key]?.budgets ?? {}).some((v) => v !== 0)) return true;
+  return balances(state, key).accounts.some((b) => b.balance !== 0);
 }
 
 /**
@@ -92,6 +108,16 @@ export function usedCurrencies(
 ): Currency[] {
   const used = new Set<Currency>([main, ...(second ? [second] : []), ...visible.map((a) => a.currency), ...month.fixed.map((f) => f.cur), ...month.tx.map((t) => t.cur)]);
   return CURRENCIES.filter((c) => used.has(c));
+}
+
+/**
+ * Las monedas que piden tasa en el mes `key` de ese estado. Sin actividad no hay nada que convertir: solo la
+ * principal, y ni la segunda moneda hace falta (una tasa escrita se ve igual: shownRates).
+ */
+export function currenciesInUse(state: AppState, key: MonthKey): Currency[] {
+  const month = state.months[key];
+  if (!month || !hasActivity(state, key)) return [state.mainCurrency];
+  return usedCurrencies(state.mainCurrency, state.secondCurrency, accountsInUse(state, key, moneyAccounts(state)), month);
 }
 
 /**
@@ -175,7 +201,10 @@ export function buildFinanzas({ user, state, monthKey, today, actions }: Finanza
     month,
     calc,
     rate: calc.rate,
-    barRate: barRate(rates, usedCurrencies(calc.main, calc.second, accountsInUse(state, monthKey, money), month), calc.main, calc.second, calc.rate),
+    // Sin actividad no hay nada que convertir: la tasa de la segunda moneda tampoco se muestra (una escrita sí).
+    barRate: hasActivity(state, monthKey)
+      ? barRate(rates, currenciesInUse(state, monthKey), calc.main, calc.second, calc.rate)
+      : barRate(rates, [calc.main], calc.main, null, null),
     main: calc.main,
     second: calc.second,
     accounts: [...state.accounts].sort((a, b) => a.sort - b.sort),
