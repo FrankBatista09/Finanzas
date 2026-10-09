@@ -35,6 +35,7 @@ import {
   accountsById,
   balances,
   budgetHistory,
+  budgetSummary,
   cardCalc,
   cardCalcs,
   cardHint,
@@ -56,15 +57,15 @@ import {
   transferFees,
   transferReceived,
 } from '../shared/calc';
-import type { AccountBalance, Balances, CardCalc, MonthCalc, RateInfo, RateSource } from '../shared/calc';
+import type { AccountBalance, Balances, BudgetSummary, CardCalc, MonthCalc, RateInfo, RateSource } from '../shared/calc';
 import { APP_NAME, CATS, GOLD, GOLD_UNIT, isGold, METHODS, TIMEZONE, VIAS } from '../shared/constants';
 import { f0, f2, fGrams, fRate } from '../shared/format';
 import { canonicalCat, canonicalMethod } from '../shared/i18n';
-import { currentMonthKey, isISODate, isMonthKey, label, monthOf, monthSpan, todayISO } from '../shared/month';
+import { clampToMonth, currentMonthKey, isISODate, isMonthKey, label, monthOf, monthSpan, todayISO } from '../shared/month';
 import type { Account, AccountCurrency, AppState, AppUser, CreditCard, Currency, FixedExpense, ISODate, Month, MonthKey } from '../shared/types';
 import { checkBearer } from './auth';
 import { readLimitedBody } from './body';
-import { createIncome, createOutside, createTransfer, ensureMonth, getMonth, listCards, loadState, patchFixed, payCard, userAccounts, userState } from './db';
+import { addBudgetEntry, createIncome, createOutside, createTransfer, ensureMonth, getMonth, listCards, loadState, patchFixed, payCard, userAccounts, userState } from './db';
 import type { Env } from './env';
 import {
   ApiError,
@@ -719,6 +720,15 @@ const addIncomeArgs = z.strictObject({
     .describe('true only if the person says this income repeats every month (a salary): a copy is then created when each new month starts. Omit it otherwise.'),
 });
 
+const addBudgetExtraArgs = z.strictObject({
+  amount: positive().describe('Extra money to add to the budget of the month, in the currency of the account. Greater than 0.'),
+  account: accountName(`Account the extra budget comes out of, ${ACCOUNT_HINT}. Omit it unless the person names one: their default account is used.`),
+  note: text(MAX_LEN.desc).optional().describe('Why it was added, in a few words and as the person said it: "Medical expense", "Car repair".'),
+  date: isoDate()
+    .optional()
+    .describe(`Date it was added, YYYY-MM-DD. Omit it if the person gave no date or said "today": today in ${TIMEZONE} is used. It decides the month.`),
+});
+
 const listAccountsArgs = z.strictObject({});
 
 const markFixedPaidArgs = z.strictObject({
@@ -996,6 +1006,61 @@ function hintText(name: string, cur: Currency, h: NonNullable<ReturnType<typeof 
   return `${name}: ${parts.join(SEP)}`;
 }
 
+/** The month budget as a sentence: initial, what was added and when, total, spent, remaining (main currency). */
+function summaryText(b: BudgetSummary): string {
+  const { main } = b;
+  const parts = [`initial ${money(b.initial, main)}`];
+  if (b.leftover !== 0) parts.push(`leftover from the previous month ${signed(b.leftover, main)}`);
+  if (b.incomes !== 0) parts.push(`incomes added to the budget ${signed(b.incomes, main)}`);
+  if (b.transfers !== 0) parts.push(`moved by transfers ${signed(b.transfers, main)}`);
+  for (const l of b.additions) {
+    parts.push(`added on ${l.date}${l.note ? ` (${l.note})` : ''} to ${l.accountName} ${signed(l.amount, l.currency)}`);
+  }
+  for (const l of b.reductions) {
+    parts.push(`reduced on ${l.date}${l.note ? ` (${l.note})` : ''} in ${l.accountName} ${signed(l.amount, l.currency)}`);
+  }
+  parts.push(`total budget ${money(b.total, main)}`, `spent ${money(b.spent, main)}`);
+  parts.push(b.remaining < 0 ? `over budget by ${money(-b.remaining, main)}` : `remaining ${money(b.remaining, main)}`);
+  return parts.join(SEP);
+}
+
+function summaryData(b: BudgetSummary) {
+  const line = (l: BudgetSummary['additions'][number]) => ({
+    id: l.id,
+    date: l.date,
+    accountId: l.accountId,
+    account: l.accountName,
+    amount: l.amount,
+    currency: l.currency,
+    inMain: l.inMain,
+    note: l.note,
+  });
+  return {
+    currency: b.main,
+    initial: b.initial,
+    initialLines: b.initialLines.map(line),
+    leftover: b.leftover,
+    incomes: b.incomes,
+    transfers: b.transfers,
+    additions: b.additions.map(line),
+    added: b.added,
+    additionDates: b.additionDates,
+    reductions: b.reductions.map(line),
+    reduced: b.reduced,
+    total: b.total,
+    spent: b.spent,
+    remaining: b.remaining,
+    ...(b.second !== null && {
+      secondCurrency: b.second,
+      initialSecond: b.initialSecond,
+      addedSecond: b.addedSecond,
+      totalSecond: b.totalSecond,
+      spentSecond: b.spentSecond,
+      remainingSecond: b.remainingSecond,
+    }),
+  };
+}
+
 const monthSummary = defineTool({
   name: 'month_summary',
   title: 'Month summary',
@@ -1003,6 +1068,7 @@ const monthSummary = defineTool({
     "Summary of one month in the finances of `user`, with every amount in the person's main currency: budget and the part of it that comes out of each account, how the budget got there (its history: the initial amount, later adjustments, the leftover of the previous month, the incomes added to it and the transfers that moved it from one account to another, each with its date), used, available, fixed expenses paid and pending (with the names of the ones still to pay), spending by category (transfer fees count as transactions, under Other), the outside-budget expenses (subtracted from the account balances but not part of used or available), the month's income and income minus used, the balance of each account and the month's rates.",
     'Use it when the person asks how the month is going, how much is left, what is still to be paid, how much they have or why the budget changed.',
     'If the previous month ended with money left over (or overspent) and it has not been added to this month\'s budget, a "Leftover" line says how much; adding it is done in the app.',
+    'The "Budget summary" line tells the budget as a story: the initial budget, each amount added later with its date and note (see add_budget_extra), the total, what was spent and what remains (or by how much it is over budget).',
     'Rates carry the date they apply from: an amount is converted with the rate in effect on its own date, so a rate typed later does not change earlier records. The "Month rates" line gives the latest rate of the month and where it came from; "default value, not set yet" means the converted amounts are only approximate.',
     `It also says what today's date is for the users. By default: ${IN_PROGRESS}.`,
   ].join(' '),
@@ -1062,6 +1128,8 @@ const monthSummary = defineTool({
           .join('; ')}`,
       );
     }
+    const story = budgetSummary(state, m.key);
+    if (history.length > 0) lines.push(`Budget summary: ${summaryText(story)}`);
     if (left.previousKey !== null && left.leftover !== null && !left.added) {
       lines.push(`Leftover of ${label(left.previousKey)}: ${money(left.leftover, main)}, not added to this month's budget.`);
     }
@@ -1149,6 +1217,7 @@ const monthSummary = defineTool({
           inMain: h.inMain,
           total: h.total,
         })),
+        budgetSummary: summaryData(story),
         leftover: { previousMonth: left.previousKey, amount: left.leftover, added: left.added },
         used: c.used,
         ...(c.usedSecond !== null && { usedSecond: c.usedSecond }),
@@ -1607,9 +1676,45 @@ const listCreditCards = defineTool({
   },
 });
 
+const addBudgetExtra = defineTool({
+  name: 'add_budget_extra',
+  title: 'Add extra budget',
+  description: [
+    "Adds extra money to the budget of a month in the finances of `user`, recorded as a dated addition on top of the original budget (the initial amount stays as it was and month_summary reports both). Use it when the person says they need to add more money to this month's budget, for example \"add 5,000 to the budget for the medical expense\".",
+    `Apart from \`user\`, only \`amount\` is required. Defaults: the person's default account (the amount is in the currency of that account) and today's date in ${TIMEZONE}; the month is the one of the date. Pass \`note\` with the reason. It fails in a closed month and for a gold account.`,
+    "The answer states the budget summary of the month: initial, added, new total, spent and remaining. Each call adds one more extra: do not repeat it for the same one. It does not move any money between accounts; the budget is a plan.",
+  ].join(' '),
+  schema: addBudgetExtraArgs,
+  readOnly: false,
+  idempotent: false,
+  async run({ amount, account: named, note, date: givenDate }, ctx) {
+    const { db, now, user } = ctx;
+    if (givenDate) await assertReachable(ctx, givenDate);
+    const before = await loadState(db, user.id);
+    const m = resolveMonth(before, givenDate ? monthOf(givenDate) : undefined, ctx);
+    const account = await resolveAccount(ctx, named);
+    if (!isMoneyAccount(account)) throw goldAccountError(account.name);
+    const date = givenDate ?? clampToMonth(todayISO(now), m.key);
+    await addBudgetEntry(db, user.id, m.key, { accountId: account.id, amount, date, note: note ?? '', kind: 'adjust' }, now);
+
+    const after = await afterWrite(ctx, (state) => ({ state, summary: budgetSummary(state, m.key) }));
+    const added = money(amount, account.currency);
+    const sentences = [`Extra budget recorded for ${user.name}: +${added} from ${account.name}${note ? ` (${note})` : ''} on ${date} (${label(m.key)}).`];
+    if (after) sentences.push(`Budget summary of ${label(m.key)}: ${summaryText(after.summary)}.`);
+    return {
+      text: sentences.join(' '),
+      data: {
+        entry: { accountId: account.id, account: account.name, amount, currency: account.currency, date, note: note ?? '' },
+        month: { key: m.key, label: label(m.key) },
+        budgetSummary: after ? summaryData(after.summary) : null,
+      },
+    };
+  },
+});
+
 /** En el orden en que las lista tools/list. */
 const TOOLS = new Map(
-  [addTransaction, addOutsideExpense, listTransactions, monthSummary, addTransfer, markFixedPaid, addIncome, listAccounts, payCreditCard, listCreditCards].map((t) => [t.name, t]),
+  [addTransaction, addOutsideExpense, listTransactions, monthSummary, addTransfer, markFixedPaid, addIncome, listAccounts, payCreditCard, listCreditCards, addBudgetExtra].map((t) => [t.name, t]),
 );
 // ── Métodos ──────────────────────────────────────────────────────────────────
 

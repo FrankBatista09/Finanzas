@@ -1052,6 +1052,120 @@ export function monthCalc(state: AppState, key: MonthKey): MonthCalc {
   };
 }
 
+/** One movement that shaped the month's budget, in the account's currency and in the main one. */
+export interface BudgetSummaryLine {
+  id: string;
+  date: ISODate;
+  accountId: string;
+  accountName: string;
+  /** In the account's currency; negative in a reduction. */
+  amount: number;
+  currency: Currency;
+  /** `amount` in the main currency (same rate as the budget history and monthCalc). */
+  inMain: number;
+  note: string;
+}
+
+/** How the month's budget came to be, and what is left of it. Money fields are in the main currency. */
+export interface BudgetSummary {
+  key: MonthKey;
+  main: Currency;
+  second: Currency | null;
+  /** The 'initial' log entries, one line per account. */
+  initialLines: BudgetSummaryLine[];
+  initial: number;
+  /** The 'leftover' carried from the previous month (negative if that month was overspent). */
+  leftover: number;
+  /** Incomes marked "Adds to budget". */
+  incomes: number;
+  /** Net of "Moves budget" transfers: 0 at the month rate, a bit off if a transfer used another one. */
+  transfers: number;
+  /** Positive 'adjust' entries: extras added during the month, by date. */
+  additions: BudgetSummaryLine[];
+  added: number;
+  /** Negative 'adjust' entries, by date. `reduced` is <= 0. */
+  reductions: BudgetSummaryLine[];
+  reduced: number;
+  /** Distinct dates on which something was added, ascending. */
+  additionDates: ISODate[];
+  /** Exactly monthCalc().budget. */
+  total: number;
+  /** monthCalc().used. */
+  spent: number;
+  /** total - spent; negative = overspent. */
+  remaining: number;
+  totalSecond: number | null;
+  spentSecond: number | null;
+  remainingSecond: number | null;
+  initialSecond: number | null;
+  addedSecond: number | null;
+}
+
+/**
+ * The month budget as a story: initial, what was added or taken during the month, the total, what was spent and
+ * what remains. Built from budgetHistory (so it works for closed months too); `total` and `spent` come from
+ * monthCalc so the summary can never disagree with the panel. Needs the month to exist, like monthCalc.
+ */
+export function budgetSummary(state: AppState, key: MonthKey): BudgetSummary {
+  const calc = monthCalc(state, key);
+  const second = calc.second;
+  const toSecond = (n: number) => (second ? convert(state, key, n, calc.main, second) : null);
+  let initial = 0;
+  let leftover = 0;
+  let incomes = 0;
+  let transfers = 0;
+  const initialLines: BudgetSummaryLine[] = [];
+  const additions: BudgetSummaryLine[] = [];
+  const reductions: BudgetSummaryLine[] = [];
+  for (const r of budgetHistory(state, key)) {
+    const line: BudgetSummaryLine = {
+      id: r.id,
+      date: r.date,
+      accountId: r.account.id,
+      accountName: r.account.name,
+      amount: r.amount,
+      currency: r.account.currency,
+      inMain: r.inMain,
+      note: r.note,
+    };
+    if (r.kind === 'initial') {
+      initial += r.inMain;
+      initialLines.push(line);
+    } else if (r.kind === 'leftover') leftover += r.inMain;
+    else if (r.kind === 'income') incomes += r.inMain;
+    else if (r.kind === 'transfer') transfers += r.inMain;
+    else if (r.amount > 0) additions.push(line);
+    else if (r.amount < 0) reductions.push(line);
+  }
+  const added = additions.reduce((a, l) => a + l.inMain, 0);
+  const reduced = reductions.reduce((a, l) => a + l.inMain, 0);
+  const total = calc.budget;
+  const remaining = total - calc.used;
+  return {
+    key,
+    main: calc.main,
+    second,
+    initialLines,
+    initial,
+    leftover,
+    incomes,
+    transfers,
+    additions,
+    added,
+    reductions,
+    reduced,
+    additionDates: [...new Set(additions.map((l) => l.date))].sort(),
+    total,
+    spent: calc.used,
+    remaining,
+    totalSecond: calc.budgetSecond,
+    spentSecond: calc.usedSecond,
+    remainingSecond: toSecond(remaining),
+    initialSecond: toSecond(initial),
+    addedSecond: toSecond(added),
+  };
+}
+
 /** Cuántos gastos fuera de presupuesto tiene el mes y cuánto suman, en la moneda principal (cada uno con la tasa de su fecha). */
 export function outsideSummary(state: AppState, key: MonthKey): { count: number; total: number } {
   const m = state.months[key];

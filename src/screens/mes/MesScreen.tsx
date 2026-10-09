@@ -6,6 +6,7 @@ import { outsideOf } from '../../../shared/calc';
 import { useI18n } from '../../i18n';
 import { useFinanzas } from '../../store';
 import { Stack } from '../../ui';
+import { BudgetSummaryCard } from './BudgetSummaryCard';
 import { CategoriesCard } from './CategoriesCard';
 import { useColumnCap } from './columnCap';
 import { CloseBox } from './CloseBox';
@@ -47,6 +48,7 @@ export function MesScreen() {
       </div>
       <TransactionsCard outside={outside} />
       {outsideCardVisible(outsideOf(month).length, outside) && <OutsideCard adding={outside} />}
+      <BudgetSummaryCard />
       {!readOnly && <CloseBox />}
       {/* Borrar el mes, abierto o cerrado: discreto y al final. Solo abre el diálogo de confirmación, que vive en App. */}
       <div className={styles.footer}>

@@ -193,7 +193,7 @@ describe('SummaryPanel · Month: el presupuesto', () => {
     const rows = [...html.matchAll(/<tr\b[^>]*>(.*?)<\/tr>/g)].map((m) => text(m[1]!).trim());
     expect(rows).toEqual(['DR account DOP ×', 'US account New account… USD Add']);
     // La × quita la cuenta del presupuesto (deja su parte en 0). Debajo de la tabla, el sobrante y el historial.
-    expect(buttonTexts(html)).toEqual(['×', 'Add', 'Cancel', 'Add to budget', 'Budget history']);
+    expect(buttonTexts(html)).toEqual(['×', 'Add', 'Cancel', '+ Extra budget', 'Add to budget', 'Budget history']);
     has(els(html, 'button'), { 'aria-label': 'Remove DR account from the budget' });
   });
 
@@ -217,7 +217,7 @@ describe('SummaryPanel · Month: el presupuesto', () => {
     const full = panel({ state });
     // Un select de una sola opción no dispararía nada: ahí va un botón.
     expect(els(full, 'option')).toHaveLength(0);
-    expect(buttonTexts(full)).toEqual(['×', '×', 'New account…', 'Add', 'Cancel', 'Add to budget', 'Budget history']);
+    expect(buttonTexts(full)).toEqual(['×', '×', 'New account…', 'Add', 'Cancel', '+ Extra budget', 'Add to budget', 'Budget history']);
     has(els(full, 'button'), { 'aria-label': 'Remove US account from the budget' });
   });
 
@@ -297,7 +297,7 @@ describe('SummaryPanel · Month: el presupuesto', () => {
     has(els(html, 'select'), { 'aria-label': 'Cuenta que se suma al presupuesto' });
     has(els(html, 'button'), { 'aria-label': 'Quitar DR account del presupuesto' });
     expect(html).toContain('<option value="__new__">Cuenta nueva…</option>');
-    expect(buttonTexts(html)).toEqual(['×', 'Agregar', 'Cancelar', 'Sumar al presupuesto', 'Historial del presupuesto']);
+    expect(buttonTexts(html)).toEqual(['×', 'Agregar', 'Cancelar', '+ Presupuesto extra', 'Sumar al presupuesto', 'Historial del presupuesto']);
     has(els(html, 'section'), { 'aria-label': 'Resumen de Octubre 2026' });
     has(els(html, 'svg'), { 'aria-label': 'Presupuesto usado: 49,150 de 70,000 DOP' });
   });
@@ -1111,8 +1111,11 @@ describe('CloseMonthModal', () => {
   it('pregunta con qué presupuesto arranca el mes siguiente: un campo por cuenta con parte, con la de este mes', () => {
     const html = render(<CloseMonthModal />, { shell: open });
     const t = text(html);
-    // Después del texto del Excel, la línea que presenta los campos.
-    expect(t).toContain("will be downloaded. November 2026's budget starts with these amounts per account: Budget from DR account (DOP)");
+    // Between the Excel text and the fields: the compact month summary (initial, added, total, spent, remaining).
+    expect(t).toContain(
+      'will be downloaded. Initial budget 65,000.00 DOP Added during the month 5,000.00 DOP Total budget 70,000.00 DOP ≈ 1,191.29 USD Spent 49,149.71 DOP ≈ 836.45 USD Remaining 20,850.29 DOP ≈ 354.84 USD',
+    );
+    expect(t).toContain("November 2026's budget starts with these amounts per account: Budget from DR account (DOP)");
     const inputs = els(html, 'input');
     expect(inputs.map((i) => i.type)).toEqual(['number', 'checkbox']);
     expect(inputs[0]).toMatchObject({ type: 'number', value: '70000', step: 'any', min: '0', inputMode: 'decimal', placeholder: '0.00', autoComplete: 'off' });

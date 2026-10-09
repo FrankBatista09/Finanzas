@@ -5,13 +5,27 @@
 // shared/calc.ts memoriza las tasas por objeto de estado: cada prueba arma el suyo y no lo toca después de calcular.
 
 import { describe, expect, it } from 'vitest';
-import { leftoverFor, monthCalc } from '../../shared/calc';
+import { budgetSummary, leftoverFor, monthCalc } from '../../shared/calc';
 import type { Leftover } from '../../shared/calc';
 import { f2 } from '../../shared/format';
 import { seedState, setBudgets } from '../../shared/seed';
 import type { AppState, BudgetEntry, Income } from '../../shared/types';
 import { createI18n } from '../i18n';
-import { BUDGET_KIND, budgetHistoryRows, closeBudgetForm, closeFieldInvalid, closeRequest, leftoverView, overrunLines } from './budgetModel';
+import {
+  BUDGET_KIND,
+  budgetHistoryRows,
+  closeBudgetForm,
+  closeFieldInvalid,
+  closeRequest,
+  extraDefaultAccount,
+  extraDefaultDate,
+  extraInput,
+  extraProblem,
+  leftoverView,
+  newExtraForm,
+  overrunLines,
+  summaryRows,
+} from './budgetModel';
 import type { CloseBudgetField, CloseBudgetForm } from './budgetModel';
 
 const entry = (over: Partial<BudgetEntry> & Pick<BudgetEntry, 'id' | 'amount' | 'kind'>): BudgetEntry => ({
@@ -115,7 +129,7 @@ describe('budgetHistoryRows: la historia del presupuesto', () => {
         id: 'seed-bg-2026-10-2',
         date: '2026-10-05',
         kind: 'adjust',
-        kindKey: 'budgetKindAdjust',
+        kindKey: 'budgetKindExtra',
         account: 'DR account',
         amount: '5,000.00',
         currency: 'DOP',
@@ -146,12 +160,12 @@ describe('budgetHistoryRows: la historia del presupuesto', () => {
       ['initial', 'budgetKindInitial'],
       ['transfer', 'budgetKindTransfer'],
       ['transfer', 'budgetKindTransfer'],
-      ['adjust', 'budgetKindAdjust'],
+      ['adjust', 'budgetKindExtra'],
       ['leftover', 'budgetKindLeftover'],
       ['income', 'budgetKindIncome'],
     ]);
     const { t } = createI18n('es');
-    expect(rows.map((r) => t(r.kindKey))).toEqual(['Inicial', 'Envío', 'Envío', 'Ajuste', 'Sobrante', 'Ingreso']);
+    expect(rows.map((r) => t(r.kindKey))).toEqual(['Inicial', 'Envío', 'Envío', 'Extra', 'Sobrante', 'Ingreso']);
     expect(rows.map((r) => createI18n('en').t(r.kindKey))[1]).toBe('Transfer');
     // Lo enviado, en negativo en la cuenta de origen, y lo recibido en la de destino; como un ingreso, no se quita
     // desde el historial. Cada fila con su clave: el id es el mismo.
@@ -498,5 +512,64 @@ describe('overrunLines: partes del presupuesto en negativo', () => {
 
   it('ninguna si no hay partes negativas', () => {
     expect(overrunLines(monthCalc(seedState(), '2026-10').budgetParts)).toEqual([]);
+  });
+});
+
+describe('extra budget dialog: defaults and what it sends', () => {
+  it('date: today in the current month, the first day in any other', () => {
+    expect(extraDefaultDate('2026-10', '2026-10-09')).toBe('2026-10-09');
+    expect(extraDefaultDate('2026-09', '2026-10-09')).toBe('2026-09-01');
+    expect(extraDefaultDate('2026-11', '2026-10-31')).toBe('2026-11-01');
+  });
+
+  it('account: the first budget part, else the first account', () => {
+    const calc = monthCalc(seedState(), '2026-10');
+    expect(extraDefaultAccount(calc.budgetParts, [{ id: 'us' }, { id: 'dr' }])).toBe('dr');
+    expect(extraDefaultAccount([], [{ id: 'us' }, { id: 'dr' }])).toBe('us');
+    expect(extraDefaultAccount([], [])).toBe('');
+  });
+
+  it('only a positive amount, an account and a date inside the month can be confirmed', () => {
+    const base = newExtraForm('2026-10', '2026-10-09', monthCalc(seedState(), '2026-10').budgetParts, [{ id: 'dr' }]);
+    expect(base).toEqual({ accountId: 'dr', amount: '', note: '', date: '2026-10-09' });
+    expect(extraProblem(base, '2026-10')).toBe('amount');
+    for (const amount of ['0', '-5', 'abc']) expect(extraProblem({ ...base, amount }, '2026-10')).toBe('amount');
+    expect(extraProblem({ ...base, amount: '5', date: '2026-11-01' }, '2026-10')).toBe('date');
+    expect(extraProblem({ ...base, amount: '5', accountId: '' }, '2026-10')).toBe('account');
+    expect(extraInput({ ...base, amount: '5000', note: '  Medical ' }, '2026-10')).toEqual({
+      accountId: 'dr',
+      amount: 5000,
+      date: '2026-10-09',
+      note: 'Medical',
+      kind: 'adjust',
+    });
+    expect(extraInput({ ...base, amount: '0' }, '2026-10')).toBeNull();
+  });
+});
+
+describe('summaryRows', () => {
+  it('lists the initial budget, each addition with its date and note, then total, spent and remaining', () => {
+    const rows = summaryRows(budgetSummary(seedState(), '2026-10'));
+    expect(rows.map((r) => [r.kind, r.labelKey, r.date, r.note, r.amount])).toEqual([
+      ['initial', 'summaryInitial', null, '', '65,000.00'],
+      ['addition', 'budgetKindExtra', '05/10', 'Car repair', '5,000.00'],
+      ['total', 'summaryTotal', null, '', '70,000.00'],
+      ['spent', 'summarySpent', null, '', '49,149.71'],
+      ['remaining', 'summaryRemaining', null, '', '20,850.29'],
+    ]);
+    expect(rows.at(-1)!.second).toBe('354.84');
+    // The compact form (close dialog) folds the additions into one row.
+    expect(summaryRows(budgetSummary(seedState(), '2026-10'), true).map((r) => r.kind)).toEqual(['initial', 'added', 'total', 'spent', 'remaining']);
+  });
+
+  it('overspent: "Over budget by" with the magnitude, flagged negative', () => {
+    const state = stateWith((s) => s.months['2026-10']!.budgetLog.push(entry({ id: 'cut', amount: -60000, kind: 'adjust' })));
+    const last = summaryRows(budgetSummary(state, '2026-10')).at(-1)!;
+    expect(last).toMatchObject({ kind: 'remaining', labelKey: 'summaryOver', negative: true, amount: '39,149.71' });
+  });
+
+  it('without a second currency no row carries a second figure', () => {
+    const state = { ...seedState(), secondCurrency: null };
+    expect(summaryRows(budgetSummary(state, '2026-10')).every((r) => r.second === null)).toBe(true);
   });
 });

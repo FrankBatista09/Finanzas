@@ -46,7 +46,7 @@ const NOW = new Date('2026-10-07T16:00:00Z');
 const F = FRANK.id;
 const E = EDA.id;
 
-const TOOL_NAMES = ['add_transaction', 'add_outside_expense', 'list_transactions', 'month_summary', 'add_transfer', 'mark_fixed_paid', 'add_income', 'list_accounts', 'pay_credit_card', 'list_credit_cards'];
+const TOOL_NAMES = ['add_transaction', 'add_outside_expense', 'list_transactions', 'month_summary', 'add_transfer', 'mark_fixed_paid', 'add_income', 'list_accounts', 'pay_credit_card', 'list_credit_cards', 'add_budget_extra'];
 const FIXED_NAMES = 'Electricity, Internet, Health insurance, Fridge payment, Claude, Google One, iCloud+, Cluely, Smartfit, Netflix, Unicaribe';
 /** Cómo nombra un error a los usuarios de las pruebas: el id que va en `user` y el nombre de cada quien. */
 const BOTH = 'frank (Frank), eda (Eda)';
@@ -791,12 +791,12 @@ describe('/mcp: tools/list', () => {
     return ((await rpc(env, 'tools/list')).result as { tools: Record<string, any>[] }).tools;
   }
 
-  it('lista las diez herramientas del diseño, con o sin params', async () => {
+  it('lista las once herramientas, con o sin params', async () => {
     const { env } = makeEnv();
     expect((await tools()).map((t) => t.name)).toEqual(TOOL_NAMES);
     for (const params of [{}, { cursor: 'x' }, null]) {
       const result = (await rpc(env, 'tools/list', params)).result as { tools: unknown[]; nextCursor?: string };
-      expect(result.tools).toHaveLength(10);
+      expect(result.tools).toHaveLength(11);
       expect(result.nextCursor).toBeUndefined();
     }
   });
@@ -843,6 +843,7 @@ describe('/mcp: tools/list', () => {
       'List accounts',
       'Pay credit card',
       'List credit cards',
+      'Add extra budget',
     ]);
     // Cada descripción dice de quién son las finanzas que toca.
     for (const tool of all) expect(tool.description, tool.name).toContain('in the finances of `user`');
@@ -861,6 +862,7 @@ describe('/mcp: tools/list', () => {
       list_accounts: [true, true],
       pay_credit_card: [false, false],
       list_credit_cards: [true, true],
+      add_budget_extra: [false, false],
     });
   });
 
@@ -1587,6 +1589,8 @@ describe('month_summary', () => {
       'Budget: 70,000.00 DOP (1,191.29 USD) · by account: DR account 70,000.00 DOP',
       // Cómo llegó a 70,000: 65,000 iniciales y un ajuste de 5,000 el día 5.
       'Budget history: 2026-10-01 initial DR account +65,000.00 DOP; 2026-10-05 adjustment DR account +5,000.00 DOP (Car repair)',
+      // The same story in one line: the extra is an addition on top of the initial 65,000.
+      'Budget summary: initial 65,000.00 DOP · added on 2026-10-05 (Car repair) to DR account +5,000.00 DOP · total budget 70,000.00 DOP · spent 49,149.71 DOP · remaining 20,850.29 DOP',
       // Septiembre: 70,000 − (35,872.66 + 106 USD × 58.57 + 24,555) usados.
       "Leftover of September 2026: 3,363.46 DOP, not added to this month's budget.",
       'Used so far: 49,149.71 DOP (836.45 USD)',
@@ -1619,6 +1623,28 @@ describe('month_summary', () => {
         { kind: 'initial', id: 'seed-bg-2026-10-1', date: '2026-10-01', accountId: 'dr', account: 'DR account', amount: 65000, currency: 'DOP', note: '', inMain: 65000, total: 65000 },
         { kind: 'adjust', id: 'seed-bg-2026-10-2', date: '2026-10-05', accountId: 'dr', account: 'DR account', amount: 5000, currency: 'DOP', note: 'Car repair', inMain: 5000, total: 70000 },
       ],
+      budgetSummary: {
+        currency: 'DOP',
+        initial: 65000,
+        initialLines: [{ id: 'seed-bg-2026-10-1', date: '2026-10-01', accountId: 'dr', account: 'DR account', amount: 65000, currency: 'DOP', inMain: 65000, note: '' }],
+        leftover: 0,
+        incomes: 0,
+        transfers: 0,
+        additions: [{ id: 'seed-bg-2026-10-2', date: '2026-10-05', accountId: 'dr', account: 'DR account', amount: 5000, currency: 'DOP', inMain: 5000, note: 'Car repair' }],
+        added: 5000,
+        additionDates: ['2026-10-05'],
+        reductions: [],
+        reduced: 0,
+        total: 70000,
+        spent: near(49149.71),
+        remaining: near(20850.29),
+        secondCurrency: 'USD',
+        initialSecond: near(65000 / 58.76),
+        addedSecond: near(5000 / 58.76),
+        totalSecond: near(70000 / 58.76),
+        spentSecond: near(49149.71 / 58.76),
+        remainingSecond: near(20850.29 / 58.76),
+      },
       leftover: { previousMonth: '2026-09', amount: near(70000 - (35872.66 + (106 * 134721) / 2300 + 24555)), added: false },
       used: near(49149.71),
       usedSecond: near(49149.71 / 58.76),
@@ -2393,9 +2419,10 @@ describe('month_summary: presupuesto por cuenta, monedas y tasas', () => {
     expect(lines[1]).toBe('Budget: 47,651.46 TRY (1,191.29 USD) · by account: DR account 70,000.00 DOP (47,651.46 TRY)');
     // La historia va en la moneda de cada cuenta.
     expect(lines[2]).toBe('Budget history: 2026-10-01 initial DR account +65,000.00 DOP; 2026-10-05 adjustment DR account +5,000.00 DOP (Car repair)');
-    expect(lines[3]).toMatch(/^Leftover of September 2026: [\d,.]+ TRY, not added to this month's budget\.$/);
-    expect(lines[4]).toBe(`Used so far: ${f2(c.used)} TRY (836.45 USD)`);
-    expect(lines[5]).toBe(`Available: ${f2(c.avail)} TRY`);
+    expect(lines[3]).toMatch(/^Budget summary: initial 44,247\.79 TRY · added on 2026-10-05 \(Car repair\) to DR account \+5,000\.00 DOP · total budget 47,651\.46 TRY · spent [\d,.]+ TRY · remaining [\d,.]+ TRY$/);
+    expect(lines[4]).toMatch(/^Leftover of September 2026: [\d,.]+ TRY, not added to this month's budget\.$/);
+    expect(lines[5]).toBe(`Used so far: ${f2(c.used)} TRY (836.45 USD)`);
+    expect(lines[6]).toBe(`Available: ${f2(c.avail)} TRY`);
     expect(lines).toContain(`Transactions: 7 (${f2(c.varSpent)} TRY)`);
     expect(lines).toContain(`Month income: 232,000.00 TRY · Income − used: ${f2(c.incomeLeft)} TRY`);
     expect(lines).toContain(
@@ -2710,7 +2737,11 @@ describe('presupuesto con historia, sobrante e ingresos que lo suben', () => {
     );
     // Ya sumado, el sobrante no se vuelve a ofrecer.
     expect(r.text).not.toContain('Leftover of');
-    expect(lines[3]).toBe('Used so far: 49,149.71 DOP (836.45 USD)');
+    expect(lines[3]).toBe(
+      'Budget summary: initial 65,000.00 DOP · leftover from the previous month +3,363.46 DOP · incomes added to the budget +5,876.00 DOP · added on 2026-10-05 (Car repair) to DR account +5,000.00 DOP · reduced on 2026-10-06 (Less eating out) in DR account -1,200.00 DOP · total budget 78,039.46 DOP · spent 49,149.71 DOP · remaining 28,889.75 DOP',
+    );
+    expect(lines[4]).toBe('Used so far: 49,149.71 DOP (836.45 USD)');
+    expect(r.data!.budgetSummary).toMatchObject({ initial: 65000, added: 5000, reduced: -1200, incomes: 5876, total: r.data!.budget, spent: 49149.71 });
     expect(r.data!.leftover).toMatchObject({ previousMonth: '2026-09', added: true });
     expect(r.data!.budgetHistory.map((h: { kind: string; total: number }) => [h.kind, Math.round(h.total * 100) / 100])).toEqual([
       ['initial', 65000],
@@ -3020,5 +3051,42 @@ describe('tarjeta de crédito', () => {
     expect(r.data!.account).toBeNull();
     expect(await balanceOf(db, 'dr')).toBe(before);
     expect((await call(env, 'month_summary')).data!.creditCards[0].total).toBeCloseTo(1137.3, 6);
+  });
+});
+
+describe('add_budget_extra', () => {
+  it('records a dated addition on top of the initial budget and reports the new total', async () => {
+    const { env, db } = await seeded();
+    const r = await call(env, 'add_budget_extra', { amount: 5000, note: ' Medical expense ' });
+    expect(r.isError).toBe(false);
+    expect(r.text).toBe(
+      'Extra budget recorded for Frank: +5,000.00 DOP from DR account (Medical expense) on 2026-10-07 (October 2026). Budget summary of October 2026: initial 65,000.00 DOP · added on 2026-10-05 (Car repair) to DR account +5,000.00 DOP · added on 2026-10-07 (Medical expense) to DR account +5,000.00 DOP · total budget 75,000.00 DOP · spent 49,149.71 DOP · remaining 25,850.29 DOP.',
+    );
+    expect(r.data).toMatchObject({
+      entry: { accountId: 'dr', amount: 5000, currency: 'DOP', date: '2026-10-07', note: 'Medical expense' },
+      month: { key: '2026-10' },
+      budgetSummary: { initial: 65000, added: 10000, total: 75000, additionDates: ['2026-10-05', '2026-10-07'] },
+    });
+    const month = (await getMonth(db, F, '2026-10'))!;
+    expect(month.budgetLog.at(-1)).toMatchObject({ kind: 'adjust', amount: 5000, date: '2026-10-07', note: 'Medical expense' });
+    expect(month.budgets).toEqual({ dr: 75000 });
+  });
+
+  it('takes the account and the date from the person; the amount is in the account currency', async () => {
+    const { env } = await seeded();
+    const r = await call(env, 'add_budget_extra', { amount: 50, account: 'US account', date: '2026-10-03' });
+    expect(r.data!.entry).toMatchObject({ accountId: 'us', amount: 50, currency: 'USD', date: '2026-10-03' });
+    // 50 USD x 58.76 on top of 70,000 DOP.
+    expect(r.data!.budgetSummary.total).toBeCloseTo(70000 + 2938, 6);
+  });
+
+  it('rejects an amount of 0 or less, a gold account, a closed month and a date in another month that does not exist', async () => {
+    const { env, db } = await seeded();
+    const before = await getMonth(db, F, '2026-10');
+    expect(await fails(env, 'add_budget_extra', { amount: 0 })).toContain('amount');
+    expect(await fails(env, 'add_budget_extra', { amount: -5 })).toContain('amount');
+    expect(await fails(env, 'add_budget_extra', { amount: 5, date: '2026-08-10' })).toContain('closed');
+    expect(await fails(env, 'add_budget_extra', { amount: 5, date: '2031-01-10' })).toContain('2031');
+    expect(await getMonth(db, F, '2026-10')).toEqual(before);
   });
 });
