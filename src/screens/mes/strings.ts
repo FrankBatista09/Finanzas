@@ -209,7 +209,7 @@ export const MES = defineStrings({
   es: {
     fixedTitle: 'Gastos mensuales fijos',
     fixedMeta: '{paid} de {total} pagados · total',
-    paid: 'Pagado',
+    paid: 'Pago',
     item: 'Concepto',
     day: 'Día',
     newFixed: 'Nuevo gasto mensual',

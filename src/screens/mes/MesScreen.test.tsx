@@ -1252,7 +1252,7 @@ describe('en español', () => {
 
   it('títulos, columnas y metas con sus cifras', () => {
     expect(t).toContain('Gastos mensuales fijos 6 de 11 pagados · total 42,025.57 DOP');
-    expect(t).toContain('Pagado Concepto Día Monto Moneda Pagar con Cuenta DOP USD');
+    expect(t).toContain('Pago Concepto Día Monto Moneda Pagar con Cuenta DOP USD');
     // La nota de las tasas y, en la primera columna, la fecha desde la que vale cada una.
     expect(t).toContain('Tasas del mes Cancelar Una tasa nueva vale desde su fecha. Las transacciones anteriores conservan la que tenían. Vigente desde Desde');
     expect(t).toContain('Tasa Hacia 01/10 1 USD =');
