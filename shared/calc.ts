@@ -7,7 +7,7 @@
 //  · lo que es del mes entero (gastos fijos, partes del presupuesto, totales) usa la última tasa del mes;
 //  · un saldo se expresa en otra moneda con la última tasa del mes que se está mirando.
 
-import { DEFAULT_USD_RATES, isGold } from './constants';
+import { CREDIT_CARD_METHOD, DEFAULT_USD_RATES, isGold } from './constants';
 import { firstDay, monthOf, monthSpan } from './month';
 import type {
   Account,
@@ -17,12 +17,15 @@ import type {
   BudgetEntryKind,
   Contribution,
   Currency,
+  FixedExpense,
   Goal,
   Income,
   ISODate,
   Month,
+  MonthCard,
   MonthKey,
   OutsideExpense,
+  Transaction,
   Transfer,
 } from './types';
 
@@ -30,6 +33,20 @@ import type {
 export function outsideOf(m: Month): readonly OutsideExpense[] {
   return m.outside ?? [];
 }
+
+/** La tarjeta de crédito de un mes (Month.card es opcional). */
+export function cardOf(m: Month): MonthCard {
+  return m.card ?? { other: 0, paid: null, accountId: null };
+}
+
+/** Un gasto fijo que se paga con la tarjeta. */
+export const isOnCard = (f: Pick<FixedExpense, 'onCard'>): boolean => f.onCard === true;
+
+/** Un gasto fijo cargado a la tarjeta: es de la tarjeta Y está marcado. Marcarlo no lo paga de ninguna cuenta. */
+export const isCharged = (f: Pick<FixedExpense, 'onCard' | 'paid'>): boolean => f.onCard === true && f.paid;
+
+/** Una transacción hecha con la tarjeta de crédito: queda cargada a ella. */
+export const isCardTx = (t: Pick<Transaction, 'method'>): boolean => t.method === CREDIT_CARD_METHOD;
 
 export function sortedKeys(state: AppState): MonthKey[] {
   return Object.keys(state.months).sort();
@@ -351,9 +368,11 @@ export interface Balances {
  *  + ingresos (por su fecha)          − transacciones pagadas desde ella
  *  + envíos que le entran             − gastos fijos marcados como pagados desde ella
  *                                     − envíos que salen de ella, y su comisión
+ *                                     − pagos de la tarjeta de crédito desde ella (Month.card)
  *                                     − aportes a metas que dicen salir de ella (Contribution.accountId)
  * Un movimiento en otra moneda entra o sale convertido con la tasa vigente en su fecha (un gasto fijo, que no
- * tiene fecha, con la última de su mes). Un aporte a una meta solo mueve un saldo si indica su cuenta (en la moneda de la cuenta, con contribIn). Un movimiento
+ * tiene fecha, con la última de su mes). Lo cargado a la tarjeta (transacciones con tarjeta de crédito y gastos
+ * fijos marcados "en tarjeta") NO mueve ningún saldo hasta que se paga la tarjeta. Un aporte a una meta solo mueve un saldo si indica su cuenta (en la moneda de la cuenta, con contribIn). Un movimiento
  * cuya cuenta ya no existe se ignora.
  * Una cuenta de oro lleva gramos: su saldo inicial más los ingresos en gramos que le entran. En dinero vale lo
  * que diga el precio del oro (goldValue); sin precio no tiene valor y no suma al total.
@@ -386,10 +405,15 @@ export function balances(state: AppState, asOf: MonthKey): Balances {
   for (const key of sortedKeys(state)) {
     if (key > asOf) break;
     const m = state.months[key]!;
-    for (const t of m.tx) move(t.accountId, key, t.amount, t.cur, -1, t.date);
+    // Una transacción con tarjeta de crédito no sale de ninguna cuenta: lo hace el pago de la tarjeta (abajo).
+    for (const t of m.tx) if (!isCardTx(t)) move(t.accountId, key, t.amount, t.cur, -1, t.date);
     // Fuera de presupuesto: resta del saldo igual que una transacción, pero monthCalc no lo cuenta.
     for (const o of outsideOf(m)) move(o.accountId, key, o.amount, o.cur, -1, o.date);
-    for (const f of m.fixed) if (f.paid) move(f.accountId, key, f.amount, f.cur, -1);
+    for (const f of m.fixed) if (f.paid && !isOnCard(f)) move(f.accountId, key, f.amount, f.cur, -1);
+    // Lo ÚNICO que la tarjeta le resta a una cuenta: lo que se pagó, en la moneda principal, convertido a la de la
+    // cuenta con la última tasa del mes (como un gasto fijo, que tampoco guarda fecha).
+    const card = cardOf(m);
+    if (card.paid !== null && card.accountId) move(card.accountId, key, card.paid, state.mainCurrency, -1);
     for (const t of m.transfers) {
       const from = byId.get(t.fromAccountId);
       const to = byId.get(t.toAccountId);
@@ -434,6 +458,81 @@ export function openingFor(state: AppState, accountId: string, asOf: MonthKey, d
   return row ? row.account.opening + ((desired || 0) - row.balance) : desired || 0;
 }
 
+// ── Tarjeta de crédito ───────────────────────────────────────────────────────
+
+/**
+ * La tarjeta de crédito de un mes: un pago diferido. Lo que se carga a ella no toca ninguna cuenta ni el
+ * presupuesto; solo el pago de la tarjeta lo hace. Todo en la moneda principal.
+ *  total = previous + other + charged
+ * El saldo de un mes que se arrastra al siguiente se deriva, nunca se guarda: es su `remainder`.
+ */
+export interface CardCalc {
+  key: MonthKey;
+  /** Lo que quedó sin pagar del mes registrado anterior más cercano (0 si no hay). Negativo si allí se pagó de más. */
+  previous: number;
+  /** "Otros cargos" escritos a mano en este mes. */
+  other: number;
+  /** Lo cargado en este mes: gastos fijos "en tarjeta" marcados + transacciones con tarjeta de crédito. */
+  charged: number;
+  /** previous + other + charged: lo que se debe a la tarjeta este mes (T). */
+  total: number;
+  /** Lo pagado este mes (P); null = sin pagar. */
+  paid: number | null;
+  /** Cuenta de la que salió el pago; null = ninguna. */
+  accountId: string | null;
+  /** Lo que pasa al mes siguiente: total − paid (o todo el total si no se pagó). */
+  remainder: number;
+}
+
+// El saldo de un mes depende del anterior: se calculan todos de una vez, en orden, y se memorizan por objeto de
+// estado (que nunca se muta).
+const cardMemo = new WeakMap<AppState, Map<MonthKey, CardCalc>>();
+
+function cardTable(state: AppState): Map<MonthKey, CardCalc> {
+  const hit = cardMemo.get(state);
+  if (hit) return hit;
+  const table = new Map<MonthKey, CardCalc>();
+  const main = state.mainCurrency;
+  let previous = 0;
+  for (const key of sortedKeys(state)) {
+    const m = state.months[key]!;
+    const stored = cardOf(m);
+    // Un gasto fijo, con la última tasa del mes; una transacción, con la de su fecha (igual que en monthCalc).
+    let charged = 0;
+    for (const f of m.fixed) if (isCharged(f)) charged += convert(state, key, f.amount, f.cur, main);
+    for (const t of m.tx) if (isCardTx(t)) charged += convert(state, key, t.amount, t.cur, main, t.date);
+    const other = stored.other || 0;
+    const total = previous + other + charged;
+    const paid = stored.paid;
+    const remainder = total - (paid ?? 0);
+    table.set(key, { key, previous, other, charged, total, paid, accountId: stored.accountId, remainder });
+    previous = remainder;
+  }
+  cardMemo.set(state, table);
+  return table;
+}
+
+/**
+ * Cuenta que se ofrece para pagar la tarjeta del mes `key`: la del último pago de la tarjeta (de este mes o del
+ * anterior más cercano que tenga uno) si sigue siendo una cuenta de dinero visible; si no, la cuenta por defecto.
+ * null si el usuario no tiene ninguna cuenta de dinero.
+ */
+export function cardAccountFor(state: AppState, key: MonthKey): MoneyAccount | null {
+  const usable = new Map(moneyAccounts(state).map((a) => [a.id, a]));
+  for (const k of sortedKeys(state).filter((k) => k <= key).reverse()) {
+    const hit = state.months[k]!.card?.accountId;
+    if (hit && usable.has(hit)) return usable.get(hit)!;
+  }
+  return defaultAccount(state);
+}
+
+/** La tarjeta de crédito del mes `key` (que tiene que estar registrado). */
+export function cardCalc(state: AppState, key: MonthKey): CardCalc {
+  const hit = cardTable(state).get(key);
+  if (!hit) throw new Error(`Month not found: ${key}`);
+  return hit;
+}
+
 // ── El mes ───────────────────────────────────────────────────────────────────
 
 export interface CategorySum {
@@ -473,16 +572,22 @@ export interface MonthCalc {
   /** 1 segunda = rate principal, con las tasas del mes: el "1 USD = 58.76 DOP" de la barra superior. */
   rate: RateInfo;
 
-  /** Σ de todos los fijos. */
+  /**
+   * Σ de los fijos, sin los cargados a la tarjeta (no salen del presupuesto: entran a la fila de la tarjeta), más
+   * esa fila: su total si está sin pagar o lo pagado si se pagó (el resto pasa al mes siguiente).
+   */
   fixedAll: number;
-  /** Σ de los fijos pagados. */
+  /** Σ de los fijos pagados desde una cuenta, más lo pagado de la tarjeta. */
   fixedPaid: number;
-  /** Σ de los fijos no pagados. */
+  /** Σ de los fijos no pagados, más el total de la tarjeta mientras no se pague. */
   pending: number;
   paidCount: number;
   fixedCount: number;
 
-  /** Σ de las transacciones, contando como tales las comisiones de los envíos (transferFees). */
+  /**
+   * Σ de las transacciones, contando como tales las comisiones de los envíos (transferFees). Sin las hechas con
+   * tarjeta de crédito: esas entran a la fila de la tarjeta y cuentan cuando se paga.
+   */
   varSpent: number;
   /** Cuántas son: las transacciones más las comisiones. */
   txCount: number;
@@ -510,6 +615,9 @@ export interface MonthCalc {
   incomeLeft: number;
   /** Σ de los aportes a metas con fecha en este mes. */
   saved: number;
+
+  /** La tarjeta de crédito de este mes. */
+  card: CardCalc;
 
   /** La fila de gastos fijos (pagados) + cada categoría con gasto, de mayor a menor. Solo valores > 0. */
   categories: CategorySum[];
@@ -704,17 +812,27 @@ export function monthCalc(state: AppState, key: MonthKey): MonthCalc {
   const second = state.secondCurrency;
   const toMain = (amount: number, cur: Currency) => convert(state, key, amount, cur, main);
 
+  const card = cardCalc(state, key);
   let fixedAll = 0;
   let fixedPaid = 0;
   let paidCount = 0;
+  // Lo comprado en fijos cargados a la tarjeta: sale de "usado" (lo paga la tarjeta) pero sigue siendo gasto fijo
+  // en el desglose por categoría, que describe en qué se gastó y no cuándo salió el dinero.
+  let fixedCharged = 0;
   for (const f of m.fixed) {
     const v = toMain(f.amount, f.cur);
-    fixedAll += v;
-    if (f.paid) {
-      fixedPaid += v;
-      paidCount++;
+    if (f.paid) paidCount++;
+    if (isCharged(f)) {
+      fixedCharged += v;
+      continue;
     }
+    fixedAll += v;
+    if (f.paid) fixedPaid += v;
   }
+  // La fila de la tarjeta: mientras no se paga es un pendiente por todo su total; al pagarla cuenta como pagado lo
+  // pagado, y lo que quedó debiendo ya no es de este mes sino del siguiente.
+  fixedAll += card.paid ?? card.total;
+  fixedPaid += card.paid ?? 0;
   const pending = fixedAll - fixedPaid;
 
   let varSpent = 0;
@@ -722,7 +840,8 @@ export function monthCalc(state: AppState, key: MonthKey): MonthCalc {
   for (const t of m.tx) {
     // Cada transacción, con la tasa vigente en su fecha.
     const v = convert(state, key, t.amount, t.cur, main, t.date);
-    varSpent += v;
+    // Con tarjeta de crédito no cuenta como usada (la tarjeta lo hace al pagarse), pero sí por categoría.
+    if (!isCardTx(t)) varSpent += v;
     byCat.set(t.cat, (byCat.get(t.cat) ?? 0) + v);
   }
   // La comisión de un envío es un gasto más del mes: cuenta como una transacción en la moneda de la cuenta de
@@ -761,7 +880,9 @@ export function monthCalc(state: AppState, key: MonthKey): MonthCalc {
     .map(([name, value]) => ({ name, value, fixed: false }))
     .filter((c) => c.value > 0)
     .sort((a, b) => b.value - a.value);
-  const categories = [{ name: FIXED_CATEGORY, value: fixedPaid, fixed: true }, ...catSums].filter((c) => c.value > 0);
+  // «Fixed expenses» = lo pagado en fijos desde una cuenta + lo cargado a la tarjeta; el pago de la tarjeta no es
+  // una categoría (lo que contiene ya está repartido en ellas).
+  const categories = [{ name: FIXED_CATEGORY, value: fixedPaid - (card.paid ?? 0) + fixedCharged, fixed: true }, ...catSums].filter((c) => c.value > 0);
 
   return {
     key,
@@ -776,6 +897,7 @@ export function monthCalc(state: AppState, key: MonthKey): MonthCalc {
     fixedCount: m.fixed.length,
     varSpent,
     txCount: m.tx.length + fees.length,
+    card,
     used,
     usedSecond: convert(state, key, used, main, second),
     budget,

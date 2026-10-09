@@ -46,9 +46,11 @@ export interface FixedDraft extends Paying {
   name: string;
   day: string;
   amount: number;
+  /** "Pay with" = tarjeta de crédito: la cuenta no cuenta (el gasto no sale de ninguna hasta que se paga la tarjeta). */
+  onCard: boolean;
 }
 
-export const EMPTY_FIXED: FixedDraft = { name: '', day: '', amount: 0, cur: null, accountId: null };
+export const EMPTY_FIXED: FixedDraft = { name: '', day: '', amount: 0, cur: null, accountId: null, onCard: false };
 
 /** Concepto y monto mayor que 0. Después de agregar, el borrador vuelve entero a EMPTY_FIXED. */
 export function canAddFixed(draft: FixedDraft): boolean {
@@ -58,7 +60,14 @@ export function canAddFixed(draft: FixedDraft): boolean {
 /** Lo que se manda al agregar: moneda y cuenta ya resueltas. Sin cuentas no va ninguna y la capa de datos lo rechaza. */
 export function fixedInput(draft: FixedDraft, ctx: DraftContext): FixedInput {
   const account = draftAccount(draft, ctx);
-  return { name: draft.name, day: draft.day, amount: draft.amount, cur: draftCurrency(draft, ctx), ...(account && { accountId: account.id }) };
+  return {
+    name: draft.name,
+    day: draft.day,
+    amount: draft.amount,
+    cur: draftCurrency(draft, ctx),
+    ...(account && { accountId: account.id }),
+    ...(draft.onCard && { onCard: true }),
+  };
 }
 
 // ── Transacción ──────────────────────────────────────────────────────────────

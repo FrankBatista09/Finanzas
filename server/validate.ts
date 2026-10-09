@@ -13,6 +13,8 @@ import type {
   CloseRequest,
   ContributionCreate,
   ContributionPatch,
+  CardOtherUpdate,
+  CardPayRequest,
   FixedCreate,
   FixedPatch,
   GoalCreate,
@@ -181,6 +183,7 @@ export const fixedCreateSchema = z.strictObject({
   cur: currency(),
   paid: bool().optional(),
   accountId: id().optional(),
+  onCard: bool().optional(),
 }) satisfies z.ZodType<FixedCreate>;
 
 // Al editar una celda el monto puede quedar en 0 (el prototipo deja vaciar el campo); al crear no.
@@ -192,7 +195,15 @@ export const fixedPatchSchema = z.strictObject({
   paid: bool().optional(),
   accountId: id().optional(),
   sort: sortIndex().optional(),
+  onCard: bool().optional(),
 }) satisfies z.ZodType<FixedPatch>;
+
+// ── Tarjeta de crédito ───────────────────────────────────────────────────────
+
+export const cardOtherSchema = z.strictObject({ other: nonNegative() }) satisfies z.ZodType<CardOtherUpdate>;
+
+// Que el importe no pase del total de la tarjeta lo comprueba payCard (server/db.ts): el total sale del estado.
+export const cardPaySchema = z.strictObject({ amount: positive(), accountId: id().optional() }) satisfies z.ZodType<CardPayRequest>;
 
 // ── Transacciones ────────────────────────────────────────────────────────────
 

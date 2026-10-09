@@ -37,9 +37,11 @@ import {
   budgetHistory,
   convert,
   currentKey,
+  cardAccountFor,
   defaultAccount,
   FEE_CATEGORY,
   incomeInMonth,
+  isCardTx,
   isMoneyAccount,
   isMoneyIncome,
   leftoverFor,
@@ -59,7 +61,7 @@ import { currentMonthKey, isISODate, isMonthKey, label, monthOf, monthSpan, toda
 import type { Account, AccountCurrency, AppState, AppUser, Currency, FixedExpense, ISODate, Month, MonthKey } from '../shared/types';
 import { checkBearer } from './auth';
 import { readLimitedBody } from './body';
-import { createIncome, createOutside, createTransfer, ensureMonth, getMonth, loadState, patchFixed, userAccounts, userState } from './db';
+import { createIncome, createOutside, createTransfer, ensureMonth, getMonth, loadState, patchFixed, payCard, userAccounts, userState } from './db';
 import type { Env } from './env';
 import {
   ApiError,
@@ -269,6 +271,7 @@ function instructions(users: readonly AppUser[]): string {
     'Rates: each month has its own rates between currencies. When a tool says that a rate is a default value, nobody has set it yet: tell the person, because the converted amounts are only approximate until they type the rate of the month in the web app.',
     'Outside-budget expenses: an expense the person says is outside their budget is recorded with add_outside_expense. It lowers the account balance like any expense but does not count in used, available or the categories.',
     'Fixed expenses (the "Monthly expenses" list of the app): the same items every month (electricity, internet, subscriptions…). They are not recorded as transactions: mark them as paid with mark_fixed_paid.',
+    'Credit card: it is a deferred payment. A purchase with method "Credit card" (or a fixed expense on the card) does not touch any account or the budget when it is made; the month has a credit card total, and only when the person pays the bill (all of it or part, with pay_credit_card) is the budget charged and the paying account debited. The unpaid rest carries to the next month.',
     'A closed month is read-only: it can be consulted, but it accepts no expenses, transfers or changes until the person reopens it in the web app. If a tool answers that the month is closed, tell the person; do not record it under another date.',
     'After recording something, confirm to the person what was recorded and for whom, with the amount, the account and its new balance, based on the text the tool returns.',
   ].join('\n');
@@ -722,6 +725,18 @@ const markFixedPaidArgs = z.strictObject({
     .boolean({ error: 'must be true or false' })
     .default(true)
     .describe('true to mark it as paid; false to leave it as not paid.'),
+  on_card: z
+    .boolean({ error: 'must be true or false' })
+    .optional()
+    .describe(
+      'true if the person pays this expense with the credit card: marking it as paid then charges it to the card instead of subtracting it from an account. false to make it a normal expense again. Omit it to leave it as it is.',
+    ),
+});
+
+const payCreditCardArgs = z.strictObject({
+  amount: positive().describe("How much of the credit card bill was paid, in the person's main currency. At most the card total of the month; it can be less (a partial payment)."),
+  account: accountName(`Account the payment came out of, ${ACCOUNT_HINT}. Omit it unless the person names one: the account of the previous card payment or their default account is used.`),
+  month: monthKey().optional().describe('Month of the credit card bill, YYYY-MM. By default, the month in progress.'),
 });
 
 // ── Herramientas ─────────────────────────────────────────────────────────────
@@ -817,7 +832,9 @@ const addTransaction = defineTool({
       calc: monthCalc(state, t.monthKey),
       paidFrom: balanceOf(balancesNow(state, now, t.monthKey).all, t.accountId),
     }));
-    const paidFrom = after?.paidFrom ?? null;
+    // Una compra con tarjeta de crédito no sale de ninguna cuenta: queda cargada a la tarjeta hasta que se pague.
+    const onCard = isCardTx(t);
+    const paidFrom = onCard ? null : (after?.paidFrom ?? null);
 
     const parts = [
       t.desc,
@@ -826,9 +843,10 @@ const addTransaction = defineTool({
       t.cat,
       t.method,
       `${t.date} (${label(t.monthKey)})`,
-      after && paidFrom && `paid from ${accountPart(after.state, t.monthKey, paidFrom.account, t.amount, t.cur, t.date)}`,
+      onCard ? 'charged to the credit card' : after && paidFrom && `paid from ${accountPart(after.state, t.monthKey, paidFrom.account, t.amount, t.cur, t.date)}`,
     ];
     const sentences = [`Recorded for ${user.name}: ${parts.filter(Boolean).join(SEP)}.`];
+    if (onCard) sentences.push('No account or budget is charged until the credit card is paid (pay_credit_card).');
     if (monthCreated) sentences.push(`The month ${label(t.monthKey)} was created.`);
     if (after) sentences.push(usedLine(after.calc));
     if (paidFrom) sentences.push(balanceSentence(paidFrom));
@@ -1028,6 +1046,14 @@ const monthSummary = defineTool({
       `Available after pending fixed: ${money(c.after, main)}`,
       `Monthly expenses: ${c.paidCount} of ${c.fixedCount} paid${SEP}Fixed paid: ${money(c.fixedPaid, main)}${SEP}Fixed pending: ${money(c.pending, main)}`,
     );
+    if (c.card.total !== 0 || c.card.paid !== null) {
+      const k = c.card;
+      lines.push(
+        `Credit card: total ${money(k.total, main)} (previous ${money(k.previous, main)}${SEP}other charges ${money(k.other, main)}${SEP}charged this month ${money(k.charged, main)})${SEP}` +
+          (k.paid === null ? 'not paid yet' : `paid ${money(k.paid, main)}`) +
+          `${SEP}carried to the next month ${money(k.remainder, main)}. Charges on the card are not in Used or in the account balances until it is paid.`,
+      );
+    }
     if (pending.length > 0) {
       lines.push(`Still to pay: ${pending.map((f) => `${f.name} ${moneyIn(state, m.key, f.amount, f.cur, main)}${f.day ? `, day ${f.day}` : ''}`).join('; ')}`);
     }
@@ -1099,6 +1125,16 @@ const monthSummary = defineTool({
         availableAfterPending: c.after,
         fixed: { count: c.fixedCount, paidCount: c.paidCount, paid: c.fixedPaid, pending: c.pending, pendingItems: pending },
         transactions: { count: c.txCount, total: c.varSpent },
+        // Pago diferido: `total` = previous + other + charged; `remainder` = lo que pasa al mes siguiente. En la moneda principal.
+        creditCard: {
+          total: c.card.total,
+          previous: c.card.previous,
+          other: c.card.other,
+          charged: c.card.charged,
+          paid: c.card.paid,
+          accountId: c.card.accountId,
+          remainder: c.card.remainder,
+        },
         // Aparte de `transactions`, `used` y `available`: resta de los saldos de las cuentas, nada más.
         outsideBudget: { ...outsideSummary(state, m.key), expenses: outsideOf(m) },
         // Ya contadas en `transactions` y en `categories` (Other): no son filas de transacción, salen de los envíos.
@@ -1363,13 +1399,13 @@ const markFixedPaid = defineTool({
   description: [
     'Marks one of the fixed expenses of a month in the finances of `user` (the "Monthly expenses" list: electricity, internet, insurance, subscriptions…) as paid, or as not paid with `paid: false`. Use it when the person says they have already paid one of their fixed expenses.',
     "The expense is found by name, ignoring case and accents, and part of the name is enough if it identifies only one. If none or several match, the answer lists the names of the month's fixed expenses so the call can be repeated with the exact name.",
-    'While it is marked as paid, its amount is subtracted from the account it is paid from: the answer says which account that is and its new balance.',
+    'While it is marked as paid, its amount is subtracted from the account it is paid from: the answer says which account that is and its new balance. If the expense is on the credit card (`on_card: true`), marking it as paid charges it to the card instead: no account changes until the card is paid with pay_credit_card.',
     `Defaults: ${IN_PROGRESS} and \`paid: true\`. It does not change the amount or the account of the expense or create new fixed expenses; in a closed month it fails.`,
   ].join(' '),
   schema: markFixedPaidArgs,
   readOnly: false,
   idempotent: true,
-  async run({ name, month, paid }, ctx) {
+  async run({ name, month, paid, on_card: onCardArg }, ctx) {
     const { db, now, user } = ctx;
     const state = await loadState(db, user.id);
     const m = resolveMonth(state, month, ctx);
@@ -1387,24 +1423,26 @@ const markFixedPaid = defineTool({
     }
 
     const found = hits[0]!;
-    const changed = found.paid !== paid;
+    const changed = found.paid !== paid || (onCardArg !== undefined && (found.onCard === true) !== onCardArg);
     // Sin cambio no se escribe nada: repetir la llamada es inofensivo. La regla del mes cerrado la aplica patchFixed.
-    const fixed = changed ? await patchFixed(db, user.id, found.id, parse(fixedPatchSchema, { paid })) : found;
+    const fixed = changed ? await patchFixed(db, user.id, found.id, parse(fixedPatchSchema, { paid, ...(onCardArg === undefined ? {} : { onCard: onCardArg }) })) : found;
     m.fixed = m.fixed.map((f) => (f.id === fixed.id ? fixed : f));
     const c = monthCalc(state, m.key);
-    const paidFrom = balanceOf(balancesNow(state, now, m.key).all, fixed.accountId);
+    // Un gasto en tarjeta no sale de ninguna cuenta al marcarlo: queda cargado a la tarjeta.
+    const onCard = fixed.onCard === true;
+    const paidFrom = onCard ? null : balanceOf(balancesNow(state, now, m.key).all, fixed.accountId);
 
     const what = [
       fixed.name,
       moneyIn(state, m.key, fixed.amount, fixed.cur, c.main),
       where,
-      paidFrom && `paid from ${accountPart(state, m.key, paidFrom.account, fixed.amount, fixed.cur)}`,
+      onCard ? (paid ? 'charged to the credit card' : 'on the credit card') : paidFrom && `paid from ${accountPart(state, m.key, paidFrom.account, fixed.amount, fixed.cur)}`,
     ];
     const head = !changed
       ? `${fixed.name} was already ${paid ? 'paid' : 'not paid'} for ${user.name} in ${where}: nothing was changed.`
       : `${paid ? 'Paid' : 'Marked as not paid'} for ${user.name}: ${what.filter(Boolean).join(SEP)}.`;
     return {
-      text: [head, fixedLine(c), usedLine(c), ...(paidFrom ? [balanceSentence(paidFrom)] : [])].join(' '),
+      text: [head, fixedLine(c), usedLine(c), ...(onCard ? [`Credit card total: ${money(c.card.total, c.main)}.`] : []), ...(paidFrom ? [balanceSentence(paidFrom)] : [])].join(' '),
       data: {
         fixed,
         changed,
@@ -1415,9 +1453,53 @@ const markFixedPaid = defineTool({
   },
 });
 
+const payCreditCard = defineTool({
+  name: 'pay_credit_card',
+  title: 'Pay credit card',
+  description: [
+    "Records a payment of the credit card bill of a month in the finances of `user`: the amount (in the person's main currency, at most the card total of the month; it may be only part of it) is subtracted from the account it is paid from and counts as used in the budget. What is left unpaid is carried to the next month's card total. Use it when the person says they paid the credit card (or part of it).",
+    'Purchases on the card (add_transaction with method "Credit card", or fixed expenses on the card) do not touch any account or the budget when they are made: only this payment does. Paying again replaces the previous payment of that month.',
+    `Defaults: ${IN_PROGRESS}, and the account of the previous card payment or the person's default account. In a closed month it fails, and the amount cannot be more than the card total (month_summary shows it).`,
+  ].join(' '),
+  schema: payCreditCardArgs,
+  readOnly: false,
+  idempotent: true,
+  async run({ amount, account: named, month }, ctx) {
+    const { db, now, user } = ctx;
+    const before = await loadState(db, user.id);
+    const m = resolveMonth(before, month, ctx);
+    // Sin cuenta nombrada: la del último pago de la tarjeta (cardAccountFor); con una nombrada, la que diga la persona.
+    const account = named === undefined ? cardAccountFor(before, m.key) : await resolveAccount(ctx, named);
+    if (!account) throw noAccountsError();
+    if (!isMoneyAccount(account)) throw goldAccountError(account.name);
+    await payCard(db, user.id, m.key, { amount, accountId: account.id });
+
+    const after = await afterWrite(ctx, (state) => ({
+      state,
+      calc: monthCalc(state, m.key),
+      balance: balanceOf(balancesNow(state, now, m.key).all, account.id),
+    }));
+    const k = after?.calc.card;
+    const sentences = [
+      `Paid ${money(amount, before.mainCurrency)} of the credit card for ${user.name} in ${label(m.key)}, from ${account.name}.`,
+    ];
+    if (k) sentences.push(`Card total: ${money(k.total, before.mainCurrency)}${SEP}carried to the next month: ${money(k.remainder, before.mainCurrency)}.`);
+    if (after) sentences.push(usedLine(after.calc));
+    if (after?.balance) sentences.push(balanceSentence(after.balance));
+    return {
+      text: sentences.join(' '),
+      data: {
+        creditCard: k ? { total: k.total, paid: k.paid, accountId: k.accountId, remainder: k.remainder } : null,
+        account: accountData(account, after?.balance ?? null),
+        month: after ? monthStatus(after.calc) : null,
+      },
+    };
+  },
+});
+
 /** En el orden en que las lista tools/list. */
 const TOOLS = new Map(
-  [addTransaction, addOutsideExpense, listTransactions, monthSummary, addTransfer, markFixedPaid, addIncome, listAccounts].map((t) => [t.name, t]),
+  [addTransaction, addOutsideExpense, listTransactions, monthSummary, addTransfer, markFixedPaid, addIncome, listAccounts, payCreditCard].map((t) => [t.name, t]),
 );
 // ── Métodos ──────────────────────────────────────────────────────────────────
 
@@ -1445,7 +1527,7 @@ function initialize(params: Record<string, unknown>, users: readonly AppUser[]):
   };
 }
 
-/** Son siete: caben en una página y no se devuelve nextCursor. */
+/** Son nueve: caben en una página y no se devuelve nextCursor. */
 function listTools(users: readonly AppUser[]): { tools: Record<string, unknown>[] } {
   return { tools: [...TOOLS.values()].map((t) => t.definition(users)) };
 }

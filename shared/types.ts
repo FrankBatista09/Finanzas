@@ -125,6 +125,13 @@ export interface FixedExpense {
   /** Cuenta de la que se paga. Mientras esté marcado como pagado le resta (convertido a la moneda de la cuenta). */
   accountId: string;
   sort: number;
+  /**
+   * true: se paga con la tarjeta de crédito. Sin marcar sigue siendo un pendiente de siempre; marcado queda CARGADO a
+   * la tarjeta: no sale de ninguna cuenta ni cuenta como usado, entra al total de la tarjeta (shared/calc.ts cardCalc)
+   * y `accountId` no se usa. Opcional: ausente = false; el servidor solo lo manda cuando es true y así no cambia la forma de un
+   * gasto que no usa la tarjeta.
+   */
+  onCard?: boolean;
 }
 
 export interface Transaction {
@@ -218,6 +225,19 @@ export interface Income {
   recurring?: boolean;
 }
 
+/**
+ * Lo que se guarda de la tarjeta de crédito en un mes. El saldo que viene del mes anterior NO se guarda: se deriva
+ * (shared/calc.ts cardCalc). Todo en la moneda principal.
+ */
+export interface MonthCard {
+  /** "Otros cargos" escritos a mano (>= 0): lo que se pasó a la tarjeta fuera de las filas del mes. */
+  other: number;
+  /** Lo que se pagó de la tarjeta este mes; null = sin pagar. */
+  paid: number | null;
+  /** Cuenta de dinero de la que salió ese pago; null = ninguna. */
+  accountId: string | null;
+}
+
 export interface Month {
   key: MonthKey;
   closed: boolean;
@@ -243,6 +263,11 @@ export interface Month {
    * alguno, y así no cambia la forma de un mes que no los usa. Léase con `outsideOf` (shared/calc.ts).
    */
   outside?: OutsideExpense[];
+  /**
+   * La tarjeta de crédito del mes. Ausente = sin otros cargos ni pago: el servidor solo lo manda en los meses que
+   * tienen algo, y así no cambia la forma de un mes que no la usa. Léase con `cardOf` (shared/calc.ts).
+   */
+  card?: MonthCard;
 }
 
 export interface Goal {

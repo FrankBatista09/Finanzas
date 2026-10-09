@@ -104,6 +104,16 @@ export interface Actions {
   /** Quita la tasa escrita de ese par (en cualquiera de los dos sentidos) y esa fecha del mes seleccionado. */
   removeMonthRate(from: Currency, to: Currency, date: ISODate): void;
 
+  /** Los «otros cargos» de la tarjeta de crédito del mes seleccionado (moneda principal, >= 0). false si el monto no es válido o el mes está cerrado. */
+  setCardOther(other: number): boolean;
+  /**
+   * Paga la tarjeta del mes seleccionado: `amount` en la moneda principal (> 0 y como mucho el total de la tarjeta,
+   * `calc.card.total`) desde esa cuenta de dinero. Lo que no se paga pasa al mes siguiente. false si no se puede.
+   */
+  payCard(amount: number, accountId: string): boolean;
+  /** Deshace el pago de la tarjeta del mes seleccionado. */
+  unpayCard(): void;
+
   /** Agrega al mes seleccionado. false si falta el concepto, el monto no es > 0 o la cuenta indicada no existe. */
   addFixed(input: FixedInput): boolean;
   /** Se ignoran un `name` en blanco, un `amount` negativo y un `accountId` que no exista. */

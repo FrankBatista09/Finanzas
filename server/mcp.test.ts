@@ -44,7 +44,7 @@ const NOW = new Date('2026-10-07T16:00:00Z');
 const F = FRANK.id;
 const E = EDA.id;
 
-const TOOL_NAMES = ['add_transaction', 'add_outside_expense', 'list_transactions', 'month_summary', 'add_transfer', 'mark_fixed_paid', 'add_income', 'list_accounts'];
+const TOOL_NAMES = ['add_transaction', 'add_outside_expense', 'list_transactions', 'month_summary', 'add_transfer', 'mark_fixed_paid', 'add_income', 'list_accounts', 'pay_credit_card'];
 const FIXED_NAMES = 'Electricity, Internet, Health insurance, Fridge payment, Claude, Google One, iCloud+, Cluely, Smartfit, Netflix, Unicaribe';
 /** Cómo nombra un error a los usuarios de las pruebas: el id que va en `user` y el nombre de cada quien. */
 const BOTH = 'frank (Frank), eda (Eda)';
@@ -789,12 +789,12 @@ describe('/mcp: tools/list', () => {
     return ((await rpc(env, 'tools/list')).result as { tools: Record<string, any>[] }).tools;
   }
 
-  it('lista las ocho herramientas del diseño, con o sin params', async () => {
+  it('lista las nueve herramientas del diseño, con o sin params', async () => {
     const { env } = makeEnv();
     expect((await tools()).map((t) => t.name)).toEqual(TOOL_NAMES);
     for (const params of [{}, { cursor: 'x' }, null]) {
       const result = (await rpc(env, 'tools/list', params)).result as { tools: unknown[]; nextCursor?: string };
-      expect(result.tools).toHaveLength(8);
+      expect(result.tools).toHaveLength(9);
       expect(result.nextCursor).toBeUndefined();
     }
   });
@@ -839,12 +839,13 @@ describe('/mcp: tools/list', () => {
       'Mark fixed expense as paid',
       'Record income',
       'List accounts',
+      'Pay credit card',
     ]);
     // Cada descripción dice de quién son las finanzas que toca.
     for (const tool of all) expect(tool.description, tool.name).toContain('in the finances of `user`');
   });
 
-  it('las de lectura se anuncian como tales y solo mark_fixed_paid, de las de escritura, es idempotente', async () => {
+  it('las de lectura se anuncian como tales y solo mark_fixed_paid y pay_credit_card, de las de escritura, son idempotentes', async () => {
     const hints = Object.fromEntries((await tools()).map((t) => [t.name, [t.annotations.readOnlyHint, t.annotations.idempotentHint]]));
     expect(hints).toEqual({
       add_transaction: [false, false],
@@ -855,6 +856,7 @@ describe('/mcp: tools/list', () => {
       mark_fixed_paid: [false, true],
       add_income: [false, false],
       list_accounts: [true, true],
+      pay_credit_card: [false, true],
     });
   });
 
@@ -916,7 +918,7 @@ describe('/mcp: tools/list', () => {
     for (const via of VIAS) expect(transfer.properties.via.description).toContain(via);
 
     const paid = byName.mark_fixed_paid;
-    expect(Object.keys(paid.properties)).toEqual(['user', 'name', 'month', 'paid']);
+    expect(Object.keys(paid.properties)).toEqual(['user', 'name', 'month', 'paid', 'on_card']);
     expect(paid.required).toEqual(['user', 'name']);
     expect(paid.properties.paid).toMatchObject({ type: 'boolean', default: true });
 
@@ -1630,6 +1632,7 @@ describe('month_summary', () => {
         ],
       },
       transactions: { count: 7, total: 10845 },
+      creditCard: { total: 0, previous: 0, other: 0, charged: 0, paid: null, accountId: null, remainder: 0 },
       outsideBudget: { count: 0, total: 0, expenses: [] },
       transferFees: [],
       categories: [
@@ -2005,7 +2008,7 @@ describe('mark_fixed_paid', () => {
         paid: true,
         accountId: 'dr',
         sort: 9,
-      } satisfies Record<keyof FixedExpense, unknown>,
+      } satisfies Record<Exclude<keyof FixedExpense, 'onCard'>, unknown>,
       changed: true,
       // Mientras está pagado, resta de la cuenta de la que se paga.
       account: { id: 'dr', name: 'DR account', currency: 'DOP', balance: await balanceOf(db, 'dr') },
@@ -2915,5 +2918,42 @@ describe('add_outside_expense', () => {
     expect(await fails(env, 'add_outside_expense', { name: 'Coin', amount: 1, account: 'Gold' })).toContain('is a gold account');
     expect(await fails(env, 'add_outside_expense', { name: 'Old', amount: 1, date: '2026-09-10' })).toContain('closed');
     expect(await fails(env, 'add_outside_expense', { name: 'x', amount: 0 })).toContain('greater than 0');
+  });
+});
+
+describe('tarjeta de crédito', () => {
+  it('una compra con «Credit card» queda cargada a la tarjeta y pay_credit_card la paga (en parte) desde la cuenta', async () => {
+    const { env, db } = await seeded();
+    const before = await balanceOf(db, 'dr');
+    const bought = await call(env, 'add_transaction', { description: 'Taxi', amount: 800, method: 'Credit card', category: 'Transport' });
+    expect(bought.text).toContain('charged to the credit card');
+    expect(bought.data!.account).toBeNull();
+    expect(await balanceOf(db, 'dr')).toBe(before);
+
+    const summary = await call(env, 'month_summary');
+    expect(summary.data!.creditCard).toMatchObject({ total: 800, previous: 0, other: 0, charged: 800, paid: null, remainder: 800 });
+    expect(summary.text).toContain('Credit card: total 800.00 DOP');
+
+    expect(await fails(env, 'pay_credit_card', { amount: 800.5 })).toContain('cannot be paid for more than that');
+    const paid = await call(env, 'pay_credit_card', { amount: 300 });
+    expect(paid.data!.creditCard).toMatchObject({ total: 800, paid: 300, accountId: 'dr', remainder: 500 });
+    expect(paid.data!.account.balance).toBeCloseTo(before - 300, 8);
+    expect(await balanceOf(db, 'dr')).toBeCloseTo(before - 300, 8);
+    expect(paid.text).toContain('carried to the next month: 500.00 DOP');
+    // Repetir con otra cuenta sustituye el pago.
+    const again = await call(env, 'pay_credit_card', { amount: 100, account: 'US account' });
+    expect(again.data!.creditCard).toMatchObject({ accountId: 'us' });
+    expect(await balanceOf(db, 'dr')).toBeCloseTo(before, 8);
+  });
+
+  it('mark_fixed_paid con on_card carga el gasto a la tarjeta sin tocar ninguna cuenta', async () => {
+    const { env, db } = await seeded();
+    const before = await balanceOf(db, 'dr');
+    const r = await call(env, 'mark_fixed_paid', { name: 'Netflix', on_card: true });
+    expect(r.data!.fixed).toMatchObject({ name: 'Netflix', paid: true, onCard: true });
+    expect(r.text).toContain('charged to the credit card');
+    expect(r.data!.account).toBeNull();
+    expect(await balanceOf(db, 'dr')).toBe(before);
+    expect((await call(env, 'month_summary')).data!.creditCard.total).toBeCloseTo(1137.3, 6);
   });
 });

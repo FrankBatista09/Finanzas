@@ -27,10 +27,10 @@ const body = { monthKey: OCT, date: '2026-10-07', name: 'Car repair', amount: 10
 const balanceOf = (state: Awaited<ReturnType<typeof loadState>>, id: string) => balances(state, OCT).accounts.find((a) => a.account.id === id)!.balance;
 
 describe('migración 0008', () => {
-  it('es la última, solo añade la tabla y no cambia ninguna fila existente', () => {
+  it('solo añade la tabla y no cambia ninguna fila existente', () => {
     const files = migrationFiles();
-    expect(files.at(-1)).toBe('0008_outside_expenses.sql');
-    const db = createTestDb(files.slice(0, -1));
+    expect(files.at(-2)).toBe('0008_outside_expenses.sql');
+    const db = createTestDb(files.slice(0, -2));
     db.sqlite.exec(`
       INSERT INTO months (user_id, key, closed, closed_at) VALUES ('frank', '2026-10', 0, NULL);
       INSERT INTO accounts (user_id, id, name, currency, opening, hidden, sort) VALUES ('frank', 'dr', 'DR account', 'DOP', 100, 0, 0);

@@ -12,6 +12,9 @@ import {
   canHideAccount,
   canRemoveAccount,
   canRemoveGoal,
+  cardOtherChange,
+  cardPayment,
+  cardUnpay,
   contributionChange,
   currencyChange,
   fixedChange,
@@ -171,6 +174,23 @@ export function createActions(
       // Se pide con el sentido en que se guardó: es el que nombra la tasa en el servidor.
       const typed = state && monthKey ? typedRate(state, monthKey, from, to, date) : null;
       if (typed && monthKey) store.dispatch({ type: 'rate/remove', key: monthKey, from: typed.from, to: typed.to, date: typed.date });
+    },
+
+    setCardOther(other) {
+      const action = store.state && monthKey ? cardOtherChange(store.state, monthKey, other) : null;
+      if (!action) return false;
+      store.dispatch(action);
+      return true;
+    },
+    payCard(amount, accountId) {
+      const action = store.state && monthKey ? cardPayment(store.state, monthKey, amount, accountId) : null;
+      if (!action) return false;
+      store.dispatch(action);
+      return true;
+    },
+    unpayCard() {
+      const action = store.state && monthKey ? cardUnpay(store.state, monthKey) : null;
+      if (action) store.dispatch(action);
     },
 
     addFixed(input) {

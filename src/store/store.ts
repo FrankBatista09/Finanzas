@@ -301,6 +301,12 @@ export class FinanzasStore {
         return api.patchMonth(action.key, action.patch, opts);
       case 'month/reopen':
         return api.reopenMonth(action.key, opts);
+      case 'card/other':
+        return api.setCardOther(action.key, { other: action.other }, opts);
+      case 'card/pay':
+        return api.payCard(action.key, { amount: action.amount, accountId: action.accountId }, opts);
+      case 'card/unpay':
+        return api.unpayCard(action.key, opts);
       case 'rate/set':
         return api.putMonthRate(action.key, action.rate, opts);
       case 'rate/remove':
@@ -316,8 +322,8 @@ export class FinanzasStore {
         // La cifra la calcula el servidor; `row` es solo lo que se ve mientras responde.
         return api.addLeftover(action.key, opts);
       case 'fixed/add': {
-        const { id, monthKey, name, day, amount, cur, paid, accountId } = action.row;
-        return api.createFixed({ id, monthKey, name, day, amount, cur, paid, accountId }, opts);
+        const { id, monthKey, name, day, amount, cur, paid, accountId, onCard } = action.row;
+        return api.createFixed({ id, monthKey, name, day, amount, cur, paid, accountId, ...(onCard && { onCard }) }, opts);
       }
       case 'fixed/patch':
         return api.patchFixed(action.id, action.patch, opts);

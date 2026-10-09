@@ -1,6 +1,7 @@
 import { memo, useMemo, useState } from 'react';
 import { CURRENCIES } from '../../../shared/constants';
 import { f2 } from '../../../shared/format';
+import type { CardCalc } from '../../../shared/calc';
 import type { FixedExpense } from '../../../shared/types';
 import { useI18n, useStrings } from '../../i18n';
 import { useFinanzas } from '../../store';
@@ -23,6 +24,7 @@ import {
   Tr,
   useAddRow,
 } from '../../ui';
+import { PayCardDialog } from './PayCardDialog';
 import { canAddFixed, draftAccount, draftCurrency, EMPTY_FIXED, fixedInput } from './drafts';
 import styles from './FixedCard.module.css';
 import { MAX_LEN, rowAccountOptions, sortFixed, withMoney } from './rows';
@@ -35,6 +37,7 @@ import { MES } from './strings';
  */
 export function FixedCard({ className }: { className?: string }) {
   const { state, month, calc, main, second, inBoth, accounts, defaultAccount, accountOptions, readOnly, actions } = useFinanzas();
+  const [paying, setPaying] = useState(false);
   const { t } = useI18n();
   const s = useStrings(MES);
   // App monta la hoja de nuevo al cambiar de usuario o de mes (key): el borrador no pasa de uno a otro.
@@ -78,6 +81,7 @@ export function FixedCard({ className }: { className?: string }) {
             <Th width={64} className={styles.currency}>
               {t('currency')}
             </Th>
+            <Th width={96}>{s('payWith')}</Th>
             <Th>{t('account')}</Th>
             <Th align="right">{main}</Th>
             <Th align="right">{second}</Th>
@@ -142,21 +146,117 @@ export function FixedCard({ className }: { className?: string }) {
               </Td>
               <Td kind="edit">
                 <CellSelect
-                  value={draftAccountId}
-                  options={accountOptions(draftAccountId)}
-                  minWidth={130}
-                  onCommit={(accountId) => setDraft((d) => ({ ...d, accountId }))}
-                  label={s('newFixedAccount')}
+                  value={draft.onCard ? CARD : ACCOUNT}
+                  options={payWithOptions(s)}
+                  minWidth={PAY_WITH_WIDTH}
+                  onCommit={(way) => setDraft((d) => ({ ...d, onCard: way === CARD }))}
+                  label={s('newFixedPayWith')}
                 />
               </Td>
+              {draft.onCard ? (
+                <Td kind="center" tone="faint">
+                  —
+                </Td>
+              ) : (
+                <Td kind="edit">
+                  <CellSelect
+                    value={draftAccountId}
+                    options={accountOptions(draftAccountId)}
+                    minWidth={100}
+                    onCommit={(accountId) => setDraft((d) => ({ ...d, accountId }))}
+                    label={s('newFixedAccount')}
+                  />
+                </Td>
+              )}
               <Td kind="add" colSpan={3}>
                 <AddButton />
               </Td>
             </AddRow>
           )}
+          {/* La tarjeta de crédito: una fila de cada mes, derivada (no se guarda ni se borra). */}
+          <CardRow card={calc.card} readOnly={readOnly} accountName={accounts.find((a) => a.id === calc.card.accountId)?.name} onPay={() => setPaying(true)} />
         </tbody>
       </SheetTable>
+      {paying && <PayCardDialog onClose={() => setPaying(false)} />}
     </Card>
+  );
+}
+
+/** Ancho mínimo del selector «Pagar con»: lo justo para que se lea «Account» sin ensanchar la tabla en pantallas de 1440px. */
+const PAY_WITH_WIDTH = 70;
+const ACCOUNT = 'account';
+const CARD = 'card';
+
+/** Las dos formas de pagar un gasto fijo: desde una cuenta (como siempre) o con la tarjeta de crédito. */
+function payWithOptions(s: (key: 'payWithAccount' | 'payWithCard') => string) {
+  return [
+    { value: ACCOUNT, label: s('payWithAccount') },
+    { value: CARD, label: s('payWithCard') },
+  ];
+}
+
+interface CardRowProps {
+  card: CardCalc;
+  readOnly: boolean;
+  /** Nombre de la cuenta de la que salió el pago, si ya se pagó. */
+  accountName: string | undefined;
+  onPay: () => void;
+}
+
+/**
+ * La fila de la tarjeta de crédito, al pie de «Gastos mensuales» en todos los meses. Su total (saldo anterior + otros
+ * cargos + lo cargado este mes) va en las columnas de importes; el monto es el de «otros cargos», que se escribe aquí.
+ * Marcar su casilla abre el diálogo de pago; desmarcarla deshace el pago.
+ */
+function CardRow({ card, readOnly, accountName, onPay }: CardRowProps) {
+  const { main, inBoth, actions } = useFinanzas();
+  const s = useStrings(MES);
+  const paid = card.paid !== null;
+  // Con la tarjeta en cero no hay nada que pagar (el servidor lo rechazaría): la casilla solo sirve para deshacer.
+  const canTick = readOnly ? false : paid || card.total > 0;
+  const named = { name: s('cardName') };
+  const partial = paid && card.paid! < card.total - 0.005;
+  return (
+    <Tr unpaid={!paid && card.total > 0} title={s('cardTitle')}>
+      <Td kind="center">
+        <CellCheckbox
+          checked={paid}
+          onCommit={(checked) => (checked ? onPay() : actions.unpayCard())}
+          disabled={!canTick}
+          label={s('paidNamed', named)}
+        />
+      </Td>
+      <Td>
+        <div className={styles.cardName}>
+          {named.name}
+          <span className={styles.cardTag}>{s('cardTag')}</span>
+        </div>
+        <div className={styles.cardDetail}>
+          {s('cardDetail', { prev: f2(card.previous), other: f2(card.other), charged: f2(card.charged) })}
+          {partial && ` · ${s('cardPaidOf', { paid: f2(card.paid!), total: f2(card.total) })}`}
+        </div>
+      </Td>
+      <Td kind="center" tone="faint">
+        —
+      </Td>
+      <Td kind="edit">
+        <CellNumber value={card.other} onCommit={(other) => actions.setCardOther(other)} readOnly={readOnly} label={s('cardOther')} />
+      </Td>
+      <Td kind="mono">{main}</Td>
+      <Td kind="center" tone="faint">
+        —
+      </Td>
+      <Td tone="soft" className={styles.cardAccount} title={accountName}>
+        {accountName ?? '—'}
+      </Td>
+      <Td kind="num" nowrap>
+        {f2(card.total)}
+      </Td>
+      <Td kind="num" nowrap tone="muted">
+        {f2(inBoth(card.total, main).second)}
+      </Td>
+      <Td kind="action" />
+    </Tr>
   );
 }
 
@@ -220,13 +320,30 @@ const FixedRow = memo(function FixedRow({ row: f, inMain, inSecond, accounts, re
       </Td>
       <Td kind="edit">
         <CellSelect
-          value={f.accountId}
-          options={accounts}
-          onCommit={(accountId) => actions.patchFixed(f.id, { accountId })}
+          value={f.onCard ? CARD : ACCOUNT}
+          options={payWithOptions(s)}
+          minWidth={PAY_WITH_WIDTH}
+          onCommit={(way) => actions.patchFixed(f.id, { onCard: way === CARD })}
           disabled={readOnly}
-          label={s('accountOf', named)}
+          label={s('payWithOf', named)}
         />
       </Td>
+      {/* Un gasto en tarjeta no sale de ninguna cuenta: se paga con la tarjeta. */}
+      {f.onCard ? (
+        <Td kind="center" tone="faint">
+          —
+        </Td>
+      ) : (
+        <Td kind="edit">
+          <CellSelect
+            value={f.accountId}
+            options={accounts}
+            onCommit={(accountId) => actions.patchFixed(f.id, { accountId })}
+            disabled={readOnly}
+            label={s('accountOf', named)}
+          />
+        </Td>
+      )}
       <Td kind="num" nowrap>
         {f2(inMain)}
       </Td>

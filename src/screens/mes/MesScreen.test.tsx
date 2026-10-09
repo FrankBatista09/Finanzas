@@ -117,19 +117,21 @@ describe('mes abierto · October 2026', () => {
 
   it('nada es de solo lectura', () => {
     expect(html).not.toContain('readOnly');
-    expect(html).not.toContain('disabled');
+    // Salvo la casilla de la tarjeta de crédito cuando no hay nada que pagar (marcarla no tendría sentido).
+    expect(html.replace(/<input[^>]*aria-label="Paid: Credit card"[^>]*>/, '')).not.toContain('disabled');
   });
 
   it('gastos mensuales: cabecera, columnas y filas en el orden de la hoja', () => {
     const card = section(html, 'Monthly expenses', 'By category');
     const ct = text(card);
     expect(ct).toContain('Monthly expenses 6 of 11 paid · total 42,025.57 DOP');
-    expect(ct).toContain('Paid Item Day Amount Currency Account DOP USD');
+    expect(ct).toContain('Paid Item Day Amount Currency Pay with Account DOP USD');
     expect(els(card, 'table')).toEqual([expect.objectContaining({ 'aria-label': 'Monthly expenses' })]);
 
     const inputs = els(card, 'input');
     const boxes = inputs.filter((i) => i.type === 'checkbox');
-    expect(boxes).toHaveLength(11);
+    // 11 gastos y la tarjeta de crédito.
+    expect(boxes).toHaveLength(12);
     expect(boxes.filter((b) => 'checked' in b).map((b) => b['aria-label'])).toEqual([
       'Paid: Electricity',
       'Paid: Internet',
@@ -181,11 +183,13 @@ describe('mes abierto · October 2026', () => {
   it('gastos mensuales: fila para agregar al final', () => {
     const card = section(html, 'Monthly expenses', 'By category');
     const inputs = els(card, 'input');
-    const last = inputs.slice(-3);
+    // Después de la fila de agregar va la de la tarjeta de crédito: su casilla y su campo de «otros cargos».
+    const last = inputs.slice(-5, -2);
     expect(last[0]).toMatchObject({ type: 'text', value: '', placeholder: 'New monthly expense', style: 'min-width:120px', maxLength: '120' });
     expect(last[1]).toMatchObject({ type: 'text', value: '', placeholder: 'Day', 'aria-label': 'Day of the new expense', maxLength: '20' });
     expect(last[2]).toMatchObject({ type: 'number', value: '', placeholder: '0.00', 'aria-label': 'Amount of the new expense' });
-    expect(els(card, 'select').at(-2)).toMatchObject({ 'aria-label': 'Currency of the new expense' });
+    expect(els(card, 'select').at(-3)).toMatchObject({ 'aria-label': 'Currency of the new expense' });
+    expect(els(card, 'select').at(-2)).toMatchObject({ 'aria-label': 'How the new expense is paid' });
     expect(els(card, 'select').at(-1)).toMatchObject({ 'aria-label': 'Account of the new expense' });
     // Arranca en la cuenta por defecto (DR account) y en su moneda.
     expect(selected(card, 'Account of the new expense')).toBe('dr');
@@ -517,17 +521,17 @@ describe('mes cerrado · September 2026', () => {
     const inputs = els(html, 'input');
     const boxes = inputs.filter((i) => i.type === 'checkbox');
     const fields = inputs.filter((i) => i.type !== 'checkbox');
-    // Los 11 "Paid" (todos marcados), las casillas "Moves budget" de los 2 envíos y la "Adds to budget" del sueldo (sin marcar).
-    expect(boxes).toHaveLength(11 + 2 + 1);
+    // Los 11 "Paid" (todos marcados), la de la tarjeta de crédito (sin nada que pagar), las casillas "Moves budget" de los 2 envíos y la "Adds to budget" del sueldo (sin marcar).
+    expect(boxes).toHaveLength(11 + 1 + 2 + 1);
     expect(boxes.every((b) => 'disabled' in b)).toBe(true);
     expect(boxes.filter((b) => 'checked' in b)).toHaveLength(11);
-    // 11 fijos × (concepto, día, monto) + 2 envíos × (fecha, vía, monto, tasa, comisión) + 1 ingreso × (fecha, descripción, monto)
+    // 11 fijos × (concepto, día, monto) + los otros cargos de la tarjeta + 2 envíos × (fecha, vía, monto, tasa, comisión) + 1 ingreso × (fecha, descripción, monto)
     // + 10 transacciones × (fecha, descripción, lugar, monto, notas). Las tasas del mes van como texto.
-    expect(fields).toHaveLength(11 * 3 + 2 * 5 + 1 * 3 + 10 * 5);
+    expect(fields).toHaveLength(11 * 3 + 1 + 2 * 5 + 1 * 3 + 10 * 5);
     expect(fields.every((f) => 'readOnly' in f)).toBe(true);
     const selects = els(html, 'select');
-    // 11 fijos × (moneda, cuenta) + 2 envíos × (origen, destino) + 1 ingreso × (cuenta, moneda) + 10 × (categoría, método, moneda, cuenta).
-    expect(selects).toHaveLength(11 * 2 + 2 * 2 + 1 * 2 + 10 * 4);
+    // 11 fijos × (moneda, pagar con, cuenta) + 2 envíos × (origen, destino) + 1 ingreso × (cuenta, moneda) + 10 × (categoría, método, moneda, cuenta).
+    expect(selects).toHaveLength(11 * 3 + 2 * 2 + 1 * 2 + 10 * 4);
     expect(selects.every((s) => 'disabled' in s)).toBe(true);
   });
 
@@ -637,7 +641,7 @@ describe('casos límite', () => {
     state.months['2026-10']!.rates.push({ from: 'USD', to: 'TRY', rate: 40, date: '2026-10-01' });
     const html = render('2026-10', { state });
     const t = text(html);
-    expect(t).toContain('Paid Item Day Amount Currency Account USD TRY');
+    expect(t).toContain('Paid Item Day Amount Currency Pay with Account USD TRY');
     expect(t).toContain('Date Name Place Category Method Amount Cur. Account USD TRY Description');
     // 42,025.57 DOP / 58.76.
     expect(t).toContain('Monthly expenses 6 of 11 paid · total 715.21 USD');
@@ -1240,7 +1244,7 @@ describe('en español', () => {
 
   it('títulos, columnas y metas con sus cifras', () => {
     expect(t).toContain('Gastos mensuales 6 de 11 pagados · total 42,025.57 DOP');
-    expect(t).toContain('Pagado Concepto Día Monto Moneda Cuenta DOP USD');
+    expect(t).toContain('Pagado Concepto Día Monto Moneda Pagar con Cuenta DOP USD');
     // La nota de las tasas y, en la primera columna, la fecha desde la que vale cada una.
     expect(t).toContain('Tasas del mes Cancelar Una tasa nueva vale desde su fecha. Las transacciones anteriores conservan la que tenían. Vigente desde Desde');
     expect(t).toContain('Tasa Hacia 01/10 1 USD =');
@@ -1394,7 +1398,7 @@ describe('en turco', () => {
 
   it('títulos, columnas y metas con sus cifras', () => {
     expect(t).toContain('Aylık giderler 6 / 11 ödendi · toplam 42,025.57 DOP');
-    expect(t).toContain('Ödendi Kalem Gün Tutar Para birimi Hesap DOP USD');
+    expect(t).toContain('Ödendi Kalem Gün Tutar Para birimi Ödeme şekli Hesap DOP USD');
     expect(t).toContain('Ay kurları İptal Yeni kur, tarihinden itibaren geçerlidir. Önceki işlemler kendi kurunu korur. Başlangıç Nereden Kur Nereye 01/10 1 USD =');
     expect(t.replace(/&quot;/g, '"')).toContain(
       'Gelir Toplam 340,808.00 DOP İptal Transferler dışında alınan para. "Bütçeye eklenir" işaretliyse bu ayın bütçesini de artırır. Tarih Açıklama Hesap Tutar Birim Bütçe',
