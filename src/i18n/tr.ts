@@ -114,7 +114,6 @@ export const tr: Shape<typeof en> = {
   budgetAccount: 'Bütçeye eklenecek hesap',
   addBudgetPart: 'Bütçeye hesap ekle',
   budgetAmount: 'Yeni bütçe payının tutarı',
-  incomeMinusUsed: 'Ay geliri − kullanılan',
   budgetUsed: 'Kullanılan bütçe',
   budgetUsedOf: 'Kullanılan bütçe: {budget} {currency} içinden {used}',
   ofBudget: '/ {budget} {currency}',

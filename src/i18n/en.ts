@@ -111,7 +111,6 @@ export const en = {
   budgetAccount: 'Account to add to the budget',
   addBudgetPart: 'Add account to budget',
   budgetAmount: 'Amount of the new budget part',
-  incomeMinusUsed: 'Month income − used',
   budgetUsed: 'Budget used',
   budgetUsedOf: 'Budget used: {used} of {budget} {currency}',
   ofBudget: 'of {budget} {currency}',

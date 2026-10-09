@@ -169,7 +169,7 @@ describe('SummaryPanel · Month: el presupuesto', () => {
     expect(t).toContain('Budget 70,000.00 DOP ≈ 1,191.29 USD');
     expect(t).toContain('US account');
     expect(t).toContain('DR account');
-    expect(t).toContain('Month income − used 291,658.29 DOP');
+    expect(t).not.toContain('Month income − used');
     expect(t).toContain('Used 49,150 of 70,000 DOP');
     expect(t).toContain('Budget used Fixed paid 38,305 Transactions 10,845.00 Fixed pending 3,721 Free 17,129');
     expect(t).toContain('October 2026 Planned budget 70,000.00');
@@ -254,7 +254,7 @@ describe('SummaryPanel · Month: el presupuesto', () => {
     // 70,000 DOP / 58.76 × 40
     expect(f2(c.budget)).toBe('47,651.46');
     expect(t).toContain('Budget 47,651.46 TRY ≈ 1,191.29 USD');
-    expect(t).toContain(`Month income − used ${f2(c.incomeLeft)} TRY`);
+    expect(t).not.toContain('Month income − used');
     expect(t).toContain(`Used ${f0(c.used)} of ${f0(c.budget)} TRY`);
     expect(t).toContain(`Fixed paid ${f0(c.fixedPaid)} Transactions ${f2(c.varSpent)} Fixed pending ${f0(c.pending)} Free ${f0(c.free)}`);
     expect(t).toContain(`Planned budget ${f2(c.budget)} Used so far ${f2(c.used)} Available ${f2(c.avail)}`);
@@ -271,7 +271,7 @@ describe('SummaryPanel · Month: el presupuesto', () => {
     const html = panel({ lang: 'es' });
     const t = text(html);
     expect(t).toContain('Presupuesto 70,000.00 DOP ≈ 1,191.29 USD');
-    expect(t).toContain('Ingreso del mes − usado 291,658.29 DOP');
+    expect(t).not.toContain('Ingreso del mes − usado');
     expect(t).toContain('Usado 49,150 de 70,000 DOP');
     expect(t).toContain('Fijos pagados 38,305 Transacciones 10,845.00 Fijos pendientes 3,721 Libre 17,129');
     expect(t).toContain('Octubre 2026 Presupuesto planeado 70,000.00');
@@ -391,7 +391,7 @@ describe('SummaryPanel · Month: el presupuesto', () => {
       expect(line!.html).toContain('inkText');
       // Va debajo de la tabla de las cuentas y antes del historial.
       const html = panel();
-      const order = ['</table>', 'Leftover from last month:', 'Budget history', 'Month income − used'].map((x) => html.indexOf(x));
+      const order = ['</table>', 'Leftover from last month:', 'Budget history'].map((x) => html.indexOf(x));
       expect(order.every((x) => x >= 0)).toBe(true);
       expect(order).toEqual([...order].sort((a, b) => a - b));
     });
