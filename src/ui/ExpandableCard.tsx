@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useI18n } from '../i18n';
+import { cx } from './cx';
 import { Card } from './Card';
 import { Dialog, DialogButton } from './Dialog';
 import { ExpandedContext, ExpandOpenContext } from './expandContext';
@@ -9,6 +10,8 @@ export interface ExpandableCardProps {
   /** Plain-text title: it names the expanded dialog (the card's own header shows it in the card). */
   title: string;
   className?: string;
+  /** Extra class for the in-page card only, not the expanded dialog (e.g. a max-height that must not cap the dialog). */
+  cardClassName?: string;
   /** The card body, a CardHeader included. It is rendered once in the card and once in the dialog, so its state must live above. */
   children: ReactNode;
   /** Dialogs the card opens (pay, details): rendered once, next to the card, so they work from both copies. */
@@ -20,7 +23,7 @@ export interface ExpandableCardProps {
  * the body's state (drafts, open add row) lives in the screen component, so both copies stay in sync. Any dialog
  * the card opens goes in `outside`, or it would be mounted twice.
  */
-export function ExpandableCard({ title, className, children, outside }: ExpandableCardProps) {
+export function ExpandableCard({ title, className, cardClassName, children, outside }: ExpandableCardProps) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
   // The button that opened it. Safari does not focus a button on click, so the dialog cannot rely on remembering it.
@@ -32,7 +35,7 @@ export function ExpandableCard({ title, className, children, outside }: Expandab
   return (
     <>
       {/* While expanded the card behind the dialog is inert: one live copy of every control at a time. */}
-      <Card className={className} inert={open}>
+      <Card className={cx(className, cardClassName)} inert={open}>
         <ExpandOpenContext
           value={(button) => {
             opener.current = button;

@@ -89,7 +89,7 @@ describe('español: los textos de la versión 1', () => {
   it('títulos, columnas y avisos', () => {
     const keys = ['fixedTitle', 'byCategory', 'transfersTitle', 'txTitle', 'noExpenses', 'closedNote', 'reopen', 'notesOptional'] as const;
     expect(keys.map((key) => es(key))).toEqual([
-      'Gastos mensuales',
+      'Gastos mensuales fijos',
       'Por categoría',
       'Envíos',
       'Historial de transacciones',
@@ -128,7 +128,7 @@ describe('turco', () => {
 
   it('usa los términos acordados', () => {
     const keys = ['fixedTitle', 'paid', 'description', 'place', 'category', 'method', 'notes', 'reopen'] as const;
-    expect(keys.map((key) => tr(key))).toEqual(['Aylık giderler', 'Ödendi', 'Ad', 'Yer', 'Kategori', 'Yöntem', 'Açıklama', 'Ayı yeniden aç']);
+    expect(keys.map((key) => tr(key))).toEqual(['Sabit aylık giderler', 'Ödendi', 'Ad', 'Yer', 'Kategori', 'Yöntem', 'Açıklama', 'Ayı yeniden aç']);
     expect(tr('notesOptional')).toBe('Açıklama (isteğe bağlı)');
     expect(tr('openNotes', { name: 'Netflix' })).toBe('Netflix açıklamasını aç');
     expect(tr('closeNotes')).toBe('Kapat');
