@@ -27,11 +27,15 @@ import {
   newFixed,
   newGoal,
   newIncome,
+  newOutside,
   newTransfer,
   newTx,
   openingForBalance,
+  outsideChange,
+  outsideFromTx,
   transferChange,
   txChange,
+  txFromOutside,
   typedRate,
 } from './reducers';
 import type { FinanzasStore } from './store';
@@ -192,6 +196,26 @@ export function createActions(
       if (store.state) store.dispatch({ type: 'tx/patch', id, patch: txChange(store.state, patch) });
     },
     removeTx: (id) => store.dispatch({ type: 'tx/remove', id }),
+
+    addOutside(input) {
+      const state = store.state;
+      const row = state && monthKey ? newOutside(state, monthKey, input, makeId()) : null;
+      if (!row) return false;
+      store.dispatch({ type: 'outside/add', row });
+      return true;
+    },
+    patchOutside(id, patch) {
+      if (store.state) store.dispatch({ type: 'outside/patch', id, patch: outsideChange(store.state, patch) });
+    },
+    removeOutside: (id) => store.dispatch({ type: 'outside/remove', id }),
+    moveTxOutside(id) {
+      const tx = store.state && monthKey ? store.state.months[monthKey]?.tx.find((t) => t.id === id) : undefined;
+      if (tx) store.dispatch({ type: 'tx/moveOutside', id, row: outsideFromTx(tx, makeId()) });
+    },
+    moveOutsideToBudget(id) {
+      const row = store.state && monthKey ? store.state.months[monthKey]?.outside?.find((o) => o.id === id) : undefined;
+      if (row) store.dispatch({ type: 'outside/moveToBudget', id, row: txFromOutside(row, makeId()) });
+    },
 
     addTransfer(input) {
       const state = store.state;

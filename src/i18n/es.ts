@@ -108,6 +108,7 @@ export const es: Shape<typeof en> = {
   summaryOf: 'Resumen de {month}',
   budgetOf: 'Presupuesto de {account}, en {currency}',
   removeFromBudget: 'Quitar {name} del presupuesto',
+  overBudgetBy: 'Sobrepasado por {amount} {currency} · {account}',
   newAccountOption: 'Cuenta nueva…',
   budgetAccount: 'Cuenta que se suma al presupuesto',
   addBudgetPart: 'Agregar cuenta al presupuesto',

@@ -30,6 +30,7 @@ import type {
   Income,
   Month,
   MonthKey,
+  OutsideExpense,
   Transaction,
   Transfer,
 } from '../shared/types';
@@ -99,6 +100,12 @@ function parseJson(bytes: Uint8Array): unknown {
 async function jsonBody<T>(c: Ctx, schema: z.ZodType<T>): Promise<T> {
   const bytes = await readBody(c.req.raw, MAX_JSON_BYTES, BODY_TOO_LARGE);
   return v.parse(schema, parseJson(bytes));
+}
+
+/** Como jsonBody, pero un cuerpo vacío vale {}. */
+async function optionalBody<T extends object>(c: Ctx, schema: z.ZodType<T>): Promise<T> {
+  const bytes = await readBody(c.req.raw, MAX_JSON_BYTES, BODY_TOO_LARGE);
+  return v.parse(schema, bytes.byteLength === 0 ? {} : parseJson(bytes));
 }
 
 /** Una clave que no tiene forma de mes no puede existir: 404, igual que un mes que falta. */
@@ -331,6 +338,32 @@ export function createApp(): Hono<AppEnv> {
   app.delete('/transactions/:id', async (c) => {
     await db.deleteTransaction(c.env.DB, uid(c), idParam(c));
     return c.json(OK);
+  });
+
+  // Fuera de presupuesto. Los dos "mover" aceptan un cuerpo vacío.
+  app.post('/transactions/:id/move-outside', async (c) => {
+    const request = await optionalBody(c, v.moveOutsideSchema);
+    return c.json((await db.moveTransactionOutside(c.env.DB, uid(c), idParam(c), request.id)) satisfies OutsideExpense, 201);
+  });
+
+  app.post('/outside-expenses', async (c) => {
+    const input = await jsonBody(c, v.outsideCreateSchema);
+    return c.json((await db.createOutside(c.env.DB, uid(c), input)) satisfies OutsideExpense, 201);
+  });
+
+  app.patch('/outside-expenses/:id', async (c) => {
+    const patch = await jsonBody(c, v.outsidePatchSchema);
+    return c.json((await db.patchOutside(c.env.DB, uid(c), idParam(c), patch)) satisfies OutsideExpense);
+  });
+
+  app.delete('/outside-expenses/:id', async (c) => {
+    await db.deleteOutside(c.env.DB, uid(c), idParam(c));
+    return c.json(OK);
+  });
+
+  app.post('/outside-expenses/:id/move-to-budget', async (c) => {
+    const request = await optionalBody(c, v.moveToBudgetSchema);
+    return c.json((await db.moveOutsideToBudget(c.env.DB, uid(c), idParam(c), request)) satisfies Transaction, 201);
   });
 
   // Envíos

@@ -33,6 +33,9 @@ import type {
   IncomePatch,
   MonthPatch,
   MonthSummary,
+  MoveToBudgetRequest,
+  OutsideCreate,
+  OutsidePatch,
   SettingsResponse,
   SettingsUpdate,
   TransferCreate,
@@ -40,7 +43,7 @@ import type {
   TxCreate,
   TxPatch,
 } from '../shared/api';
-import { accountsById, budgetsFromLog, convert, defaultAccount, leftoverFor, monthCalc, rateFor, sortedKeys } from '../shared/calc';
+import { accountsById, budgetsFromLog, convert, defaultAccount, leftoverFor, monthCalc, outsideOf, rateFor, sortedKeys } from '../shared/calc';
 import {
   CURRENCIES,
   DEFAULT_ACCOUNTS,
@@ -50,6 +53,8 @@ import {
   DEFAULT_SECOND_CURRENCY,
   GOLD,
   isGold,
+  MAX_LEN,
+  MOVED_TO_BUDGET,
 } from '../shared/constants';
 import { applyImportToState } from '../shared/excel/data';
 import { DEFAULT_LANGUAGE, isLanguage } from '../shared/i18n';
@@ -71,6 +76,7 @@ import type {
   Month,
   MonthKey,
   MonthRate,
+  OutsideExpense,
   ThemeColors,
   Transaction,
   Transfer,
@@ -153,6 +159,18 @@ interface TxRow {
   notes: string;
   source: TxSource;
   created_at: string | null;
+}
+
+interface OutsideRow {
+  id: string;
+  month_key: string;
+  date: string;
+  name: string;
+  description: string;
+  account_id: string;
+  amount: number;
+  currency: Currency;
+  sort: number;
 }
 
 interface TransferRow {
@@ -242,6 +260,10 @@ function toTx(r: TxRow): Transaction {
   };
 }
 
+function toOutside(r: OutsideRow): OutsideExpense {
+  return { id: r.id, monthKey: r.month_key, date: r.date, name: r.name, desc: r.description, accountId: r.account_id, amount: r.amount, cur: r.currency };
+}
+
 function toTransfer(r: TransferRow): Transfer {
   return {
     id: r.id,
@@ -285,6 +307,7 @@ interface MonthParts {
   fixed: FixedRow[];
   transfers: TransferRow[];
   tx: TxRow[];
+  outside: OutsideRow[];
 }
 
 /** Arma cada mes con sus filas, que llegan ya en su orden de lectura. */
@@ -302,6 +325,11 @@ function toMonths(months: MonthRow[], parts: MonthParts): Record<MonthKey, Month
   for (const r of parts.fixed) byKey[r.month_key]?.fixed.push(toFixed(r));
   for (const r of parts.transfers) byKey[r.month_key]?.transfers.push(toTransfer(r));
   for (const r of parts.tx) byKey[r.month_key]?.tx.push(toTx(r));
+  // Month.outside solo existe en los meses que tienen alguno (un mes sin ellos queda como siempre).
+  for (const r of parts.outside) {
+    const month = byKey[r.month_key];
+    if (month) (month.outside ??= []).push(toOutside(r));
+  }
   return byKey;
 }
 
@@ -316,7 +344,7 @@ const BY_SORT = 'sort, rowid';
 // Lo que es una historia (tasas, registro del presupuesto) se lee por fecha; con la misma, en el orden de alta.
 const BY_DATE = 'date, rowid';
 
-type MonthTable = 'fixed_expenses' | 'transactions' | 'transfers';
+type MonthTable = 'fixed_expenses' | 'transactions' | 'transfers' | 'outside_expenses';
 
 const ACCOUNT_INSERT = ['user_id', 'id', 'name', 'currency', 'opening', 'hidden', 'sort'];
 const MONTH_INSERT = ['user_id', 'key', 'closed', 'closed_at'];
@@ -340,6 +368,7 @@ const TX_INSERT = [
   'source',
   'created_at',
 ];
+const OUTSIDE_INSERT = ['user_id', 'id', 'month_key', 'date', 'name', 'description', 'account_id', 'amount', 'currency', 'sort'];
 const INCOME_INSERT = ['user_id', 'id', 'date', 'description', 'account_id', 'amount', 'currency', 'budget', 'rate', 'recurring'];
 const GOAL_INSERT = ['user_id', 'id', 'name', 'currency', 'monthly', 'start_month', 'end_month', 'approx_currency', 'sort'];
 const CONTRIBUTION_INSERT = ['user_id', 'id', 'goal_id', 'date', 'amount', 'currency', 'rate', 'account_id'];
@@ -710,7 +739,7 @@ export async function updateSettings(db: D1Database, userId: string, update: Set
 // ── Lectura ──────────────────────────────────────────────────────────────────
 
 async function readState(db: D1Database, userId: string): Promise<{ state: AppState; initialized: boolean }> {
-  const [months, accounts, budgets, rates, fixed, transfers, tx, incomes, goals, contribs, settings] = await db.batch([
+  const [months, accounts, budgets, rates, fixed, transfers, tx, outside, incomes, goals, contribs, settings] = await db.batch([
     db.prepare('SELECT * FROM months WHERE user_id = ? ORDER BY key').bind(userId),
     db.prepare(`SELECT * FROM accounts WHERE user_id = ? ORDER BY ${BY_SORT}`).bind(userId),
     db.prepare(`SELECT * FROM month_budget_log WHERE user_id = ? ORDER BY ${BY_DATE}`).bind(userId),
@@ -718,6 +747,7 @@ async function readState(db: D1Database, userId: string): Promise<{ state: AppSt
     db.prepare(`SELECT * FROM fixed_expenses WHERE user_id = ? ORDER BY ${BY_SORT}`).bind(userId),
     db.prepare('SELECT * FROM transfers WHERE user_id = ? ORDER BY rowid').bind(userId),
     db.prepare('SELECT * FROM transactions WHERE user_id = ? ORDER BY rowid').bind(userId),
+    db.prepare(`SELECT * FROM outside_expenses WHERE user_id = ? ORDER BY ${BY_SORT}`).bind(userId),
     db.prepare('SELECT * FROM incomes WHERE user_id = ? ORDER BY rowid').bind(userId),
     db.prepare(`SELECT * FROM goals WHERE user_id = ? ORDER BY ${BY_SORT}`).bind(userId),
     db.prepare('SELECT * FROM contributions WHERE user_id = ? ORDER BY rowid').bind(userId),
@@ -734,6 +764,7 @@ async function readState(db: D1Database, userId: string): Promise<{ state: AppSt
         fixed: rows<FixedRow>(fixed),
         transfers: rows<TransferRow>(transfers),
         tx: rows<TxRow>(tx),
+        outside: rows<OutsideRow>(outside),
       }),
       accounts: accountList,
       incomes: rows<IncomeRow>(incomes).map(toIncome),
@@ -864,20 +895,22 @@ function monthStatements(db: D1Database, userId: string, key: MonthKey): D1Prepa
     db.prepare(`SELECT * FROM fixed_expenses WHERE user_id = ? AND month_key = ? ORDER BY ${BY_SORT}`).bind(userId, key),
     db.prepare('SELECT * FROM transfers WHERE user_id = ? AND month_key = ? ORDER BY rowid').bind(userId, key),
     db.prepare('SELECT * FROM transactions WHERE user_id = ? AND month_key = ? ORDER BY rowid').bind(userId, key),
+    db.prepare(`SELECT * FROM outside_expenses WHERE user_id = ? AND month_key = ? ORDER BY ${BY_SORT}`).bind(userId, key),
   ];
 }
 
-const MONTH_READS = 6;
+const MONTH_READS = 7;
 
 /** El mes que leyeron las últimas sentencias de un batch (monthStatements), o null si el usuario no lo tiene. */
 function monthFrom(results: D1Result<unknown>[], key: MonthKey): Month | null {
-  const [month, budgets, rates, fixed, transfers, tx] = results.slice(-MONTH_READS);
+  const [month, budgets, rates, fixed, transfers, tx, outside] = results.slice(-MONTH_READS);
   const months = toMonths(rows<MonthRow>(month), {
     budgetLog: rows<BudgetLogRow>(budgets),
     rates: rows<RateRow>(rates),
     fixed: rows<FixedRow>(fixed),
     transfers: rows<TransferRow>(transfers),
     tx: rows<TxRow>(tx),
+    outside: rows<OutsideRow>(outside),
   });
   return months[key] ?? null;
 }
@@ -899,12 +932,13 @@ const ACCOUNT_PATCH = { name: 'name', currency: 'currency', opening: 'opening', 
 const NO_ACCOUNT = 'Account not found.';
 
 /**
- * "Algo usa la cuenta": un gasto fijo, una transacción, un envío (de salida o de llegada), un ingreso o un
+ * "Algo usa la cuenta": un gasto fijo, una transacción, un gasto fuera de presupuesto, un envío (de salida o de llegada), un ingreso o un
  * movimiento del presupuesto de algún mes, o un aporte a una meta. ?1 es el usuario y ?2, la cuenta.
  */
 const ACCOUNT_IN_USE = `(
   EXISTS (SELECT 1 FROM fixed_expenses WHERE user_id = ?1 AND account_id = ?2)
   OR EXISTS (SELECT 1 FROM transactions WHERE user_id = ?1 AND account_id = ?2)
+  OR EXISTS (SELECT 1 FROM outside_expenses WHERE user_id = ?1 AND account_id = ?2)
   OR EXISTS (SELECT 1 FROM transfers WHERE user_id = ?1 AND (from_account_id = ?2 OR to_account_id = ?2))
   OR EXISTS (SELECT 1 FROM incomes WHERE user_id = ?1 AND account_id = ?2)
   OR EXISTS (SELECT 1 FROM contributions WHERE user_id = ?1 AND account_id = ?2)
@@ -1522,6 +1556,100 @@ export async function deleteTransaction(db: D1Database, userId: string, id: stri
   await deleteInMonth(db, userId, 'transactions', id, NO_TX);
 }
 
+// ── Fuera de presupuesto ─────────────────────────────────────────────────────
+
+const OUTSIDE_PATCH = { date: 'date', name: 'name', desc: 'description', accountId: 'account_id', amount: 'amount', cur: 'currency' } as const;
+const NO_OUTSIDE = 'Outside-budget expense not found.';
+
+/** Sin `accountId` sale de la cuenta por defecto; sin `cur`, la moneda de la cuenta. Va al final de la lista del mes. */
+export async function createOutside(db: D1Database, userId: string, input: OutsideCreate): Promise<OutsideExpense> {
+  const accountId = input.accountId ?? (await defaultAccountId(db, userId));
+  const row = await firstOrConflict<OutsideRow>(
+    db
+      .prepare(
+        `INSERT INTO outside_expenses (${OUTSIDE_INSERT.join(', ')})
+         SELECT m.user_id, ?2, m.key, ?4, ?5, ?6, a.id, ?8, COALESCE(?9, a.currency),
+                COALESCE((SELECT MAX(sort) FROM outside_expenses WHERE user_id = m.user_id AND month_key = m.key), -1) + 1
+         FROM months m JOIN accounts a ON a.user_id = m.user_id AND a.id = ?7 ${moneyOnly('a')}
+         WHERE m.user_id = ?1 AND m.key = ?3 AND m.closed = 0
+         RETURNING *`,
+      )
+      .bind(userId, input.id ?? newId(), input.monthKey, input.date, input.name, input.desc ?? '', accountId, input.amount, input.cur ?? null),
+  );
+  if (!row) throw await createError(db, userId, input.monthKey, [accountId]);
+  return toOutside(row);
+}
+
+export async function patchOutside(db: D1Database, userId: string, id: string, patch: OutsidePatch): Promise<OutsideExpense> {
+  const sets = setClause<OutsidePatch>(OUTSIDE_PATCH, patch);
+  return toOutside(await patchInMonth<OutsideRow>(db, userId, 'outside_expenses', id, sets, NO_OUTSIDE, patchedAccount(patch)));
+}
+
+export async function deleteOutside(db: D1Database, userId: string, id: string): Promise<void> {
+  await deleteInMonth(db, userId, 'outside_expenses', id, NO_OUTSIDE);
+}
+
+/**
+ * Pasa una transacción a "fuera de presupuesto": mismo mes, fecha, concepto (name), notas (description; si tenía
+ * lugar, va delante porque esta tabla no lo guarda), cuenta, monto y moneda. Un solo batch: el INSERT lee la
+ * transacción y el DELETE la quita bajo las mismas condiciones (mes abierto), así que o pasan las dos o ninguna.
+ */
+export async function moveTransactionOutside(db: D1Database, userId: string, id: string, newRowId: string = newId()): Promise<OutsideExpense> {
+  const results = await moveBatch(
+    db,
+    db.prepare(
+      `INSERT INTO outside_expenses (${OUTSIDE_INSERT.join(', ')})
+       SELECT t.user_id, ?3, t.month_key, t.date, t.description,
+              substr(CASE WHEN t.place <> '' THEN t.place || CASE WHEN t.notes <> '' THEN ' · ' || t.notes ELSE '' END ELSE t.notes END, 1, ${MAX_LEN.notes}),
+              t.account_id, t.amount, t.currency,
+              COALESCE((SELECT MAX(sort) FROM outside_expenses WHERE user_id = t.user_id AND month_key = t.month_key), -1) + 1
+       FROM transactions t
+       WHERE t.user_id = ?1 AND t.id = ?2 AND t.month_key IN ${OPEN_MONTHS.replace('?', '?1')}
+       RETURNING *`,
+    ).bind(userId, id, newRowId),
+    db.prepare(`DELETE FROM transactions WHERE user_id = ?1 AND id = ?2 AND month_key IN ${OPEN_MONTHS.replace('?', '?1')}`).bind(userId, id),
+  );
+  const row = rows<OutsideRow>(results[0])[0];
+  if (!row) throw await rowWriteError(db, userId, 'transactions', id, NO_TX);
+  return toOutside(row);
+}
+
+/**
+ * El camino inverso: la fila fuera de presupuesto pasa a ser una transacción (categoría y método de MOVED_TO_BUDGET
+ * si no se dicen otros, sin lugar; su descripción pasa a las notas). También en un solo batch.
+ */
+export async function moveOutsideToBudget(
+  db: D1Database,
+  userId: string,
+  id: string,
+  request: MoveToBudgetRequest = {},
+  now: Date = new Date(),
+): Promise<Transaction> {
+  const results = await moveBatch(
+    db,
+    db.prepare(
+      `INSERT INTO transactions (${TX_INSERT.join(', ')})
+       SELECT o.user_id, ?3, o.month_key, o.date, o.name, '', ?4, ?5, o.amount, o.currency, o.account_id, o.description, 'web', ?6
+       FROM outside_expenses o
+       WHERE o.user_id = ?1 AND o.id = ?2 AND o.month_key IN ${OPEN_MONTHS.replace('?', '?1')}
+       RETURNING *`,
+    ).bind(userId, id, request.id ?? newId(), request.cat ?? MOVED_TO_BUDGET.cat, request.method ?? MOVED_TO_BUDGET.method, now.toISOString()),
+    db.prepare(`DELETE FROM outside_expenses WHERE user_id = ?1 AND id = ?2 AND month_key IN ${OPEN_MONTHS.replace('?', '?1')}`).bind(userId, id),
+  );
+  const row = rows<TxRow>(results[0])[0];
+  if (!row) throw await rowWriteError(db, userId, 'outside_expenses', id, NO_OUTSIDE);
+  return toTx(row);
+}
+
+/** El batch de un "mover" (INSERT … RETURNING y DELETE); un id repetido en el destino deshace los dos. */
+async function moveBatch(db: D1Database, insert: D1PreparedStatement, remove: D1PreparedStatement): Promise<D1Result<unknown>[]> {
+  try {
+    return await db.batch([insert, remove]);
+  } catch (err) {
+    throw isUniqueViolation(err) ? duplicateId() : err;
+  }
+}
+
 // ── Envíos entre cuentas ─────────────────────────────────────────────────────
 
 const TRANSFER_PATCH = {
@@ -1911,6 +2039,7 @@ const DATA_TABLES = [
   'contributions',
   'incomes',
   'transactions',
+  'outside_expenses',
   'transfers',
   'fixed_expenses',
   'month_budget_log',
@@ -2018,6 +2147,12 @@ function dataStatements(db: D1Database, userId: string, state: UserData, stamp: 
           t.createdAt ?? stamp,
         ]),
       ),
+    ),
+    ...insertMany(
+      db,
+      'outside_expenses',
+      OUTSIDE_INSERT,
+      months.flatMap((m) => outsideOf(m).map((o, i) => [userId, o.id, m.key, o.date, o.name, o.desc, o.accountId, o.amount, o.cur, i])),
     ),
     ...insertMany(
       db,

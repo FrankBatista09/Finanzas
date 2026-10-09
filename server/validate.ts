@@ -21,6 +21,10 @@ import type {
   IncomeCreate,
   IncomePatch,
   MonthPatch,
+  MoveOutsideRequest,
+  MoveToBudgetRequest,
+  OutsideCreate,
+  OutsidePatch,
   SettingsUpdate,
   TransferCreate,
   TransferPatch,
@@ -217,6 +221,37 @@ export const txPatchSchema = z.strictObject({
   accountId: id().optional(),
   notes: text(MAX_LEN.notes).optional(),
 }) satisfies z.ZodType<TxPatch>;
+
+// ── Fuera de presupuesto ─────────────────────────────────────────────────────
+
+export const outsideCreateSchema = z.strictObject({
+  id: id().optional(),
+  monthKey: monthKey(),
+  date: isoDate(),
+  // Mismos topes que la transacción (concepto y notas), para que mover una a otra no recorte nada.
+  name: requiredText(MAX_LEN.desc),
+  desc: text(MAX_LEN.notes).optional(),
+  accountId: id().optional(),
+  amount: positive(),
+  cur: currency().optional(),
+}) satisfies z.ZodType<OutsideCreate>;
+
+export const outsidePatchSchema = z.strictObject({
+  date: isoDate().optional(),
+  name: requiredText(MAX_LEN.desc).optional(),
+  desc: text(MAX_LEN.notes).optional(),
+  accountId: id().optional(),
+  amount: nonNegative().optional(),
+  cur: currency().optional(),
+}) satisfies z.ZodType<OutsidePatch>;
+
+// El cuerpo de los dos "mover" es opcional: lo normal es mandar solo el id de la fila nueva.
+export const moveOutsideSchema = z.strictObject({ id: id().optional() }) satisfies z.ZodType<MoveOutsideRequest>;
+export const moveToBudgetSchema = z.strictObject({
+  id: id().optional(),
+  cat: requiredText(MAX_LEN.label).optional(),
+  method: requiredText(MAX_LEN.label).optional(),
+}) satisfies z.ZodType<MoveToBudgetRequest>;
 
 // ── Envíos ───────────────────────────────────────────────────────────────────
 

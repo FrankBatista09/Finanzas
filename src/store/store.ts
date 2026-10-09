@@ -67,6 +67,7 @@ interface Op {
 
 const isAdd = (action: Action) => action.type.endsWith('/add');
 const isRemove = (action: Action) => action.type.endsWith('/remove');
+const isMove = (action: Action) => action.type === 'tx/moveOutside' || action.type === 'outside/moveToBudget';
 
 /** La capa de datos de UN usuario. No se crea a mano: se pide a FinanzasStores.for(id). */
 export class FinanzasStore {
@@ -128,6 +129,8 @@ export class FinanzasStore {
     } else {
       // Lo que quedara por guardar de una fila que se elimina ya no tiene destino.
       if (isRemove(action)) this.queue.drop(targetOf(action));
+      // Mover una fila: lo que tuviera esperando su retraso sale antes, para no editar después una fila que ya no está.
+      if (isMove(action)) this.queue.flush();
       this.enqueue(action);
     }
     this.write();
@@ -328,6 +331,18 @@ export class FinanzasStore {
         return api.patchTransaction(action.id, action.patch, opts);
       case 'tx/remove':
         return api.deleteTransaction(action.id, opts);
+      case 'outside/add': {
+        const { id, monthKey, date, name, desc, accountId, amount, cur } = action.row;
+        return api.createOutside({ id, monthKey, date, name, desc, accountId, amount, cur }, opts);
+      }
+      case 'outside/patch':
+        return api.patchOutside(action.id, action.patch, opts);
+      case 'outside/remove':
+        return api.deleteOutside(action.id, opts);
+      case 'tx/moveOutside':
+        return api.moveTransactionOutside(action.id, { id: action.row.id }, opts);
+      case 'outside/moveToBudget':
+        return api.moveOutsideToBudget(action.id, { id: action.row.id }, opts);
       case 'transfer/add': {
         const { id, monthKey, date, via, fromAccountId, toAccountId, amount, rate, budget, fee } = action.row;
         return api.createTransfer({ id, monthKey, date, via, fromAccountId, toAccountId, amount, rate, budget, fee }, opts);

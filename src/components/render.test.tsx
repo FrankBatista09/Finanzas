@@ -1505,3 +1505,26 @@ describe('primitivas de tabla', () => {
     has(els(html, 'button'), { title: 'Delete', 'aria-label': 'Delete' });
   });
 });
+
+describe('SummaryPanel · Month: partes del presupuesto pasadas', () => {
+  /** Un envío que mueve presupuesto saca 800 USD de la parte de la US account, que no tiene nada. */
+  function overrun(): AppState {
+    const s = seedState();
+    const m = s.months['2026-10']!;
+    m.transfers = [...m.transfers, { id: 'big', monthKey: '2026-10', date: '2026-10-05', via: 'Remitly', fromAccountId: 'us', toAccountId: 'dr', amount: 800, rate: 58, budget: true, fee: 0 }];
+    return s;
+  }
+  const panel = (opts: Opts = {}) => render(<SummaryPanel sheet="mes" />, opts);
+
+  it('una línea por cada parte en negativo, con su cuenta, y nada si ninguna lo está', () => {
+    const lines = (html: string) => [...html.matchAll(/<li>(.*?)<\/li>/g)].map((m) => text(m[1]!).trim());
+    expect(lines(panel({ state: overrun() }))).toEqual(['Over budget by 800.00 USD · US account']);
+    expect(text(panel())).not.toContain('Over budget by');
+    expect(lines(panel())).toEqual([]);
+  });
+
+  it('en español y en turco', () => {
+    expect(text(panel({ state: overrun(), lang: 'es' }))).toContain('Sobrepasado por 800.00 USD · US account');
+    expect(text(panel({ state: overrun(), lang: 'tr' }))).toContain('Bütçe aşıldı: 800.00 USD · US account');
+  });
+});

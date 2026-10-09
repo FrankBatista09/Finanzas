@@ -4,7 +4,7 @@ import { f0, f2 } from '../../shared/format';
 import { useI18n } from '../i18n';
 import { useFinanzas, useShell } from '../store';
 import { AddButton, AddRow, AddRowButton, CellNumber, CellSelect, cx, DeleteButton, SheetTable, Td, Th, useAddRow } from '../ui';
-import { budgetHistoryRows, fieldAmount, leftoverView } from './budgetModel';
+import { budgetHistoryRows, fieldAmount, leftoverView, overrunLines } from './budgetModel';
 import { Donut, DonutCenter, LegendRow } from './Donut';
 import styles from './SummaryPanel.module.css';
 
@@ -41,6 +41,7 @@ export function BudgetPanel() {
   const historyId = useId();
   const dn = donut(calc);
   const over = calc.avail < 0;
+  const overruns = overrunLines(calc.budgetParts);
 
   return (
     <>
@@ -117,6 +118,14 @@ export function BudgetPanel() {
               </tbody>
             </SheetTable>
           </div>
+          {/* Una parte en negativo (un envío que movió más presupuesto del que tenía) se avisa por escrito, además del rojo. */}
+          {overruns.length > 0 && (
+            <ul className={styles.overrun}>
+              {overruns.map((o) => (
+                <li key={o.id}>{t('overBudgetBy', { amount: o.amount, currency: o.currency, account: o.account })}</li>
+              ))}
+            </ul>
+          )}
           {!readOnly && (
             <AddRowButton control={adding} variant="link" className={styles.reveal}>
               {t('addBudgetPart')}

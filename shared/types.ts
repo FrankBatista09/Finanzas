@@ -145,6 +145,23 @@ export interface Transaction {
   createdAt: string | null;
 }
 
+/**
+ * Gasto "fuera de presupuesto": le resta a su cuenta como una transacción (misma conversión, con la tasa vigente
+ * en `date`), pero no cuenta en lo usado, lo disponible, las categorías ni el conteo del presupuesto del mes.
+ */
+export interface OutsideExpense {
+  id: string;
+  monthKey: MonthKey;
+  date: ISODate;
+  name: string;
+  /** Texto libre; '' si no se escribió. */
+  desc: string;
+  /** Cuenta de dinero de la que sale (nunca de oro). */
+  accountId: string;
+  amount: number;
+  cur: Currency;
+}
+
 /** Envío de dinero de una cuenta a otra (p. ej. US account → DR account por Remitly). */
 export interface Transfer {
   id: string;
@@ -221,6 +238,11 @@ export interface Month {
   fixed: FixedExpense[];
   transfers: Transfer[];
   tx: Transaction[];
+  /**
+   * Gastos fuera de presupuesto del mes. Ausente = ninguno: el servidor solo lo manda en los meses que tienen
+   * alguno, y así no cambia la forma de un mes que no los usa. Léase con `outsideOf` (shared/calc.ts).
+   */
+  outside?: OutsideExpense[];
 }
 
 export interface Goal {

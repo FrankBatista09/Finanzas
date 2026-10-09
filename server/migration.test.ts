@@ -21,6 +21,19 @@ function dump(db: NodeD1Database, table: string, order = 'rowid'): Record<string
     .map((row) => ({ ...row }));
 }
 
+/**
+ * El servidor de hoy lee también `outside_expenses` (0008). Para leer una base que aún no la tiene se le presta la
+ * tabla vacía mientras se lee y se quita después: así la migración que sigue se aplica sobre su esquema real.
+ */
+async function readAsToday(sqlite: NodeD1Database, user: string) {
+  sqlite.sqlite.exec('CREATE TABLE outside_expenses (user_id, id, month_key, date, name, description, account_id, amount, currency, sort)');
+  try {
+    return await loadState(asD1(sqlite), user);
+  } finally {
+    sqlite.sqlite.exec('DROP TABLE outside_expenses');
+  }
+}
+
 /** Una base con 0001 y datos de dos usuarios que comparten ids, cuentas y meses. */
 function legacyDb(): NodeD1Database {
   const db = createTestDb([INIT!]);
@@ -236,7 +249,7 @@ describe('migración 0004: transfers.budget', () => {
   it('el presupuesto de los meses pasados no cambia, y un envío nuevo sin `budget` nace en 0', async () => {
     const sqlite = db0003();
     applyMigrations(sqlite, [FILE]);
-    const state = await loadState(asD1(sqlite), 'frank');
+    const state = await readAsToday(sqlite, 'frank');
     expect(state.months['2026-09']!.transfers.map((t) => [t.id, t.budget])).toEqual([['x1', false]]);
     // Los mismos presupuestos que dejó la 0002: 65,000 en septiembre y 70,000 + 150.5 USD en octubre.
     expect(monthCalc(state, '2026-09').budget).toBe(65000);
@@ -285,9 +298,9 @@ describe('migración 0006: transfers.fee', () => {
 
   it('los saldos no cambian; la marca `budget` que ya había pasa a mover presupuesto; y un INSERT sin `fee` nace en 0', async () => {
     const sqlite = db0005();
-    const before = await loadState(asD1(sqlite), 'frank');
+    const before = await readAsToday(sqlite, 'frank');
     applyMigrations(sqlite, [FILE]);
-    const state = await loadState(asD1(sqlite), 'frank');
+    const state = await readAsToday(sqlite, 'frank');
     expect(state.months['2026-09']!.transfers.map((t) => [t.id, t.budget, t.fee])).toEqual([['x1', true, 0]]);
     expect(balances(state, '2026-10').accounts.map((a) => a.balance)).toEqual(balances(before, '2026-10').accounts.map((a) => a.balance));
     // El envío de septiembre (1,500 USD a 58.55) ahora resta de la US account lo que suma a la DR account.
@@ -435,10 +448,10 @@ describe("migración 0005: cuentas e ingresos admiten el oro ('XAU')", () => {
     const sqlite = db0004();
     const db = asD1(sqlite);
     // El servidor de hoy sobre la base de antes de migrar: lo único que no sabría leer es lo que aún no existe.
-    const before = { frank: await loadState(db, 'frank'), eda: await loadState(db, 'eda') };
+    const before = { frank: await readAsToday(sqlite, 'frank'), eda: await readAsToday(sqlite, 'eda') };
     applyMigrations(sqlite, [FILE]);
-    expect(await loadState(db, 'frank')).toEqual(before.frank);
-    expect(await loadState(db, 'eda')).toEqual(before.eda);
+    expect(await readAsToday(sqlite, 'frank')).toEqual(before.frank);
+    expect(await readAsToday(sqlite, 'eda')).toEqual(before.eda);
     expect(before.frank.goldPrice).toBeNull();
     expect(before.frank.accounts.map((a) => a.id)).toEqual(['us', 'pp', 'dr', 'tr', 'old']);
     // Para escribir hace falta el esquema de hoy: las migraciones que vienen después de la 0005.
@@ -534,9 +547,8 @@ describe("migración 0003: el método 'Card' pasa a ser 'Debit card'", () => {
   it('el servidor lee el método de hoy, que es el que se aplica por defecto al registrar', async () => {
     const sqlite = db0002();
     applyMigrations(sqlite, [FILE]);
-    const db = asD1(sqlite);
     for (const user of ['frank', 'eda']) {
-      const state = await loadState(db, user);
+      const state = await readAsToday(sqlite, user);
       const methods = Object.values(state.months).flatMap((m) => m.tx.map((t) => t.method));
       expect(methods.sort(), user).toEqual(['Bank app', 'Debit card', 'Debit card', 'Debit card', 'Efectivo', 'Transfer', 'card']);
       for (const method of methods.filter((m) => m === 'Debit card')) expect(METHODS).toContain(method);
@@ -562,7 +574,7 @@ describe('migración 0007: tasa propia, ingresos recurrentes y cuenta de un apor
   const BEFORE = LATER.slice(0, LATER.indexOf(FILE));
 
   it('es la última y las columnas nuevas nacen vacías: ninguna fila existente cambia', async () => {
-    expect(LATER.at(-1)).toBe(FILE);
+    expect(LATER.at(-2)).toBe(FILE);
     const db = legacyDb();
     applyMigrations(db, BEFORE);
     const incomes = dump(db, 'incomes');
@@ -572,7 +584,7 @@ describe('migración 0007: tasa propia, ingresos recurrentes y cuenta de un apor
     expect(dump(db, 'contributions')).toEqual(contributions.map((row) => ({ ...row, rate: null, account_id: null })));
     expect(db.sqlite.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
     // El servidor lee lo de antes con tasa automática, sin recurrencia y sin cuenta de origen.
-    const state = await loadState(asD1(db), 'frank');
+    const state = await readAsToday(db, 'frank');
     expect(state.incomes.map((i) => [i.rate, i.recurring])).toEqual([[null, false]]);
     expect(state.contribs.map((c) => [c.rate, c.accountId])).toEqual([[null, null]]);
     // `recurring` no admite NULL; `rate` y `account_id` sí.

@@ -60,7 +60,14 @@
 //   POST   /api/transactions     TxCreate     → Transaction       (201)
 //   PATCH  /api/transactions/:id TxPatch      → Transaction
 //   DELETE /api/transactions/:id              → OkResponse
-//   POST   /api/transfers        TransferCreate → Transfer        (201)
+//   POST   /api/transactions/:id/move-outside MoveOutsideRequest? → OutsideExpense (201; una transacción pasa a
+//                                                                  gastos fuera de presupuesto, en un solo batch)
+//   POST   /api/outside-expenses OutsideCreate → OutsideExpense   (201)
+//   PATCH  /api/outside-expenses/:id OutsidePatch → OutsideExpense
+//   DELETE /api/outside-expenses/:id          → OkResponse
+//   POST   /api/outside-expenses/:id/move-to-budget MoveToBudgetRequest? → Transaction (201; el camino inverso,
+//                                                                  también en un solo batch)
+//   POST   /api/transfers       TransferCreate → Transfer        (201)
 //   PATCH  /api/transfers/:id    TransferPatch  → Transfer
 //   DELETE /api/transfers/:id                 → OkResponse
 //
@@ -90,6 +97,10 @@
 //     Un ingreso con `budget: true` no pertenece al mes: se puede crear o editar aunque el mes esté cerrado, y
 //     cambia el presupuesto de ese mes.
 //   · Ingresos y aportes no pertenecen a un mes: se pueden crear, editar y borrar siempre, con cualquier fecha.
+//   · Gastos fuera de presupuesto (Month.outside): como una transacción para los saldos (resta de su cuenta,
+//     convertido con la tasa de su fecha) pero no cuentan en lo usado, lo disponible, las categorías ni el
+//     conteo del mes. Mes cerrado → 409; cuenta de oro o desconocida → 400; una cuenta con uno no se elimina.
+//     Mover (a uno u otro lado) borra la fila y crea la otra en un solo batch: nunca queda duplicada ni perdida.
 //   · El cliente puede mandar `id` al crear (actualizaciones optimistas sin reconciliar ids). Si falta, lo genera el servidor.
 //   · Envíos: `fee` (>= 0, por defecto 0) es la comisión, en la moneda de la cuenta de origen: le resta a su saldo
 //     y cuenta como una transacción del mes en "Other" (shared/calc.ts transferFees). No es una fila de
@@ -157,6 +168,7 @@ import type {
   Language,
   Month,
   MonthKey,
+  OutsideExpense,
   ThemeColors,
   Transaction,
   Transfer,
@@ -308,6 +320,30 @@ export interface TxCreate {
 export type TxPatch = Partial<
   Pick<Transaction, 'date' | 'desc' | 'place' | 'cat' | 'method' | 'amount' | 'cur' | 'accountId' | 'notes'>
 >;
+
+/** Gasto fuera de presupuesto (OutsideExpense). Sin `accountId` sale de la cuenta por defecto; sin `cur`, la moneda de esa cuenta. */
+export interface OutsideCreate {
+  id?: string;
+  monthKey: MonthKey;
+  date: ISODate;
+  name: string;
+  desc?: string;
+  accountId?: string;
+  amount: number;
+  cur?: Currency;
+}
+export type OutsidePatch = Partial<Pick<OutsideExpense, 'date' | 'name' | 'desc' | 'accountId' | 'amount' | 'cur'>>;
+
+/** `id`: el de la fila nueva (el cliente lo manda para que lo optimista y lo confirmado coincidan). */
+export interface MoveOutsideRequest {
+  id?: string;
+}
+/** Categoría y método de la transacción que nace; por defecto 'Other' y 'Transfer'. */
+export interface MoveToBudgetRequest {
+  id?: string;
+  cat?: string;
+  method?: string;
+}
 
 export interface TransferCreate {
   id?: string;

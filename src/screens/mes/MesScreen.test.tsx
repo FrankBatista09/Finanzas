@@ -315,7 +315,8 @@ describe('mes abierto · October 2026', () => {
   });
 
   it('historial: cabecera, fila para agregar arriba y transacciones de la más reciente a la más antigua', () => {
-    const card = section(html, 'Transaction history', 'Closing the month');
+    // Hasta "Outside budget": su tarjeta (que con las filas de agregar abiertas se ve) tiene su propia prueba.
+    const card = section(html, 'Transaction history', 'Outside budget');
     const ct = text(card);
     expect(ct).toContain('Transaction history 7 transactions · total 10,845.00 DOP');
     expect(ct).toContain('Date Name Place Category Method Amount Cur. Account DOP USD Description');
@@ -345,7 +346,7 @@ describe('mes abierto · October 2026', () => {
     // Coffee: 385 DOP = 6.55 USD.
     expect(ct).toContain('385.00 6.55');
     // Cada fila lleva "⋯" (abre su descripción en un diálogo) y su ×.
-    expect(buttons(card)).toEqual(['Cancel', 'Add', ...Array<string[]>(7).fill(['⋯', '×']).flat()]);
+    expect(buttons(card)).toEqual(['Cancel', 'Add', ...Array<string[]>(7).fill(['⋯', '↘', '×']).flat()]);
     // El diálogo solo se monta al abrirlo.
     expect(card).not.toContain('<textarea');
     expect(card).not.toContain('role="dialog"');
@@ -938,8 +939,8 @@ describe('conversión con la tasa de la fecha', () => {
     Object.assign(tx.find((x) => x.desc === 'Uber to work')!, { amount: 10, cur: 'USD' });
     Object.assign(tx.find((x) => x.desc === 'Coffee')!, { amount: 10, cur: 'USD' });
     const html = render('2026-10', { state });
-    expect(txRow(html, 'Uber to work')).toBe('580.00 10.00 ⋯ ×');
-    expect(txRow(html, 'Coffee')).toBe('600.00 10.00 ⋯ ×');
+    expect(txRow(html, 'Uber to work')).toBe('580.00 10.00 ⋯ ↘ ×');
+    expect(txRow(html, 'Coffee')).toBe('600.00 10.00 ⋯ ↘ ×');
     // El total del historial suma cada una con la suya: 10,845 − 320 − 385 + 580 + 600.
     expect(text(html)).toContain('7 transactions · total 11,320.00 DOP');
   });
@@ -950,15 +951,15 @@ describe('conversión con la tasa de la fecha', () => {
     Object.assign(state.months['2026-10']!.tx.find((x) => x.desc === 'Pharmacy')!, { amount: 10, cur: 'USD' });
     Object.assign(state.months['2026-10']!.tx.find((x) => x.desc === 'Movies')!, { amount: 10, cur: 'USD' });
     const html = render('2026-10', { state });
-    expect(txRow(html, 'Pharmacy')).toBe('600.00 10.00 ⋯ ×');
-    expect(txRow(html, 'Movies')).toBe('580.00 10.00 ⋯ ×');
+    expect(txRow(html, 'Pharmacy')).toBe('600.00 10.00 ⋯ ↘ ×');
+    expect(txRow(html, 'Movies')).toBe('580.00 10.00 ⋯ ↘ ×');
   });
 
   it('también la columna en la segunda moneda de una transacción en pesos', () => {
     const html = render('2026-10', { state: dated() });
     // Lunch (día 3): 1,150 / 58. Gas (día 6): 2,000 / 60.
-    expect(txRow(html, 'Lunch')).toBe('1,150.00 19.83 ⋯ ×');
-    expect(txRow(html, 'Gas')).toBe('2,000.00 33.33 ⋯ ×');
+    expect(txRow(html, 'Lunch')).toBe('1,150.00 19.83 ⋯ ↘ ×');
+    expect(txRow(html, 'Gas')).toBe('2,000.00 33.33 ⋯ ↘ ×');
   });
 
   it('un gasto fijo no tiene fecha: va con la última tasa del mes', () => {
@@ -1328,6 +1329,9 @@ describe('en español', () => {
       'Lugar',
       '0.00',
       'Descripción (opcional)',
+      'Nuevo gasto fuera de presupuesto',
+      '0.00',
+      'Descripción (opcional)',
     ]);
     const labels = [...inputs, ...els(html, 'select'), ...els(html, 'button')].map((e) => e['aria-label']);
     expect(labels).toEqual(
@@ -1364,7 +1368,7 @@ describe('en español', () => {
         'Abrir la descripción de Coffee',
       ]),
     );
-    expect(new Set(buttons(html))).toEqual(new Set(['Cancelar', '×', '⋯', 'Agregar', 'Cerrar Octubre 2026', 'Eliminar mes']));
+    expect(new Set(buttons(html))).toEqual(new Set(['Cancelar', '×', '↘', '⋯', 'Agregar', 'Cerrar Octubre 2026', 'Eliminar mes']));
     expect(els(html, 'button')).toContainEqual(expect.objectContaining({ title: 'Eliminar' }));
   });
 
@@ -1457,6 +1461,9 @@ describe('en turco', () => {
       'Yer',
       '0.00',
       'Açıklama (isteğe bağlı)',
+      'Yeni bütçe dışı gider',
+      '0.00',
+      'Açıklama (isteğe bağlı)',
     ]);
     const labels = [...inputs, ...els(html, 'select'), ...els(html, 'button')].map((e) => e['aria-label']);
     expect(labels).toEqual(
@@ -1482,7 +1489,7 @@ describe('en turco', () => {
         'Coffee açıklamasını aç',
       ]),
     );
-    expect(new Set(buttons(html))).toEqual(new Set(['İptal', '×', '⋯', 'Ekle', 'Ekim 2026 ayını kapat', 'Ayı sil']));
+    expect(new Set(buttons(html))).toEqual(new Set(['İptal', '×', '↘', '⋯', 'Ekle', 'Ekim 2026 ayını kapat', 'Ayı sil']));
     expect(t).toContain('88,140.00 DOP');
     expect(t).toContain('6,228.56 106.00');
   });
@@ -1507,17 +1514,19 @@ describe('las filas de agregar se abren a petición', () => {
     const html = render('2026-10', { addRows: false });
     expect(els(html, 'input').filter((i) => i['aria-label']?.includes('new '))).toEqual([]);
     expect(html).not.toContain('New transaction');
+    // Sin gastos fuera de presupuesto y con su fila cerrada, la tarjeta no existe: ni tabla vacía ni aviso.
+    expect(html).not.toContain('Outside budget');
     const reveal = els(html, 'button').filter((b) => 'aria-expanded' in b);
     expect(reveal.every((b) => b['aria-expanded'] === 'false')).toBe(true);
-    expect(buttons(html).filter((b) => b.startsWith('+ '))).toEqual(['+ Add expense', '+ Add rate', '+ Add transfer', '+ Add income', '+ Add transaction']);
+    expect(buttons(html).filter((b) => b.startsWith('+ '))).toEqual(['+ Add expense', '+ Add rate', '+ Add transfer', '+ Add income', '+ Add outside-budget expense', '+ Add transaction']);
     expect(buttons(html)).not.toContain('Add');
     expect(buttons(html)).not.toContain('Cancel');
   });
 
   it('en español y en turco, cada botón dice qué agrega', () => {
     const plus = (lang: Language) => buttons(render('2026-10', { lang, addRows: false })).filter((b) => b.startsWith('+ '));
-    expect(plus('es')).toEqual(['+ Agregar gasto', '+ Agregar tasa', '+ Agregar envío', '+ Agregar ingreso', '+ Agregar transacción']);
-    expect(plus('tr')).toEqual(['+ Gider ekle', '+ Kur ekle', '+ Transfer ekle', '+ Gelir ekle', '+ İşlem ekle']);
+    expect(plus('es')).toEqual(['+ Agregar gasto', '+ Agregar tasa', '+ Agregar envío', '+ Agregar ingreso', '+ Agregar gasto fuera de presupuesto', '+ Agregar transacción']);
+    expect(plus('tr')).toEqual(['+ Gider ekle', '+ Kur ekle', '+ Transfer ekle', '+ Gelir ekle', '+ Bütçe dışı gider ekle', '+ İşlem ekle']);
   });
 
   it('un mes cerrado no las ofrece', () => {
@@ -1576,5 +1585,50 @@ describe('de dónde sale el idioma', () => {
         for (const piece of texts) expect(html.includes(piece), `"${piece}" en ${lang}`).toBe(other === lang);
       }
     }
+  });
+});
+
+describe('Outside budget', () => {
+  const withOutside = () => {
+    const state = seedState();
+    state.months['2026-10']!.outside = [
+      { id: 'o1', monthKey: '2026-10', date: '2026-10-05', name: 'Car repair', desc: 'radiator', accountId: 'dr', amount: 4500, cur: 'DOP' },
+      { id: 'o2', monthKey: '2026-10', date: '2026-10-06', name: 'Gift', desc: '', accountId: 'us', amount: 10, cur: 'USD' },
+    ];
+    return state;
+  };
+
+  it('con filas: la cabecera cuenta y suma en la moneda principal, y cada fila tiene sus botones de mover y borrar', () => {
+    const html = render('2026-10', { state: withOutside(), addRows: false });
+    const card = section(html, 'Outside budget', 'Closing the month');
+    // 4,500 DOP + 10 USD a 58.76 (la tasa del 6 de octubre).
+    expect(text(card)).toContain('Outside budget 2 expenses · total 5,087.60 DOP');
+    expect(els(card, 'button').filter((b) => b['aria-label']?.startsWith('Move'))).toEqual([
+      expect.objectContaining({ 'aria-label': 'Move Gift back to the budget', title: 'Move Gift back to the budget' }),
+      expect.objectContaining({ 'aria-label': 'Move Car repair back to the budget', title: 'Move Car repair back to the budget' }),
+    ]);
+    // El enlace de la cabecera de "Transaction history" sobra: la tarjeta ya tiene su propio "+ Add".
+    expect(buttons(html).filter((b) => b === '+ Add outside-budget expense')).toEqual(['+ Add outside-budget expense']);
+    expect(buttons(section(html, 'Transaction history', 'Outside budget'))).not.toContain('+ Add outside-budget expense');
+    // Después de "Transaction history", y su botón para mover cada transacción fuera.
+    expect(html.indexOf('Transaction history')).toBeLessThan(html.indexOf('Outside budget'));
+    expect(els(section(html, 'Transaction history', 'Outside budget'), 'button').filter((b) => b['aria-label']?.endsWith('outside the budget'))).toHaveLength(7);
+    // Lo usado del presupuesto no cambia.
+    expect(text(html)).toContain('Transaction history 7 transactions · total 10,845.00 DOP');
+  });
+
+  it('el enlace "+ Add outside-budget expense" está en la cabecera de Transaction history aunque la tarjeta no se vea', () => {
+    const html = render('2026-10', { addRows: false });
+    expect(html).not.toContain('Outside budget');
+    expect(buttons(section(html, 'Transaction history')).slice(0, 2)).toEqual(['+ Add outside-budget expense', '+ Add transaction']);
+  });
+
+  it('un mes cerrado no ofrece ni el enlace ni los botones de mover', () => {
+    const state = withOutside();
+    state.months['2026-10']!.closed = true;
+    const html = render('2026-10', { state, addRows: false });
+    expect(html).toContain('Outside budget');
+    expect(html).not.toContain('+ Add outside-budget expense');
+    expect(els(html, 'button').filter((b) => b['aria-label']?.startsWith('Move'))).toEqual([]);
   });
 });
