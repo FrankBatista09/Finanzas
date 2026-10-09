@@ -49,9 +49,11 @@ export interface ThProps extends Omit<ThHTMLAttributes<HTMLTableCellElement>, 'a
   last?: boolean;
   /** Columna sin título (la de eliminar): sin padding ni borde derecho. */
   blank?: boolean;
+  /** The column that absorbs the table's surplus width (the others keep their content size). Expanded, all columns share it as before. */
+  elastic?: boolean;
 }
 
-export function Th({ align, width, last, blank, className, style, children, ...rest }: ThProps) {
+export function Th({ align, width, last, blank, elastic, className, style, children, ...rest }: ThProps) {
   const { t } = useI18n();
   // Expanded, columns size to their content and share the extra room instead of keeping the card's narrow widths.
   const expanded = useExpanded();
@@ -60,7 +62,7 @@ export function Th({ align, width, last, blank, className, style, children, ...r
       scope="col"
       aria-label={blank ? t('actions') : undefined}
       {...rest}
-      className={cx(styles.th, alignClass(align), last && styles.last, blank && styles.thBlank, className)}
+      className={cx(styles.th, alignClass(align), last && styles.last, blank && styles.thBlank, elastic && !expanded && styles.elastic, className)}
       style={width && !expanded ? { width, ...style } : style}
     >
       {children}
