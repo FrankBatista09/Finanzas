@@ -6,7 +6,7 @@ import styles from './BudgetSummaryList.module.css';
 
 /**
  * The month's budget story as a list: initial, what was added or taken on which date, total, spent and what is
- * left. Read-only; used by the "Month summary" card (every line) and by the close dialog (compact).
+ * left. Read-only; used by the close dialog (compact).
  */
 export function BudgetSummaryList({ summary, compact = false }: { summary: BudgetSummary; compact?: boolean }) {
   const { t } = useI18n();
