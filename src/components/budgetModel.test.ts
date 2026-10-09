@@ -11,7 +11,7 @@ import { f2 } from '../../shared/format';
 import { seedState, setBudgets } from '../../shared/seed';
 import type { AppState, BudgetEntry, Income } from '../../shared/types';
 import { createI18n } from '../i18n';
-import { BUDGET_KIND, budgetHistoryRows, closeBudgetForm, closeFieldInvalid, closeRequest, leftoverView } from './budgetModel';
+import { BUDGET_KIND, budgetHistoryRows, closeBudgetForm, closeFieldInvalid, closeRequest, leftoverView, overrunLines } from './budgetModel';
 import type { CloseBudgetField, CloseBudgetForm } from './budgetModel';
 
 const entry = (over: Partial<BudgetEntry> & Pick<BudgetEntry, 'id' | 'amount' | 'kind'>): BudgetEntry => ({
@@ -485,5 +485,18 @@ describe('closeRequest: lo que se manda al cerrar', () => {
     const f = form({ fields: [field(), field({ accountId: 'us', currency: 'USD', amount: '200', exact: 200 })] });
     expect(closeRequest(f, [f.fields[0]!, { ...f.fields[1]!, amount: '-5' }], false)).toBeNull();
     expect(closeRequest(f, [{ ...f.fields[0]!, amount: 'abc' }, f.fields[1]!], true)).toBeNull();
+  });
+});
+
+describe('overrunLines: partes del presupuesto en negativo', () => {
+  it('una línea por parte negativa, con lo que se pasa en la moneda de su cuenta', () => {
+    const state = seedState();
+    const month = state.months['2026-10']!;
+    month.transfers = [...month.transfers, { id: 'big', monthKey: '2026-10', date: '2026-10-05', via: 'Remitly', fromAccountId: 'us', toAccountId: 'dr', amount: 800, rate: 58, budget: true, fee: 0 }];
+    expect(overrunLines(monthCalc(state, '2026-10').budgetParts)).toEqual([{ id: 'us', amount: '800.00', currency: 'USD', account: 'US account' }]);
+  });
+
+  it('ninguna si no hay partes negativas', () => {
+    expect(overrunLines(monthCalc(seedState(), '2026-10').budgetParts)).toEqual([]);
   });
 });

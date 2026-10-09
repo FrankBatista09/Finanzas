@@ -22,8 +22,14 @@ import type {
   ISODate,
   Month,
   MonthKey,
+  OutsideExpense,
   Transfer,
 } from './types';
+
+/** Los gastos fuera de presupuesto de un mes (Month.outside es opcional). */
+export function outsideOf(m: Month): readonly OutsideExpense[] {
+  return m.outside ?? [];
+}
 
 export function sortedKeys(state: AppState): MonthKey[] {
   return Object.keys(state.months).sort();
@@ -381,6 +387,8 @@ export function balances(state: AppState, asOf: MonthKey): Balances {
     if (key > asOf) break;
     const m = state.months[key]!;
     for (const t of m.tx) move(t.accountId, key, t.amount, t.cur, -1, t.date);
+    // Fuera de presupuesto: resta del saldo igual que una transacción, pero monthCalc no lo cuenta.
+    for (const o of outsideOf(m)) move(o.accountId, key, o.amount, o.cur, -1, o.date);
     for (const f of m.fixed) if (f.paid) move(f.accountId, key, f.amount, f.cur, -1);
     for (const t of m.transfers) {
       const from = byId.get(t.fromAccountId);
@@ -783,6 +791,28 @@ export function monthCalc(state: AppState, key: MonthKey): MonthCalc {
     categories,
     catMax: Math.max(1, ...categories.map((c) => c.value)),
   };
+}
+
+/** Cuántos gastos fuera de presupuesto tiene el mes y cuánto suman, en la moneda principal (cada uno con la tasa de su fecha). */
+export function outsideSummary(state: AppState, key: MonthKey): { count: number; total: number } {
+  const m = state.months[key];
+  const rows = m ? outsideOf(m) : [];
+  const total = rows.reduce((a, o) => a + convert(state, key, o.amount, o.cur, state.mainCurrency, o.date), 0);
+  return { count: rows.length, total };
+}
+
+export interface BudgetOverrun {
+  account: MoneyAccount;
+  /** Cuánto se pasa la parte, en la moneda de su cuenta (> 0). */
+  over: number;
+}
+
+/**
+ * Las partes del presupuesto que quedaron en negativo (p. ej. un envío con "Moves budget" sacó más de lo que la
+ * cuenta tenía), con lo que se pasan. Solo lee `amount`: no calcula nada nuevo.
+ */
+export function budgetOverruns(parts: readonly BudgetPart[]): BudgetOverrun[] {
+  return parts.filter((p) => p.amount < 0).map((p) => ({ account: p.account, over: -p.amount }));
 }
 
 // ── Donas ────────────────────────────────────────────────────────────────────

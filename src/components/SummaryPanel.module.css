@@ -160,6 +160,18 @@
   min-width: 80px;
 }
 
+/* Las partes del presupuesto que quedaron en negativo: una línea por cuenta, en el color de error. */
+.overrun {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: var(--fs-num);
+  color: var(--error);
+}
+
 /* "Leftover from last month": la cifra y, a su derecha, el botón para sumarla (o "added"). */
 .leftover {
   display: flex;

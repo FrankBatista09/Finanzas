@@ -6,7 +6,7 @@
 // (state.language) y traen los ayudantes atados a él (meses, categorías, métodos, origen de una tasa).
 
 import { createContext, useContext } from 'react';
-import type { CloseRequest, ContributionPatch, FixedPatch, GoalPatch, IncomePatch, TransferPatch, TxPatch } from '../../shared/api';
+import type { CloseRequest, ContributionPatch, FixedPatch, GoalPatch, IncomePatch, OutsidePatch, TransferPatch, TxPatch } from '../../shared/api';
 import type { Balances, Leftover, MonthCalc, MoneyAccount, RateInfo } from '../../shared/calc';
 import type { Account, AppState, AppUser, Currency, ISODate, Language, Month, MonthKey, ThemeColors } from '../../shared/types';
 import type {
@@ -16,6 +16,7 @@ import type {
   FixedInput,
   GoalInput,
   IncomeInput,
+  OutsideInput,
   TransferInput,
   TxInput,
 } from './reducers';
@@ -114,6 +115,16 @@ export interface Actions {
   /** Se ignoran un `desc` en blanco, un `amount` negativo y un `accountId` que no exista. */
   patchTx(id: string, patch: TxPatch): void;
   removeTx(id: string): void;
+
+  /** Agrega al mes seleccionado un gasto fuera de presupuesto. false si falta el nombre, la fecha no es válida, el monto no es > 0 o la cuenta indicada no existe o es de oro. */
+  addOutside(input: OutsideInput): boolean;
+  /** Se ignoran un `name` en blanco, un `amount` negativo y un `accountId` que no exista. */
+  patchOutside(id: string, patch: OutsidePatch): void;
+  removeOutside(id: string): void;
+  /** Pasa una transacción del mes seleccionado a "fuera de presupuesto" (una sola llamada al servidor: no se duplica ni se pierde). */
+  moveTxOutside(id: string): void;
+  /** El camino inverso: categoría "Other", método "Transfer" y sin lugar. */
+  moveOutsideToBudget(id: string): void;
 
   /**
    * Agrega al mes seleccionado un envío de una cuenta a otra. false si la vía (texto libre) está en blanco, la fecha

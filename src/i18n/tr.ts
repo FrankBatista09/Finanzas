@@ -109,6 +109,7 @@ export const tr: Shape<typeof en> = {
   summaryOf: '{month} özeti',
   budgetOf: '{account} bütçesi, {currency} cinsinden',
   removeFromBudget: '{name} hesabını bütçeden çıkar',
+  overBudgetBy: 'Bütçe aşıldı: {amount} {currency} · {account}',
   newAccountOption: 'Yeni hesap…',
   budgetAccount: 'Bütçeye eklenecek hesap',
   addBudgetPart: 'Bütçeye hesap ekle',

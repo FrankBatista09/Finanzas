@@ -23,6 +23,9 @@ export const CATS = [
 
 export const METHODS = ['Debit card', 'Credit card', 'Transfer', 'Bank app', 'Cash'] as const;
 
+/** Categoría y método de la transacción que nace al pasar un gasto de "fuera de presupuesto" al presupuesto (no los tiene). */
+export const MOVED_TO_BUDGET = { cat: 'Other', method: 'Transfer' } as const;
+
 /** Sugerencias para la vía de un envío. Es texto libre: se puede escribir cualquier otra. */
 export const VIAS = ['Remitly', 'PayPal'] as const;
 

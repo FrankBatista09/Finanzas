@@ -21,3 +21,17 @@
   white-space: nowrap;
   text-overflow: ellipsis;
 }
+
+/* "Mover fuera del presupuesto" / "devolver al presupuesto": una flecha discreta junto a la ×. */
+.moveButton {
+  border: 0;
+  background: transparent;
+  color: var(--text-faint);
+  cursor: pointer;
+  font-size: 15px;
+  padding: 4px 6px;
+}
+
+.moveButton:hover {
+  color: var(--accent-text);
+}

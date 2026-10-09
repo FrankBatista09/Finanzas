@@ -10,7 +10,7 @@ import type { MoneyAccount } from '../../../shared/calc';
 import { CATS, METHODS, VIAS } from '../../../shared/constants';
 import { fRate } from '../../../shared/format';
 import type { Account, Currency, ISODate, MonthKey } from '../../../shared/types';
-import type { FixedInput, PairRate, TransferInput, TxInput } from '../../store';
+import type { FixedInput, OutsideInput, PairRate, TransferInput, TxInput } from '../../store';
 import { newRateDate } from './rows';
 
 // ── Cuenta y moneda de un gasto ──────────────────────────────────────────────
@@ -102,6 +102,42 @@ export function txInput(draft: TxDraft, draftDate: ISODate, ctx: DraftContext): 
 /** Se limpia lo propio de cada gasto; fecha, categoría, método, moneda y cuenta se quedan para cargar varios seguidos. */
 export function afterTxAdded(draft: TxDraft): TxDraft {
   return { ...draft, desc: '', place: '', amount: 0, notes: '' };
+}
+
+// ── Gasto fuera de presupuesto ───────────────────────────────────────────────
+
+export interface OutsideDraft extends Paying {
+  /** null = sin tocar: la fecha del shell, como en TxDraft. */
+  date: ISODate | null;
+  name: string;
+  amount: number;
+  desc: string;
+}
+
+export function newOutsideDraft(): OutsideDraft {
+  return { date: null, name: '', amount: 0, desc: '', cur: null, accountId: null };
+}
+
+/** Nombre y monto mayor que 0. */
+export function canAddOutside(draft: OutsideDraft): boolean {
+  return draft.name.trim() !== '' && draft.amount > 0;
+}
+
+export function outsideInput(draft: OutsideDraft, draftDate: ISODate, ctx: DraftContext): OutsideInput {
+  const account = draftAccount(draft, ctx);
+  return {
+    date: draft.date ?? draftDate,
+    name: draft.name,
+    desc: draft.desc,
+    amount: draft.amount,
+    cur: draftCurrency(draft, ctx),
+    ...(account && { accountId: account.id }),
+  };
+}
+
+/** Como las transacciones: se limpia lo propio de cada gasto; fecha, moneda y cuenta se quedan para cargar varios seguidos. */
+export function afterOutsideAdded(draft: OutsideDraft): OutsideDraft {
+  return { ...draft, name: '', amount: 0, desc: '' };
 }
 
 // ── Envío ────────────────────────────────────────────────────────────────────

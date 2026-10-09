@@ -19,6 +19,7 @@ import type {
   GoalPatch,
   IncomePatch,
   MonthPatch,
+  OutsidePatch,
   SettingsUpdate,
   TransferPatch,
   TxPatch,
@@ -35,7 +36,7 @@ import {
   rateFor,
   sortedKeys,
 } from '../../shared/calc';
-import { CURRENCIES, GOLD, GOLD_DECIMALS, isGold, MAX_LEN } from '../../shared/constants';
+import { CURRENCIES, GOLD, GOLD_DECIMALS, isGold, MAX_LEN, MOVED_TO_BUDGET } from '../../shared/constants';
 import { clampToMonth, firstDay, inMonth, isISODate, isMonthKey } from '../../shared/month';
 import type {
   Account,
@@ -52,6 +53,7 @@ import type {
   Month,
   MonthKey,
   MonthRate,
+  OutsideExpense,
   Transaction,
   Transfer,
 } from '../../shared/types';
@@ -76,6 +78,13 @@ export type Action =
   | { type: 'tx/add'; row: Transaction }
   | { type: 'tx/patch'; id: string; patch: TxPatch }
   | { type: 'tx/remove'; id: string }
+  | { type: 'outside/add'; row: OutsideExpense }
+  | { type: 'outside/patch'; id: string; patch: OutsidePatch }
+  | { type: 'outside/remove'; id: string }
+  /** La transacción `id` pasa a ser `row`, en un solo paso: nunca están las dos ni falta una (POST …/move-outside). */
+  | { type: 'tx/moveOutside'; id: string; row: OutsideExpense }
+  /** El camino inverso: el gasto fuera de presupuesto `id` pasa a ser la transacción `row`. */
+  | { type: 'outside/moveToBudget'; id: string; row: Transaction }
   | { type: 'transfer/add'; row: Transfer }
   | { type: 'transfer/patch'; id: string; patch: TransferPatch }
   | { type: 'transfer/remove'; id: string }
@@ -96,6 +105,7 @@ const PATCH_TYPES = [
   'rate/set',
   'fixed/patch',
   'tx/patch',
+  'outside/patch',
   'transfer/patch',
   'income/patch',
   'contribution/patch',
@@ -111,7 +121,7 @@ export function isPatch(action: Action): action is PatchAction {
   return (PATCH_TYPES as readonly string[]).includes(action.type);
 }
 
-type MonthList = 'fixed' | 'tx' | 'transfers';
+type MonthList = 'fixed' | 'tx' | 'transfers' | 'outside';
 type TopList = 'accounts' | 'incomes' | 'goals' | 'contribs';
 
 function withMonth(state: AppState, key: MonthKey, fn: (m: Month) => Month): AppState {
@@ -132,21 +142,21 @@ function upsert<T extends { id: string }>(rows: readonly T[], row: T): T[] {
 
 function monthWith(state: AppState, list: MonthList, id: string): MonthKey | null {
   for (const key in state.months) {
-    if (state.months[key]![list].some((r) => r.id === id)) return key;
+    if ((state.months[key]![list] ?? []).some((r) => r.id === id)) return key;
   }
   return null;
 }
 
-function patchRow<L extends MonthList>(state: AppState, list: L, id: string, patch: Partial<Month[L][number]>): AppState {
+function patchRow<L extends MonthList>(state: AppState, list: L, id: string, patch: Partial<NonNullable<Month[L]>[number]>): AppState {
   const key = monthWith(state, list, id);
   if (!key) return state;
-  return withMonth(state, key, (m) => ({ ...m, [list]: m[list].map((r) => (r.id === id ? { ...r, ...patch } : r)) }));
+  return withMonth(state, key, (m) => ({ ...m, [list]: (m[list] ?? []).map((r) => (r.id === id ? { ...r, ...patch } : r)) }));
 }
 
 function removeRow(state: AppState, list: MonthList, id: string): AppState {
   const key = monthWith(state, list, id);
   if (!key) return state;
-  return withMonth(state, key, (m) => ({ ...m, [list]: m[list].filter((r) => r.id !== id) }));
+  return withMonth(state, key, (m) => ({ ...m, [list]: (m[list] ?? []).filter((r) => r.id !== id) }));
 }
 
 // Lo mismo para lo que no pertenece a un mes: cuentas, ingresos, metas y aportes.
@@ -291,6 +301,25 @@ export function reduce(state: AppState, action: Action): AppState {
     case 'tx/remove':
       return removeRow(state, 'tx', action.id);
 
+    case 'outside/add':
+      return withMonth(state, action.row.monthKey, (m) => ({ ...m, outside: upsert(m.outside ?? [], action.row) }));
+    case 'outside/patch':
+      return patchRow(state, 'outside', action.id, action.patch);
+    case 'outside/remove':
+      return removeRow(state, 'outside', action.id);
+    // Si la fila de origen ya no está (se movió en el servidor y el refetch lo trajo, o se borró) no se hace nada:
+    // así aplicar dos veces la acción nunca duplica ni resucita nada.
+    case 'tx/moveOutside': {
+      const key = monthWith(state, 'tx', action.id);
+      if (!key) return state;
+      return withMonth(removeRow(state, 'tx', action.id), action.row.monthKey, (m) => ({ ...m, outside: upsert(m.outside ?? [], action.row) }));
+    }
+    case 'outside/moveToBudget': {
+      const key = monthWith(state, 'outside', action.id);
+      if (!key) return state;
+      return withMonth(removeRow(state, 'outside', action.id), action.row.monthKey, (m) => ({ ...m, tx: upsert(m.tx, action.row) }));
+    }
+
     case 'transfer/add':
       return withMonth(state, action.row.monthKey, (m) => ({ ...m, transfers: upsert(m.transfers, action.row) }));
     case 'transfer/patch':
@@ -373,6 +402,8 @@ export function targetOf(action: Action): string {
   if (action.type === 'rate/remove') return `${kind}:${action.key}:${pairKey(action.from, action.to)}:${action.date}`;
   if (action.type === 'budget/add' || action.type === 'budget/leftover') return `${kind}:${action.row.id}`;
   if (action.type === 'budget/remove') return `${kind}:${action.id}`;
+  // Un mover nombra a la fila de la que sale (la nueva lleva otro id): es de ella de quien depende lo que haya en cola.
+  if (action.type === 'tx/moveOutside' || action.type === 'outside/moveToBudget') return `${kind}:${action.id}`;
   if ('key' in action) return `${kind}:${action.key}`;
   return `${kind}:${'row' in action ? action.row.id : action.id}`;
 }
@@ -443,6 +474,17 @@ export function fixedChange(state: AppState, patch: FixedPatch): FixedPatch {
 export function txChange(state: AppState, patch: TxPatch): TxPatch {
   return keepValid(patch, {
     desc: isBlank,
+    date: notDate,
+    amount: notAmount,
+    cur: notCurrency,
+    accountId: (id) => !hasMoneyAccount(state, id),
+  });
+}
+
+/** Edición de un gasto fuera de presupuesto: nombre no vacío, fecha válida, monto >= 0 y una cuenta de dinero que exista. */
+export function outsideChange(state: AppState, patch: OutsidePatch): OutsidePatch {
+  return keepValid(patch, {
+    name: isBlank,
     date: notDate,
     amount: notAmount,
     cur: notCurrency,
@@ -524,6 +566,17 @@ export interface TxInput {
   /** Cuenta de la que sale. Sin indicar: la cuenta por defecto del usuario. */
   accountId?: string;
   notes?: string;
+}
+
+export interface OutsideInput {
+  date: ISODate;
+  name: string;
+  desc?: string;
+  /** Cuenta de la que sale. Sin indicar: la cuenta por defecto del usuario. */
+  accountId?: string;
+  amount: number;
+  /** Sin indicar: la moneda de la cuenta. */
+  cur?: Currency;
 }
 
 export interface TransferInput {
@@ -623,6 +676,44 @@ export function newTx(state: AppState, monthKey: MonthKey, input: TxInput, id: s
     cur: input.cur,
     accountId,
     notes: (input.notes ?? '').trim(),
+    source: 'web',
+    createdAt: null,
+  };
+}
+
+/** Nombre, fecha válida, monto > 0 y una cuenta de dinero que exista. Va al mes seleccionado, sea cual sea su fecha. */
+export function newOutside(state: AppState, monthKey: MonthKey, input: OutsideInput, id: string): OutsideExpense | null {
+  const name = named(input.name, MAX_LEN.desc);
+  const accountId = accountFor(state, input.accountId);
+  const account = state.accounts.find((a) => a.id === accountId);
+  const cur = input.cur ?? account?.currency;
+  if (!state.months[monthKey] || !name || !isISODate(input.date) || !positive(input.amount) || !account || !cur || !isCurrency(cur)) return null;
+  return { id, monthKey, date: input.date, name, desc: (input.desc ?? '').trim(), accountId: account.id, amount: input.amount, cur };
+}
+
+/**
+ * La fila "fuera de presupuesto" en que se convierte una transacción (igual que el servidor, db.ts moveTransactionOutside):
+ * su concepto es el nombre y sus notas la descripción; si tenía lugar, va delante porque esta fila no lo guarda.
+ */
+export function outsideFromTx(tx: Transaction, id: string): OutsideExpense {
+  const desc = tx.place ? (tx.notes ? `${tx.place} · ${tx.notes}` : tx.place) : tx.notes;
+  return { id, monthKey: tx.monthKey, date: tx.date, name: tx.desc, desc: desc.slice(0, MAX_LEN.notes), accountId: tx.accountId, amount: tx.amount, cur: tx.cur };
+}
+
+/** La transacción en que se convierte un gasto fuera de presupuesto (db.ts moveOutsideToBudget): sin lugar, su descripción son las notas. */
+export function txFromOutside(o: OutsideExpense, id: string): Transaction {
+  return {
+    id,
+    monthKey: o.monthKey,
+    date: o.date,
+    desc: o.name,
+    place: '',
+    cat: MOVED_TO_BUDGET.cat,
+    method: MOVED_TO_BUDGET.method,
+    amount: o.amount,
+    cur: o.cur,
+    accountId: o.accountId,
+    notes: o.desc,
     source: 'web',
     createdAt: null,
   };
@@ -760,7 +851,7 @@ export function accountName(state: AppState, id: string, name: string): string |
   return hasAccount(state, id) && !isBlank(name) && name.length <= MAX_LEN.name ? name : null;
 }
 
-/** true si algo nombra esa cuenta: un gasto fijo, una transacción, un envío, un ingreso, un aporte o un movimiento del presupuesto de cualquier mes. */
+/** true si algo nombra esa cuenta: un gasto fijo, una transacción, un gasto fuera de presupuesto, un envío, un ingreso, un aporte o un movimiento del presupuesto de cualquier mes. */
 export function accountInUse(state: AppState, id: string): boolean {
   if (state.incomes.some((i) => i.accountId === id)) return true;
   if (state.contribs.some((c) => c.accountId === id)) return true;
@@ -769,6 +860,7 @@ export function accountInUse(state: AppState, id: string): boolean {
       m.budgetLog.some((e) => e.accountId === id) ||
       m.fixed.some((f) => f.accountId === id) ||
       m.tx.some((t) => t.accountId === id) ||
+      (m.outside ?? []).some((o) => o.accountId === id) ||
       m.transfers.some((t) => t.fromAccountId === id || t.toAccountId === id),
   );
 }

@@ -1,5 +1,5 @@
-import { memo, useMemo, useState } from 'react';
-import { FEE_CATEGORY, transferFees } from '../../../shared/calc';
+import { memo, useMemo, useRef, useState } from 'react';
+import { FEE_CATEGORY, outsideOf, transferFees } from '../../../shared/calc';
 import type { TransferFee } from '../../../shared/calc';
 import { CATS, CURRENCIES, METHODS } from '../../../shared/constants';
 import { f2 } from '../../../shared/format';
@@ -18,15 +18,16 @@ import {
   CellSelect,
   CellText,
   DeleteButton,
-  Dialog,
-  DialogButton,
   Num,
   SheetTable,
   Td,
   Th,
   useAddRow,
 } from '../../ui';
+import { outsideCardVisible } from './OutsideCard';
+import type { OutsideAdding } from './OutsideCard';
 import { afterTxAdded, canAddTx, draftAccount, draftCurrency, newTxDraft, txInput } from './drafts';
+import { NotesCell } from './NotesCell';
 import { historyRows, labelled, MAX_LEN, optionsWith, rowAccountOptions, shortDate } from './rows';
 import { MES } from './strings';
 import styles from './TransactionsCard.module.css';
@@ -38,7 +39,7 @@ import styles from './TransactionsCard.module.css';
  * transacción más (en el número y en el total de la cabecera), pero no son filas guardadas: salen del envío, así
  * que aquí solo se leen.
  */
-export function TransactionsCard() {
+export function TransactionsCard({ outside }: { outside: OutsideAdding }) {
   const { state, monthKey, month, calc, main, second, inBoth, accounts, defaultAccount, accountOptions, readOnly, draftDate, actions } = useFinanzas();
   const { t, catLabel, methodLabel } = useI18n();
   const s = useStrings(MES);
@@ -48,6 +49,9 @@ export function TransactionsCard() {
   const visible = useMemo(() => accountOptions(), [state.accounts]);
   const ctx = { accounts, defaultAccount, main };
   const draftAccountId = draftAccount(draft, ctx)?.id ?? '';
+  // El enlace de "fuera de presupuesto" solo abre la fila (nunca la cierra), va aparte del botón de su tarjeta y solo
+  // se ve mientras esa tarjeta no existe: con ella a la vista, su propia cabecera tiene el botón.
+  const outsideLink = useRef<HTMLButtonElement>(null);
 
   const add = () => {
     if (!canAddTx(draft) || !actions.addTx(txInput(draft, draftDate, ctx))) return false;
@@ -65,7 +69,18 @@ export function TransactionsCard() {
             {s('txMeta', { count: calc.txCount })} <Num tone="ink">{f2(calc.varSpent)} {main}</Num>
           </>
         }
-        action={!readOnly && <AddRowButton control={adding}>{s('addTx')}</AddRowButton>}
+        action={
+          !readOnly && (
+            <>
+              {!outsideCardVisible(outsideOf(month).length, outside) && (
+                <AddRowButton control={{ ...outside.control, buttonRef: outsideLink }} variant="link">
+                  {s('addOutside')}
+                </AddRowButton>
+              )}
+              <AddRowButton control={adding}>{s('addTx')}</AddRowButton>
+            </>
+          )
+        }
       />
       <SheetTable minWidth={1100} label={s('txTitle')}>
         <thead>
@@ -83,7 +98,7 @@ export function TransactionsCard() {
             <Th align="right">{main}</Th>
             <Th align="right">{second}</Th>
             <Th>{s('notes')}</Th>
-            <Th blank width={32} />
+            <Th blank width={56} />
           </tr>
         </thead>
         <tbody>
@@ -259,14 +274,6 @@ const TxRow = memo(function TxRow({ row: tx, inMain, inSecond, accounts, readOnl
   const s = useStrings(MES);
   // La descripción de la transacción, para las etiquetas de sus celdas ("Amount of Coffee").
   const named = { name: tx.desc };
-  const [open, setOpen] = useState(false);
-  const [text, setText] = useState(tx.notes);
-  // Al cerrar se guarda lo editado; al abrir se parte de lo que haya guardado.
-  const close = () => {
-    setOpen(false);
-    if (!readOnly && text !== tx.notes) actions.patchTx(tx.id, { notes: text });
-  };
-  if (!open && text !== tx.notes) setText(tx.notes);
   return (
     <tr>
       <Td kind="edit">
@@ -342,62 +349,23 @@ const TxRow = memo(function TxRow({ row: tx, inMain, inSecond, accounts, readOnl
       <Td kind="num" nowrap tone="muted">
         {f2(inSecond)}
       </Td>
-      <Td kind="edit">
-        <div style={{ display: 'flex', alignItems: 'center' }}>
-          <CellText
-            value={tx.notes}
-            onCommit={(notes) => actions.patchTx(tx.id, { notes })}
-            readOnly={readOnly}
-            small
-            tone="muted"
-            maxLength={MAX_LEN.notes}
-            label={s('notesOf', named)}
-          />
-          {/* La celda es estrecha: una descripción larga se abre aparte para leerla o editarla con espacio. */}
-          <button
-            type="button"
-            onClick={() => setOpen(true)}
-            aria-label={s('openNotes', named)}
-            title={s('openNotes', named)}
-            style={{ border: 0, background: 'transparent', color: 'var(--text-faint)', cursor: 'pointer', padding: '0 8px', font: 'inherit' }}
-          >
-            ⋯
-          </button>
-        </div>
-        {open && (
-          <Dialog
-            title={tx.desc}
-            onCancel={close}
-            maxWidth={560}
-            footer={
-              <DialogButton variant="primary" onClick={close}>
-                {s('closeNotes')}
-              </DialogButton>
-            }
-          >
-            <textarea
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              readOnly={readOnly}
-              maxLength={MAX_LEN.notes}
-              rows={10}
-              aria-label={s('notesOf', named)}
-              style={{
-                width: '100%',
-                boxSizing: 'border-box',
-                border: '1px solid var(--border)',
-                borderRadius: 'var(--radius)',
-                padding: '8px 10px',
-                font: 'var(--fs-body)/1.5 var(--font-ui)',
-                color: 'var(--ink)',
-                background: 'var(--focus-bg)',
-                resize: 'vertical',
-              }}
-            />
-          </Dialog>
+      <NotesCell value={tx.notes} onCommit={(notes) => actions.patchTx(tx.id, { notes })} readOnly={readOnly} name={tx.desc} />
+      <Td kind="action">
+        {!readOnly && (
+          <>
+            <button
+              type="button"
+              className={styles.moveButton}
+              onClick={() => actions.moveTxOutside(tx.id)}
+              aria-label={s('moveOutside', named)}
+              title={s('moveOutside', named)}
+            >
+              ↘
+            </button>
+            <DeleteButton onClick={() => actions.removeTx(tx.id)} label={t('deleteNamed', named)} />
+          </>
         )}
       </Td>
-      <Td kind="action">{!readOnly && <DeleteButton onClick={() => actions.removeTx(tx.id)} label={t('deleteNamed', named)} />}</Td>
     </tr>
   );
 });

@@ -44,7 +44,7 @@ const NOW = new Date('2026-10-07T16:00:00Z');
 const F = FRANK.id;
 const E = EDA.id;
 
-const TOOL_NAMES = ['add_transaction', 'list_transactions', 'month_summary', 'add_transfer', 'mark_fixed_paid', 'add_income', 'list_accounts'];
+const TOOL_NAMES = ['add_transaction', 'add_outside_expense', 'list_transactions', 'month_summary', 'add_transfer', 'mark_fixed_paid', 'add_income', 'list_accounts'];
 const FIXED_NAMES = 'Electricity, Internet, Health insurance, Fridge payment, Claude, Google One, iCloud+, Cluely, Smartfit, Netflix, Unicaribe';
 /** Cómo nombra un error a los usuarios de las pruebas: el id que va en `user` y el nombre de cada quien. */
 const BOTH = 'frank (Frank), eda (Eda)';
@@ -789,12 +789,12 @@ describe('/mcp: tools/list', () => {
     return ((await rpc(env, 'tools/list')).result as { tools: Record<string, any>[] }).tools;
   }
 
-  it('lista las siete herramientas del diseño, con o sin params', async () => {
+  it('lista las ocho herramientas del diseño, con o sin params', async () => {
     const { env } = makeEnv();
     expect((await tools()).map((t) => t.name)).toEqual(TOOL_NAMES);
     for (const params of [{}, { cursor: 'x' }, null]) {
       const result = (await rpc(env, 'tools/list', params)).result as { tools: unknown[]; nextCursor?: string };
-      expect(result.tools).toHaveLength(7);
+      expect(result.tools).toHaveLength(8);
       expect(result.nextCursor).toBeUndefined();
     }
   });
@@ -832,6 +832,7 @@ describe('/mcp: tools/list', () => {
     expect(JSON.stringify(all)).not.toMatch(SPANISH);
     expect(all.map((t) => t.title)).toEqual([
       'Record transaction',
+      'Record outside-budget expense',
       'List transactions',
       'Month summary',
       'Record transfer between accounts',
@@ -847,6 +848,7 @@ describe('/mcp: tools/list', () => {
     const hints = Object.fromEntries((await tools()).map((t) => [t.name, [t.annotations.readOnlyHint, t.annotations.idempotentHint]]));
     expect(hints).toEqual({
       add_transaction: [false, false],
+      add_outside_expense: [false, false],
       list_transactions: [true, true],
       month_summary: [true, true],
       add_transfer: [false, false],
@@ -1628,6 +1630,7 @@ describe('month_summary', () => {
         ],
       },
       transactions: { count: 7, total: 10845 },
+      outsideBudget: { count: 0, total: 0, expenses: [] },
       transferFees: [],
       categories: [
         { name: 'Fixed expenses', value: near(38304.71) },
@@ -2880,5 +2883,37 @@ describe('list_accounts', () => {
     const { env } = await seeded();
     expect(await fails(env, 'list_accounts', { month: '2026-10' })).toContain('month');
     expect(await fails(env, 'list_accounts', { account: 'us' })).toContain('Invalid data');
+  });
+});
+
+describe('add_outside_expense', () => {
+  it('resta de la cuenta como un gasto, no cuenta en lo usado, y month_summary lo cuenta aparte', async () => {
+    const { env, db } = await seeded();
+    const used = (await call(env, 'month_summary')).data!.used;
+    const before = await balanceOf(db, 'dr');
+    const r = await call(env, 'add_outside_expense', { name: 'Car repair', amount: 4500, description: 'radiator' });
+    expect(r.isError).toBe(false);
+    expect(r.text).toBe(
+      'Recorded outside the budget for Frank: Car repair · radiator · 4,500.00 DOP · 2026-10-07 (October 2026) · paid from DR account. Used so far is unchanged by it: 49,149.71 DOP. DR account balance: 216,141.93 DOP. Outside budget in October 2026: 1 (4,500.00 DOP).',
+    );
+    expect(r.data!.outsideExpense).toEqual({ id: expect.any(String), monthKey: '2026-10', date: '2026-10-07', name: 'Car repair', desc: 'radiator', accountId: 'dr', amount: 4500, cur: 'DOP' });
+    expect(await balanceOf(db, 'dr')).toBeCloseTo(before - 4500, 8);
+
+    const summary = await call(env, 'month_summary');
+    expect(summary.data!.used).toBe(used);
+    expect(summary.data!.transactions.count).toBe(7);
+    expect(summary.data!.outsideBudget).toMatchObject({ count: 1, total: 4500 });
+    expect(summary.text).toContain('Outside budget: 1 (4,500.00 DOP) · not part of used or available, but already subtracted from the account balances: Car repair 4,500.00 DOP');
+  });
+
+  it('en otra moneda y otra cuenta; rechaza oro y un mes cerrado', async () => {
+    const { env, db } = await seeded();
+    const r = await call(env, 'add_outside_expense', { name: 'Gift', amount: 20, account: 'US account' });
+    expect(r.data!.outsideExpense).toMatchObject({ accountId: 'us', cur: 'USD' });
+    expect(await balanceOf(db, 'us')).toBeCloseTo(13482 - 20, 6);
+    await createAccount(db, F, { id: 'gold', name: 'Gold', currency: 'XAU', opening: 10 });
+    expect(await fails(env, 'add_outside_expense', { name: 'Coin', amount: 1, account: 'Gold' })).toContain('is a gold account');
+    expect(await fails(env, 'add_outside_expense', { name: 'Old', amount: 1, date: '2026-09-10' })).toContain('closed');
+    expect(await fails(env, 'add_outside_expense', { name: 'x', amount: 0 })).toContain('greater than 0');
   });
 });

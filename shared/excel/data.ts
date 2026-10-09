@@ -104,6 +104,8 @@ function exportMonth(state: AppState, accounts: ReadonlyMap<string, Account>, ke
  *    de oro (gramos) no salen en el libro, tengan o no precio, y sus ingresos en gramos tampoco son ingreso.
  *  · Gastos fijos y transacciones: monto y moneda tal cual si son DOP o USD; si son TRY, el monto convertido a
  *    DOP (la transacción lleva el original al final de sus notas).
+ *  · Los gastos fuera de presupuesto (Month.outside) no salen como filas, pero sí están restados de los saldos de
+ *    las cuentas (balances), así que el libro y la app muestran el mismo dinero total.
  *  · Las comisiones de los envíos (Transfer.fee) no salen como filas: el libro no las conoce. Sí están ya
  *    restadas en el saldo de la cuenta de origen, pero lo "usado" del libro no las cuenta.
  *  · Envíos: solo los que van entre una cuenta en USD y otra en DOP. USD → DOP como { usd: lo que salió, rate };
@@ -224,6 +226,9 @@ function importedMonth(m: ImportMonth, before: Month | undefined, known: readonl
       source: 'import',
       createdAt: null,
     })),
+    // El libro no conoce los gastos fuera de presupuesto: los del mes que se sustituye se conservan, para que no
+    // se pierdan y para que el saldo que se calcula al importar (openingFor) los siga restando, como al exportar.
+    ...(before?.outside?.length ? { outside: before.outside } : {}),
   };
 }
 

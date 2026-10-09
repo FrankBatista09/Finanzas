@@ -44,6 +44,8 @@ import {
   isMoneyIncome,
   leftoverFor,
   monthCalc,
+  outsideOf,
+  outsideSummary,
   rateFor,
   sortedKeys,
   transferFees,
@@ -57,7 +59,7 @@ import { currentMonthKey, isISODate, isMonthKey, label, monthOf, monthSpan, toda
 import type { Account, AccountCurrency, AppState, AppUser, Currency, FixedExpense, ISODate, Month, MonthKey } from '../shared/types';
 import { checkBearer } from './auth';
 import { readLimitedBody } from './body';
-import { createIncome, createTransfer, ensureMonth, getMonth, loadState, patchFixed, userAccounts, userState } from './db';
+import { createIncome, createOutside, createTransfer, ensureMonth, getMonth, loadState, patchFixed, userAccounts, userState } from './db';
 import type { Env } from './env';
 import {
   ApiError,
@@ -265,6 +267,7 @@ function instructions(users: readonly AppUser[]): string {
     'Categories and payment methods are stored under these English names. Pass the English name; the Spanish or Turkish name ("Comida", "Yemek", "Tarjeta", "Kart") is also accepted and stored as the English one. A plain "card" ("tarjeta", "kart") is stored as Debit card; when the person says it was a credit card ("tarjeta de credito", "kredi karti"), pass Credit card.',
     `Transfers: \`via\` is the service used, as free text (${VIAS.join(', ')} or any other; ${VIAS[0]} by default). Between accounts of different currencies the rate is what arrives per unit sent (for example, the DOP received per USD).`,
     'Rates: each month has its own rates between currencies. When a tool says that a rate is a default value, nobody has set it yet: tell the person, because the converted amounts are only approximate until they type the rate of the month in the web app.',
+    'Outside-budget expenses: an expense the person says is outside their budget is recorded with add_outside_expense. It lowers the account balance like any expense but does not count in used, available or the categories.',
     'Fixed expenses (the "Monthly expenses" list of the app): the same items every month (electricity, internet, subscriptions…). They are not recorded as transactions: mark them as paid with mark_fixed_paid.',
     'A closed month is read-only: it can be consulted, but it accepts no expenses, transfers or changes until the person reopens it in the web app. If a tool answers that the month is closed, tell the person; do not record it under another date.',
     'After recording something, confirm to the person what was recorded and for whom, with the amount, the account and its new balance, based on the text the tool returns.',
@@ -625,6 +628,19 @@ const addTransactionArgs = z.strictObject({
   notes: text(MAX_LEN.notes).optional().describe('Free note, if the person added some detail.'),
 });
 
+const addOutsideExpenseArgs = z.strictObject({
+  name: requiredText(MAX_LEN.desc).describe('What the expense was, in a few words and as the person said it: "Car repair", "Wedding gift".'),
+  amount: positive().describe('Amount as the person said it, in the currency of `currency` and without converting. Greater than 0.'),
+  currency: currency(
+    'Currency the person said: DOP (Dominican pesos), USD (dollars) or TRY (Turkish lira). Omit it if they named none: the currency of the account is used.',
+  ),
+  account: accountName(`Account the expense is paid from, ${ACCOUNT_HINT}. Omit it unless the person names one: their default account is used.`),
+  date: isoDate()
+    .optional()
+    .describe(`Date of the expense, YYYY-MM-DD. Omit it if the person gave no date or said "today": today in ${TIMEZONE} is used.`),
+  description: text(MAX_LEN.notes).optional().describe('Free detail about the expense, if the person added some.'),
+});
+
 const listTransactionsArgs = z.strictObject({
   month: monthKey().optional().describe('Month to list, YYYY-MM. By default, the month in progress.'),
   limit: z
@@ -829,6 +845,58 @@ const addTransaction = defineTool({
   },
 });
 
+const addOutsideExpense = defineTool({
+  name: 'add_outside_expense',
+  title: 'Record outside-budget expense',
+  description: [
+    'Records an expense that is OUTSIDE the budget in the finances of `user`: it is subtracted from the account it is paid from, exactly like a transaction, but it does not count in "used", "available", the categories or the transaction count of the month. Use it only when the person says the expense is outside their budget (for example "that was outside the budget", "do not count it in my budget"); otherwise use add_transaction.',
+    `Apart from \`user\`, only \`name\` and \`amount\` are required. Defaults: the person's default account, the currency of that account and today's date in ${TIMEZONE}. Pass \`account\` only if the person names the account, and \`currency\` only if they name a currency: the amount is recorded in the currency they said and the account is charged the equivalent at the rate in effect on that date.`,
+    'It has no category or payment method. If the month of the date does not exist it is created (only near today); if it is closed, the call fails. Each call creates a new expense: do not repeat it for the same one.',
+  ].join(' '),
+  schema: addOutsideExpenseArgs,
+  readOnly: false,
+  idempotent: false,
+  async run({ name, amount, currency: cur, account: named, date: givenDate, description }, ctx) {
+    const { db, now, user } = ctx;
+    if (givenDate) await assertReachable(ctx, givenDate);
+    const date = givenDate ?? todayISO(now);
+    const key = monthOf(date);
+    const account = await resolveAccount(ctx, named);
+    if (!isMoneyAccount(account)) throw goldAccountError(account.name);
+    const { month, created } = await ensureMonth(db, user.id, key);
+    if (month.closed) throw monthClosedError(key);
+
+    const expense = await createOutside(db, user.id, { monthKey: key, date, name, desc: description ?? '', accountId: account.id, amount, cur: cur ?? account.currency });
+    const after = await afterWrite(ctx, (state) => ({
+      state,
+      calc: monthCalc(state, key),
+      outside: outsideSummary(state, key),
+      balance: balanceOf(balancesNow(state, now, key).all, account.id),
+    }));
+    const parts = [
+      expense.name,
+      expense.desc,
+      after ? moneyIn(after.state, key, expense.amount, expense.cur, after.calc.main, expense.date) : money(expense.amount, expense.cur),
+      `${expense.date} (${label(key)})`,
+      `paid from ${accountPart(after?.state ?? null, key, account, expense.amount, expense.cur, expense.date)}`,
+    ];
+    const sentences = [`Recorded outside the budget for ${user.name}: ${parts.filter(Boolean).join(SEP)}.`];
+    if (created) sentences.push(`The month ${label(key)} was created.`);
+    if (after) sentences.push(`Used so far is unchanged by it: ${money(after.calc.used, after.calc.main)}.`);
+    if (after?.balance) sentences.push(balanceSentence(after.balance));
+    if (after) sentences.push(`Outside budget in ${label(key)}: ${after.outside.count} (${money(after.outside.total, after.calc.main)}).`);
+    return {
+      text: sentences.join(' '),
+      data: {
+        outsideExpense: expense,
+        monthCreated: created,
+        account: accountData(account, after?.balance ?? null),
+        month: after ? { ...monthStatus(after.calc), outsideBudget: after.outside } : null,
+      },
+    };
+  },
+});
+
 const listTransactions = defineTool({
   name: 'list_transactions',
   title: 'List transactions',
@@ -891,7 +959,7 @@ const monthSummary = defineTool({
   name: 'month_summary',
   title: 'Month summary',
   description: [
-    "Summary of one month in the finances of `user`, with every amount in the person's main currency: budget and the part of it that comes out of each account, how the budget got there (its history: the initial amount, later adjustments, the leftover of the previous month, the incomes added to it and the transfers that moved it from one account to another, each with its date), used, available, fixed expenses paid and pending (with the names of the ones still to pay), spending by category (transfer fees count as transactions, under Other), the month's income and income minus used, the balance of each account and the month's rates.",
+    "Summary of one month in the finances of `user`, with every amount in the person's main currency: budget and the part of it that comes out of each account, how the budget got there (its history: the initial amount, later adjustments, the leftover of the previous month, the incomes added to it and the transfers that moved it from one account to another, each with its date), used, available, fixed expenses paid and pending (with the names of the ones still to pay), spending by category (transfer fees count as transactions, under Other), the outside-budget expenses (subtracted from the account balances but not part of used or available), the month's income and income minus used, the balance of each account and the month's rates.",
     'Use it when the person asks how the month is going, how much is left, what is still to be paid, how much they have or why the budget changed.',
     'If the previous month ended with money left over (or overspent) and it has not been added to this month\'s budget, a "Leftover" line says how much; adding it is done in the app.',
     'Rates carry the date they apply from: an amount is converted with the rate in effect on its own date, so a rate typed later does not change earlier records. The "Month rates" line gives the latest rate of the month and where it came from; "default value, not set yet" means the converted amounts are only approximate.',
@@ -921,12 +989,14 @@ const monthSummary = defineTool({
     const incomes = state.incomes.filter(isMoneyIncome).filter((i) => monthOf(i.date) === m.key);
     // Las comisiones de los envíos: ya van dentro de c.txCount y c.varSpent, como una transacción más cada una.
     const fees = transferFees(state, m.key);
+    const outside = outsideSummary(state, m.key);
     const rates = ratesToMain(state, m.key, [
       second,
       ...moneyCurrencies(visible.map((b) => b.account.currency)),
       ...parts.map((p) => p.account.currency),
       ...m.fixed.map((f) => f.cur),
       ...m.tx.map((t) => t.cur),
+      ...outsideOf(m).map((o) => o.cur),
       ...fees.map((f) => f.cur),
       ...incomes.map((i) => i.cur),
     ]);
@@ -969,6 +1039,13 @@ const monthSummary = defineTool({
       c.categories.length > 0
         ? `By category: ${c.categories.map((cat) => `${cat.name} ${money(cat.value, main)}`).join(SEP)}`
         : 'By category: No expenses yet this month.',
+      ...(outside.count > 0
+        ? [
+            `Outside budget: ${outside.count} (${money(outside.total, main)})${SEP}not part of used or available, but already subtracted from the account balances: ${outsideOf(m)
+              .map((o) => `${o.name} ${moneyIn(state, m.key, o.amount, o.cur, main, o.date)}`)
+              .join('; ')}`,
+          ]
+        : []),
       `Month income: ${money(c.income, main)}${SEP}Income − used: ${money(c.incomeLeft, main)}`,
       visible.length > 0
         ? `Account balances at the end of ${label(m.key)}: ${visible.map((b) => `${b.account.name} ${balanceText(state, m.key, b, main)}`).join('; ')}${SEP}Total money: ${both(all.totalMain, all.totalSecond)}`
@@ -1022,6 +1099,8 @@ const monthSummary = defineTool({
         availableAfterPending: c.after,
         fixed: { count: c.fixedCount, paidCount: c.paidCount, paid: c.fixedPaid, pending: c.pending, pendingItems: pending },
         transactions: { count: c.txCount, total: c.varSpent },
+        // Aparte de `transactions`, `used` y `available`: resta de los saldos de las cuentas, nada más.
+        outsideBudget: { ...outsideSummary(state, m.key), expenses: outsideOf(m) },
         // Ya contadas en `transactions` y en `categories` (Other): no son filas de transacción, salen de los envíos.
         transferFees: fees.map((f) => ({
           transferId: f.transferId,
@@ -1338,7 +1417,7 @@ const markFixedPaid = defineTool({
 
 /** En el orden en que las lista tools/list. */
 const TOOLS = new Map(
-  [addTransaction, listTransactions, monthSummary, addTransfer, markFixedPaid, addIncome, listAccounts].map((t) => [t.name, t]),
+  [addTransaction, addOutsideExpense, listTransactions, monthSummary, addTransfer, markFixedPaid, addIncome, listAccounts].map((t) => [t.name, t]),
 );
 // ── Métodos ──────────────────────────────────────────────────────────────────
 

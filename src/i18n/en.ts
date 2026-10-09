@@ -106,6 +106,7 @@ export const en = {
   summaryOf: '{month} summary',
   budgetOf: 'Budget from {account}, in {currency}',
   removeFromBudget: 'Remove {name} from the budget',
+  overBudgetBy: 'Over budget by {amount} {currency} · {account}',
   newAccountOption: 'New account…',
   budgetAccount: 'Account to add to the budget',
   addBudgetPart: 'Add account to budget',

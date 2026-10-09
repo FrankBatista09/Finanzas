@@ -27,7 +27,11 @@ import type {
   IngestTransaction,
   MonthPatch,
   MonthSummary,
+  MoveOutsideRequest,
+  MoveToBudgetRequest,
   OkResponse,
+  OutsideCreate,
+  OutsidePatch,
   SessionResponse,
   SettingsResponse,
   SettingsUpdate,
@@ -48,6 +52,7 @@ import type {
   Month,
   MonthKey,
   MonthRate,
+  OutsideExpense,
   Transaction,
   Transfer,
 } from '../../shared/types';
@@ -226,6 +231,16 @@ export function createApiClient(fetchImpl: FetchLike = (input, init) => fetch(in
       patchTransaction: (id: string, patch: TxPatch, opts?: RequestOptions) =>
         json<Transaction>('PATCH', `/api/transactions/${seg(id)}`, { json: patch, opts }),
       deleteTransaction: (id: string, opts?: RequestOptions) => json<OkResponse>('DELETE', `/api/transactions/${seg(id)}`, { opts }),
+      moveTransactionOutside: (id: string, body: MoveOutsideRequest, opts?: RequestOptions) =>
+        json<OutsideExpense>('POST', `/api/transactions/${seg(id)}/move-outside`, { json: body, opts }),
+
+      // ── Fuera de presupuesto ──────────────────────────────────────────────
+      createOutside: (body: OutsideCreate, opts?: RequestOptions) => json<OutsideExpense>('POST', '/api/outside-expenses', { json: body, opts }),
+      patchOutside: (id: string, patch: OutsidePatch, opts?: RequestOptions) =>
+        json<OutsideExpense>('PATCH', `/api/outside-expenses/${seg(id)}`, { json: patch, opts }),
+      deleteOutside: (id: string, opts?: RequestOptions) => json<OkResponse>('DELETE', `/api/outside-expenses/${seg(id)}`, { opts }),
+      moveOutsideToBudget: (id: string, body: MoveToBudgetRequest, opts?: RequestOptions) =>
+        json<Transaction>('POST', `/api/outside-expenses/${seg(id)}/move-to-budget`, { json: body, opts }),
 
       // ── Envíos ────────────────────────────────────────────────────────────
       createTransfer: (body: TransferCreate, opts?: RequestOptions) => json<Transfer>('POST', '/api/transfers', { json: body, opts }),

@@ -3,8 +3,8 @@
 // shared/calc.ts; aquí solo se decide qué se ve y qué se manda. Sin React, para probarlo en Node.
 
 import type { CloseRequest } from '../../shared/api';
-import { budgetHistory, monthCalc } from '../../shared/calc';
-import type { BudgetHistoryRow, Leftover } from '../../shared/calc';
+import { budgetHistory, budgetOverruns, monthCalc } from '../../shared/calc';
+import type { BudgetHistoryRow, BudgetPart, Leftover } from '../../shared/calc';
 import { f2, parseAmount } from '../../shared/format';
 import { nextKey } from '../../shared/month';
 import type { AppState, Currency, ISODate, MonthKey } from '../../shared/types';
@@ -36,6 +36,23 @@ export function leftoverView(leftover: Leftover, readOnly: boolean): LeftoverVie
   if (leftover.previousKey === null || leftover.leftover === null) return null;
   const status: LeftoverStatus = leftover.added ? 'added' : readOnly || isZero(leftover.leftover) ? 'plain' : 'offer';
   return { amount: leftover.leftover, from: leftover.previousKey, status };
+}
+
+// ── Partes pasadas de presupuesto ───────────────────────────────────────────
+
+export interface OverrunLine {
+  /** Id de la cuenta: la clave de la línea. */
+  id: string;
+  /** Lo que se pasa, en la moneda de la cuenta y con dos decimales. */
+  amount: string;
+  currency: Currency;
+  /** Nombre de la cuenta (lo escribe el usuario: no se traduce). */
+  account: string;
+}
+
+/** Una línea por cada parte del presupuesto en negativo ("Over budget by 800.00 USD · Bank"); ninguna si no hay. */
+export function overrunLines(parts: readonly BudgetPart[]): OverrunLine[] {
+  return budgetOverruns(parts).map(({ account, over }) => ({ id: account.id, amount: f2(over), currency: account.currency, account: account.name }));
 }
 
 // ── Historia del presupuesto ─────────────────────────────────────────────────

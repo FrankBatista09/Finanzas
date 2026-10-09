@@ -1909,3 +1909,53 @@ describe('borrar un mes', () => {
     expect(h.view().months[SEP]).toBeDefined();
   });
 });
+
+describe('mover una fila a "fuera de presupuesto" y de vuelta', () => {
+  const outsideOf = () => h.view().months[OCT]!.outside ?? [];
+
+  it('es una sola llamada: se ve el cambio en el acto, con lo que esperaba cambiar antes de moverla ya enviado', async () => {
+    const tx = h.tx(0);
+    const actions = createActions(h.store, OCT, {} as Flows, () => 'out-1');
+    // Una edición con retraso de la misma fila sale antes del "mover": no llega después a una fila que ya no está.
+    actions.patchTx(tx.id, { desc: 'Renamed' });
+    actions.moveTxOutside(tx.id);
+    expect(h.view().months[OCT]!.tx.some((t) => t.id === tx.id)).toBe(false);
+    expect(outsideOf()).toEqual([expect.objectContaining({ id: 'out-1', name: 'Renamed', amount: tx.amount, accountId: tx.accountId })]);
+    await tick();
+    expect(h.summary()).toEqual([`PATCH /api/transactions/${tx.id}`]);
+    h.calls[0]!.ok();
+    await tick();
+    expect(h.summary()).toEqual([`PATCH /api/transactions/${tx.id}`, `POST /api/transactions/${tx.id}/move-outside`]);
+    expect(h.calls[1]!.body).toEqual({ id: 'out-1' });
+    h.calls[1]!.ok();
+    await tick();
+    expect(h.failures).toEqual([]);
+  });
+
+  it('si el servidor lo rechaza, la transacción vuelve y no queda ninguna copia fuera de presupuesto', async () => {
+    const tx = h.tx(0);
+    const count = h.view().months[OCT]!.tx.length;
+    createActions(h.store, OCT, {} as Flows, () => 'out-1').moveTxOutside(tx.id);
+    await tick();
+    h.calls[0]!.fail(409, 'month_closed');
+    await tick();
+    expect(h.view().months[OCT]!.tx).toHaveLength(count);
+    expect(outsideOf()).toEqual([]);
+    expect(h.failures[0]!.action).toMatchObject({ type: 'tx/moveOutside', id: tx.id });
+  });
+
+  it('el camino inverso pide POST …/move-to-budget con el id de la fila nueva, después de crear la fila', async () => {
+    const ids = ['o-1', 'tx-new'];
+    const actions = createActions(h.store, OCT, {} as Flows, () => ids.shift()!);
+    expect(actions.addOutside({ date: '2026-10-07', name: 'Repair', amount: 30, desc: 'radiator' })).toBe(true);
+    actions.moveOutsideToBudget('o-1');
+    expect(outsideOf()).toEqual([]);
+    expect(h.view().months[OCT]!.tx.at(-1)).toMatchObject({ id: 'tx-new', desc: 'Repair', cat: 'Other', method: 'Transfer', notes: 'radiator' });
+    await tick();
+    expect(h.summary()).toEqual(['POST /api/outside-expenses']);
+    h.calls[0]!.ok();
+    await tick();
+    expect(h.summary()).toEqual(['POST /api/outside-expenses', 'POST /api/outside-expenses/o-1/move-to-budget']);
+    expect(h.calls[1]!.body).toEqual({ id: 'tx-new' });
+  });
+});
