@@ -128,6 +128,33 @@
   margin-top: -6px;
 }
 
+.revealRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin-top: -6px;
+}
+
+/* "+ Extra budget": the same look as the "+ Add account to budget" link next to it. */
+.extraButton {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--accent-text);
+  font: 600 var(--fs-meta) var(--font-ui);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.extraButton:hover {
+  text-decoration: underline;
+}
+
+.extraButton:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
 .hidden {
   display: flex;
   flex-direction: column;

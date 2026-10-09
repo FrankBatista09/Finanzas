@@ -4,9 +4,9 @@
 
 import type { CloseRequest } from '../../shared/api';
 import { budgetHistory, budgetOverruns, monthCalc } from '../../shared/calc';
-import type { BudgetHistoryRow, BudgetPart, Leftover } from '../../shared/calc';
+import type { BudgetHistoryRow, BudgetPart, BudgetSummary, Leftover } from '../../shared/calc';
 import { f2, parseAmount } from '../../shared/format';
-import { nextKey } from '../../shared/month';
+import { firstDay, inMonth, isISODate, monthOf, nextKey } from '../../shared/month';
 import type { AppState, Currency, ISODate, MonthKey } from '../../shared/types';
 import type { CoreKey } from '../i18n';
 import { isLocalEntry } from '../store';
@@ -99,7 +99,8 @@ export function budgetHistoryRows(state: AppState, key: MonthKey): BudgetHistory
     id: r.id,
     date: r.date,
     kind: r.kind,
-    kindKey: BUDGET_KIND[r.kind],
+    // A positive adjustment is money added on top of the budget, so it reads "Extra"; a negative one stays "Adjustment".
+    kindKey: r.kind === 'adjust' && r.amount > 0 ? 'budgetKindExtra' : BUDGET_KIND[r.kind],
     account: r.account.name,
     amount: f2(r.amount),
     currency: r.account.currency,
@@ -185,4 +186,138 @@ export function closeRequest(form: CloseBudgetForm, fields: readonly CloseBudget
   if (fields.some((f) => closeFieldInvalid(f.amount))) return null;
   const budgets = Object.fromEntries(fields.map((f) => [f.accountId, f.amount === fieldText(f.exact) ? f.exact : parseAmount(f.amount)]));
   return { budgets, addLeftover: addLeftover && form.leftover !== null };
+}
+
+// ── Extra budget dialog ──────────────────────────────────────────────────────
+
+export interface ExtraForm {
+  accountId: string;
+  /** Text of the amount field; '' until typed. */
+  amount: string;
+  note: string;
+  date: ISODate;
+}
+
+/**
+ * Date the dialog opens with: today when the viewed month is the current one, otherwise the month's first day
+ * (an extra for a past or future month is dated inside that month, never at an unrelated today).
+ */
+export function extraDefaultDate(key: MonthKey, today: ISODate): ISODate {
+  return monthOf(today) === key ? today : firstDay(key);
+}
+
+/**
+ * The first budget part's account (the one the user is already budgeting from); with no parts yet, the first
+ * account that can hold a budget. '' when there is none.
+ */
+export function extraDefaultAccount(parts: readonly BudgetPart[], accounts: readonly { id: string }[]): string {
+  const part = parts.find((p) => p.amount !== 0 || p.fromLog !== 0);
+  return part?.account.id ?? accounts[0]?.id ?? '';
+}
+
+export function newExtraForm(key: MonthKey, today: ISODate, parts: readonly BudgetPart[], accounts: readonly { id: string }[]): ExtraForm {
+  return { accountId: extraDefaultAccount(parts, accounts), amount: '', note: '', date: extraDefaultDate(key, today) };
+}
+
+/** The amount typed, or null when it is not a number > 0. */
+export function extraAmount(text: string): number | null {
+  const t = text.trim();
+  if (t === '') return null;
+  const n = Number(t);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+/** Why the form cannot be confirmed, or null when it can: only the date has its own message, the rest just disables the button. */
+export function extraProblem(form: ExtraForm, key: MonthKey): 'account' | 'amount' | 'date' | null {
+  if (form.accountId === '') return 'account';
+  if (extraAmount(form.amount) === null) return 'amount';
+  if (!isISODate(form.date) || !inMonth(form.date, key)) return 'date';
+  return null;
+}
+
+/** The log entry the dialog adds: always a positive 'adjust', which the history shows as an extra. */
+export function extraInput(form: ExtraForm, key: MonthKey): { accountId: string; amount: number; date: ISODate; note: string; kind: 'adjust' } | null {
+  const amount = extraAmount(form.amount);
+  if (extraProblem(form, key) !== null || amount === null) return null;
+  return { accountId: form.accountId, amount, date: form.date, note: form.note.trim(), kind: 'adjust' };
+}
+
+// ── Month budget summary ─────────────────────────────────────────────────────
+
+export type SummaryRowKind = 'initial' | 'leftover' | 'income' | 'transfer' | 'addition' | 'reduction' | 'added' | 'total' | 'spent' | 'remaining';
+
+export interface SummaryRow {
+  key: string;
+  kind: SummaryRowKind;
+  labelKey: CoreKey;
+  /** dd/mm of an addition or reduction; null on the rest. */
+  date: string | null;
+  note: string;
+  /** Account name of an addition or reduction. */
+  account: string | null;
+  /** Main currency, two decimals; signed for reductions and a negative leftover. */
+  amount: string;
+  /** Same figure in the second currency; null when there is none or the line has no such figure. */
+  second: string | null;
+  /** "50.00 USD" when the line's own currency is not the main one. */
+  original: string | null;
+  negative: boolean;
+  /** Initial, total and the closing figures read heavier. */
+  strong: boolean;
+}
+
+const dayMonth = (date: ISODate) => `${date.slice(8)}/${date.slice(5, 7)}`;
+
+/**
+ * The rows of the "Month summary" card, or its compact form in the close dialog (additions collapsed into one
+ * "Added during the month" row). Zero lines are left out; the closing three (total, spent, remaining) always show.
+ */
+export function summaryRows(b: BudgetSummary, compact = false): SummaryRow[] {
+  const row = (r: Partial<SummaryRow> & Pick<SummaryRow, 'key' | 'kind' | 'labelKey'>, value: number, second: number | null = null): SummaryRow => ({
+    date: null,
+    note: '',
+    account: null,
+    original: null,
+    strong: false,
+    ...r,
+    amount: f2(value),
+    second: second === null ? null : f2(second),
+    negative: value < 0,
+  });
+  const out: SummaryRow[] = [row({ key: 'initial', kind: 'initial', labelKey: 'summaryInitial', strong: true }, b.initial, b.initialSecond)];
+  if (!isZero(b.leftover)) out.push(row({ key: 'leftover', kind: 'leftover', labelKey: 'summaryLeftover' }, b.leftover));
+  if (!isZero(b.incomes)) out.push(row({ key: 'income', kind: 'income', labelKey: 'summaryIncomes' }, b.incomes));
+  if (!isZero(b.transfers)) out.push(row({ key: 'transfer', kind: 'transfer', labelKey: 'summaryTransfers' }, b.transfers));
+  const line = (kind: 'addition' | 'reduction') => (l: BudgetSummary['additions'][number]) =>
+    row(
+      {
+        key: `${kind}:${l.id}`,
+        kind,
+        labelKey: kind === 'addition' ? 'budgetKindExtra' : 'summaryAdjustment',
+        date: dayMonth(l.date),
+        note: l.note,
+        account: l.accountName,
+        original: l.currency === b.main ? null : `${f2(l.amount)} ${l.currency}`,
+      },
+      l.inMain,
+    );
+  if (compact) {
+    if (b.additions.length > 0) out.push(row({ key: 'added', kind: 'added', labelKey: 'summaryAdded' }, b.added, b.addedSecond));
+    if (b.reductions.length > 0) out.push(row({ key: 'reduced', kind: 'reduction', labelKey: 'summaryAdjustment' }, b.reduced));
+  } else {
+    out.push(...b.additions.map(line('addition')), ...b.reductions.map(line('reduction')));
+  }
+  out.push(row({ key: 'total', kind: 'total', labelKey: 'summaryTotal', strong: true }, b.total, b.totalSecond));
+  out.push(row({ key: 'spent', kind: 'spent', labelKey: 'summarySpent' }, b.spent, b.spentSecond));
+  const over = b.remaining < 0 && !isZero(b.remaining);
+  out.push(
+    row(
+      { key: 'remaining', kind: 'remaining', labelKey: over ? 'summaryOver' : 'summaryRemaining', strong: true },
+      over ? -b.remaining : b.remaining,
+      b.remainingSecond === null ? null : over ? -b.remainingSecond : b.remainingSecond,
+    ),
+  );
+  // "Over budget by 800" already says it is negative: the figure is shown as a magnitude, only flagged.
+  if (over) out[out.length - 1]!.negative = true;
+  return out;
 }

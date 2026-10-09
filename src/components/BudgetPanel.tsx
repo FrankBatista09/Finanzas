@@ -5,6 +5,7 @@ import { useI18n } from '../i18n';
 import { useFinanzas, useShell } from '../store';
 import { AddButton, AddRow, AddRowButton, CellNumber, CellSelect, cx, DeleteButton, SheetTable, Td, Th, useAddRow } from '../ui';
 import { budgetHistoryRows, fieldAmount, leftoverView, overrunLines } from './budgetModel';
+import { ExtraBudgetDialog } from './ExtraBudgetDialog';
 import { Donut, DonutCenter, LegendRow } from './Donut';
 import styles from './SummaryPanel.module.css';
 
@@ -32,6 +33,7 @@ export function BudgetPanel() {
   // El historial se despliega para un mes: al cambiar de mes vuelve a estar plegado.
   const [historyFor, setHistoryFor] = useState<string | null>(null);
   const historyOpen = historyFor === monthKey;
+  const [extraOpen, setExtraOpen] = useState(false);
   const chosen = free.find((a) => a.id === pick) ?? free[0];
   const add = () => {
     if (!chosen || !(amount > 0) || !actions.setBudgetPart(chosen.id, amount)) return false;
@@ -129,9 +131,16 @@ export function BudgetPanel() {
             </ul>
           )}
           {!readOnly && (
-            <AddRowButton control={adding} variant="link" className={styles.reveal}>
-              {t('addBudgetPart')}
-            </AddRowButton>
+            <div className={styles.revealRow}>
+              <AddRowButton control={adding} variant="link">
+                {t('addBudgetPart')}
+              </AddRowButton>
+              {visibleAccounts.length > 0 && (
+                <button type="button" className={styles.extraButton} onClick={() => setExtraOpen(true)}>
+                  + {t('addBudgetExtra')}
+                </button>
+              )}
+            </div>
           )}
           <BudgetLeftover />
           <div>
@@ -200,6 +209,7 @@ export function BudgetPanel() {
       </section>
       {/* Debajo del panel y a todo el ancho: sus seis columnas no caben en la celda del presupuesto. */}
       {historyOpen && <BudgetHistory id={historyId} />}
+      {extraOpen && !readOnly && <ExtraBudgetDialog onClose={() => setExtraOpen(false)} />}
     </>
   );
 }

@@ -139,6 +139,28 @@ export const es: Shape<typeof en> = {
   budgetKindTransfer: 'Envío',
   deleteBudgetEntry: 'Eliminar {kind} del {date}: {amount} {currency}',
 
+  // ── Presupuesto extra y resumen del presupuesto del mes ────────────────────
+  budgetKindExtra: 'Extra',
+  addBudgetExtra: 'Presupuesto extra',
+  extraBudgetBody: 'Añade dinero al presupuesto de este mes. Queda registrado como una adición al presupuesto original, con su fecha.',
+  extraAccount: 'Cuenta',
+  extraNote: 'Nota (opcional)',
+  extraNotePlaceholder: 'p. ej. gasto médico',
+  extraConfirm: 'Añadir extra',
+  extraDateOutside: 'La fecha tiene que estar dentro del mes.',
+  budgetSummary: 'Resumen del mes',
+  summaryInitial: 'Presupuesto inicial',
+  summaryLeftover: 'Sobrante del mes pasado',
+  summaryIncomes: 'Ingresos sumados al presupuesto',
+  summaryTransfers: 'Movido por envíos',
+  summaryAdjustment: 'Ajuste',
+  summaryAdded: 'Añadido durante el mes',
+  summaryNoExtras: 'No se añadió nada durante el mes.',
+  summaryTotal: 'Presupuesto total',
+  summarySpent: 'Gastado',
+  summaryRemaining: 'Restante',
+  summaryOver: 'Excedido por',
+
   // ── Dinero total y cuentas ─────────────────────────────────────────────────
   totalMoney: 'Dinero total',
   moneyByAccount: 'Dinero por cuenta',

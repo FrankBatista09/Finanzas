@@ -140,6 +140,28 @@ export const tr: Shape<typeof en> = {
   budgetKindTransfer: 'Transfer',
   deleteBudgetEntry: 'Sil: {kind}, {date}, {amount} {currency}',
 
+  // ── Ek bütçe ve ayın bütçe özeti ───────────────────────────────────────────
+  budgetKindExtra: 'Ek',
+  addBudgetExtra: 'Ek bütçe',
+  extraBudgetBody: 'Bu ayın bütçesine para ekle. Özgün bütçeye, tarihiyle birlikte bir ek olarak kaydedilir.',
+  extraAccount: 'Hesap',
+  extraNote: 'Not (isteğe bağlı)',
+  extraNotePlaceholder: 'örn. sağlık gideri',
+  extraConfirm: 'Ek bütçe ekle',
+  extraDateOutside: 'Tarih ayın içinde olmalı.',
+  budgetSummary: 'Ay özeti',
+  summaryInitial: 'Başlangıç bütçesi',
+  summaryLeftover: 'Geçen aydan kalan',
+  summaryIncomes: 'Bütçeye eklenen gelir',
+  summaryTransfers: 'Transferlerle taşınan',
+  summaryAdjustment: 'Düzeltme',
+  summaryAdded: 'Ay içinde eklenen',
+  summaryNoExtras: 'Ay içinde ekleme yapılmadı.',
+  summaryTotal: 'Toplam bütçe',
+  summarySpent: 'Harcanan',
+  summaryRemaining: 'Kalan',
+  summaryOver: 'Bütçe aşımı',
+
   // ── Dinero total y cuentas ─────────────────────────────────────────────────
   totalMoney: 'Toplam para',
   moneyByAccount: 'Hesaba göre para',

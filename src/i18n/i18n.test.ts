@@ -321,6 +321,12 @@ describe('presupuesto: sobrante, historial y cierre del mes', () => {
     for (const t of [en, es, tr]) expect(new Set(kinds.map((k) => t(k))).size).toBe(4);
   });
 
+  it('extra budget and the month summary', () => {
+    expect([en('addBudgetExtra'), es('addBudgetExtra'), tr('addBudgetExtra')]).toEqual(['Extra budget', 'Presupuesto extra', 'Ek bütçe']);
+    expect([en('budgetKindExtra'), es('budgetKindExtra'), tr('budgetKindExtra')]).toEqual(['Extra', 'Extra', 'Ek']);
+    expect([en('budgetSummary'), es('budgetSummary'), tr('budgetSummary')]).toEqual(['Month summary', 'Resumen del mes', 'Ay özeti']);
+  });
+
   it('la × de un movimiento dice cuál quita', () => {
     const entry = { kind: 'Adjustment', date: '2026-10-05', amount: '5,000.00', currency: 'DOP' };
     expect(en('deleteBudgetEntry', entry)).toBe('Delete Adjustment of 2026-10-05: 5,000.00 DOP');

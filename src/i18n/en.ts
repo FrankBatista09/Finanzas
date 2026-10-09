@@ -138,6 +138,28 @@ export const en = {
   budgetKindTransfer: 'Transfer',
   deleteBudgetEntry: 'Delete {kind} of {date}: {amount} {currency}',
 
+  // ── Extra budget and month budget summary ──────────────────────────────────
+  budgetKindExtra: 'Extra',
+  addBudgetExtra: 'Extra budget',
+  extraBudgetBody: "Add money to this month's budget. It is recorded as an addition to the original budget, with its date.",
+  extraAccount: 'Account',
+  extraNote: 'Note (optional)',
+  extraNotePlaceholder: 'e.g. medical expense',
+  extraConfirm: 'Add extra',
+  extraDateOutside: 'The date must be inside the month.',
+  budgetSummary: 'Month summary',
+  summaryInitial: 'Initial budget',
+  summaryLeftover: 'Leftover from last month',
+  summaryIncomes: 'Income added to the budget',
+  summaryTransfers: 'Moved by transfers',
+  summaryAdjustment: 'Adjustment',
+  summaryAdded: 'Added during the month',
+  summaryNoExtras: 'Nothing was added during the month.',
+  summaryTotal: 'Total budget',
+  summarySpent: 'Spent',
+  summaryRemaining: 'Remaining',
+  summaryOver: 'Over budget by',
+
   // ── Dinero total y cuentas (panel resumen de Savings) ──────────────────────
   totalMoney: 'Total money',
   moneyByAccount: 'Money by account',

@@ -1,10 +1,12 @@
 import { useId, useRef, useState } from 'react';
+import { budgetSummary } from '../../shared/calc';
 import { f2 } from '../../shared/format';
 import type { MonthKey } from '../../shared/types';
 import { useI18n } from '../i18n';
 import { useFinanzas, useShell } from '../store';
 import { CheckField, Dialog, DialogButton, DialogFields, DialogText, Field, Input } from '../ui';
 import { closeBudgetForm, closeFieldInvalid, closeRequest } from './budgetModel';
+import { BudgetSummaryList } from './BudgetSummaryList';
 
 /** Modal de cierre de mes. Lo abre actions.requestCloseMonth(); Escape y un clic fuera equivalen a Cancelar. */
 export function CloseMonthModal() {
@@ -30,6 +32,7 @@ function CloseDialog({ monthKey, busy }: { monthKey: MonthKey; busy: boolean }) 
   const [form] = useState(() => closeBudgetForm(state, monthKey));
   const [fields, setFields] = useState(form.fields);
   const [addLeftover, setAddLeftover] = useState(false);
+  const summary = budgetSummary(state, monthKey);
 
   const request = closeRequest(form, fields, addLeftover);
   const invalid = request === null;
@@ -60,6 +63,9 @@ function CloseDialog({ monthKey, busy }: { monthKey: MonthKey; busy: boolean }) 
       }
     >
       <DialogText id={`${id}-body`}>{t('closeDialogBody', { next })}</DialogText>
+      <DialogFields>
+        <BudgetSummaryList summary={summary} compact />
+      </DialogFields>
       {fields.length > 0 && <DialogText>{t('closeBudgetIntro', { next })}</DialogText>}
       {(fields.length > 0 || form.leftover !== null) && (
         <DialogFields>
