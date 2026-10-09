@@ -150,7 +150,7 @@ export function rowAccountOptions(base: readonly AccountOption[], accounts: read
 // ── Tasas del mes ────────────────────────────────────────────────────────────
 
 // usedCurrencies y shownRates viven en store/view.ts: la barra superior necesita saber qué tasas hacen falta.
-export { shownRates, usedCurrencies } from '../../store/view';
+export { accountsInUse, shownRates, usedCurrencies } from '../../store/view';
 
 /** No hace falta ninguna tasa: todo el dinero está en una moneda y no hay ninguna escrita este mes que enseñar. */
 export function noRatesNeeded(shown: readonly PairRate[]): boolean {

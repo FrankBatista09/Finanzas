@@ -2,7 +2,7 @@
 // no hay cuentas propias, solo se junta lo que cada pantalla pediría por su lado (saldos, tasas, conversiones).
 // Funciones puras: sirven igual en el proveedor que en una prueba o en el modelo de una pantalla.
 
-import { balances, convert, defaultAccount, leftoverFor, moneyAccounts, monthCalc, rateFor, visibleAccounts } from '../../shared/calc';
+import { balances, convert, defaultAccount, leftoverFor, moneyAccounts, monthCalc, outsideOf, rateFor, visibleAccounts } from '../../shared/calc';
 import type { RateInfo } from '../../shared/calc';
 import { CURRENCIES } from '../../shared/constants';
 import { monthOf } from '../../shared/month';
@@ -57,6 +57,27 @@ export function pairRates(state: AppState, key: MonthKey): PairRate[] {
     const [from, to] = written ? [written.from, written.to] : forward.rate >= 1 ? [a, b] : [b, a];
     return { from, to, ...(from === a ? forward : rateFor(state, key, from, to)) };
   });
+}
+
+/**
+ * Las cuentas de dinero visibles que tienen algo: saldo distinto de cero en `key` o alguna fila que las nombra
+ * (ingreso, envío, gasto, pago de tarjeta, aporte, presupuesto). Una cuenta vacía y sin movimientos no hace que
+ * su moneda necesite una tasa: todavía no hay dinero en ella.
+ */
+export function accountsInUse<T extends { id: string }>(state: AppState, key: MonthKey, visible: readonly T[]): T[] {
+  const named = new Set<string>();
+  for (const i of state.incomes) named.add(i.accountId);
+  for (const c of state.contribs) if (c.accountId) named.add(c.accountId);
+  for (const m of Object.values(state.months)) {
+    for (const f of m.fixed) named.add(f.accountId);
+    for (const t of m.tx) named.add(t.accountId);
+    for (const o of outsideOf(m)) named.add(o.accountId);
+    for (const b of m.budgetLog) named.add(b.accountId);
+    for (const t of m.transfers) named.add(t.fromAccountId).add(t.toAccountId);
+    for (const c of m.cards ?? []) for (const p of c.payments) named.add(p.accountId);
+  }
+  const nonZero = new Set(balances(state, key).accounts.filter((b) => b.balance !== 0).map((b) => b.account.id));
+  return visible.filter((a) => named.has(a.id) || nonZero.has(a.id));
 }
 
 /**
@@ -154,7 +175,7 @@ export function buildFinanzas({ user, state, monthKey, today, actions }: Finanza
     month,
     calc,
     rate: calc.rate,
-    barRate: barRate(rates, usedCurrencies(calc.main, calc.second, money, month), calc.main, calc.second, calc.rate),
+    barRate: barRate(rates, usedCurrencies(calc.main, calc.second, accountsInUse(state, monthKey, money), month), calc.main, calc.second, calc.rate),
     main: calc.main,
     second: calc.second,
     accounts: [...state.accounts].sort((a, b) => a.sort - b.sort),

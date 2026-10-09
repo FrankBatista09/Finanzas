@@ -606,7 +606,7 @@ describe('casos límite', () => {
 
   it('una tasa que nadie ha escrito nunca sale del valor de respaldo, y se avisa', () => {
     const state = seedState();
-    state.accounts.push(account('tr', 'TR account', 'TRY'));
+    state.accounts.push(account('tr', 'TR account', 'TRY', { opening: 1000 }));
     const card = section(render('2026-10', { state }), 'Month rates', '>Credit cards</h2>');
     const ct = bare(card);
     expect(ct).toContain('01/10 1 USD = DOP × 06/10 1 USD = DOP ×');
@@ -640,7 +640,7 @@ describe('casos límite', () => {
 
   it('una tasa cruzada por la tercera moneda lo dice', () => {
     const state = seedState();
-    state.accounts.push(account('tr', 'TR account', 'TRY'));
+    state.accounts.push(account('tr', 'TR account', 'TRY', { opening: 1000 }));
     state.months['2026-10']!.rates.push({ from: 'USD', to: 'TRY', rate: 40, date: '2026-10-03' });
     const card = section(render('2026-10', { state }), 'Month rates', '>Credit cards</h2>');
     expect(bare(card)).toContain('— 1 TRY = DOP crossed through USD 03/10 1 USD = TRY ×');
@@ -821,7 +821,7 @@ describe('tasas del mes: una tasa por fecha', () => {
 
   it('un par sin tasa escrita en el mes: una sola fila, sin fecha ni ×, con el origen y la celda editable', () => {
     const state = seedState();
-    state.accounts.push(account('tr', 'TR account', 'TRY'));
+    state.accounts.push(account('tr', 'TR account', 'TRY', { opening: 1000 }));
     const rows = bodyRows(ratesCard(render('2026-10', { state })));
     // Dos escritas de USD → DOP, una fila por el único par sin escribir que hace falta (TRY → DOP; USD → TRY se
     // cruza por la principal) y la fila de agregar.
@@ -887,7 +887,7 @@ describe('tasas del mes: una tasa por fecha', () => {
 
   it('mes cerrado sin tasa escrita, con una tercera moneda: cada par como texto, con la raya y su origen', () => {
     const state = seedState();
-    state.accounts.push(account('tr', 'TR account', 'TRY'));
+    state.accounts.push(account('tr', 'TR account', 'TRY', { opening: 1000 }));
     const card = ratesCard(render('2026-09', { state }));
     const ct = text(card).replace(/&#x27;/g, "'");
     expect(ct).toContain("— 1 USD = 58.57 DOP from this month's transfers — 1 TRY = 1.40 DOP default value, not set yet");
@@ -929,7 +929,7 @@ describe('tasas del mes: una tasa por fecha', () => {
 
     it('el primer día del mes, aunque hoy sea otro, si el par no tiene ninguna tasa escrita', () => {
       const state = seedState();
-      state.accounts.push(account('tr', 'TR account', 'TRY'));
+      state.accounts.push(account('tr', 'TR account', 'TRY', { opening: 1000 }));
       const html = render('2026-10', { state });
       // La fila propone el primer par sin escribir (TRY → DOP): así la tasa cubre también las filas del 1 al 6.
       expect(selected(ratesCard(html), 'Currency the new rate converts from')).toBe('TRY');
@@ -1293,7 +1293,7 @@ describe('en español', () => {
   it('el origen de una tasa sale en español; los códigos de moneda no cambian', () => {
     const state = seedState();
     Object.assign(state.months['2026-10']!, { rates: [], transfers: [] });
-    state.accounts.push(account('tr', 'TR account', 'TRY'));
+    state.accounts.push(account('tr', 'TR account', 'TRY', { opening: 1000 }));
     const html = section(render('2026-10', { lang: 'es', state }), 'Tasas del mes', '>Envíos</h2>');
     const card = bare(html);
     // Con el mes abierto la cifra va en su celda (58.57, 1.39, 42.00); al lado, de dónde sale.
@@ -1443,7 +1443,7 @@ describe('en turco', () => {
   it('el origen de una tasa sale en turco', () => {
     const state = seedState();
     Object.assign(state.months['2026-10']!, { rates: [], transfers: [] });
-    state.accounts.push(account('tr', 'TR account', 'TRY'));
+    state.accounts.push(account('tr', 'TR account', 'TRY', { opening: 1000 }));
     const html = section(render('2026-10', { lang: 'tr', state }), 'Ay kurları', '>Transferler</h2>');
     const card = bare(html);
     expect(card).toContain('— 1 USD = DOP Eylül 2026 ayından');
