@@ -4,6 +4,8 @@ import { seedState } from '../../../shared/seed';
 import type { AppState, CreditCard, Currency, ISODate, MonthKey } from '../../../shared/types';
 import { createI18n } from '../../i18n';
 import { accountOptions, barRate, inBoth, pairRates } from '../../store';
+import { accountsInUse } from '../../store/view';
+import { moneyAccounts } from '../../../shared/calc';
 import type { TransferFee } from '../../../shared/calc';
 import {
   barWidth,
@@ -343,6 +345,77 @@ describe('tasas del mes: qué pares se ven', () => {
     expect(shown.map((r) => `${r.from}>${r.to}:${r.source}`)).toEqual(['USD>DOP:month', 'USD>TRY:month']);
     // El tercer par (cruzado por USD) no se usa y no está escrito: no sale.
     expect(pairRates(state, '2026-10').find((r) => r.source === 'cross')).toBeDefined();
+  });
+});
+
+describe('tasas del mes: una cuenta vacía no pide tasa', () => {
+  // Un usuario nuevo: principal TRY, segunda USD, y una cuenta en DOP sin dinero ni filas.
+  const empty = (): AppState => {
+    const state = seedState();
+    state.mainCurrency = 'TRY';
+    state.secondCurrency = 'USD';
+    state.accounts = [
+      { id: 'try', name: 'TRY account', currency: 'TRY', opening: 0, hidden: false, sort: 0 },
+      { id: 'usd', name: 'USD account', currency: 'USD', opening: 0, hidden: false, sort: 1 },
+      { id: 'dop', name: 'DR account', currency: 'DOP', opening: 0, hidden: false, sort: 2 },
+    ];
+    state.incomes = [];
+    state.contribs = [];
+    state.months = { '2026-10': { ...state.months['2026-10']!, rates: [], fixed: [], tx: [], transfers: [], outside: [], cards: [], budgetLog: [], budgets: {} } };
+    return state;
+  };
+  const used = (state: AppState) => {
+    const visible = moneyAccounts(state);
+    const month = state.months['2026-10']!;
+    return usedCurrencies('TRY', 'USD', accountsInUse(state, '2026-10', visible), month);
+  };
+  const rowsOf = (state: AppState) => shownRates(pairRates(state, '2026-10'), used(state), 'TRY').map((r) => `${r.from}>${r.to}`);
+
+  it('la cuenta en DOP sin saldo ni filas no cuenta: una sola fila (USD>TRY) y la barra la sigue', () => {
+    const state = empty();
+    expect(used(state)).toEqual(['USD', 'TRY']);
+    expect(rowsOf(state)).toEqual(['USD>TRY']);
+    const rates = pairRates(state, '2026-10');
+    const info = rates.find((r) => r.from === 'USD' && r.to === 'TRY')!;
+    expect(barRate(rates, used(state), 'TRY', 'USD', info)).toMatchObject({ from: 'USD', to: 'TRY' });
+  });
+
+  it('con saldo inicial distinto de cero, la moneda cuenta', () => {
+    const state = empty();
+    state.accounts[2]!.opening = 500;
+    expect(used(state)).toEqual(['DOP', 'USD', 'TRY']);
+    expect(rowsOf(state).sort()).toEqual(['TRY>DOP', 'USD>TRY']);
+  });
+
+  it('solo con un ingreso, un envío, un gasto fijo o una transacción que nombra la cuenta, cuenta', () => {
+    const base = empty();
+    const income = { id: 'i', date: '2026-10-02', desc: '', accountId: 'dop', amount: 0, cur: 'DOP', budget: false } as const;
+    const withIncome = { ...base, incomes: [{ ...income }] } as AppState;
+    expect(used(withIncome)).toContain('DOP');
+
+    const withTransfer = empty();
+    withTransfer.months['2026-10']!.transfers = [
+      { id: 't', monthKey: '2026-10', date: '2026-10-02', via: '', fromAccountId: 'usd', toAccountId: 'dop', amount: 0, rate: 58, budget: false, fee: 0 },
+    ];
+    expect(used(withTransfer)).toContain('DOP');
+
+    const withFixed = empty();
+    withFixed.months['2026-10']!.fixed = [
+      { id: 'f', monthKey: '2026-10', name: 'Rent', day: '', amount: 10, cur: 'TRY', paid: false, accountId: 'dop', sort: 0 },
+    ];
+    expect(used(withFixed)).toContain('DOP');
+  });
+
+  it('una tasa escrita para el mes se ve siempre, aunque su moneda no esté en uso', () => {
+    const state = empty();
+    state.months['2026-10']!.rates = [{ from: 'DOP', to: 'TRY', rate: 0.7, date: '2026-10-01' }];
+    expect(rowsOf(state).sort()).toEqual(['DOP>TRY', 'USD>TRY']);
+  });
+
+  it('una cuenta oculta sigue sin contar', () => {
+    const state = empty();
+    state.accounts[2]!.hidden = true;
+    expect(used(state)).toEqual(['USD', 'TRY']);
   });
 });
 
