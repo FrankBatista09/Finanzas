@@ -31,7 +31,7 @@ export { AddRowButton, useAddRow } from './addRow';
 export type { AddRowButtonProps } from './addRow';
 export { addRowKeyAction, AddRowsOpenContext } from './addRowContext';
 export type { AddRowControl } from './addRowContext';
-export { AddButton, DeleteButton } from './buttons';
+export { AddButton, DeleteButton, ExpandButton } from './buttons';
 export type { AddButtonProps, DeleteButtonProps } from './buttons';
 export { Card, CardHeader, CardNote, Stack } from './Card';
 export type { CardHeaderProps, CardProps } from './Card';
@@ -46,6 +46,9 @@ export type {
   SelectOption,
 } from './cells';
 export { cx } from './cx';
+export { ExpandableCard } from './ExpandableCard';
+export type { ExpandableCardProps } from './ExpandableCard';
+export { useExpanded } from './expandContext';
 export type { Tone } from './cx';
 export { Dialog, DialogButton, DialogFields, DialogText } from './Dialog';
 export type { DialogButtonProps, DialogProps } from './Dialog';

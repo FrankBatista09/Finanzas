@@ -1,0 +1,128 @@
+/* The breakdown of a credit card for the month: labels on the left, money in the mono face on the right. */
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-8);
+  padding: 8px 22px 18px;
+  font-size: var(--fs-body);
+  color: var(--text-soft);
+}
+
+.line,
+.strong {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--gap-14);
+}
+
+.strong {
+  padding-top: 6px;
+  border-top: 1px solid var(--border-row);
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.value {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--gap-8);
+  font: var(--fs-num) var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.edit {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--gap-6);
+}
+
+.input {
+  width: 130px;
+  height: 28px;
+  box-sizing: border-box;
+  padding: 0 8px;
+  border: 1px solid var(--border-dashed);
+  border-radius: var(--radius);
+  background: var(--focus-bg);
+  color: var(--ink);
+  text-align: right;
+  font: var(--fs-num) var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  outline: none;
+}
+
+.input:focus {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.cur {
+  font: var(--fs-meta) var(--font-mono);
+  color: var(--text-muted);
+}
+
+.heading {
+  margin: 6px 0 0;
+  font-size: var(--fs-label);
+  font-weight: 600;
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.list {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 6px var(--gap-12);
+  margin: 0;
+  padding: 0 0 0 14px;
+  list-style: none;
+  border-left: 2px solid var(--border-row);
+  max-height: 220px;
+  overflow-y: auto;
+  align-content: start;
+}
+
+/* The rows share the list's columns, so dates and amounts line up. */
+.item {
+  display: contents;
+}
+
+.itemName {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.itemDate {
+  font: var(--fs-meta) var(--font-mono);
+  color: var(--text-muted);
+}
+
+.converted {
+  color: var(--text-muted);
+}
+
+.empty {
+  margin: 0;
+  padding-left: 14px;
+  font-size: var(--fs-meta);
+  color: var(--text-muted);
+}
+
+.util {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-8);
+  padding-top: 10px;
+  border-top: 1px solid var(--border-row);
+}
+
+.util p {
+  margin: 0;
+  font-size: var(--fs-meta);
+  line-height: 1.5;
+}
+

@@ -38,13 +38,28 @@ export interface DialogProps {
   describedBy?: string;
   /** Ancho máximo en px; 440 por defecto. */
   maxWidth?: number;
+  /** 'large': about 92vw by 88vh, the body scrolls inside (the expanded view of a table card). */
+  size?: 'large';
 }
 
+// Open dialogs, oldest first: a dialog opened from another one (pay a card from an expanded table) gets Escape and
+// Tab alone, the one underneath waits.
+const openDialogs: symbol[] = [];
+
 /** Se monta para abrirlo y se desmonta para cerrarlo; al cerrar, el foco vuelve a donde estaba. */
-export function Dialog({ title, children, footer, onCancel, onSubmit, busy = false, initialFocus, describedBy, maxWidth }: DialogProps) {
+export function Dialog({ title, children, footer, onCancel, onSubmit, busy = false, initialFocus, describedBy, maxWidth, size }: DialogProps) {
   const titleId = useId();
   const dialogRef = useRef<HTMLDivElement>(null);
   const pressedOutside = useRef(false);
+  const self = useRef(Symbol('dialog'));
+
+  useEffect(() => {
+    const me = self.current;
+    openDialogs.push(me);
+    return () => {
+      openDialogs.splice(openDialogs.indexOf(me), 1);
+    };
+  }, []);
 
   // Al cerrar, el foco vuelve a donde estaba (el botón que abrió el diálogo, si sigue en pantalla).
   useEffect(() => {
@@ -64,7 +79,10 @@ export function Dialog({ title, children, footer, onCancel, onSubmit, busy = fal
   // En el documento y no en el diálogo: tiene que funcionar aunque el foco se haya quedado fuera.
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
+      if (openDialogs[openDialogs.length - 1] !== self.current) return;
       if (e.key === 'Escape') {
+        // Something inside already used the key (the add row of an expanded table closes itself): the dialog stays.
+        if (e.defaultPrevented) return;
         e.preventDefault();
         if (!busy) onCancel();
         return;
@@ -110,7 +128,7 @@ export function Dialog({ title, children, footer, onCancel, onSubmit, busy = fal
       <h2 id={titleId} className={styles.title}>
         {title}
       </h2>
-      {children}
+      {size === 'large' ? <div className={styles.body}>{children}</div> : children}
       <div className={styles.footer}>{footer}</div>
     </>
   );
@@ -119,7 +137,7 @@ export function Dialog({ title, children, footer, onCancel, onSubmit, busy = fal
     <div className={styles.backdrop} onMouseDown={onMouseDown} onClick={onClick}>
       <div
         ref={dialogRef}
-        className={styles.dialog}
+        className={cx(styles.dialog, size === 'large' && styles.large)}
         style={maxWidth ? { maxWidth } : undefined}
         role="dialog"
         aria-modal="true"

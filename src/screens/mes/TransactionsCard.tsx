@@ -11,7 +11,7 @@ import {
   AddButton,
   AddRow,
   AddRowButton,
-  Card,
+  ExpandableCard,
   CardHeader,
   CellDate,
   CellNumber,
@@ -62,7 +62,7 @@ export function TransactionsCard({ outside }: { outside: OutsideAdding }) {
   };
 
   return (
-    <Card>
+    <ExpandableCard title={s('txTitle')}>
       <CardHeader
         wrap
         title={s('txTitle')}
@@ -225,7 +225,7 @@ export function TransactionsCard({ outside }: { outside: OutsideAdding }) {
           })}
         </tbody>
       </SheetTable>
-    </Card>
+    </ExpandableCard>
   );
 }
 

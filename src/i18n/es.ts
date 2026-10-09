@@ -13,6 +13,7 @@ export const es: Shape<typeof en> = {
   save: 'Guardar',
   edit: 'Editar',
   close: 'Cerrar',
+  expand: 'Expandir',
   actions: 'Acciones',
   date: 'Fecha',
   amount: 'Monto',

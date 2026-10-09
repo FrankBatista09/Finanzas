@@ -10,7 +10,7 @@ import {
   AddButton,
   AddRow,
   AddRowButton,
-  Card,
+  ExpandableCard,
   CardHeader,
   CardNote,
   CellCheckbox,
@@ -82,7 +82,7 @@ export function TransfersCard() {
   };
 
   return (
-    <Card className={styles.fit}>
+    <ExpandableCard title={s('transfersTitle')} className={styles.fit}>
       <CardHeader title={s('transfersTitle')} action={!readOnly && <AddRowButton control={adding}>{s('addTransfer')}</AddRowButton>} />
       <CardNote>{s('transfersNote')}</CardNote>
       {/* Media tarjeta: origen y destino comparten columna, lo recibido va bajo el monto y la comisión bajo la tasa, para caber sin scroll. */}
@@ -198,7 +198,7 @@ export function TransfersCard() {
           )}
         </tbody>
       </SheetTable>
-    </Card>
+    </ExpandableCard>
   );
 }
 

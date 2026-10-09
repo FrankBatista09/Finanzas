@@ -1,4 +1,4 @@
-/* «Credit cards»: dos tarjetas a la vez en una ventana de alto fijo (sin scroll), con flechas cuando hay más. */
+/* «Credit cards»: two cards at a time in a list of fixed height; with more, the list scrolls and settles on a card. */
 .add {
   flex: none;
   padding: 3px 9px;
@@ -30,24 +30,58 @@
 }
 
 .body {
-  display: flex;
-  gap: var(--gap-8);
   padding: 0 16px 16px;
 }
 
 .list {
-  --card-item-h: 142px;
-  flex: 1;
-  min-width: 0;
+  /* Room for the tallest card: header line, three fields, amount, bar and a tip that wraps to a few lines. */
+  --card-item-h: 200px;
+  --card-gap: var(--gap-10);
   display: flex;
   flex-direction: column;
-  gap: var(--gap-8);
+  gap: var(--card-gap);
 }
 
-/* Con más de dos tarjetas el alto no cambia al mover la ventana: dos tarjetas y el hueco entre ellas. */
-.fixed {
-  height: calc(2 * var(--card-item-h) + var(--gap-8));
-  overflow: hidden;
+/* Two cards and the gap between them; the rest is reached by scrolling, and each card snaps to the top. */
+.scroll {
+  height: calc(2 * var(--card-item-h) + var(--card-gap));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scroll-snap-type: y mandatory;
+  padding-right: 8px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-dashed) transparent;
+}
+
+/* A visible thin bar in browsers that style it this way (a classic, always-on scrollbar even on macOS). */
+@supports selector(::-webkit-scrollbar) {
+  .scroll {
+    scrollbar-width: auto;
+    scrollbar-color: auto;
+  }
+
+  .scroll::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  .scroll::-webkit-scrollbar-track {
+    border-radius: 4px;
+    background: var(--track);
+  }
+
+  .scroll::-webkit-scrollbar-thumb {
+    border-radius: 4px;
+    background: var(--border-dashed);
+  }
+
+  .scroll::-webkit-scrollbar-thumb:hover {
+    background: var(--text-muted);
+  }
+}
+
+.scroll:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .item {
@@ -56,12 +90,15 @@
   flex: none;
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding: 8px 10px;
+  gap: 7px;
+  padding: 12px;
   border: 1px solid var(--border-row);
   border-radius: var(--radius-card);
   background: var(--unpaid-row);
+  font-family: var(--font-ui);
   font-size: var(--fs-body);
+  line-height: 1.4;
+  scroll-snap-align: start;
   overflow: hidden;
 }
 
@@ -86,6 +123,7 @@
 }
 
 .nameText {
+  font-size: var(--fs-body);
   font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -112,7 +150,7 @@ p.muted,
 .fields {
   display: flex;
   flex-wrap: wrap;
-  gap: 0 var(--gap-14);
+  gap: 2px var(--gap-14);
   color: var(--text-muted);
   font-size: var(--fs-meta);
 }
@@ -121,15 +159,23 @@ p.muted,
   color: var(--text-soft);
   font-weight: 500;
   font-family: var(--font-mono);
-  font-size: 11.5px;
+  font-size: var(--fs-meta);
+  font-variant-numeric: tabular-nums;
 }
 
 .owe {
+  flex-wrap: wrap;
   display: flex;
   justify-content: space-between;
   align-items: baseline;
   gap: var(--gap-8);
   font-weight: 500;
+}
+
+/* The amounts inside a sentence, in the mono face of the money cells. */
+.num {
+  font-family: var(--font-mono);
+  font-size: var(--fs-num);
   font-variant-numeric: tabular-nums;
 }
 
@@ -166,10 +212,11 @@ p.muted,
 .tips {
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 6px;
   min-height: 0;
   font-size: var(--fs-meta);
-  line-height: 1.3;
+  line-height: 1.5;
+  text-wrap: pretty;
 }
 
 .warn {
@@ -226,37 +273,7 @@ p.muted,
 
 .switch:focus-visible,
 .link:focus-visible,
-.add:focus-visible,
-.arrow:focus-visible {
+.add:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
-}
-
-.arrows {
-  flex: none;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: var(--gap-8);
-}
-
-.arrow {
-  width: 24px;
-  height: 24px;
-  padding: 0;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--surface);
-  color: var(--text-soft);
-  font-size: 9px;
-  cursor: pointer;
-}
-
-.arrow:hover:not(:disabled) {
-  border-color: var(--accent);
-}
-
-.arrow:disabled {
-  opacity: 0.35;
-  cursor: default;
 }

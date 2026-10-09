@@ -85,6 +85,13 @@
   text-align: center;
 }
 
+/* Expanded view: nothing is cut. Two classes so it beats a card's own one-class ellipsis rule. */
+.td.full {
+  max-width: none;
+  overflow: visible;
+  text-overflow: clip;
+}
+
 .nowrap {
   white-space: nowrap;
 }

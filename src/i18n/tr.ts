@@ -14,6 +14,7 @@ export const tr: Shape<typeof en> = {
   save: 'Kaydet',
   edit: 'Düzenle',
   close: 'Kapat',
+  expand: 'Genişlet',
   actions: 'Eylemler',
   date: 'Tarih',
   amount: 'Tutar',

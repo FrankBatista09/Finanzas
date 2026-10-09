@@ -50,3 +50,15 @@ export function DeleteButton({ label, compact, className, ...rest }: DeleteButto
     </button>
   );
 }
+
+/** The small icon button at the top right of a table card's header: opens the card full size in a dialog. */
+export function ExpandButton({ onClick }: { onClick: (button: HTMLButtonElement) => void }) {
+  const { t } = useI18n();
+  return (
+    <button type="button" className={styles.expand} title={t('expand')} aria-label={t('expand')} onClick={(e) => onClick(e.currentTarget)}>
+      <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="M7 1h4v4M5 11H1V7M11 1 7.2 4.8M1 11l3.8-3.8" />
+      </svg>
+    </button>
+  );
+}

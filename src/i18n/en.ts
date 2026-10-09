@@ -11,6 +11,7 @@ export const en = {
   save: 'Save',
   edit: 'Edit',
   close: 'Close',
+  expand: 'Expand',
   actions: 'Actions',
   date: 'Date',
   amount: 'Amount',

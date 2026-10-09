@@ -1,6 +1,6 @@
 import { useI18n, useStrings } from '../../i18n';
 import { useFinanzas } from '../../store';
-import { Card, CardHeader, SheetTable, Td, Th } from '../../ui';
+import { ExpandableCard, CardHeader, SheetTable, Td, Th } from '../../ui';
 import styles from './AhorrosScreen.module.css';
 import { Converted, FallbackNote } from './Converted';
 import { incomeRowViews, NO_NOTE } from './model';
@@ -21,7 +21,7 @@ export function IncomeCard() {
   const rows = incomeRowViews(state, lang);
 
   return (
-    <Card className={styles.income}>
+    <ExpandableCard title={t('incomeByMonth')} className={styles.income}>
       <CardHeader className={styles.head} title={t('incomeByMonth')} meta={s('incomeNote', { currency: main })} />
       <SheetTable label={t('incomeByMonth')}>
         <thead>
@@ -48,6 +48,6 @@ export function IncomeCard() {
         </tbody>
       </SheetTable>
       <FallbackNote show={rows.some((r) => r.incomeFallback || r.savedFallback)} />
-    </Card>
+    </ExpandableCard>
   );
 }

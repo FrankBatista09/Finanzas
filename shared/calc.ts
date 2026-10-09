@@ -507,7 +507,7 @@ export interface CardCalc {
 const cardMemo = new WeakMap<AppState, Map<MonthKey, Map<string, CardCalc>>>();
 
 /** A qué tarjeta va un gasto fijo o una transacción: la suya, o la primera activa si no dice (null si no hay). */
-function chargedTo(state: AppState, cardId: string | null | undefined): string | null {
+export function chargedTo(state: AppState, cardId: string | null | undefined): string | null {
   return cardId ?? defaultCardId(state);
 }
 

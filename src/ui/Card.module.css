@@ -23,6 +23,12 @@
   gap: 6px 16px;
 }
 
+/* Header of the expanded view: no title (the dialog has it), the meta and the add button stay on the right. */
+.expanded {
+  justify-content: flex-end;
+  padding-top: 8px;
+}
+
 /* Cabecera dentro de una tarjeta con padding. */
 .inset {
   padding: 0;

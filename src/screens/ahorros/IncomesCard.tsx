@@ -4,7 +4,7 @@ import { monthOf } from '../../../shared/month';
 import type { ISODate, MonthKey } from '../../../shared/types';
 import { useI18n, useStrings } from '../../i18n';
 import { useFinanzas } from '../../store';
-import { AddRowButton, Card, CardHeader, Num, useAddRow } from '../../ui';
+import { AddRowButton, ExpandableCard, CardHeader, Num, useAddRow } from '../../ui';
 import styles from './AhorrosScreen.module.css';
 import { IncomeTable } from './IncomeTable';
 import { EMPTY_INCOME, incomeItems, incomeMonthKeys, incomeTotalOf, monthDraftDate } from './model';
@@ -50,7 +50,7 @@ export function IncomesCard() {
   );
 
   return (
-    <Card>
+    <ExpandableCard title={s('incomesTitle')}>
       <CardHeader
         className={styles.head}
         title={s('incomesTitle')}
@@ -73,6 +73,6 @@ export function IncomesCard() {
         gold
         onAdded={jump}
       />
-    </Card>
+    </ExpandableCard>
   );
 }

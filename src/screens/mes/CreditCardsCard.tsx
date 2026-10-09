@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { cardCalc, cardHint, cardUtilization } from '../../../shared/calc';
 import type { CardHint } from '../../../shared/calc';
 import { f2 } from '../../../shared/format';
@@ -7,32 +7,47 @@ import { useI18n, useStrings } from '../../i18n';
 import { useFinanzas } from '../../store';
 import { Card, CardHeader, cx } from '../../ui';
 import { CardDialog } from './CardDialog';
-import { arrowsOf, CARD_WINDOW, clampStart, moveWindow, windowOf } from './cardWindow';
 import styles from './CreditCardsCard.module.css';
 import { MES } from './strings';
+
+/** Cards that fit in the list at once; with more, the list scrolls. */
+const VISIBLE_CARDS = 2;
 
 /** '2026-10-13' → 'Oct 13' / '13 oct' / '13 Eki', en el idioma del usuario. */
 function dayLabel(date: string, lang: string): string {
   return new Intl.DateTimeFormat(lang, { day: 'numeric', month: 'short', timeZone: 'UTC' }).format(new Date(`${date}T00:00:00Z`));
 }
 
+/** Numbers in the app's mono face, the rest of the sentence untouched (the text content stays the translated string). */
+function monoNumbers(text: string, className: string) {
+  return text.split(/(\d[\d.,]*)/).map((part, i) => (i % 2 === 1 ? <span key={i} className={className}>{part}</span> : <Fragment key={i}>{part}</Fragment>));
+}
+
+/** How much to pay before the cutoff to end it under 10 %, or that it already is. Shared with the card details dialog. */
+export function PayHint({ card, hint, lang }: { card: CreditCard; hint: CardHint; lang: string }) {
+  const s = useStrings(MES);
+  const cutoff = dayLabel(hint.nextCutoff, lang);
+  return hint.payToUnder10 > 0 ? (
+    <p className={styles.warn}>{s('cardTipOver', { amount: f2(hint.payToUnder10), currency: card.cur, date: cutoff })}</p>
+  ) : (
+    <p className={styles.good}>{s('cardTipUnder', { date: cutoff })}</p>
+  );
+}
+
 /**
- * «Credit cards»: las tarjetas del usuario, de dos en dos. Cada una dice lo que se debe (del mes que se mira), cuánto es
- * del límite, y, si se conocen el límite y el corte, cuánto pagar antes del corte para cerrarlo por debajo del 10 %. Las
- * flechas mueven la ventana de dos tarjetas de una en una; las apagadas también salen, atenuadas. Las tarjetas no
+ * «Credit cards»: las tarjetas del usuario. Cada una dice lo que se debe (del mes que se mira), cuánto es del límite, y,
+ * si se conocen el límite y el corte, cuánto pagar antes del corte para cerrarlo por debajo del 10 %. La lista enseña
+ * dos tarjetas a la vez; con más, se desplaza en vertical y se detiene en el borde de una tarjeta. Las tarjetas no
  * pertenecen a un mes: se pueden crear y editar aunque el mes esté cerrado.
  */
 export function CreditCardsCard({ className }: { className?: string }) {
   const { state, actions } = useFinanzas();
   const s = useStrings(MES);
   const cards = [...state.cards].sort((a, b) => a.sort - b.sort);
-  const [start, setStart] = useState(0);
   const [dialog, setDialog] = useState<CreditCard | 'new' | null>(null);
   // La tarjeta que no se pudo apagar por deber algo: el aviso va en su lugar hasta que se toque otra cosa.
   const [refused, setRefused] = useState<string | null>(null);
-  const from = clampStart(cards.length, start);
-  const arrows = arrowsOf(cards.length, from);
-  const paged = cards.length > CARD_WINDOW;
+  const scrolls = cards.length > VISIBLE_CARDS;
 
   const toggle = (card: CreditCard) => {
     setRefused(actions.patchCard(card.id, { active: !card.active }) ? null : card.id);
@@ -57,21 +72,11 @@ export function CreditCardsCard({ className }: { className?: string }) {
         </div>
       ) : (
         <div className={styles.body}>
-          <div className={cx(styles.list, paged && styles.fixed)}>
-            {windowOf(cards, from).map((card) => (
+          <div className={cx(styles.list, scrolls && styles.scroll)} tabIndex={scrolls ? 0 : undefined} aria-label={scrolls ? s('cardsTitle') : undefined} role={scrolls ? 'region' : undefined}>
+            {cards.map((card) => (
               <CardItem key={card.id} card={card} refused={refused === card.id} onToggle={() => toggle(card)} onEdit={() => setDialog(card)} />
             ))}
           </div>
-          {paged && (
-            <div className={styles.arrows}>
-              <button type="button" className={styles.arrow} aria-label={s('cardsUp')} title={s('cardsUp')} disabled={!arrows.up} onClick={() => setStart(moveWindow(cards.length, from, -1))}>
-                ▲
-              </button>
-              <button type="button" className={styles.arrow} aria-label={s('cardsDown')} title={s('cardsDown')} disabled={!arrows.down} onClick={() => setStart(moveWindow(cards.length, from, 1))}>
-                ▼
-              </button>
-            </div>
-          )}
         </div>
       )}
       {dialog && <CardDialog card={dialog === 'new' ? null : dialog} onClose={() => setDialog(null)} />}
@@ -129,7 +134,7 @@ function CardItem({ card, refused, onToggle, onEdit }: CardItemProps) {
         </span>
       </div>
       <div className={styles.owe}>
-        <span>{pct === null ? s('cardOwe', { amount: f2(Math.max(0, remainder)), currency: card.cur }) : s('cardOweLimit', { amount: f2(Math.max(0, remainder)), currency: card.cur, pct })}</span>
+        <span>{monoNumbers(pct === null ? s('cardOwe', { amount: f2(Math.max(0, remainder)), currency: card.cur }) : s('cardOweLimit', { amount: f2(Math.max(0, remainder)), currency: card.cur, pct }), styles.num)}</span>
         {hint && <span className={styles.muted}>{hint.daysToCutoff === 0 ? s('cardCutoffToday') : s('cardToCutoff', { count: hint.daysToCutoff })}</span>}
       </div>
       {util !== null && (
@@ -155,14 +160,9 @@ function CardItem({ card, refused, onToggle, onEdit }: CardItemProps) {
 
 function Tips({ card, hint, lang, onEdit }: { card: CreditCard; hint: CardHint; lang: string; onEdit: () => void }) {
   const s = useStrings(MES);
-  const cutoff = dayLabel(hint.nextCutoff, lang);
   return (
     <>
-      {hint.payToUnder10 > 0 ? (
-        <p className={styles.warn}>{s('cardTipOver', { amount: f2(hint.payToUnder10), currency: card.cur, date: cutoff })}</p>
-      ) : (
-        <p className={styles.good}>{s('cardTipUnder', { date: cutoff })}</p>
-      )}
+      <PayHint card={card} hint={hint} lang={lang} />
       {hint.upcomingDue ? (
         <p className={styles.muted}>
           {hint.upcomingDue.days === 0

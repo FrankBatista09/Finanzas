@@ -19,6 +19,21 @@
   box-shadow: var(--shadow-modal);
 }
 
+/* The expanded view of a table card: the title and footer stay, the body scrolls. */
+.large {
+  max-width: none;
+  width: 92vw;
+  height: 88vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
 /* Un formulario largo en una pantalla baja se desplaza dentro del panel en vez de salirse de la vista
    (48px = el padding del fondo, 2px = el borde del panel). */
 .form {

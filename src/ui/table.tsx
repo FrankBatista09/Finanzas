@@ -7,6 +7,7 @@ import { AddRowContext, addRowKeyAction } from './addRowContext';
 import type { AddRowApi, AddRowControl } from './addRowContext';
 import { cx } from './cx';
 import type { Tone } from './cx';
+import { useExpanded } from './expandContext';
 import styles from './table.module.css';
 
 type Align = 'left' | 'right' | 'center';
@@ -26,9 +27,10 @@ export interface SheetTableProps {
 
 /** <table> dentro de su contenedor con scroll horizontal. */
 export function SheetTable({ minWidth, label, className, children }: SheetTableProps) {
+  const expanded = useExpanded();
   return (
     <div className={styles.scroll}>
-      <table className={cx(styles.table, className)} style={minWidth ? { minWidth } : undefined} aria-label={label}>
+      <table className={cx(styles.table, className)} style={minWidth && !expanded ? { minWidth } : undefined} aria-label={label}>
         {children}
       </table>
     </div>
@@ -49,13 +51,15 @@ export interface ThProps extends Omit<ThHTMLAttributes<HTMLTableCellElement>, 'a
 
 export function Th({ align, width, last, blank, className, style, children, ...rest }: ThProps) {
   const { t } = useI18n();
+  // Expanded, columns size to their content and share the extra room instead of keeping the card's narrow widths.
+  const expanded = useExpanded();
   return (
     <th
       scope="col"
       aria-label={blank ? t('actions') : undefined}
       {...rest}
       className={cx(styles.th, alignClass(align), last && styles.last, blank && styles.thBlank, className)}
-      style={width ? { width, ...style } : style}
+      style={width && !expanded ? { width, ...style } : style}
     >
       {children}
     </th>
@@ -87,6 +91,7 @@ export interface TdProps extends Omit<TdHTMLAttributes<HTMLTableCellElement>, 'a
 }
 
 export function Td({ kind = 'text', align, tone, nowrap, medium, last, className, children, ...rest }: TdProps) {
+  const expanded = useExpanded();
   return (
     <td
       {...rest}
@@ -98,6 +103,7 @@ export function Td({ kind = 'text', align, tone, nowrap, medium, last, className
         medium && styles.medium,
         last && styles.last,
         tone && styles[tone],
+        expanded && styles.full,
         className,
       )}
     >
