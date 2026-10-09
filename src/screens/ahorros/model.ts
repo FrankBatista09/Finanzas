@@ -126,7 +126,8 @@ export function goalCard(g: GoalProgress, lang: Language, current: MonthKey | nu
     saved: f2(g.saved),
     savedApprox: same ? null : f0(g.savedApprox),
     approxCur: g.approxCur,
-    approxNote: same ? NO_NOTE : approxNote,
+    // A zero converts to zero at any rate: nothing rests on the default value, so it is not flagged.
+    approxNote: same ? NO_NOTE : g.saved === 0 ? { ...approxNote, fallback: false } : approxNote,
   };
   const t = g.target;
   if (!t) {

@@ -335,6 +335,12 @@ describe('tarjetas de metas', () => {
     expect(goalCards(t, 'en').map((g) => g.approxNote)).toEqual([NO_NOTE, NO_NOTE, { hint: 'crossed through USD', fallback: false }]);
   });
 
+  it('una meta sin nada ahorrado no marca la tasa de respaldo: cero vale cero con cualquier tasa', () => {
+    const note = { hint: 'default value, not set yet', fallback: true };
+    expect(goalCard(progress(), 'en', '2026-10', note).approxNote.fallback).toBe(false);
+    expect(goalCard(progress({ saved: 10, savedApprox: 420 }), 'en', '2026-10', note).approxNote.fallback).toBe(true);
+  });
+
   it('la línea "≈" va en la moneda que diga GoalProgress.approxCur; si es la de la propia meta, no hay línea', () => {
     const g = progress({ saved: 1200, savedMain: 70512, approxCur: 'TRY', savedApprox: 50400.4 });
     // Sin decimales, y en la moneda "≈", no en la principal.

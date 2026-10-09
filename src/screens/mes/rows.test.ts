@@ -4,7 +4,9 @@ import { seedState } from '../../../shared/seed';
 import type { AppState, CreditCard, Currency, ISODate, MonthKey } from '../../../shared/types';
 import { createI18n } from '../../i18n';
 import { accountOptions, barRate, inBoth, pairRates } from '../../store';
-import { accountsInUse } from '../../store/view';
+import { accountsInUse, currenciesInUse, hasActivity } from '../../store/view';
+import { buildFinanzas } from '../../store';
+import type { Actions } from '../../store';
 import { moneyAccounts } from '../../../shared/calc';
 import type { TransferFee } from '../../../shared/calc';
 import {
@@ -416,6 +418,55 @@ describe('tasas del mes: una cuenta vacía no pide tasa', () => {
     const state = empty();
     state.accounts[2]!.hidden = true;
     expect(used(state)).toEqual(['USD', 'TRY']);
+  });
+});
+
+describe('tasas del mes: sin actividad no hace falta ninguna tasa', () => {
+  // A brand-new user: main TRY, second USD, accounts at zero and no rows.
+  const fresh = (): AppState => {
+    const state = seedState();
+    state.mainCurrency = 'TRY';
+    state.secondCurrency = 'USD';
+    state.accounts = [
+      { id: 'try', name: 'TRY account', currency: 'TRY', opening: 0, hidden: false, sort: 0 },
+      { id: 'usd', name: 'USD account', currency: 'USD', opening: 0, hidden: false, sort: 1 },
+    ];
+    state.incomes = [];
+    state.contribs = [];
+    state.months = { '2026-10': { ...state.months['2026-10']!, rates: [], fixed: [], tx: [], transfers: [], outside: [], cards: [], budgetLog: [], budgets: {} } };
+    return state;
+  };
+  const bar = (state: AppState) => buildFinanzas({ user: { id: 'eda', name: 'Eda' }, state, monthKey: '2026-10', today: '2026-10-07', actions: {} as Actions })!.barRate;
+  const rowsOf = (state: AppState) => shownRates(pairRates(state, '2026-10'), currenciesInUse(state, '2026-10'), 'TRY').map((r) => `${r.from}>${r.to}:${r.source}`);
+
+  it('sin filas ni dinero: solo la principal, ninguna fila y la barra superior vacía', () => {
+    const state = fresh();
+    expect(hasActivity(state, '2026-10')).toBe(false);
+    expect(currenciesInUse(state, '2026-10')).toEqual(['TRY']);
+    expect(rowsOf(state)).toEqual([]);
+    expect(bar(state)).toBeNull();
+  });
+
+  it('un gasto fijo en la moneda principal trae el par principal-segunda con su valor por defecto', () => {
+    const state = fresh();
+    state.months['2026-10']!.fixed = [{ id: 'f', monthKey: '2026-10', name: 'Rent', day: '', amount: 100, cur: 'TRY', paid: false, accountId: 'try', sort: 0 }];
+    expect(rowsOf(state)).toEqual(['USD>TRY:default']);
+    expect(bar(state)).toMatchObject({ from: 'USD', to: 'TRY', source: 'default' });
+  });
+
+  it('una cuenta con saldo inicial distinto de cero cuenta como actividad', () => {
+    const state = fresh();
+    state.accounts[1]!.opening = 50;
+    expect(rowsOf(state)).toEqual(['USD>TRY:default']);
+    expect(bar(state)).toMatchObject({ from: 'USD', to: 'TRY' });
+  });
+
+  it('una tasa escrita se ve siempre, aunque no haya actividad', () => {
+    const state = fresh();
+    state.months['2026-10']!.rates = [{ from: 'USD', to: 'TRY', rate: 41.5, date: '2026-10-01' }];
+    expect(hasActivity(state, '2026-10')).toBe(false);
+    expect(rowsOf(state)).toEqual(['USD>TRY:month']);
+    expect(bar(state)).toMatchObject({ from: 'USD', to: 'TRY', rate: 41.5, source: 'month' });
   });
 });
 

@@ -6,7 +6,7 @@ import { AddButton, AddRow, AddRowButton, ExpandableCard, CardHeader, CardNote, 
 import { canAddRate, EMPTY_RATE, pickRateCurrency, rateDate, ratePair } from './drafts';
 import { RateCell } from './RateCell';
 import styles from './RatesCard.module.css';
-import { accountsInUse, noRatesNeeded, rateRows, shortDate, showRate, shownRates, usedCurrencies } from './rows';
+import { currenciesInUse, noRatesNeeded, rateRows, shortDate, showRate, shownRates } from './rows';
 import { MES } from './strings';
 
 /**
@@ -18,13 +18,13 @@ import { MES } from './strings';
  * el botón de la cabecera) escribe la de cualquier par, desde la fecha que se elija.
  */
 export function RatesCard() {
-  const { state, month, monthKey, main, second, rates, visibleAccounts, readOnly, draftDate, actions } = useFinanzas();
+  const { state, month, monthKey, main, second, rates, readOnly, draftDate, actions } = useFinanzas();
   const { t, rateHint } = useI18n();
   const s = useStrings(MES);
   const [draft, setDraft] = useState(EMPTY_RATE);
   const adding = useAddRow(() => setDraft(EMPTY_RATE));
 
-  const shown = shownRates(rates, usedCurrencies(main, second, accountsInUse(state, monthKey, visibleAccounts), month), main);
+  const shown = shownRates(rates, currenciesInUse(state, monthKey), main);
   const rows = rateRows(shown, month.rates, rates, monthKey, draftDate);
   const pair = ratePair(draft, shown, main, second);
   const date = rateDate(draft, pair, rates, monthKey, draftDate);
