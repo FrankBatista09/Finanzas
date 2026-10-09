@@ -1,4 +1,5 @@
 import { Fragment, useState } from 'react';
+import type { KeyboardEvent } from 'react';
 import { cardCalc, cardHint, cardUtilization } from '../../../shared/calc';
 import type { CardHint } from '../../../shared/calc';
 import { f2 } from '../../../shared/format';
@@ -7,11 +8,9 @@ import { useI18n, useStrings } from '../../i18n';
 import { useFinanzas } from '../../store';
 import { Card, CardHeader, cx } from '../../ui';
 import { CardDialog } from './CardDialog';
+import { carouselIndex } from './cardCarousel';
 import styles from './CreditCardsCard.module.css';
 import { MES } from './strings';
-
-/** Cards that fit in the list at once; with more, the list scrolls. */
-const VISIBLE_CARDS = 2;
 
 /** '2026-10-13' → 'Oct 13' / '13 oct' / '13 Eki', en el idioma del usuario. */
 function dayLabel(date: string, lang: string): string {
@@ -36,8 +35,8 @@ export function PayHint({ card, hint, lang }: { card: CreditCard; hint: CardHint
 
 /**
  * «Credit cards»: las tarjetas del usuario. Cada una dice lo que se debe (del mes que se mira), cuánto es del límite, y,
- * si se conocen el límite y el corte, cuánto pagar antes del corte para cerrarlo por debajo del 10 %. La lista enseña
- * dos tarjetas a la vez; con más, se desplaza en vertical y se detiene en el borde de una tarjeta. Las tarjetas no
+ * si se conocen el límite y el corte, cuánto pagar antes del corte para cerrarlo por debajo del 10 %. Se ve
+ * una tarjeta a la vez; con más de una, flechas (o las del teclado) pasan de una a otra. Las tarjetas no
  * pertenecen a un mes: se pueden crear y editar aunque el mes esté cerrado.
  */
 export function CreditCardsCard({ className }: { className?: string }) {
@@ -47,7 +46,24 @@ export function CreditCardsCard({ className }: { className?: string }) {
   const [dialog, setDialog] = useState<CreditCard | 'new' | null>(null);
   // La tarjeta que no se pudo apagar por deber algo: el aviso va en su lugar hasta que se toque otra cosa.
   const [refused, setRefused] = useState<string | null>(null);
-  const scrolls = cards.length > VISIBLE_CARDS;
+  const ids = cards.map((c) => c.id);
+  const [index, setIndex] = useState(0);
+  const [seenIds, setSeenIds] = useState(ids);
+  // Adjusting state while rendering (instead of in an effect) avoids a frame showing the wrong card.
+  let shown = index;
+  if (ids.length !== seenIds.length || ids.some((id, i) => id !== seenIds[i])) {
+    shown = carouselIndex(seenIds, ids, index);
+    setIndex(shown);
+    setSeenIds(ids);
+  }
+  const current = cards[Math.min(shown, cards.length - 1)];
+  const many = cards.length > 1;
+  const go = (delta: number) => setIndex(Math.min(Math.max(shown + delta, 0), cards.length - 1));
+  const onKeyDown = (e: KeyboardEvent) => {
+    if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+    if (e.key === 'ArrowLeft') go(-1);
+    else if (e.key === 'ArrowRight') go(1);
+  };
 
   const toggle = (card: CreditCard) => {
     setRefused(actions.patchCard(card.id, { active: !card.active }) ? null : card.id);
@@ -56,11 +72,28 @@ export function CreditCardsCard({ className }: { className?: string }) {
   return (
     <Card className={className}>
       <CardHeader
-        title={s('cardsTitle')}
+        title={
+          <>
+            {s('cardsTitle')}
+            {many && <span className={styles.counter} aria-hidden="true">{shown + 1} / {cards.length}</span>}
+          </>
+        }
         action={
-          <button type="button" className={styles.add} onClick={() => setDialog('new')}>
-            + {s('addCard')}
-          </button>
+          <>
+            {many && (
+              <span className={styles.nav}>
+                <button type="button" className={styles.arrow} aria-label={s('cardsPrev')} title={s('cardsPrev')} disabled={shown === 0} onClick={() => go(-1)}>
+                  <Chevron dir="left" />
+                </button>
+                <button type="button" className={styles.arrow} aria-label={s('cardsNext')} title={s('cardsNext')} disabled={shown === cards.length - 1} onClick={() => go(1)}>
+                  <Chevron dir="right" />
+                </button>
+              </span>
+            )}
+            <button type="button" className={styles.add} onClick={() => setDialog('new')}>
+              + {s('addCard')}
+            </button>
+          </>
         }
       />
       {cards.length === 0 ? (
@@ -72,15 +105,21 @@ export function CreditCardsCard({ className }: { className?: string }) {
         </div>
       ) : (
         <div className={styles.body}>
-          <div className={cx(styles.list, scrolls && styles.scroll)} tabIndex={scrolls ? 0 : undefined} aria-label={scrolls ? s('cardsTitle') : undefined} role={scrolls ? 'region' : undefined}>
-            {cards.map((card) => (
-              <CardItem key={card.id} card={card} refused={refused === card.id} onToggle={() => toggle(card)} onEdit={() => setDialog(card)} />
-            ))}
+          <div className={styles.list} tabIndex={many ? 0 : undefined} aria-label={many ? s('cardsTitle') : undefined} role={many ? 'region' : undefined} onKeyDown={many ? onKeyDown : undefined}>
+            <CardItem key={current!.id} card={current!} refused={refused === current!.id} onToggle={() => toggle(current!)} onEdit={() => setDialog(current!)} />
           </div>
         </div>
       )}
       {dialog && <CardDialog card={dialog === 'new' ? null : dialog} onClose={() => setDialog(null)} />}
     </Card>
+  );
+}
+
+function Chevron({ dir }: { dir: 'left' | 'right' }) {
+  return (
+    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d={dir === 'left' ? 'M7.5 2.5 4 6l3.5 3.5' : 'M4.5 2.5 8 6 4.5 9.5'} />
+    </svg>
   );
 }
 
@@ -122,20 +161,22 @@ function CardItem({ card, refused, onToggle, onEdit }: CardItemProps) {
           {s('cardEdit')}
         </button>
       </div>
-      <div className={styles.fields}>
-        <span>
-          {s('cardLimit')} <b>{card.limit === null ? '—' : money(card.limit)}</b>
-        </span>
-        <span>
-          {s('cardCutoff')} <b>{day(card.cutoffDay)}</b>
-        </span>
-        <span>
-          {s('cardDue')} <b>{day(card.dueDay)}</b>
-        </span>
-      </div>
       <div className={styles.owe}>
-        <span>{monoNumbers(pct === null ? s('cardOwe', { amount: f2(Math.max(0, remainder)), currency: card.cur }) : s('cardOweLimit', { amount: f2(Math.max(0, remainder)), currency: card.cur, pct }), styles.num)}</span>
-        {hint && <span className={styles.muted}>{hint.daysToCutoff === 0 ? s('cardCutoffToday') : s('cardToCutoff', { count: hint.daysToCutoff })}</span>}
+        <div className={styles.main}>
+          <span className={styles.fields}>
+            {s('cardLimit')} <b>{card.limit === null ? '—' : money(card.limit)}</b>
+          </span>
+          <span>{monoNumbers(pct === null ? s('cardOwe', { amount: f2(Math.max(0, remainder)), currency: card.cur }) : s('cardOweLimit', { amount: f2(Math.max(0, remainder)), currency: card.cur, pct }), styles.num)}</span>
+        </div>
+        <div className={styles.side}>
+          <span>
+            {s('cardCutoff')} <b>{day(card.cutoffDay)}</b>
+          </span>
+          <span>
+            {s('cardDue')} <b>{day(card.dueDay)}</b>
+          </span>
+          {hint && <span>{hint.daysToCutoff === 0 ? s('cardCutoffToday') : s('cardToCutoff', { count: hint.daysToCutoff })}</span>}
+        </div>
       </div>
       {util !== null && (
         <div className={styles.track} role="img" aria-label={s('cardBar', { pct: pct! })}>
