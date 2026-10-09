@@ -1,8 +1,7 @@
-// What a credit card was charged this month, item by item, and the short status line of its row in "Monthly expenses".
+// What a credit card was charged this month, item by item,.
 // Pure, no React and no texts. The money itself comes from shared/calc.ts cardCalc; this lists what adds up to its `charged`.
 
 import { chargedTo, convert, isCardTx, isCharged } from '../../../shared/calc';
-import type { CardCalc } from '../../../shared/calc';
 import type { AppState, Currency, ISODate, MonthKey } from '../../../shared/types';
 import { sortFixed } from './rows';
 
@@ -35,7 +34,3 @@ export function cardItems(state: AppState, key: MonthKey, cardId: string): CardI
   return [...fixed, ...tx];
 }
 
-/** Which status line the card row shows: how the payments stand once there are some, otherwise just what is owed. */
-export function cardStatus(card: Pick<CardCalc, 'payments'>): 'paid' | 'owed' {
-  return card.payments.length > 0 ? 'paid' : 'owed';
-}

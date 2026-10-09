@@ -26,7 +26,6 @@ import {
   useAddRow,
 } from '../../ui';
 import { CardDetailsDialog } from './CardDetailsDialog';
-import { cardStatus } from './cardItems';
 import { isFullyPaid } from './cardPay';
 import { PayCardDialog } from './PayCardDialog';
 import { canAddFixed, draftAccount, draftCurrency, EMPTY_FIXED, fixedInput } from './drafts';
@@ -255,11 +254,6 @@ function CardRow({ card, readOnly, accountName, onPay, onDetails }: CardRowProps
             {named.name}
           </button>
           <span className={styles.cardTag}>{s('cardTag')}</span>
-        </div>
-        <div className={styles.cardDetail}>
-          {cardStatus(card) === 'paid'
-            ? s('cardPaidOf', { paid: f2(card.paid), total: f2(card.total), left: f2(Math.max(0, card.remainder)) })
-            : s('cardStatusOwed', { total: f2(card.total) })}
         </div>
       </Td>
       <Td kind="center" tone="faint">

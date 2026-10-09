@@ -40,11 +40,6 @@
   white-space: nowrap;
 }
 
-.cardDetail {
-  font-size: var(--fs-label);
-  color: var(--text-muted);
-}
-
 .cardAccount {
   max-width: 130px;
   overflow: hidden;

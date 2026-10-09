@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { cardCalc } from '../../../shared/calc';
 import { seedState } from '../../../shared/seed';
 import type { AppState, CreditCard } from '../../../shared/types';
-import { cardItems, cardStatus } from './cardItems';
+import { cardItems } from './cardItems';
 
 const OCT = '2026-10';
 const CARD: CreditCard = { id: 'card', name: 'Visa', bank: null, last4: null, cur: 'DOP', limit: null, cutoffDay: null, dueDay: null, active: true, sort: 0 };
@@ -54,9 +54,3 @@ describe('cardItems', () => {
   });
 });
 
-describe('cardStatus', () => {
-  it('says how the payments stand once there is one, otherwise what is owed', () => {
-    expect(cardStatus({ payments: [] })).toBe('owed');
-    expect(cardStatus({ payments: [{ id: 'p', date: '2026-10-05', accountId: 'dr', amount: 1 }] })).toBe('paid');
-  });
-});
