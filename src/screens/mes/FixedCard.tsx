@@ -86,7 +86,7 @@ export function FixedCard({ className, cardClassName }: { className?: string; ca
       <SheetTable label={s('fixedTitle')} className={styles.table} scrollClassName={styles.body}>
         <thead>
           <tr>
-            <Th align="center" width={PAID_W} className={styles.paid} title={s('paid')}>
+            <Th align="center" width={PAID_W} className={styles.paid}>
               {s('paid')}
             </Th>
             <Th>{s('item')}</Th>
@@ -213,7 +213,7 @@ export function FixedCard({ className, cardClassName }: { className?: string; ca
 /** Ancho mínimo del selector «Pagar con»: lo justo para que se lea «Account» sin ensanchar la tabla en pantallas de 1440px. */
 const PAY_WITH_WIDTH = 70;
 
-/** The checkbox column only needs the checkbox and its short header. */
+/** Width hint for the checkbox column; the column is never narrower than its header word. */
 const PAID_W = 24;
 
 /** Wide enough for 12321321.00 plus the number spinner; as a min-width on the input it also keeps the column from being squeezed. */
@@ -258,7 +258,7 @@ function CardRow({ card, readOnly, accountName, onPay, onDetails }: CardRowProps
       </Td>
       <Td>
         <div className={styles.cardName}>
-          <button type="button" className={styles.cardLink} title={s('cardDetails')} aria-label={s('cardDetails')} onClick={onDetails}>
+          <button type="button" className={styles.cardLink} title={s('cardDetails')} aria-label={s('cardDetailsOf', named)} onClick={onDetails}>
             {named.name}
           </button>
           <span className={styles.cardTag}>{s('cardTag')}</span>
@@ -268,7 +268,7 @@ function CardRow({ card, readOnly, accountName, onPay, onDetails }: CardRowProps
         —
       </Td>
       <Td kind="edit">
-        <CellNumber value={card.other} onCommit={(other) => actions.setCardOther(card.card.id, other)} readOnly={readOnly} label={s('cardOther', named)} />
+        <CellNumber value={card.other} onCommit={(other) => actions.setCardOther(card.card.id, other)} readOnly={readOnly} minWidth={AMOUNT_W} label={s('cardOther', named)} />
       </Td>
       <Td kind="mono">{cur}</Td>
       <Td kind="center" tone="faint">

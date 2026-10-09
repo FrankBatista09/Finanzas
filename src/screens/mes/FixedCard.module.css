@@ -3,13 +3,17 @@
   white-space: nowrap;
 }
 
-.paid {
+/* Selector depth beats the shared .th padding regardless of bundle order. */
+.table thead .paid {
   /* Less side padding than other headers: the column is only as wide as its checkbox. */
   padding-left: 4px;
   padding-right: 4px;
 }
 
 .body {
+  /* Keeps focused or scrolled-to rows from hiding under the sticky header (--fixed-head-h is its approximate height). */
+  --fixed-head-h: 33px;
+  scroll-padding-top: var(--fixed-head-h);
   /* Lets the table area shrink inside a height-capped card and scroll vertically. */
   min-height: 0;
   overflow-y: auto;

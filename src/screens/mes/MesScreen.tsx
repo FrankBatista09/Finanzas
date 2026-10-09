@@ -26,12 +26,14 @@ export function MesScreen() {
   // Lo guarda la pantalla porque el enlace de "Transaction history" abre la tarjeta aunque todavía no se vea.
   const outside = useOutsideAdding();
   const { t } = useI18n();
-  const { columns, side } = useColumnCap();
+  const { columns, left, side } = useColumnCap();
   return (
     <Stack>
       {readOnly && <ClosedBanner />}
       <div ref={columns} className={styles.columns}>
-        <FixedCard className={styles.fixed} cardClassName={styles.capped} />
+        <div ref={left} className={styles.fixed}>
+          <FixedCard cardClassName={styles.capped} />
+        </div>
         <div ref={side} className={styles.side}>
           <CategoriesCard />
           <RatesCard />

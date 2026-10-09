@@ -34,10 +34,10 @@ export function PayHint({ card, hint, lang }: { card: CreditCard; hint: CardHint
 }
 
 /**
- * «Credit cards»: las tarjetas del usuario. Cada una dice lo que se debe (del mes que se mira), cuánto es del límite, y,
- * si se conocen el límite y el corte, cuánto pagar antes del corte para cerrarlo por debajo del 10 %. Se ve
- * una tarjeta a la vez; con más de una, flechas (o las del teclado) pasan de una a otra. Las tarjetas no
- * pertenecen a un mes: se pueden crear y editar aunque el mes esté cerrado.
+ * "Credit cards": the user's cards. Each one shows what is owed (for the month being viewed), how much of that is the
+ * limit, and, when the limit and cutoff are known, how much to pay before the cutoff to close below 10 %. One card is
+ * shown at a time; with more than one, arrows (or the keyboard ones) move between them. Cards do not belong to a
+ * month: they can be created and edited even when the month is closed.
  */
 export function CreditCardsCard({ className }: { className?: string }) {
   const { state, actions } = useFinanzas();
