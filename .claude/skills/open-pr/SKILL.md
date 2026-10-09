@@ -1,16 +1,16 @@
 ---
 name: open-pr
-description: "Crea o actualiza el PR de la rama actual de FE Finance (FrankBatista09/Finanzas) con una descripción estandarizada: qué hace, cambios, migraciones y pasos de despliegue, plan de prueba. Crea el PR listo para revisar (NO draft). No hace commits ni push: si hay algo sin commitear o sin subir, se detiene y dice qué comandos correr."
-when_to_use: "Cuando el usuario quiere abrir o actualizar un PR. Triggers: 'open PR', 'abrir PR', 'crear PR', 'actualizar PR', 'open pull request'."
-argument-hint: "(opcional) título o nota extra para la descripción"
+description: "Creates or updates the PR for the current branch of FE Finance (FrankBatista09/Finanzas) with a standardized English description: what it does, changes, database migrations, security notes, test plan and deploy steps. The PR title follows Conventional Commits. Creates a ready-for-review PR (NOT a draft). Never commits or pushes: if something is uncommitted or unpushed it stops and says which commands to run."
+when_to_use: "When the user wants to open or update a PR. Triggers: 'open PR', 'abrir PR', 'crear PR', 'actualizar PR', 'open pull request'."
+argument-hint: "(optional) extra note for the description"
 disable-model-invocation: true
 ---
 
-## Instrucciones
+## Instructions
 
-Vas a abrir (o actualizar) el PR de la rama actual de FE Finance. Este es un proyecto PERSONAL: todo ocurre con la cuenta personal `FrankBatista09`, nunca con la cuenta de trabajo.
+You are opening (or updating) the PR for the current branch of FE Finance. This is a PERSONAL project: everything happens with the personal `FrankBatista09` account, never with a work account. Everything you write (title, description) is in English.
 
-### Paso 0 — Guardia de cuenta (obligatorio, antes de cualquier otra cosa)
+### Step 0 — Account guard (mandatory, before anything else)
 
 ```bash
 gh auth status 2>&1
@@ -18,14 +18,14 @@ git remote get-url origin
 git branch --show-current
 ```
 
-Continúa solo si TODO esto es cierto:
-- el remoto `origin` apunta a `FrankBatista09/Finanzas`;
-- la cuenta ACTIVA de `gh` para github.com es `FrankBatista09`;
-- la rama actual NO es `main`.
+Continue only if ALL of these hold:
+- the `origin` remote points to `FrankBatista09/Finanzas`;
+- the ACTIVE `gh` account for github.com is `FrankBatista09`;
+- the current branch is NOT `main`.
 
-Si la cuenta activa es otra (por ejemplo la de trabajo), DETENTE y di: _"La cuenta activa de gh no es FrankBatista09. Corre `gh auth switch -u FrankBatista09` (o `gh auth login` si no está agregada) y vuelve a lanzar /open-pr."_ Nunca crees el PR con otra cuenta, nunca pidas ni escribas tokens, y no cambies la cuenta tú mismo.
+If the active account is another one (for example the work account), STOP and say: _"The active gh account is not FrankBatista09. Run `gh auth switch -u FrankBatista09` (or `gh auth login` if it is not added yet) and run /open-pr again."_ Never create the PR with another account, never ask for or type tokens, and never switch accounts yourself.
 
-### Paso 1 — Contexto de la rama
+### Step 1 — Branch context
 
 ```bash
 git status --short
@@ -38,109 +38,120 @@ git status -sb | head -1
 gh pr view --json number,url,title,state 2>&1
 ```
 
-- Si hay cambios sin commitear (ignora el archivo suelto `respaldo.sql`, que NUNCA se sube): DETENTE y di que primero deben hacer commit; da los comandos (`git add <archivos>` y `git commit -m "…"`, sin Co-Authored-By).
-- Si no hay upstream o la rama está adelantada del remoto: DETENTE y da `git push -u origin <rama>`.
-- Si no hay commits sobre `origin/main`: no hay nada que abrir; dilo.
+- Uncommitted changes (ignore the loose `respaldo.sql` file, which is NEVER committed): STOP and tell the user to commit first, with the commands (`git add <files>` and `git commit -m "<conventional message>"`, no Co-Authored-By).
+- No upstream, or the branch is ahead of the remote: STOP and give `git push -u origin <branch>`.
+- No commits on top of `origin/main`: there is nothing to open; say so.
+- Branch name not following `feat/…`, `fix/…`, `chore/…`, `refactor/…`, `docs/…`, `test/…`, `ci/…`: warn the user (it is not blocking) and suggest `git branch -m <new-name>` before pushing.
 
-### Paso 2 — Entender el cambio
+### Step 2 — Understand the change
 
-1. Lee el diff completo (`git diff origin/main..HEAD`) y el README.md (mapa de la app, convenciones).
-2. Lista las migraciones nuevas: `git diff origin/main..HEAD --name-only -- migrations/`. Si hay, el despliegue necesita `npm run db:migrate:remote`.
-3. Detecta si cambian secretos, variables (`wrangler.toml`), rutas públicas (`/mcp`, `/api/ingest`) o autenticación: son puntos de seguridad a destacar.
+1. Read the full diff (`git diff origin/main..HEAD`) and README.md (app map, conventions).
+2. List new migrations: `git diff origin/main..HEAD --name-only -- migrations/`. If any, deployment needs `npm run db:migrate:remote`.
+3. Detect changes to secrets, variables (`wrangler.toml`), public routes (`/mcp`, `/api/ingest`) or authentication: these are security points to call out.
 
-### Paso 3 — Título
+### Step 3 — Title (Conventional Commits)
 
-Formato: `tipo(alcance): descripción corta en imperativo`, en español.
-Tipos: `feat` (algo nuevo para el usuario), `fix` (corrige un error), `refactor`, `chore` (mantenimiento, dependencias), `docs`, `test`, `ci`.
-Ejemplo: `feat(tarjetas): varias tarjetas de crédito con límite y corte`.
-Si el cambio rompe algo existente, añade `!` tras el alcance (`feat(api)!: …`) y explícalo en la descripción.
+Format: `type(scope): short imperative description`, in English, lowercase after the colon, no trailing period.
 
-### Paso 4 — Descripción
+| Type | Use | Version effect |
+|---|---|---|
+| `feat` | something new for the user | minor |
+| `fix` | fixes a bug | patch |
+| `feat!` / `fix!` (or a `BREAKING CHANGE:` footer in the description) | breaks something that worked before | major |
+| `refactor`, `perf`, `chore`, `docs`, `test`, `ci` | no user-visible change | no release |
 
-Usa esta plantilla con contenido real (nada genérico de relleno):
+The title is what ends up on `main` (squash merge), so it must be accurate. Example: `feat(cards): add multiple credit cards with limit and cutoff day`. Use `!` and a `BREAKING CHANGE:` section in the description whenever the change breaks existing behavior (API, MCP tools, stored data contracts).
+
+### Step 4 — Description
+
+Use this template with real content (no generic filler):
 
 ```markdown
-## ¿Qué hace este PR?
+## What does this PR do?
 
-<2–3 oraciones: qué se puede hacer ahora y por qué>
-
----
-
-## Cambios principales
-
-- `ruta/archivo` — <qué cambió y por qué>
+<2–3 sentences: what can be done now and why>
 
 ---
 
-## Base de datos
+## Main changes
 
-<Migraciones nuevas (nombre y qué hacen) y si conservan los datos existentes. Si no hay: "Sin migraciones.">
-
----
-
-## Seguridad y riesgos
-
-<Autenticación, secretos, validación de entrada, rutas públicas, datos reales en producción. Si nada aplica: "Sin impacto de seguridad.">
+- `path/file` — <what changed and why>
 
 ---
 
-## Plan de prueba
+## Database
+
+<New migrations (name and what they do) and whether they preserve existing data. If none: "No migrations.">
+
+---
+
+## Security and risks
+
+<Authentication, secrets, input validation, public routes, real data in production. If none apply: "No security impact.">
+
+---
+
+## Breaking changes
+
+<Only if the title has `!`: what breaks and how to migrate. Otherwise omit this section.>
+
+---
+
+## Test plan
 
 - [ ] `npm run typecheck`
 - [ ] `npm test`
 - [ ] `npm run build`
-- [ ] <escenario manual concreto probado en el navegador>
+- [ ] <specific manual scenario tested in the browser>
 
 ---
 
-## Despliegue
+## Deploy
 
-Tras el merge, en la carpeta del proyecto:
+After merging, in the project folder:
 
 1. `git checkout main && git pull`
-2. `npm run db:migrate:remote`   <!-- solo si hay migraciones; si no, omitir este paso -->
+2. `npm run db:migrate:remote`   <!-- only if there are migrations; otherwise omit this step -->
 3. `npm run deploy`
-
-**Versión**: <si el cambio requiere subir versión, indicar patch/minor/major; si el proyecto aún no usa releases, omitir>
 ```
 
-### Paso 5 — Confirmar y crear
+### Step 5 — Confirm and create
 
-Si `gh pr view` no encontró PR → modo CREAR. Si encontró uno abierto → modo ACTUALIZAR.
+If `gh pr view` found no PR → CREATE mode. If it found an open one → UPDATE mode.
 
-Muestra el título y la descripción completos y pregunta: _"¿Creamos el PR con esto?"_ (o _"Ya existe el PR #N. ¿Actualizo título y descripción?"_). No sigas hasta que el usuario confirme.
+Show the full title and description and ask: _"Shall we create the PR with this?"_ (or _"PR #N already exists. Update title and description?"_). Do not continue until the user confirms.
 
-CREAR (NO es draft; el PR queda listo para revisar):
+CREATE (NOT a draft; the PR is ready for review):
 
 ```bash
 gh pr create \
   --base main \
-  --head "<rama>" \
-  --title "<título>" \
+  --head "<branch>" \
+  --title "<title>" \
   --body "$(cat <<'EOF'
-<descripción>
+<description>
 EOF
 )"
 ```
 
-ACTUALIZAR:
+UPDATE:
 
 ```bash
-gh pr edit <número> --title "<título>" --body "$(cat <<'EOF'
-<descripción>
+gh pr edit <number> --title "<title>" --body "$(cat <<'EOF'
+<description>
 EOF
 )"
 ```
 
-### Paso 6 — Cierre
+### Step 6 — Wrap up
 
-Muestra la URL del PR y los siguientes pasos: _"Para revisarlo: `/review-pr <número>`. Cuando lo hagas merge, corre los pasos de la sección Despliegue."_
+Show the PR URL and the next steps: _"To review it: `/review-pr <number>`. After merging, run the Deploy steps from the description."_
 
 ---
 
-### Reglas
+### Rules
 
-- Nunca hagas commits, push, merge ni despliegues desde este skill. Solo creas o actualizas el PR.
-- Nunca agregues `Co-Authored-By`, ni menciones a Claude o a una IA, en el título ni en la descripción.
-- No inventes: si no hubo migraciones o cambios de seguridad, dilo con la frase corta de la plantilla.
-- Nunca incluyas secretos, tokens, ni contenido de `.env`, `.dev.vars` o `respaldo.sql`.
+- Never commit, push, merge or deploy from this skill. You only create or update the PR.
+- Never add `Co-Authored-By`, nor mention Claude or any AI, in the title or description.
+- Do not invent: if there were no migrations or security changes, say so with the short phrase from the template.
+- Never include secrets, tokens, or the contents of `.env`, `.dev.vars` or `respaldo.sql`.

@@ -1,21 +1,21 @@
 ---
 name: review-pr
-description: "Revisión de código adversarial para FE Finance: dinero y lógica, arquitectura, seguridad (Cloudflare Access, API, MCP, D1), migraciones, calidad del front (i18n, accesibilidad) y pruebas. Tres modos: la rama actual contra main (self-review local), un PR de GitHub, o 'all' para auditar todo el código en busca de huecos de seguridad y mejoras de calidad. Solo informa; no cambia código."
-when_to_use: "Cuando el usuario quiere revisar un PR, su rama, o todo el código. Triggers: 'review PR', 'revisar PR', 'code review', 'revisar esta rama', 'auditar el código', 'security review'."
-argument-hint: "(vacío = rama actual) | PR-NUMERO | all"
+description: "Adversarial code review for FE Finance: money and logic, architecture, security (Cloudflare Access, API, MCP, D1), migrations, front-end quality (i18n, accessibility) and tests. Three modes: the current branch against main (local self-review), a GitHub PR, or 'all' to audit the whole codebase for security holes and quality improvements. Reports only; never changes code. The report is written in English."
+when_to_use: "When the user wants to review a PR, their branch, or the whole code. Triggers: 'review PR', 'revisar PR', 'code review', 'revisar esta rama', 'auditar el código', 'security review'."
+argument-hint: "(empty = current branch) | PR-NUMBER | all"
 disable-model-invocation: true
 effort: max
 ---
 
-## Instrucciones
+## Instructions
 
-Eres un revisor adversarial de FE Finance, una app de finanzas personales con DATOS REALES (React + Vite, API Hono en Cloudflare Pages Functions, D1, MCP remoto, Excel). Encuentra problemas reales; no des el visto bueno por cortesía. Este skill SOLO informa: no edites código, no hagas commits ni push.
+You are an adversarial reviewer of FE Finance, a personal finance app with REAL DATA (React + Vite, Hono API on Cloudflare Pages Functions, D1, remote MCP, Excel). Find real problems; do not approve out of politeness. This skill ONLY reports: do not edit code, do not commit or push. Write the report in English.
 
-### Fase 0 — Modo y datos
+### Phase 0 — Mode and data
 
-Toma `ARG` = primer argumento.
+Take `ARG` = first argument.
 
-- **Vacío** → *self-review local*: la rama actual contra `origin/main`.
+- **Empty** → *local self-review*: the current branch against `origin/main`.
   ```bash
   git fetch origin --quiet
   git branch --show-current
@@ -23,140 +23,141 @@ Toma `ARG` = primer argumento.
   git diff origin/main..HEAD --name-only
   git diff origin/main..HEAD
   ```
-  (Si hay cambios sin commitear, incluye también `git diff` y `git status --short`; ignora `respaldo.sql`.)
-- **Número o URL** → *PR*: antes de usar `gh`, corre `gh auth status` y exige que la cuenta activa sea `FrankBatista09` y el repo `FrankBatista09/Finanzas`; si no, usa el modo local con la rama del PR y dilo. Nunca uses la cuenta de trabajo.
+  (If there are uncommitted changes, also include `git diff` and `git status --short`; ignore `respaldo.sql`.)
+- **Number or URL** → *PR*: before using `gh`, run `gh auth status` and require the active account to be `FrankBatista09` and the repo `FrankBatista09/Finanzas`; otherwise fall back to local mode with the PR's branch and say so. Never use a work account.
   ```bash
   gh pr view $ARG --json number,title,body,author,baseRefName,headRefName,additions,deletions,changedFiles,url
   gh pr diff $ARG --name-only
   gh pr diff $ARG
   ```
-- **`all`** → *auditoría completa*: no hay diff; el alcance es todo el repositorio (excluye `node_modules`, `dist`, `.wrangler`, `design_handoff`, `respaldo.sql`). Lista los archivos con `git ls-files`.
+- **`all`** → *full audit*: no diff; the scope is the whole repository (exclude `node_modules`, `dist`, `.wrangler`, `design_handoff`, `respaldo.sql`). List files with `git ls-files`.
 
-### Fase 1 — Preparación
+### Phase 1 — Preparation
 
-1. Lee `README.md` (mapa de la app y convenciones). Si existe `CLAUDE.md`, léelo también.
-2. Clasifica los archivos del alcance:
+1. Read `README.md` (app map and conventions). If `CLAUDE.md` exists, read it too.
+2. Classify the files in scope:
 
-   | Ruta | Área |
+   | Path | Area |
    |---|---|
-   | `shared/calc.ts`, `shared/*.ts` | Dominio y dinero (lo comparten web, API, MCP y Excel) |
-   | `shared/excel/` | Excel exportar/importar |
-   | `server/`, `functions/` | API Hono, MCP, validación, base de datos |
-   | `migrations/` | Esquema D1 |
-   | `src/` | Interfaz (React) |
-   | `wrangler.toml`, `package.json`, `vite.config.ts` | Configuración y despliegue |
-   | `*.test.ts(x)`, `tests/` | Pruebas |
-   | `README.md` | Documentación |
+   | `shared/calc.ts`, `shared/*.ts` | Domain and money (shared by web, API, MCP and Excel) |
+   | `shared/excel/` | Excel export/import |
+   | `server/`, `functions/` | Hono API, MCP, validation, database |
+   | `migrations/` | D1 schema |
+   | `src/` | UI (React) |
+   | `wrangler.toml`, `package.json`, `vite.config.ts` | Configuration and deploy |
+   | `*.test.ts(x)`, `tests/` | Tests |
+   | `README.md` | Documentation |
 
-3. Escala de agentes: pequeño (< 100 líneas, ≤ 5 archivos) → 2–3 agentes combinados; mediano → 4; grande o `all` → todos los agentes.
+3. Scale the agents: small (< 100 lines, ≤ 5 files) → 2–3 combined agents; medium → 4; large or `all` → all agents.
 
-### Fase 2 — Agentes en paralelo
+### Phase 2 — Parallel agents
 
-Lanza los agentes con la herramienta **Agent** y `model: "sonnet"`. Cada prompt debe incluir: el modo, la lista de archivos de su área (o el comando para listarla en `all`), las reglas de abajo que le tocan, el formato de salida, y la instrucción de LEER el código de alrededor antes de reportar. En modo PR, que primero hagan `gh pr checkout <número>` solo si no cambia la rama del usuario; si no, que lean con `gh pr diff`.
+Launch the agents with the **Agent** tool and `model: "sonnet"`. Each prompt must include: the mode, the list of files in its area (or the command to list them in `all`), the rules below that apply to it, the output format, and the instruction to READ the surrounding code before reporting. In PR mode they read with `gh pr diff` and must not change the user's checked-out branch.
 
-**1. Dinero y lógica** — `shared/calc.ts` y quien lo use.
-- Todo cálculo de dinero vive en `shared/calc.ts`; ni la UI, ni la API, ni el MCP lo recalculan por su cuenta.
-- Conversión de monedas: tasa vigente por fecha (`rateFor`/`convert`), nunca una tasa implícita; redondeo a centavos consistente; división por cero; montos negativos y cero; NaN/Infinity.
-- Saldos: se calculan a partir del saldo inicial y movimientos; nada se guarda duplicado.
-- Meses cerrados: no deben cambiar sus cifras; copia de gastos/ingresos recurrentes al mes nuevo sin duplicados.
-- Tarjetas de crédito, envíos con comisión, ingresos con tasa propia, oro en gramos: que las reglas documentadas en el README se cumplan en cada camino.
+**1. Money and logic** — `shared/calc.ts` and its consumers.
+- All money math lives in `shared/calc.ts`; the UI, API and MCP never recompute it on their own.
+- Currency conversion: the rate in effect on the date (`rateFor`/`convert`), never an implicit rate; consistent rounding to cents; division by zero; negative and zero amounts; NaN/Infinity.
+- Balances are computed from opening balance plus movements; nothing is stored twice.
+- Closed months must not change their figures; recurring expenses/incomes copied into a new month without duplicates.
+- Credit cards, transfers with fees, incomes with their own rate, gold in grams: the rules documented in the README hold on every path.
 
-**2. Arquitectura y capas**
-- `shared/` NO importa de `server/`, `src/` ni de librerías de UI.
-- `src/` no accede a D1 ni calcula dinero; `server/` no importa de `src/`.
-- Los valores guardados son canónicos en inglés (categorías, métodos); solo se traducen al mostrar.
-- Duplicación de lógica entre API, MCP, Excel y web; funciones o archivos demasiado grandes; código muerto.
+**2. Architecture and layers**
+- `shared/` does NOT import from `server/`, `src/` or UI libraries.
+- `src/` does not access D1 or compute money; `server/` does not import from `src/`.
+- Stored values are canonical English (categories, methods); they are translated only when displayed.
+- Logic duplicated across API, MCP, Excel and web; oversized functions or files; dead code.
 
-**3. Seguridad (Cloudflare Pages Functions, Access, API, MCP, D1)**
-- Autenticación: Cloudflare Access protege la app y `/api/*`; `/mcp` y `/api/ingest/*` van por Bearer (`API_TOKEN`) con comparación de tiempo constante; ninguna ruta nueva queda pública por accidente.
-- Aislamiento por usuario: toda consulta lleva `user_id`; la cabecera `X-User` solo elige entre usuarios de `USERS`; ningún acceso cruzado entre Frank y Eda.
-- Secretos: nada en el código, en el README, en `wrangler.toml [vars]` ni en el repositorio (`.env`, `.dev.vars`, `respaldo.sql` nunca versionados; revisa `git ls-files`). Los secretos de producción son Pages secrets.
-- Entrada: toda entrada externa (API, MCP, ingest, Excel importado) se valida con zod/validación explícita: tipos, rangos, longitudes, fechas; SQL solo con `?` (jamás interpolación de texto en consultas); importación de Excel/zip contra archivos hostiles (tamaño, descompresión, hojas enormes).
-- Endpoints de desarrollo (`/api/dev/*`, `ALLOW_DEV_RESET`): deben estar cerrados en producción.
-- Errores: no filtran detalles internos ni datos de otros usuarios; CORS y cabeceras de seguridad; XSS (`dangerouslySetInnerHTML`, HTML armado a mano); dependencias con vulnerabilidades conocidas (`npm audit --omit=dev` si hay red).
+**3. Security (Cloudflare Pages Functions, Access, API, MCP, D1)**
+- Authentication: Cloudflare Access protects the app and `/api/*`; `/mcp` and `/api/ingest/*` use a Bearer token (`API_TOKEN`) with constant-time comparison; no new route becomes public by accident.
+- Per-user isolation: every query carries `user_id`; the `X-User` header only selects among the `USERS` users; no cross access between users.
+- Secrets: none in code, README, `wrangler.toml [vars]` or the repository (`.env`, `.dev.vars`, `respaldo.sql` never versioned; check `git ls-files`). Production secrets are Pages secrets.
+- Input: every external input (API, MCP, ingest, imported Excel) is validated: types, ranges, lengths, dates; SQL only with `?` placeholders (never string interpolation); Excel/zip import against hostile files (size, decompression, huge sheets).
+- Development endpoints (`/api/dev/*`, `ALLOW_DEV_RESET`) must be closed in production.
+- Errors do not leak internals or other users' data; CORS and security headers; XSS (`dangerouslySetInnerHTML`, hand-built HTML); dependencies with known vulnerabilities (`npm audit --omit=dev` if there is network).
 
-**4. Base de datos y migraciones** — `migrations/`, `server/db.ts`
-- NUNCA se edita una migración existente (producción tiene datos reales); solo se agregan nuevas, aditivas, que conserven todas las filas.
-- Reconstruir tablas (CHECK, columnas) conserva filas, claves foráneas e índices; sin `DROP` sin copia previa; efecto de `ON DELETE`; D1 con claves foráneas activas.
-- Consultas: índices para los filtros usados, `batch` para operaciones que deben ser atómicas, sin N+1 evidente.
+**4. Database and migrations** — `migrations/`, `server/db.ts`
+- An existing migration is NEVER edited (production has real data); only new, additive migrations that keep every row.
+- Rebuilding tables (CHECK, columns) preserves rows, foreign keys and indexes; no `DROP` without a prior copy; `ON DELETE` effects; D1 runs with foreign keys on.
+- Queries: indexes for the filters used, `batch` for operations that must be atomic, no obvious N+1.
 
-**5. Interfaz, i18n y accesibilidad** — `src/`
-- Todo texto visible pasa por el diccionario en inglés, español y turco (`src/i18n`, `strings.ts`); ningún texto fijo en JSX.
-- Accesibilidad: etiquetas (`aria-label`) en controles sin texto, foco y teclado en diálogos y filas de alta, contraste.
-- Tablas sin desborde horizontal a 1440 px; estados vacíos y de error; estado derivado en vez de duplicado; efectos sin fugas.
+**5. UI, i18n and accessibility** — `src/`
+- All visible text goes through the English/Spanish/Turkish dictionaries (`src/i18n`, `strings.ts`); no hard-coded text in JSX.
+- Accessibility: `aria-label` on controls without text, focus and keyboard in dialogs and add rows, contrast.
+- Tables without horizontal overflow at 1440 px; empty and error states; derived state instead of duplicated state; effects without leaks.
 
-**6. Pruebas y documentación**
-- Cada regla nueva de dinero o migración tiene prueba enfocada; pruebas que no verifican nada (siempre verdes), frágiles o que dependen de la hora/orden.
-- El README refleja lo implementado (funciones, endpoints, herramientas MCP, variables, pasos de despliegue).
+**6. Tests, docs and conventions**
+- Every new money rule or migration has a focused test; tests that verify nothing (always green), brittle ones, or ones that depend on time/order.
+- The README reflects what is implemented (features, endpoints, MCP tools, variables, deploy steps).
+- Conventions: new code, comments, commit/PR text and docs are in English; branch name `feat/…`, `fix/…`, etc.; Conventional Commits titles.
 
-#### Formato de salida de cada agente
+#### Output format for each agent
 
 ```
-## {Categoría}
+## {Category}
 
-### Hallazgos
-Por cada uno:
-- **Severidad**: CRITICAL | HIGH | MEDIUM | LOW | NIT
-- **Archivo**: ruta/exacta
-- **Líneas**: inicio–fin
-- **Hallazgo**: descripción clara
-- **Impacto**: qué falla si no se corrige (escenario concreto)
-- **Corrección sugerida**: concreta (snippet si es corto)
+### Findings
+For each one:
+- **Severity**: CRITICAL | HIGH | MEDIUM | LOW | NIT
+- **File**: exact/path
+- **Lines**: start–end
+- **Finding**: clear description
+- **Impact**: what fails if it is not fixed (concrete scenario)
+- **Suggested fix**: concrete (snippet if short)
 
-### Sin problemas
-(si no hay hallazgos, dilo explícitamente)
+### No problems
+(if there are no findings, say so explicitly)
 ```
 
-### Fase 3 — Síntesis
+### Phase 3 — Synthesis
 
-1. Junta todos los hallazgos y fusiona duplicados (anota qué categorías lo vieron).
-2. Verifica los CRITICAL y HIGH tú mismo leyendo el código; descarta los falsos positivos.
-3. Severidad:
+1. Merge all findings and de-duplicate (note which categories saw each).
+2. Verify every CRITICAL and HIGH yourself by reading the code; discard false positives.
+3. Severity:
 
-   | ID | Nivel | Definición | Bloquea merge |
+   | ID | Level | Definition | Blocks merge |
    |---|---|---|---|
-   | C | CRITICAL | Fuga o acceso cruzado de datos, secreto expuesto, pérdida/corrupción de datos, migración destructiva | Sí |
-   | H | HIGH | Bug en un camino normal, cifra de dinero incorrecta, capa violada, validación ausente en entrada externa | Sí |
-   | M | MEDIUM | Diseño débil, prueba faltante, convención rota | A criterio |
-   | L | LOW | Mejora menor | No |
-   | N | NIT | Cosmético | No |
+   | C | CRITICAL | Data leak or cross-user access, exposed secret, data loss/corruption, destructive migration | Yes |
+   | H | HIGH | Bug on a normal path, wrong money figure, layer violation, missing validation on external input | Yes |
+   | M | MEDIUM | Weak design, missing test, broken convention | At reviewer's discretion |
+   | L | LOW | Minor improvement | No |
+   | N | NIT | Cosmetic | No |
 
-4. Ordena por severidad y asigna IDs `C1…`, `H1…`, `M1…`, `L1…`, `N1…`.
+4. Sort by severity and assign IDs `C1…`, `H1…`, `M1…`, `L1…`, `N1…`.
 
-### Formato del informe
+### Report format
 
 ```
-## Review: {PR #número — título | rama → main | auditoría completa}
-**Alcance**: {+adiciones / -borrados en N archivos | N archivos}
-**Áreas**: {lista}
-**Agentes**: {lista}
+## Review: {PR #number — title | branch → main | full audit}
+**Scope**: {+additions / -deletions in N files | N files}
+**Areas**: {list}
+**Agents**: {list}
 
-### Resumen
-{2–4 oraciones: qué hace, calidad general, principales preocupaciones}
+### Summary
+{2–4 sentences: what it does, overall quality, main concerns}
 
-### Veredicto: {APPROVE | REQUEST_CHANGES | COMMENT}
-{una oración}
+### Verdict: {APPROVE | REQUEST_CHANGES | COMMENT}
+{one sentence}
 
-### Hallazgos ({total})
-Cada hallazgo es una casilla para tachar cuando se corrija.
+### Findings ({total})
+Each finding is a checkbox to tick once fixed.
 
 #### CRITICAL ({n})
-- [ ] **C1** · {Categoría} · `{archivo}:{línea}` — {hallazgo} → _{corrección}_
-(… HIGH, MEDIUM, LOW, NITs igual)
+- [ ] **C1** · {Category} · `{file}:{line}` — {finding} → _{fix}_
+(… HIGH, MEDIUM, LOW, NITs the same way)
 
-### Observaciones positivas
-{2–4 cosas bien hechas}
+### What is done well
+{2–4 things done right}
 ```
 
-En modo `all` el veredicto se reemplaza por **Estado general** (seguridad, calidad, deuda técnica) y se añade al final una lista priorizada de "qué arreglar primero" en grupos de trabajo pequeños (cada grupo = una rama).
+In `all` mode, replace the verdict with **Overall status** (security, quality, technical debt) and end with a prioritized "fix first" list in small work groups (each group = one branch, named `fix/…` or `chore/…`).
 
-### Fase 4 — Publicar (solo modo PR)
+### Phase 4 — Post (PR mode only)
 
-Solo si el usuario lo pide y confirma: _"Listo para postear este review a GitHub como {veredicto}. ¿Confirmas?"_ Luego `gh pr review <número> --repo FrankBatista09/Finanzas <--approve|--request-changes|--comment> --body "…"`. Si GitHub no deja aprobar tu propio PR, usa `--comment` e infórmalo. En modo local o `all`, no publiques nada.
+Only if the user asks and confirms: _"Ready to post this review to GitHub as {verdict}. Confirm?"_ Then `gh pr review <number> --repo FrankBatista09/Finanzas <--approve|--request-changes|--comment> --body "…"`. If GitHub does not let you approve your own PR, use `--comment` and say so. In local or `all` mode, post nothing.
 
-### Reglas
+### Rules
 
-- Sé específico: "línea 42 interpola `userId` en el SQL" vale más que "podría haber inyección".
-- Verifica antes de reportar: si el problema se maneja en otro lado, no lo reportes. Cero hallazgos en una categoría es un resultado válido.
-- El aislamiento entre usuarios, las migraciones y los secretos no son negociables: un fallo ahí es CRITICAL o HIGH.
-- Al sugerir correcciones, los mensajes de commit van en español, sin `Co-Authored-By`.
+- Be specific: "line 42 interpolates `userId` into the SQL" beats "there might be injection".
+- Verify before reporting: if the problem is handled elsewhere, do not report it. Zero findings in a category is a valid result.
+- Per-user isolation, migrations and secrets are non-negotiable: a failure there is CRITICAL or HIGH.
+- When suggesting fixes, commit messages are English Conventional Commits without `Co-Authored-By`.
