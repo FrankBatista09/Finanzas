@@ -15,6 +15,7 @@ import {
   cardOtherChange,
   cardPayment,
   cardUnpay,
+  cardUnpayOne,
   contributionChange,
   currencyChange,
   fixedChange,
@@ -183,13 +184,17 @@ export function createActions(
       return true;
     },
     payCard(amount, accountId) {
-      const action = store.state && monthKey ? cardPayment(store.state, monthKey, amount, accountId) : null;
+      const action = store.state && monthKey ? cardPayment(store.state, monthKey, amount, accountId, makeId(), today()) : null;
       if (!action) return false;
       store.dispatch(action);
       return true;
     },
     unpayCard() {
       const action = store.state && monthKey ? cardUnpay(store.state, monthKey) : null;
+      if (action) store.dispatch(action);
+    },
+    removeCardPayment(id) {
+      const action = store.state && monthKey ? cardUnpayOne(store.state, monthKey, id) : null;
       if (action) store.dispatch(action);
     },
 

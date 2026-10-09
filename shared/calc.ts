@@ -22,6 +22,7 @@ import type {
   Income,
   ISODate,
   Month,
+  CardPayment,
   MonthCard,
   MonthKey,
   OutsideExpense,
@@ -36,7 +37,7 @@ export function outsideOf(m: Month): readonly OutsideExpense[] {
 
 /** La tarjeta de crédito de un mes (Month.card es opcional). */
 export function cardOf(m: Month): MonthCard {
-  return m.card ?? { other: 0, paid: null, accountId: null };
+  return m.card ?? { other: 0, payments: [] };
 }
 
 /** Un gasto fijo que se paga con la tarjeta. */
@@ -412,8 +413,7 @@ export function balances(state: AppState, asOf: MonthKey): Balances {
     for (const f of m.fixed) if (f.paid && !isOnCard(f)) move(f.accountId, key, f.amount, f.cur, -1);
     // Lo ÚNICO que la tarjeta le resta a una cuenta: lo que se pagó, en la moneda principal, convertido a la de la
     // cuenta con la última tasa del mes (como un gasto fijo, que tampoco guarda fecha).
-    const card = cardOf(m);
-    if (card.paid !== null && card.accountId) move(card.accountId, key, card.paid, state.mainCurrency, -1);
+    for (const p of cardOf(m).payments) move(p.accountId, key, p.amount, state.mainCurrency, -1);
     for (const t of m.transfers) {
       const from = byId.get(t.fromAccountId);
       const to = byId.get(t.toAccountId);
@@ -476,11 +476,11 @@ export interface CardCalc {
   charged: number;
   /** previous + other + charged: lo que se debe a la tarjeta este mes (T). */
   total: number;
-  /** Lo pagado este mes (P); null = sin pagar. */
-  paid: number | null;
-  /** Cuenta de la que salió el pago; null = ninguna. */
-  accountId: string | null;
-  /** Lo que pasa al mes siguiente: total − paid (o todo el total si no se pagó). */
+  /** Lo pagado este mes (P): la suma de los pagos; 0 si no hay. */
+  paid: number;
+  /** Los pagos del mes, cada uno con su cuenta y su fecha. */
+  payments: CardPayment[];
+  /** Lo que falta por pagar: total − paid. Sigue pendiente este mes y, si el mes se cierra así, pasa al siguiente. */
   remainder: number;
 }
 
@@ -503,9 +503,9 @@ function cardTable(state: AppState): Map<MonthKey, CardCalc> {
     for (const t of m.tx) if (isCardTx(t)) charged += convert(state, key, t.amount, t.cur, main, t.date);
     const other = stored.other || 0;
     const total = previous + other + charged;
-    const paid = stored.paid;
-    const remainder = total - (paid ?? 0);
-    table.set(key, { key, previous, other, charged, total, paid, accountId: stored.accountId, remainder });
+    const paid = stored.payments.reduce((a, p) => a + p.amount, 0);
+    const remainder = total - paid;
+    table.set(key, { key, previous, other, charged, total, paid, payments: stored.payments, remainder });
     previous = remainder;
   }
   cardMemo.set(state, table);
@@ -520,8 +520,8 @@ function cardTable(state: AppState): Map<MonthKey, CardCalc> {
 export function cardAccountFor(state: AppState, key: MonthKey): MoneyAccount | null {
   const usable = new Map(moneyAccounts(state).map((a) => [a.id, a]));
   for (const k of sortedKeys(state).filter((k) => k <= key).reverse()) {
-    const hit = state.months[k]!.card?.accountId;
-    if (hit && usable.has(hit)) return usable.get(hit)!;
+    const payments = state.months[k]!.card?.payments ?? [];
+    for (const p of [...payments].reverse()) if (usable.has(p.accountId)) return usable.get(p.accountId)!;
   }
   return defaultAccount(state);
 }
@@ -829,10 +829,10 @@ export function monthCalc(state: AppState, key: MonthKey): MonthCalc {
     fixedAll += v;
     if (f.paid) fixedPaid += v;
   }
-  // La fila de la tarjeta: mientras no se paga es un pendiente por todo su total; al pagarla cuenta como pagado lo
-  // pagado, y lo que quedó debiendo ya no es de este mes sino del siguiente.
-  fixedAll += card.paid ?? card.total;
-  fixedPaid += card.paid ?? 0;
+  // La fila de la tarjeta: lo pagado cuenta como pagado y lo que falta sigue siendo un pendiente de este mes (puede
+  // pagarse aún); si el mes se cierra así, pasa al siguiente por el saldo derivado (cardCalc.previous).
+  fixedAll += card.payments.length ? card.paid + Math.max(card.remainder, 0) : card.total;
+  fixedPaid += card.paid;
   const pending = fixedAll - fixedPaid;
 
   let varSpent = 0;
@@ -882,7 +882,7 @@ export function monthCalc(state: AppState, key: MonthKey): MonthCalc {
     .sort((a, b) => b.value - a.value);
   // «Fixed expenses» = lo pagado en fijos desde una cuenta + lo cargado a la tarjeta; el pago de la tarjeta no es
   // una categoría (lo que contiene ya está repartido en ellas).
-  const categories = [{ name: FIXED_CATEGORY, value: fixedPaid - (card.paid ?? 0) + fixedCharged, fixed: true }, ...catSums].filter((c) => c.value > 0);
+  const categories = [{ name: FIXED_CATEGORY, value: fixedPaid - card.paid + fixedCharged, fixed: true }, ...catSums].filter((c) => c.value > 0);
 
   return {
     key,

@@ -304,9 +304,11 @@ export class FinanzasStore {
       case 'card/other':
         return api.setCardOther(action.key, { other: action.other }, opts);
       case 'card/pay':
-        return api.payCard(action.key, { amount: action.amount, accountId: action.accountId }, opts);
+        return api.payCard(action.key, { id: action.payment.id, amount: action.payment.amount, accountId: action.payment.accountId, date: action.payment.date }, opts);
       case 'card/unpay':
         return api.unpayCard(action.key, opts);
+      case 'card/unpayOne':
+        return api.removeCardPayment(action.key, action.id, opts);
       case 'rate/set':
         return api.putMonthRate(action.key, action.rate, opts);
       case 'rate/remove':

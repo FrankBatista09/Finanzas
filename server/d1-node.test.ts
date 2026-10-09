@@ -29,6 +29,7 @@ describe('adaptador D1 sobre node:sqlite', () => {
       fixed_expenses: 2,
       transactions: 2,
       outside_expenses: 2,
+      card_payments: 2,
       transfers: 2,
       incomes: 2,
       goals: 2,

@@ -1,5 +1,5 @@
-// Tarjeta de crédito como pago diferido por el repositorio y la API: migración 0009, gasto fijo «en tarjeta»,
-// otros cargos, pagar (total o en parte) y deshacer, validación, mes cerrado, cuenta en uso, copia al cerrar el mes
+// Tarjeta de crédito como pago diferido por el repositorio y la API: migraciones 0009 y 0010, gasto fijo «en tarjeta»,
+// otros cargos, pagar (total o en parte, varias veces) y deshacer, validación, mes cerrado, cuenta en uso, copia al cerrar el mes
 // e importación.
 
 import { describe, expect, it } from 'vitest';
@@ -31,8 +31,8 @@ const fixedBody = { monthKey: OCT, name: 'Gym', amount: 1000, cur: 'DOP' as cons
 describe('migración 0009', () => {
   it('es la última, solo añade columnas y nada de lo que había cambia', () => {
     const files = migrationFiles();
-    expect(files.at(-1)).toBe('0009_credit_card.sql');
-    const db = createTestDb(files.slice(0, -1));
+    expect(files.at(-2)).toBe('0009_credit_card.sql');
+    const db = createTestDb(files.slice(0, -2));
     db.sqlite.exec(`
       INSERT INTO months (user_id, key, closed, closed_at) VALUES ('frank', '2026-10', 0, NULL);
       INSERT INTO accounts (user_id, id, name, currency, opening, hidden, sort) VALUES ('frank', 'dr', 'DR account', 'DOP', 100, 0, 0);
@@ -47,6 +47,70 @@ describe('migración 0009', () => {
       { name: 'Tarjeta de credito', paid: 0, on_card: 0 },
     ]);
     expect(db.sqlite.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
+  });
+});
+
+describe('migración 0010', () => {
+  const FILE = '0010_card_payments.sql';
+  const files = migrationFiles();
+
+  /** Una base con 0001–0009 y tres usuarios con la tarjeta pagada de distintas maneras. */
+  function before() {
+    expect(files.at(-1)).toBe(FILE);
+    const db = createTestDb(files.slice(0, -1));
+    db.sqlite.exec(`
+      INSERT INTO months (user_id, key, closed, closed_at, card_other, card_paid, card_account_id) VALUES
+        ('frank', '2026-09', 1, '2026-10-01T04:00:00.000Z', 100, 100, 'us'),
+        ('frank', '2026-10', 0, NULL, 500, 300, 'dr'),
+        ('frank', '2026-11', 0, NULL, 50, NULL, NULL),
+        ('eda', '2026-10', 0, NULL, 0, 40, NULL),
+        ('ana', '2026-10', 0, NULL, 0, 40, 'gone');
+      INSERT INTO accounts (user_id, id, name, currency, opening, hidden, sort) VALUES
+        ('frank', 'dr', 'DR', 'DOP', 0, 0, 1), ('frank', 'us', 'US', 'USD', 0, 0, 0),
+        ('eda', 'e1', 'E1', 'DOP', 0, 0, 0), ('eda', 'e2', 'E2', 'DOP', 0, 0, 1);
+      INSERT INTO settings (user_id, key, value) VALUES ('eda', 'default_account', 'e2');
+    `);
+    return db;
+  }
+  const payments = (db: ReturnType<typeof before>) =>
+    db.sqlite.prepare('SELECT user_id, id, month_key, date, account_id, amount, sort FROM card_payments ORDER BY user_id, month_key').all().map((r) => ({ ...r }));
+
+  it('cada mes con card_paid pasa a ser un pago: último día, su cuenta o la por defecto; lo demás no cambia', () => {
+    const db = before();
+    const months = db.sqlite.prepare('SELECT * FROM months ORDER BY user_id, key').all().map((r) => ({ ...r }));
+    applyMigrations(db, [FILE]);
+    expect(payments(db).map(({ id, ...p }) => ({ ...p, idOk: /^[0-9a-f]{32}$/.test(String(id)) }))).toEqual([
+      // Eda: sin cuenta guardada → su cuenta por defecto (e2). Ana: no tiene cuentas → no hay a qué cargarlo.
+      { user_id: 'eda', month_key: '2026-10', date: '2026-10-31', account_id: 'e2', amount: 40, sort: 0, idOk: true },
+      { user_id: 'frank', month_key: '2026-09', date: '2026-09-30', account_id: 'us', amount: 100, sort: 0, idOk: true },
+      { user_id: 'frank', month_key: '2026-10', date: '2026-10-31', account_id: 'dr', amount: 300, sort: 0, idOk: true },
+    ]);
+    // Las columnas viejas se quedan como estaban y nada más cambia.
+    expect(db.sqlite.prepare('SELECT * FROM months ORDER BY user_id, key').all().map((r) => ({ ...r }))).toEqual(months);
+    expect(db.sqlite.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
+  });
+
+  it('la tabla exige mes y cuenta del mismo usuario, y se va con su mes', () => {
+    const db = before();
+    applyMigrations(db, [FILE]);
+    const insert = (user: string, id: string, month: string, account: string) =>
+      db.sqlite.exec(`INSERT INTO card_payments (user_id, id, month_key, date, account_id, amount) VALUES ('${user}', '${id}', '${month}', '2026-10-01', '${account}', 1)`);
+    expect(() => insert('frank', 'x', '2026-10', 'e1')).toThrow(); // la cuenta es de Eda
+    expect(() => insert('frank', 'x', '2030-01', 'dr')).toThrow(); // el mes no existe
+    insert('frank', 'x', '2026-10', 'dr');
+    insert('frank', 'y', '2026-10', 'us'); // varios pagos en el mismo mes
+    expect(() => insert('frank', 'y', '2026-10', 'us')).toThrow(); // clave (user_id, id)
+    db.sqlite.exec("DELETE FROM months WHERE user_id = 'frank' AND key = '2026-10'");
+    expect(db.sqlite.prepare("SELECT COUNT(*) AS n FROM card_payments WHERE id IN ('x', 'y')").get()).toEqual({ n: 0 });
+  });
+
+  it('el servidor lee lo copiado como pagos y los saldos coinciden con los de antes', async () => {
+    const db = before();
+    applyMigrations(db, [FILE]);
+    const state = await loadState(db as unknown as Parameters<typeof loadState>[0], 'frank');
+    expect(state.months['2026-10']!.card).toEqual({ other: 500, payments: [{ id: expect.any(String), date: '2026-10-31', accountId: 'dr', amount: 300 }] });
+    expect(state.months['2026-11']!.card).toEqual({ other: 50, payments: [] });
+    expect(cardCalc(state, '2026-10')).toMatchObject({ paid: 300, remainder: 200 });
   });
 });
 
@@ -90,14 +154,14 @@ describe('otros cargos y pago de la tarjeta', () => {
   it('guarda otros cargos y los suma al total; un mes sin tarjeta conserva su forma', async () => {
     const { api } = await seeded();
     const r = await api.patch<Month>(`/api/months/${OCT}/card`, { other: 250.5 });
-    expect(r.body.card).toEqual({ other: 250.5, paid: null, accountId: null });
+    expect(r.body.card).toEqual({ other: 250.5, payments: [] });
     expect(cardCalc((await api.get<StateResponse>('/api/state')).body.state, OCT).total).toBe(250.5);
     const cleared = await api.patch<Month>(`/api/months/${OCT}/card`, { other: 0 });
     expect('card' in cleared.body).toBe(false);
     expect((await api.patch(`/api/months/${OCT}/card`, { other: -1 })).status).toBe(400);
   });
 
-  it('paga en parte y solo entonces resta de la cuenta; volver a pagar sustituye; deshacer lo devuelve todo', async () => {
+  it('paga en parte y solo entonces resta de la cuenta; varios pagos se suman; quitar uno o todos lo devuelve', async () => {
     const { api, db } = await seeded();
     const base = await loadState(db, F);
     await api.patch(`/api/months/${OCT}/card`, { other: 1000 });
@@ -106,21 +170,33 @@ describe('otros cargos y pago de la tarjeta', () => {
     expect(balanceOf(state, 'dr')).toBe(balanceOf(base, 'dr'));
     expect(monthCalc(state, OCT).used).toBeCloseTo(monthCalc(base, OCT).used, 9);
 
-    const paid = await api.post<Month>(`/api/months/${OCT}/card/pay`, { amount: 400 });
-    expect(paid.body.card).toEqual({ other: 1000, paid: 400, accountId: 'dr' });
+    const first = await api.post<Month>(`/api/months/${OCT}/card/pay`, { id: 'pay1', amount: 400, date: '2026-10-10' });
+    expect(first.body.card).toEqual({ other: 1000, payments: [{ id: 'pay1', date: '2026-10-10', accountId: 'dr', amount: 400 }] });
     state = await loadState(db, F);
     expect(balanceOf(state, 'dr')).toBeCloseTo(balanceOf(base, 'dr') - 400, 9);
     expect(monthCalc(state, OCT).used).toBeCloseTo(monthCalc(base, OCT).used + 400, 9);
-    expect(cardCalc(state, OCT).remainder).toBe(1100);
+    expect(cardCalc(state, OCT)).toMatchObject({ paid: 400, remainder: 1100 });
 
-    // Otro pago sustituye al anterior (no se suma) y puede salir de otra cuenta, en la moneda de esa cuenta.
-    await api.post(`/api/months/${OCT}/card/pay`, { amount: 1500, accountId: 'us' });
+    // Otro pago NO sustituye al anterior: se suma, puede salir de otra cuenta (en su moneda) y por defecto repite la del último.
+    const second = await api.post<Month>(`/api/months/${OCT}/card/pay`, { amount: 587.6, accountId: 'us' });
+    expect(second.body.card!.payments.map((p) => [p.accountId, p.amount])).toEqual([['dr', 400], ['us', 587.6]]);
+    const third = await api.post<Month>(`/api/months/${OCT}/card/pay`, { amount: 100 });
+    expect(third.body.card!.payments[2]).toMatchObject({ accountId: 'us', amount: 100 });
     state = await loadState(db, F);
-    expect(balanceOf(state, 'dr')).toBe(balanceOf(base, 'dr'));
-    expect(balanceOf(state, 'us')).toBeCloseTo(balanceOf(base, 'us') - 1500 / 58.76, 9);
+    expect(balanceOf(state, 'dr')).toBeCloseTo(balanceOf(base, 'dr') - 400, 9);
+    expect(balanceOf(state, 'us')).toBeCloseTo(balanceOf(base, 'us') - 687.6 / 58.76, 9);
+    expect(cardCalc(state, OCT)).toMatchObject({ paid: 1087.6 });
+    // Lo que falta sigue pendiente este mes.
+    expect(monthCalc(state, OCT).pending).toBeCloseTo(monthCalc(base, OCT).pending + 412.4, 9);
+
+    // Quitar uno solo; uno que no existe es 404.
+    const one = await api.del<Month>(`/api/months/${OCT}/card/pay/pay1`);
+    expect(one.body.card!.payments.map((p) => p.amount)).toEqual([587.6, 100]);
+    expect((await api.del(`/api/months/${OCT}/card/pay/pay1`)).status).toBe(404);
+    expect((await api.del(`/api/months/${OCT}/card/pay/${third.body.card!.payments[2]!.id}x`)).status).toBe(404);
 
     const undone = await api.del<Month>(`/api/months/${OCT}/card/pay`);
-    expect(undone.body.card).toEqual({ other: 1000, paid: null, accountId: null });
+    expect(undone.body.card).toEqual({ other: 1000, payments: [] });
     expect(balanceOf(await loadState(db, F), 'us')).toBe(balanceOf(base, 'us'));
   });
 
@@ -131,7 +207,8 @@ describe('otros cargos y pago de la tarjeta', () => {
     const snapshot = JSON.stringify(await loadState(db, F));
     const pay = (body: unknown, key = OCT) => api.post(`/api/months/${key}/card/pay`, body);
     const bad: [unknown, number, unknown][] = [
-      [{ amount: 1000.01 }, 400, 'amount: the card total for 2026-10 is 1000.00; it cannot be paid for more than that.'],
+      [{ amount: 1000.01 }, 400, 'amount: the credit card has 1000.00 left to pay in 2026-10; it cannot be paid for more than that.'],
+      [{ amount: 10, date: '2026-09-30' }, 400, 'Invalid data: date: must be a date in 2026-10'],
       [{ amount: 0 }, 400, 'Invalid data: amount: must be greater than 0'],
       [{ amount: -5 }, 400, 'Invalid data: amount: must be greater than 0'],
       [{ amount: 10, accountId: 'nope' }, 400, 'Unknown account "nope".'],
@@ -147,13 +224,16 @@ describe('otros cargos y pago de la tarjeta', () => {
     expect((await api.patch('/api/months/2026-09/card', { other: 1 })).error?.code).toBe('month_closed');
     expect((await api.del('/api/months/2026-09/card/pay')).error?.code).toBe('month_closed');
     expect(JSON.stringify(await loadState(db, F))).toBe(snapshot);
-    // El total exacto sí se puede pagar.
-    expect((await pay({ amount: 1000 })).status).toBe(200);
+    // Lo que falta exacto sí se puede pagar; pasado eso ya no queda nada.
+    expect((await pay({ amount: 400 })).status).toBe(200);
+    expect((await pay({ amount: 600.01 })).error?.message).toBe('amount: the credit card has 600.00 left to pay in 2026-10; it cannot be paid for more than that.');
+    expect((await pay({ amount: 600 })).status).toBe(200);
+    expect((await pay({ amount: 1 })).status).toBe(400);
   });
 
   it('sin nada que pagar no se puede pagar; la cuenta del pago impide eliminar la cuenta', async () => {
     const { api } = await seeded();
-    expect((await api.post(`/api/months/${OCT}/card/pay`, { amount: 1 })).error?.message).toBe('There is nothing to pay on the credit card in 2026-10.');
+    expect((await api.post(`/api/months/${OCT}/card/pay`, { amount: 1 })).error?.message).toBe('There is nothing left to pay on the credit card in 2026-10.');
     await api.post('/api/accounts', { id: 'extra', name: 'Extra', currency: 'DOP' });
     await api.patch(`/api/months/${OCT}/card`, { other: 50 });
     await api.post(`/api/months/${OCT}/card/pay`, { amount: 50, accountId: 'extra' });
@@ -181,7 +261,7 @@ describe('Excel', () => {
     } as Parameters<typeof applyImport>[2];
     await applyImport(db, F, payload);
     const after = await loadState(db, F);
-    expect(after.months[OCT]!.card).toEqual({ other: 700, paid: 300, accountId: 'dr' });
+    expect(after.months[OCT]!.card).toEqual({ other: 700, payments: [expect.objectContaining({ accountId: 'dr', amount: 300 })] });
     expect(balanceOf(after, 'dr')).toBeCloseTo(balanceOf(state, 'dr'), 4);
   });
 });

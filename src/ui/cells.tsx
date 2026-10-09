@@ -275,12 +275,18 @@ export interface CellCheckboxProps {
   label: string;
   disabled?: boolean;
   className?: string;
+  /** Casilla a medias (guion): algo hecho pero no todo. Solo se ve cuando `checked` es false. */
+  indeterminate?: boolean;
 }
 
-export function CellCheckbox({ checked, onCommit, label, disabled, className }: CellCheckboxProps) {
+export function CellCheckbox({ checked, onCommit, label, disabled, className, indeterminate }: CellCheckboxProps) {
   return (
     <input
       type="checkbox"
+      // `indeterminate` no es un atributo: solo se fija por la propiedad del elemento (y se repone tras cada clic).
+      ref={(el) => {
+        if (el) el.indeterminate = !!indeterminate && !checked;
+      }}
       className={cx(styles.checkbox, className)}
       checked={checked}
       onChange={(e) => onCommit?.(e.target.checked)}
