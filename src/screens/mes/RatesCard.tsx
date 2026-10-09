@@ -6,7 +6,7 @@ import { AddButton, AddRow, AddRowButton, ExpandableCard, CardHeader, CardNote, 
 import { canAddRate, EMPTY_RATE, pickRateCurrency, rateDate, ratePair } from './drafts';
 import { RateCell } from './RateCell';
 import styles from './RatesCard.module.css';
-import { rateRows, shortDate, showRate, shownRates, usedCurrencies } from './rows';
+import { noRatesNeeded, rateRows, shortDate, showRate, shownRates, usedCurrencies } from './rows';
 import { MES } from './strings';
 
 /**
@@ -24,10 +24,12 @@ export function RatesCard() {
   const [draft, setDraft] = useState(EMPTY_RATE);
   const adding = useAddRow(() => setDraft(EMPTY_RATE));
 
-  const shown = shownRates(rates, usedCurrencies(main, second, visibleAccounts, month));
+  const shown = shownRates(rates, usedCurrencies(main, second, visibleAccounts, month), main);
   const rows = rateRows(shown, month.rates, rates, monthKey, draftDate);
   const pair = ratePair(draft, shown, main, second);
   const date = rateDate(draft, pair, rates, monthKey, draftDate);
+  // Con todo el dinero en una moneda la tabla sobra; "Add rate" se queda por si el usuario quiere escribir una tasa suelta.
+  const empty = noRatesNeeded(shown) && !adding.open;
 
   const add = () => {
     if (!canAddRate(draft) || !actions.setMonthRate(pair[0], pair[1], draft.rate, date)) return false;
@@ -36,9 +38,19 @@ export function RatesCard() {
     return true;
   };
 
+  const header = <CardHeader title={t('monthRates')} action={!readOnly && <AddRowButton control={adding}>{t('addRate')}</AddRowButton>} />;
+  if (empty) {
+    return (
+      <ExpandableCard title={t('monthRates')}>
+        {header}
+        <CardNote>{s('noRatesNeeded', { currency: main })}</CardNote>
+      </ExpandableCard>
+    );
+  }
+
   return (
     <ExpandableCard title={t('monthRates')}>
-      <CardHeader title={t('monthRates')} action={!readOnly && <AddRowButton control={adding}>{t('addRate')}</AddRowButton>} />
+      {header}
       <CardNote>{s('ratesNote')}</CardNote>
       <SheetTable label={t('monthRates')}>
         <thead>

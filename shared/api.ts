@@ -152,7 +152,8 @@
 //     nombrar una cuenta existente del usuario → si no, 400 validation. Si al crear un fijo, una transacción o un
 //     ingreso falta `accountId`, se usa la cuenta por defecto (defaultAccount en shared/calc.ts). Un envío necesita
 //     dos cuentas distintas; si falta `rate` se usa la tasa del mes para ese par (1 entre cuentas de igual moneda).
-//   · Monedas: mainCurrency y secondCurrency deben ser distintas.
+//   · Monedas: mainCurrency y secondCurrency deben ser distintas; secondCurrency puede ser null (o "none") = sin segunda
+//     moneda.
 //   · Oro: 'XAU' (gramos) solo vale como `currency` de una cuenta y como `cur` de un ingreso a una cuenta de oro
 //     (que entonces es obligatorio: sus gramos, y nunca con `budget: true`). No es moneda principal ni segunda, ni
 //     de metas, aportes, gastos, transacciones o tasas (400 validation). Una cuenta de oro no puede llevar parte
@@ -229,7 +230,8 @@ export interface SettingsUpdate {
   language?: Language;
   /** Deben quedar distintas; para intercambiarlas se mandan las dos en la misma petición. */
   mainCurrency?: Currency;
-  secondCurrency?: Currency;
+  /** null (o "none" en la petición HTTP) = sin segunda moneda. */
+  secondCurrency?: Currency | null;
   /** Una cuenta de dinero existente del usuario (no de oro), o null para la automática. */
   defaultAccountId?: string | null;
   /** Lo que vale 1 gramo de oro, en una moneda normal; null quita el precio. */
@@ -240,7 +242,7 @@ export interface SettingsResponse {
   theme: ThemeColors | null;
   language: Language;
   mainCurrency: Currency;
-  secondCurrency: Currency;
+  secondCurrency: Currency | null;
   defaultAccountId: string | null;
   goldPrice: GoldPrice | null;
 }

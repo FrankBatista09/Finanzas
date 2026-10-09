@@ -74,6 +74,12 @@ const isoDate = () => z.string({ error: typed('must be a date (YYYY-MM-DD)') }).
 const currency = () => z.enum(['DOP', 'USD', 'TRY'], { error: 'must be DOP, USD or TRY' });
 // El oro ('XAU', en gramos) solo se acepta donde va una cuenta: su moneda y la de un ingreso que le entra.
 const accountCurrency = () => z.enum(['DOP', 'USD', 'TRY', GOLD], { error: 'must be DOP, USD, TRY or XAU (gold, in grams)' });
+// The second currency is optional: null or "none" mean no second currency.
+const secondCurrency = () =>
+  z
+    .enum(['DOP', 'USD', 'TRY', 'none'], { error: 'must be DOP, USD or TRY' })
+    .nullable()
+    .transform((value) => (value === 'none' ? null : value));
 const bool = () => z.boolean({ error: typed('must be true or false') });
 
 // ── Ajustes del usuario ──────────────────────────────────────────────────────
@@ -99,7 +105,7 @@ export const settingsUpdateSchema = z
     theme: theme().optional(),
     language: z.custom<Language>(isLanguage, { error: `must be one of: ${LANGUAGE_IDS}` }).optional(),
     mainCurrency: currency().optional(),
-    secondCurrency: currency().optional(),
+    secondCurrency: secondCurrency().optional(),
     defaultAccountId: id().nullable().optional(),
     // Lo que vale 1 gramo de oro, en una moneda normal; null quita el precio.
     goldPrice: z.strictObject({ amount: positive(), currency: currency() }, { error: typed('must be null or { amount, currency }') }).nullable().optional(),
@@ -107,7 +113,7 @@ export const settingsUpdateSchema = z
   .refine((s) => Object.values(s).some((value) => value !== undefined), {
     error: 'nothing to change: send theme, language, mainCurrency, secondCurrency, defaultAccountId or goldPrice',
   })
-  .refine((s) => s.mainCurrency === undefined || s.mainCurrency !== s.secondCurrency, {
+  .refine((s) => s.mainCurrency === undefined || s.secondCurrency === undefined || s.secondCurrency === null || s.mainCurrency !== s.secondCurrency, {
     error: SAME_CURRENCY,
     path: ['secondCurrency'],
   }) satisfies z.ZodType<SettingsUpdate>;

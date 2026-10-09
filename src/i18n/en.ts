@@ -99,6 +99,7 @@ export const en = {
   currencies: 'Currencies',
   mainCurrency: 'Main currency',
   secondCurrency: 'Second currency',
+  noSecondCurrency: 'None',
   defaultAccount: 'Default account',
   automatic: 'Automatic',
   automaticNamed: 'Automatic ({name})',

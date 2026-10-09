@@ -2,7 +2,7 @@
 // Funciones puras, sin React y sin textos: los que dependen del idioma están en strings.ts.
 
 import type { TransferFee } from '../../../shared/calc';
-import { CREDIT_CARD_METHOD, CURRENCIES, METHODS, VIAS } from '../../../shared/constants';
+import { CREDIT_CARD_METHOD, METHODS, VIAS } from '../../../shared/constants';
 import { fRate } from '../../../shared/format';
 import { firstDay } from '../../../shared/month';
 import type { Account, CreditCard, Currency, FixedExpense, ISODate, Month, MonthKey, MonthRate, Transaction } from '../../../shared/types';
@@ -149,27 +149,12 @@ export function rowAccountOptions(base: readonly AccountOption[], accounts: read
 
 // ── Tasas del mes ────────────────────────────────────────────────────────────
 
-/**
- * Las monedas que el usuario usa de verdad en este mes: la principal, la segunda, las de sus cuentas visibles y
- * las de los gastos del mes (un gasto en liras sin cuenta en liras también se convierte). En el orden de siempre.
- */
-export function usedCurrencies(
-  main: Currency,
-  second: Currency,
-  visible: readonly { currency: Currency }[],
-  month: { fixed: readonly { cur: Currency }[]; tx: readonly { cur: Currency }[] },
-): Currency[] {
-  const used = new Set<Currency>([main, second, ...visible.map((a) => a.currency), ...month.fixed.map((f) => f.cur), ...month.tx.map((t) => t.cur)]);
-  return CURRENCIES.filter((c) => used.has(c));
-}
+// usedCurrencies y shownRates viven en store/view.ts: la barra superior necesita saber qué tasas hacen falta.
+export { shownRates, usedCurrencies } from '../../store/view';
 
-/**
- * Las tasas que enseña la tarjeta "Tasas del mes": las de los pares entre monedas que se usan y, además, cualquier
- * tasa escrita para este mes (si está escrita se tiene que poder ver, corregir y quitar). Conserva el orden de
- * `rates`, que trae primero el par de la barra superior.
- */
-export function shownRates(rates: readonly PairRate[], used: readonly Currency[]): PairRate[] {
-  return rates.filter((r) => r.source === 'month' || (used.includes(r.from) && used.includes(r.to)));
+/** No hace falta ninguna tasa: todo el dinero está en una moneda y no hay ninguna escrita este mes que enseñar. */
+export function noRatesNeeded(shown: readonly PairRate[]): boolean {
+  return shown.length === 0;
 }
 
 const samePair = (r: { from: Currency; to: Currency }, from: Currency, to: Currency) =>

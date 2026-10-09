@@ -52,9 +52,11 @@ export function BudgetPanel() {
             <div className={styles.total}>
               {f2(calc.budget)} <span className={styles.totalUnit}>{main}</span>
             </div>
-            <div className={styles.totalSecond}>
-              ≈ {f2(calc.budgetSecond)} {second}
-            </div>
+            {second && calc.budgetSecond !== null && (
+              <div className={styles.totalSecond}>
+                ≈ {f2(calc.budgetSecond)} {second}
+              </div>
+            )}
           </div>
           {/* key: al cambiar de mes los campos se montan de nuevo y no arrastran un borrador a medias. */}
           <div className={styles.accounts} key={monthKey}>
@@ -186,12 +188,14 @@ export function BudgetPanel() {
             <span>{t('availableAfterFixed')}</span>
             <span className={cx(styles.mono, calc.after < 0 ? styles.errorText : styles.softText)}>{f2(calc.after)}</span>
           </div>
-          <div className={cx(styles.row, styles.rowSecond)}>
-            <span>{t('usedIn', { currency: second })}</span>
-            <span className={styles.mono}>
-              {f2(calc.usedSecond)} {second}
-            </span>
-          </div>
+          {second && calc.usedSecond !== null && (
+            <div className={cx(styles.row, styles.rowSecond)}>
+              <span>{t('usedIn', { currency: second })}</span>
+              <span className={styles.mono}>
+                {f2(calc.usedSecond)} {second}
+              </span>
+            </div>
+          )}
         </div>
       </section>
       {/* Debajo del panel y a todo el ancho: sus seis columnas no caben en la celda del presupuesto. */}

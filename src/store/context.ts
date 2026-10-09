@@ -46,7 +46,8 @@ export interface Actions {
    */
   setMainCurrency(currency: Currency): void;
   /** Cambia la segunda moneda (la de las líneas "≈"). Elegir la que hoy es la principal las intercambia. */
-  setSecondCurrency(currency: Currency): void;
+  /** null = sin segunda moneda. */
+  setSecondCurrency(currency: Currency | null): void;
   /** La cuenta de la que sale un gasto cuando no se indica otra: una cuenta visible de dinero (no de oro), o null para la automática. */
   setDefaultAccount(accountId: string | null): void;
   /**
@@ -229,13 +230,15 @@ export interface Finanzas {
   month: Month;
   /** monthCalc(state, monthKey) de shared/calc.ts: las cifras del mes, en la moneda principal. */
   calc: MonthCalc;
-  /** 1 segunda = `rate.rate` principal en el mes seleccionado (= calc.rate), con su origen (`rate.source`). */
-  rate: RateInfo;
+  /** 1 segunda = `rate.rate` principal en el mes seleccionado (= calc.rate), con su origen (`rate.source`); null sin segunda moneda. */
+  rate: RateInfo | null;
+  /** La tasa de la barra superior: segunda → principal o, sin segunda, la primera que hace falta; null si no hace falta ninguna. */
+  barRate: PairRate | null;
 
   /** Moneda principal del usuario (= state.mainCurrency): la de presupuesto, totales y la primera columna de importes. */
   main: Currency;
-  /** Segunda moneda (= state.secondCurrency): la de las líneas "≈" y la segunda columna de importes. */
-  second: Currency;
+  /** Segunda moneda (= state.secondCurrency): la de las líneas "≈" y la segunda columna de importes; null = ninguna, no se muestra nada en ella. */
+  second: Currency | null;
   /**
    * Un importe en la moneda principal y en la segunda, con las tasas de un mes (por defecto, el seleccionado):
    * las dos columnas de una tabla salen de una llamada. Con `date`, con la tasa vigente ese día: es lo que toca a

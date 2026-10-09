@@ -661,12 +661,19 @@ type SettingKey =
   | 'gold_price'
   | 'initialized';
 
+/**
+ * How "no second currency" is stored: settings is a key/value table, so a value that is not a currency code does it
+ * without a migration. A missing row still means the default second currency, which keeps existing users unchanged.
+ */
+const NO_SECOND_CURRENCY = 'none';
+
 interface Settings {
   defaultRate: number;
   theme: ThemeColors | null;
   language: Language;
   mainCurrency: Currency;
-  secondCurrency: Currency;
+  /** null = el usuario eligió no tener segunda moneda (se guarda como 'none'; sin fila vale la de siempre). */
+  secondCurrency: Currency | null;
   /** Tal como está guardada: puede nombrar una cuenta que ya no existe (ver knownAccount). */
   defaultAccountId: string | null;
   goldPrice: GoldPrice | null;
@@ -716,9 +723,9 @@ function toSettings(list: SettingRow[]): Settings {
   const main = map.get('main_currency');
   const second = map.get('second_currency');
   const mainCurrency = isCurrency(main) ? main : DEFAULT_MAIN_CURRENCY;
-  let secondCurrency = isCurrency(second) ? second : DEFAULT_SECOND_CURRENCY;
+  let secondCurrency: Currency | null = second === NO_SECOND_CURRENCY ? null : isCurrency(second) ? second : DEFAULT_SECOND_CURRENCY;
   // Las dos monedas nunca pueden coincidir: si lo guardado no sirve, la segunda vuelve a una que sí.
-  if (secondCurrency === mainCurrency) {
+  if (secondCurrency !== null && secondCurrency === mainCurrency) {
     secondCurrency = mainCurrency === DEFAULT_SECOND_CURRENCY ? DEFAULT_MAIN_CURRENCY : DEFAULT_SECOND_CURRENCY;
   }
   return {
@@ -808,10 +815,13 @@ export async function updateSettings(db: D1Database, userId: string, update: Set
     const { response: current, accounts: known } = settingsFrom(settings, accounts);
     if (currencies) {
       const main = update.mainCurrency ?? current.mainCurrency;
-      const second = update.secondCurrency ?? current.secondCurrency;
-      if (main === second) throw validationError(invalidData(`secondCurrency: ${SAME_CURRENCY}`));
+      const second = update.secondCurrency !== undefined ? update.secondCurrency : current.secondCurrency;
+      if (second !== null && main === second) throw validationError(invalidData(`secondCurrency: ${SAME_CURRENCY}`));
       // Se escriben las dos, no solo la que vino: así lo guardado es siempre un par válido.
-      stmts.push(setSetting(db, userId, 'main_currency', main), setSetting(db, userId, 'second_currency', second));
+      stmts.push(
+        setSetting(db, userId, 'main_currency', main),
+        setSetting(db, userId, 'second_currency', second ?? NO_SECOND_CURRENCY),
+      );
     }
     if (account != null) {
       const chosen = known.get(account);
@@ -2569,7 +2579,7 @@ export async function replaceAll(db: D1Database, userId: string, state: AppState
     setSetting(db, userId, 'theme', themeValue(state.theme)),
     setSetting(db, userId, 'language', state.language),
     setSetting(db, userId, 'main_currency', state.mainCurrency),
-    setSetting(db, userId, 'second_currency', state.secondCurrency),
+    setSetting(db, userId, 'second_currency', state.secondCurrency ?? NO_SECOND_CURRENCY),
     setSetting(db, userId, 'default_account', state.defaultAccountId),
     setSetting(db, userId, 'gold_price', goldPriceValue(state.goldPrice)),
     // Ya tiene sus cuentas y sus metas (las de `state`): la primera visita no debe añadirle las iniciales.

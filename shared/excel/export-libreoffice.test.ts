@@ -253,11 +253,11 @@ describe.skipIf(!SOFFICE)('el libro recalculado por LibreOffice', () => {
         expect(num(sh, 'O8')).toBeCloseTo(c.used, 6);
         expect(num(sh, 'O9')).toBeCloseTo(c.avail, 6);
         expect(num(sh, 'O10')).toBeCloseTo(c.after, 6);
-        expect(num(sh, 'O11')).toBeCloseTo(c.usedSecond, 6);
+        expect(num(sh, 'O11')).toBeCloseTo(c.usedSecond!, 6);
         // Dinero total: el de la app (la suma de sus cuentas visibles), en DOP y en USD.
         expect(num(sh, 'B5')).toBeCloseTo(b.totalMain, 6);
         expect(num(sh, 'B5')).toBeCloseTo(convert(state, key, balances(state, key).totalMain, state.mainCurrency, 'DOP'), 6);
-        expect(num(sh, 'B6')).toBeCloseTo(b.totalSecond, 6);
+        expect(num(sh, 'B6')).toBeCloseTo(b.totalSecond!, 6);
         // Ingreso del mes, y lo que queda de él.
         expect(num(sh, 'C10')).toBeCloseTo(incomeInMonth(state, key, 'USD'), 6);
         expect(num(sh, 'C11')).toBeCloseTo(c.incomeLeft, 6);
@@ -283,8 +283,8 @@ describe.skipIf(!SOFFICE)('el libro recalculado por LibreOffice', () => {
         expect(num(sh, 'F4')).toBeCloseTo(c.budget, 6);
         expect(num(sh, 'I4')).toBeCloseTo(c.used, 6);
         expect(num(sh, 'K4')).toBeCloseTo(c.avail, 6);
-        expect(num(sh, 'N4')).toBeCloseTo(c.rate.rate, 8);
-        expect(num(sh, 'R3')).toBeCloseTo(c.rate.rate, 8);
+        expect(num(sh, 'N4')).toBeCloseTo(c.rate!.rate, 8);
+        expect(num(sh, 'R3')).toBeCloseTo(c.rate!.rate, 8);
       });
 
       it('ahorros: lo aportado a cada meta, en su tarjeta', () => {
@@ -332,7 +332,7 @@ describe.skipIf(!SOFFICE)('el libro recalculado por LibreOffice', () => {
           const r = head + 1 + i;
           expect(sh.cells.get(`B${r}`)?.value).toBe(label(row.key, lang));
           expect(num(sh, `C${r}`)).toBeCloseTo(incomeInMonth(view, row.key, 'USD'), 6);
-          expect(num(sh, `D${r}`)).toBeCloseTo(row.rate.rate, 8);
+          expect(num(sh, `D${r}`)).toBeCloseTo(row.rate!.rate, 8);
           expect(num(sh, `E${r}`)).toBeCloseTo(row.income, 6);
           // Ahorrado en el mes: SUMIFS por la columna Mes de los aportes, que es texto ("October 2026").
           expect(num(sh, `F${r}`)).toBeCloseTo(savedInMonth(view, row.key, 'USD'), 6);
@@ -363,7 +363,7 @@ describe.skipIf(!SOFFICE)('el libro recalculado por LibreOffice', () => {
         const sh = monthSheet('2026-10');
         const row = [...sh.cells.values()].find((c) => c.value === 'Namecheap')!.ref.slice(1);
         expect(sh.cells.get(`H${row}`)?.value).toBe('USD');
-        expect(num(sh, `I${row}`)).toBeCloseTo(12.5 * monthCalc(state, '2026-10').rate.rate, 6);
+        expect(num(sh, `I${row}`)).toBeCloseTo(12.5 * monthCalc(state, '2026-10').rate!.rate, 6);
         expect(num(sh, `J${row}`)).toBeCloseTo(12.5, 6);
       });
 

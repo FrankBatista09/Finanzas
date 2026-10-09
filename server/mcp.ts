@@ -1016,7 +1016,9 @@ const monthSummary = defineTool({
     const c = monthCalc(state, m.key);
     const { main, second } = c;
     const today = todayISO(now);
-    const both = (amount: number, inSecond: number) => `${money(amount, main)} (${money(inSecond, second)})`;
+    // Sin segunda moneda no hay cifra entre paréntesis ni campos *Second en `data`.
+    const both = (amount: number, inSecond: number | null) =>
+      second && inSecond !== null ? `${money(amount, main)} (${money(inSecond, second)})` : money(amount, main);
 
     const pending = m.fixed
       .filter((f) => !f.paid)
@@ -1032,7 +1034,7 @@ const monthSummary = defineTool({
     const fees = transferFees(state, m.key);
     const outside = outsideSummary(state, m.key);
     const rates = ratesToMain(state, m.key, [
-      second,
+      ...(second ? [second] : []),
       ...moneyCurrencies(visible.map((b) => b.account.currency)),
       ...parts.map((p) => p.account.currency),
       ...m.fixed.map((f) => f.cur),
@@ -1122,7 +1124,7 @@ const monthSummary = defineTool({
         currency: main,
         secondCurrency: second,
         budget: c.budget,
-        budgetSecond: c.budgetSecond,
+        ...(c.budgetSecond !== null && { budgetSecond: c.budgetSecond }),
         budgetParts: parts.map((p) => ({
           accountId: p.account.id,
           name: p.account.name,
@@ -1149,7 +1151,7 @@ const monthSummary = defineTool({
         })),
         leftover: { previousMonth: left.previousKey, amount: left.leftover, added: left.added },
         used: c.used,
-        usedSecond: c.usedSecond,
+        ...(c.usedSecond !== null && { usedSecond: c.usedSecond }),
         available: c.avail,
         availableAfterPending: c.after,
         fixed: { count: c.fixedCount, paidCount: c.paidCount, paid: c.fixedPaid, pending: c.pending, pendingItems: pending },
@@ -1189,7 +1191,7 @@ const monthSummary = defineTool({
         income: { count: incomes.length, total: c.income, left: c.incomeLeft },
         // De una cuenta de oro, `balance` son gramos; `inMain` es null si no hay precio del oro.
         accounts: visible.map((b) => ({ ...accountData(b.account, b), inMain: b.valued ? b.inMain : null })),
-        totalMoney: { main: all.totalMain, second: all.totalSecond },
+        totalMoney: { main: all.totalMain, ...(all.totalSecond !== null && { second: all.totalSecond }) },
         // El precio del oro escrito por la persona (null = sin precio) y si por eso hay oro fuera del total.
         gold: { price: state.goldPrice, excludedFromTotal: all.goldExcluded },
         rates,
@@ -1385,10 +1387,10 @@ const listAccounts = defineTool({
     const visible = all.accounts.filter((b) => !b.account.hidden);
     const hidden = all.accounts.length - visible.length;
     const today = todayISO(now);
-    const rates = ratesToMain(state, asOf, [second, ...moneyCurrencies(visible.map((b) => b.account.currency))]);
+    const rates = ratesToMain(state, asOf, [...(second ? [second] : []), ...moneyCurrencies(visible.map((b) => b.account.currency))]);
 
     const lines = [
-      `${user.name}${SEP}${visible.length} ${visible.length === 1 ? 'account' : 'accounts'}${SEP}main currency ${main}, second currency ${second}`,
+      `${user.name}${SEP}${visible.length} ${visible.length === 1 ? 'account' : 'accounts'}${SEP}main currency ${main}${second ? `, second currency ${second}` : ', no second currency'}`,
       ...visible.map((b) =>
         [
           b.account.name,
@@ -1399,7 +1401,7 @@ const listAccounts = defineTool({
           .filter(Boolean)
           .join(SEP),
       ),
-      `Total money: ${money(all.totalMain, main)} (${money(all.totalSecond, second)})`,
+      `Total money: ${second && all.totalSecond !== null ? `${money(all.totalMain, main)} (${money(all.totalSecond, second)})` : money(all.totalMain, main)}`,
       ...goldLines(state, all),
     ];
     if (hidden > 0) lines.push(`Hidden accounts, not listed and not counted in the total: ${hidden}.`);
@@ -1416,10 +1418,10 @@ const listAccounts = defineTool({
           ...accountData(b.account, b),
           // De una cuenta de oro, `balance` son gramos; su valor es null si no hay precio del oro.
           inMain: b.valued ? b.inMain : null,
-          inSecond: b.valued ? b.inSecond : null,
+          ...(second && { inSecond: b.valued ? b.inSecond : null }),
           isDefault: b.account.id === preferred?.id,
         })),
-        totalMoney: { main: all.totalMain, second: all.totalSecond },
+        totalMoney: { main: all.totalMain, ...(all.totalSecond !== null && { second: all.totalSecond }) },
         // El precio del oro escrito por la persona (null = sin precio) y si por eso hay oro fuera del total.
         gold: { price: state.goldPrice, excludedFromTotal: all.goldExcluded },
         hiddenCount: hidden,

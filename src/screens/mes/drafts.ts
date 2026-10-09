@@ -7,7 +7,7 @@
 
 import { isMoneyAccount } from '../../../shared/calc';
 import type { MoneyAccount } from '../../../shared/calc';
-import { CATS, CREDIT_CARD_METHOD, METHODS, VIAS } from '../../../shared/constants';
+import { CATS, CREDIT_CARD_METHOD, CURRENCIES, METHODS, VIAS } from '../../../shared/constants';
 import { fRate } from '../../../shared/format';
 import type { Account, Currency, ISODate, MonthKey } from '../../../shared/types';
 import type { FixedInput, OutsideInput, PairRate, TransferInput, TxInput } from '../../store';
@@ -331,10 +331,11 @@ export const EMPTY_RATE: RateDraft = { pair: null, rate: 0, date: null };
  * El par que propone la fila de agregar: el elegido o, sin tocar, el primero de los que se ven cuya tasa no está
  * escrita para este mes (es la que falta por poner); si todas lo están, el primero.
  */
-export function ratePair(draft: RateDraft, shown: readonly PairRate[], main: Currency, second: Currency): Pair {
+export function ratePair(draft: RateDraft, shown: readonly PairRate[], main: Currency, second: Currency | null): Pair {
   if (draft.pair) return draft.pair;
   const row = shown.find((r) => r.source !== 'month') ?? shown[0];
-  return row ? [row.from, row.to] : [second, main];
+  // Sin ninguna tasa que hacer falta ni segunda moneda, la primera otra moneda contra la principal.
+  return row ? [row.from, row.to] : [second ?? CURRENCIES.find((c) => c !== main) ?? main, main];
 }
 
 /** Elegir una moneda del par. Tienen que ser distintas: elegir la del otro lado las intercambia. */

@@ -221,11 +221,20 @@ describe('SummaryPanel · Month: el presupuesto', () => {
     has(els(full, 'button'), { 'aria-label': 'Remove US account from the budget' });
   });
 
+  it('sin segunda moneda: ni "≈" ni "Used in" ni cifras en otra moneda en el panel del mes', () => {
+    const state = { ...seedState(), secondCurrency: null };
+    const t = text(panel({ state }));
+    expect(t).toContain('Budget 70,000.00 DOP');
+    expect(t).toContain('Used so far');
+    expect(t).not.toContain('≈');
+    expect(t).not.toContain('Used in');
+  });
+
   it('las partes en otra moneda suman convertidas con la tasa del mes; una cuenta oculta con parte sigue a la vista', () => {
     const state = seedState();
     setBudgets(state.months['2026-10']!, { us: 200, dr: 58248 });
     const c = monthCalc(state, '2026-10');
-    expect(text(panel({ state }))).toContain(`Budget ${f2(c.budget)} DOP ≈ ${f2(c.budgetSecond)} USD`);
+    expect(text(panel({ state }))).toContain(`Budget ${f2(c.budget)} DOP ≈ ${f2(c.budgetSecond!)} USD`);
     expect(f2(c.budget)).toBe('70,000.00');
 
     // La US account se oculta: con parte, su fila se queda (suma al total); sin parte, desaparece.
@@ -494,7 +503,7 @@ describe('SummaryPanel · Savings: el dinero total', () => {
     const t = text(html);
     // 13,482 USD × 58.76 + 220,641.93 DOP
     expect(f2(b.totalMain)).toBe('1,012,844.25');
-    expect(f2(b.totalSecond)).toBe('17,236.97');
+    expect(f2(b.totalSecond!)).toBe('17,236.97');
     expect(t).toContain('Total money 1,012,844.25 DOP ≈ 17,236.97 USD');
     has(els(html, 'section'), { 'aria-label': 'October 2026 summary' });
     has(els(html, 'table'), { 'aria-label': 'Accounts' });
@@ -603,7 +612,7 @@ describe('SummaryPanel · Savings: el dinero total', () => {
   it('en un mes que no es el último los saldos son los de entonces y no se pueden corregir', () => {
     const b = balances(seedState(), '2026-08');
     const html = panel({ monthKey: '2026-08' });
-    expect(text(html)).toContain(`Total money ${f2(b.totalMain)} DOP ≈ ${f2(b.totalSecond)} USD`);
+    expect(text(html)).toContain(`Total money ${f2(b.totalMain)} DOP ≈ ${f2(b.totalSecond!)} USD`);
     // US: 2,000 + 5,800 − 1,800 − 106. DR: 60,000 + 104,730 − 27,850 − 35,750.26.
     has(els(html, 'input'), { value: '5894', 'aria-label': 'Balance of US account, in USD' });
     has(els(html, 'input'), { value: '101129.74', 'aria-label': 'Balance of DR account, in DOP' });
@@ -639,6 +648,12 @@ describe('SummaryPanel · Savings: el dinero total', () => {
     const html = panel({ state });
     expect(buttonTexts(html)).toEqual(['Add', 'Cancel', 'Hidden accounts (1)']);
     expect(text(html)).toContain('Total money 220,641.93 DOP');
+  });
+
+  it('sin segunda moneda el total no lleva la línea "≈"', () => {
+    const t = text(panel({ state: { ...seedState(), secondCurrency: null } }));
+    expect(t).toContain('Total money 1,012,844.25 DOP');
+    expect(t).not.toContain('≈');
   });
 
   it('en español y en turco', () => {
@@ -686,6 +701,20 @@ describe('TopBar', () => {
     // El panel de ajustes está cerrado.
     has(els(html, 'button'), { 'aria-expanded': 'false' });
     expect(html).not.toContain('role="dialog"');
+  });
+
+  it('sin segunda moneda: la tasa que hace falta (la de USD, con cuentas en USD) o ninguna si todo está en una moneda', () => {
+    const state = { ...seedState(), secondCurrency: null };
+    expect(text(render(<TopBar />, { state }))).toContain('Month rate 1 USD = 58.76 DOP');
+
+    const single = { ...seedState(), secondCurrency: null };
+    single.accounts = single.accounts.filter((a) => a.currency === 'DOP');
+    for (const m of Object.values(single.months)) {
+      m.rates = [];
+      m.fixed = m.fixed.map((f) => ({ ...f, cur: 'DOP' }));
+      m.tx = m.tx.map((tx) => ({ ...tx, cur: 'DOP' }));
+    }
+    expect(text(render(<TopBar />, { state: single }))).not.toContain('Month rate');
   });
 
   it('con varios usuarios hay un selector junto a la marca, con el actual elegido y el mismo estilo que el de mes', () => {
@@ -906,8 +935,8 @@ describe('DownloadExcelDialog', () => {
 describe('SettingsPanel', () => {
   const panel = (opts: Opts = {}) => render(<SettingsPanel id="settings" opener={{ current: null }} onClose={() => {}} />, opts);
 
-  /** Los botones de los temas: van detrás de los 3 idiomas y de las 6 monedas (3 por fila). */
-  const FIRST_PRESET = 9;
+  /** Los botones de los temas: van detrás de los 3 idiomas, las 6 monedas (3 por fila) y la opción «None» de la segunda. */
+  const FIRST_PRESET = 10;
 
   it('cuatro secciones: idioma, monedas, apariencia y la nota del Excel', () => {
     const html = panel();
@@ -918,17 +947,21 @@ describe('SettingsPanel', () => {
 
   it('monedas: la principal y la segunda, cada una entre las tres, con la actual marcada', () => {
     const html = panel();
-    expect(text(html)).toContain('Currencies Main currency DOP USD TRY Second currency DOP USD TRY Default account');
+    expect(text(html)).toContain('Currencies Main currency DOP USD TRY Second currency DOP USD TRY None Default account');
     const codes = els(html, 'button').slice(3, FIRST_PRESET);
-    expect(buttonTexts(html).slice(3, FIRST_PRESET)).toEqual(['DOP', 'USD', 'TRY', 'DOP', 'USD', 'TRY']);
-    expect(codes.map((b) => b['aria-pressed'])).toEqual(['true', 'false', 'false', 'false', 'true', 'false']);
+    expect(buttonTexts(html).slice(3, FIRST_PRESET)).toEqual(['DOP', 'USD', 'TRY', 'DOP', 'USD', 'TRY', 'None']);
+    expect(codes.map((b) => b['aria-pressed'])).toEqual(['true', 'false', 'false', 'false', 'true', 'false', 'false']);
     // Cada fila es un grupo con el nombre de su ajuste.
     const groups = els(html, 'div').filter((d) => d.role === 'group' && d['aria-labelledby']);
     expect(groups).toHaveLength(2);
     for (const group of groups) has(els(html, 'span'), { id: group['aria-labelledby']! });
 
     const tr = els(panel({ state: tryState() }), 'button').slice(3, FIRST_PRESET);
-    expect(tr.map((b) => b['aria-pressed'])).toEqual(['false', 'false', 'true', 'false', 'true', 'false']);
+    expect(tr.map((b) => b['aria-pressed'])).toEqual(['false', 'false', 'true', 'false', 'true', 'false', 'false']);
+
+    // Sin segunda moneda es "None" la marcada.
+    const none = els(panel({ state: { ...seedState(), secondCurrency: null } }), 'button').slice(3, FIRST_PRESET);
+    expect(none.map((b) => b['aria-pressed'])).toEqual(['true', 'false', 'false', 'false', 'false', 'false', 'true']);
   });
 
   it('cuenta por defecto: las cuentas visibles y "Automatic", que dice a cuál equivale', () => {
@@ -1005,14 +1038,14 @@ describe('SettingsPanel', () => {
   it('en español y en turco', () => {
     const es = text(panel({ lang: 'es' }));
     expect(es).toContain('Idioma');
-    expect(es).toContain('Monedas Moneda principal DOP USD TRY Segunda moneda DOP USD TRY Cuenta por defecto Automática (DR account)');
+    expect(es).toContain('Monedas Moneda principal DOP USD TRY Segunda moneda DOP USD TRY Ninguna Cuenta por defecto Automática (DR account)');
     expect(es).toContain('Apariencia');
     expect(es).toContain('Acento #2f7d52 Barra superior #1d1f1c Fondo #efeee8 Restablecer');
     expect(es).toContain('Bosque');
     expect(es).toContain('El Excel es un resumen en USD y DOP, con dos cuentas, hasta que se rediseñe.');
     const tr = text(panel({ lang: 'tr' }));
     expect(tr).toContain('Dil');
-    expect(tr).toContain('Para birimleri Ana para birimi DOP USD TRY İkinci para birimi DOP USD TRY Varsayılan hesap Otomatik (DR account)');
+    expect(tr).toContain('Para birimleri Ana para birimi DOP USD TRY İkinci para birimi DOP USD TRY Yok Varsayılan hesap Otomatik (DR account)');
     expect(tr).toContain('Görünüm');
     expect(tr).toContain('Varsayılana dön');
   });

@@ -85,14 +85,14 @@ describe('buildExportData · datos de ejemplo', () => {
     expect(c.main).toBe('DOP');
     expect(m.budget).toBe(c.budget);
     expect(m.incomeUSD).toBe(incomeInMonth(state, key, 'USD'));
-    expect(n(m.incomeUSD) * c.rate.rate).toBeCloseTo(c.income, 6);
+    expect(n(m.incomeUSD) * c.rate!.rate).toBeCloseTo(c.income, 6);
     expect(m.accounts).toEqual({ usd: balanceOf(state, 'us', key), dop: balanceOf(state, 'dr', key) });
 
     // El libro llega a la misma tasa y, con ella, al mismo dinero total y a los mismos gastos.
     const rate = bookRate(m, data.defaultRate);
-    expect(rate).toBeCloseTo(c.rate.rate, 10);
+    expect(rate).toBeCloseTo(c.rate!.rate, 10);
     expect(bookTotalDOP(m, rate)).toBeCloseTo(b.totalMain, 6);
-    expect(n(m.accounts.usd) + n(m.accounts.dop) / rate).toBeCloseTo(b.totalSecond, 6);
+    expect(n(m.accounts.usd) + n(m.accounts.dop) / rate).toBeCloseTo(b.totalSecond!, 6);
     expect(m.fixed).toHaveLength(c.fixedCount);
     expect(m.fixed.filter((f) => f.paid)).toHaveLength(c.paidCount);
     expect(m.fixed.filter((f) => f.paid).reduce((a, f) => a + bookDOP(f, rate), 0)).toBeCloseTo(c.fixedPaid, 6);
@@ -246,7 +246,7 @@ describe('buildExportData · lo que el libro no sabe representar (TRY, más cuen
     const rate = bookRate(m, data.defaultRate);
     expect(bookTotalDOP(m, rate)).toBeCloseTo(convert(state, key, b.totalMain, state.mainCurrency, 'DOP'), 5);
     // La segunda moneda de este usuario es DOP: es el "≈" de su pantalla.
-    expect(bookTotalDOP(m, rate)).toBeCloseTo(b.totalSecond, 5);
+    expect(bookTotalDOP(m, rate)).toBeCloseTo(b.totalSecond!, 5);
     // Y en USD, como lo muestra la segunda línea del libro.
     expect(n(m.accounts.usd) + n(m.accounts.dop) / rate).toBeCloseTo(convert(state, key, b.totalMain, state.mainCurrency, 'USD'), 6);
   });

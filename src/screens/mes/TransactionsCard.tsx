@@ -98,7 +98,7 @@ export function TransactionsCard({ outside }: { outside: OutsideAdding }) {
             <Th width={60}>{t('currencyShort')}</Th>
             <Th>{t('account')}</Th>
             <Th align="right">{main}</Th>
-            <Th align="right">{second}</Th>
+            {second && <Th align="right">{second}</Th>}
             <Th>{s('notes')}</Th>
             <Th blank width={56} />
           </tr>
@@ -188,7 +188,7 @@ export function TransactionsCard({ outside }: { outside: OutsideAdding }) {
                 />
               </Td>
               {/* Las notas ocupan las dos columnas calculadas, y el botón la de notas y la de eliminar. */}
-              <Td kind="edit" colSpan={2}>
+              <Td kind="edit" colSpan={second ? 2 : 1}>
                 <CellText
                   value={draft.notes}
                   onCommit={(notes) => setDraft((d) => ({ ...d, notes }))}
@@ -233,7 +233,7 @@ export function TransactionsCard({ outside }: { outside: OutsideAdding }) {
  * La comisión de un envío en el historial: mismas columnas que una transacción, pero en texto, sin campos ni ×.
  * No es una fila guardada: se cambia (o se quita) en el envío, y la etiqueta junto al nombre lo dice.
  */
-function FeeRow({ fee, inMain, inSecond }: { fee: TransferFee; inMain: number; inSecond: number }) {
+function FeeRow({ fee, inMain, inSecond }: { fee: TransferFee; inMain: number; inSecond: number | null }) {
   const { catLabel } = useI18n();
   const s = useStrings(MES);
   const name = s('feeName', { via: fee.via });
@@ -263,9 +263,11 @@ function FeeRow({ fee, inMain, inSecond }: { fee: TransferFee; inMain: number; i
       <Td kind="num" nowrap medium>
         {f2(inMain)}
       </Td>
-      <Td kind="num" nowrap tone="muted">
-        {f2(inSecond)}
-      </Td>
+      {inSecond !== null && (
+        <Td kind="num" nowrap tone="muted">
+          {f2(inSecond)}
+        </Td>
+      )}
       <Td />
       <Td kind="action" />
     </tr>
@@ -276,7 +278,7 @@ interface TxRowProps {
   row: Transaction;
   /** El importe en la moneda principal y en la segunda, con las tasas del mes. */
   inMain: number;
-  inSecond: number;
+  inSecond: number | null;
   /** Opciones del selector de cuenta (rows.ts rowAccountOptions). */
   accounts: readonly AccountOption[];
   /** Las tarjetas y la primera activa (a la que va una transacción de crédito que no dice cuál). */
@@ -376,9 +378,11 @@ const TxRow = memo(function TxRow({ row: tx, inMain, inSecond, accounts, cards, 
       <Td kind="num" nowrap medium>
         {f2(inMain)}
       </Td>
-      <Td kind="num" nowrap tone="muted">
-        {f2(inSecond)}
-      </Td>
+      {inSecond !== null && (
+        <Td kind="num" nowrap tone="muted">
+          {f2(inSecond)}
+        </Td>
+      )}
       <NotesCell value={tx.notes} onCommit={(notes) => actions.patchTx(tx.id, { notes })} readOnly={readOnly} name={tx.desc} />
       <Td kind="action">
         {!readOnly && (

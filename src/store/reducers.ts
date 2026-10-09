@@ -270,7 +270,7 @@ function patchSettings(state: AppState, patch: SettingsUpdate): AppState {
     theme: patch.theme !== undefined ? patch.theme : state.theme,
     language: patch.language ?? state.language,
     mainCurrency: patch.mainCurrency ?? state.mainCurrency,
-    secondCurrency: patch.secondCurrency ?? state.secondCurrency,
+    secondCurrency: patch.secondCurrency !== undefined ? patch.secondCurrency : state.secondCurrency,
     defaultAccountId: patch.defaultAccountId !== undefined ? patch.defaultAccountId : state.defaultAccountId,
     // El mismo precio conserva su objeto: así repetir la acción no cambia el estado.
     goldPrice: patch.goldPrice !== undefined && !samePrice(patch.goldPrice, state.goldPrice) ? patch.goldPrice : state.goldPrice,
@@ -1028,15 +1028,19 @@ export function typedRate(state: AppState, key: MonthKey, from: Currency, to: Cu
 
 /**
  * Lo que hay que mandar para que `cur` sea la moneda principal (o la segunda); {} si ya lo era y null si no es una
- * moneda. Las dos tienen que quedar distintas: elegir la que hoy ocupa el otro puesto las intercambia, y para eso
- * van las dos en la misma petición.
+ * moneda. Las dos tienen que quedar distintas: elegir como principal la que es la segunda deja la segunda en
+ * ninguna (no se rechaza ni se intercambia); elegir como segunda la que es la principal las intercambia, y para
+ * eso van las dos en la misma petición. `null` como segunda quita la segunda moneda.
  */
-export function currencyChange(state: AppState, role: 'main' | 'second', cur: Currency): SettingsUpdate | null {
-  if (!isCurrency(cur)) return null;
+export function currencyChange(state: AppState, role: 'main' | 'second', cur: Currency | null): SettingsUpdate | null {
   const { mainCurrency: main, secondCurrency: second } = state;
+  if (cur === null) return role === 'second' ? (second === null ? {} : { secondCurrency: null }) : null;
+  if (!isCurrency(cur)) return null;
   if (cur === (role === 'main' ? main : second)) return {};
-  if (cur === (role === 'main' ? second : main)) return { mainCurrency: second, secondCurrency: main };
-  return role === 'main' ? { mainCurrency: cur } : { secondCurrency: cur };
+  if (role === 'main') return { mainCurrency: cur, ...(cur === second ? { secondCurrency: null } : {}) };
+  if (cur !== main) return { secondCurrency: cur };
+  // Sin segunda moneda no hay con quién intercambiar la principal: se deja como está.
+  return second ? { mainCurrency: second, secondCurrency: main } : {};
 }
 
 /**

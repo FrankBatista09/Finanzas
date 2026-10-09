@@ -360,7 +360,8 @@ export interface AccountBalance {
    * oro, sus gramos al precio del oro; 0 si no hay precio (ver `valued`).
    */
   inMain: number;
-  inSecond: number;
+  /** null sin segunda moneda. */
+  inSecond: number | null;
   /** false solo para una cuenta de oro sin precio escrito: `inMain` e `inSecond` no dicen nada y no suma al total. */
   valued: boolean;
 }
@@ -370,7 +371,8 @@ export interface Balances {
   accounts: AccountBalance[];
   /** Suma de las cuentas visibles: el "Total money". */
   totalMain: number;
-  totalSecond: number;
+  /** null sin segunda moneda. */
+  totalSecond: number | null;
   /** true si alguna cuenta visible de oro quedó fuera del total porque no hay precio del oro. La interfaz lo avisa. */
   goldExcluded: boolean;
 }
@@ -445,14 +447,21 @@ export function balances(state: AppState, asOf: MonthKey): Balances {
       const cur = account.currency;
       const inCur = (to: Currency) => (isGold(cur) ? goldValue(state, asOf, balance, to) : convert(state, asOf, balance, cur, to));
       const inMain = inCur(state.mainCurrency);
-      const inSecond = inCur(state.secondCurrency);
-      return { account, balance, inMain: inMain ?? 0, inSecond: inSecond ?? 0, valued: inMain !== null && inSecond !== null };
+      const inSecond = state.secondCurrency ? inCur(state.secondCurrency) : null;
+      return {
+        account,
+        balance,
+        inMain: inMain ?? 0,
+        inSecond: state.secondCurrency ? (inSecond ?? 0) : null,
+        // Sin segunda moneda solo cuenta que el valor en la principal exista.
+        valued: inMain !== null && (!state.secondCurrency || inSecond !== null),
+      };
     });
   const visible = accounts.filter((a) => !a.account.hidden);
   return {
     accounts,
     totalMain: visible.reduce((a, b) => a + b.inMain, 0),
-    totalSecond: visible.reduce((a, b) => a + b.inSecond, 0),
+    totalSecond: state.secondCurrency ? visible.reduce((a, b) => a + (b.inSecond ?? 0), 0) : null,
     goldExcluded: visible.some((a) => !a.valued),
   };
 }
@@ -690,9 +699,10 @@ export interface MonthCalc {
   key: MonthKey;
   closed: boolean;
   main: Currency;
-  second: Currency;
-  /** 1 segunda = rate principal, con las tasas del mes: el "1 USD = 58.76 DOP" de la barra superior. */
-  rate: RateInfo;
+  /** null = sin segunda moneda: no hay cifras en ella (usedSecond, budgetSecond y rate son null). */
+  second: Currency | null;
+  /** 1 segunda = rate principal, con las tasas del mes: el "1 USD = 58.76 DOP" de la barra superior. null sin segunda. */
+  rate: RateInfo | null;
 
   /**
    * Σ de los fijos, sin los cargados a la tarjeta (no salen del presupuesto: entran a la fila de la tarjeta), más
@@ -716,10 +726,10 @@ export interface MonthCalc {
 
   /** fijosPagados + transacciones */
   used: number;
-  usedSecond: number;
+  usedSecond: number | null;
   /** Presupuesto del mes: Σ de las partes por cuenta (registro + ingresos que lo suben + envíos que lo mueven). */
   budget: number;
-  budgetSecond: number;
+  budgetSecond: number | null;
   /** Una fila por cuenta visible (y por cualquier cuenta oculta que tenga parte o que toque un envío con `budget`), en el orden de las cuentas. */
   budgetParts: BudgetPart[];
   /** presupuesto − usado */
@@ -1001,7 +1011,7 @@ export function monthCalc(state: AppState, key: MonthKey): MonthCalc {
   const avail = budget - used;
   const after = avail - pending;
   const income = incomeInMonth(state, key);
-  const rate = rateFor(state, key, second, main);
+  const rate = second ? rateFor(state, key, second, main) : null;
 
   const catSums: CategorySum[] = [...byCat]
     .map(([name, value]) => ({ name, value, fixed: false }))
@@ -1026,9 +1036,9 @@ export function monthCalc(state: AppState, key: MonthKey): MonthCalc {
     txCount: m.tx.length + fees.length,
     cards,
     used,
-    usedSecond: convert(state, key, used, main, second),
+    usedSecond: second ? convert(state, key, used, main, second) : null,
     budget,
-    budgetSecond: convert(state, key, budget, main, second),
+    budgetSecond: second ? convert(state, key, budget, main, second) : null,
     budgetParts,
     avail,
     after,
@@ -1213,8 +1223,8 @@ export interface IncomeRow {
   saved: number;
   /** ahorrado / ingreso × 100; null si no hubo ingreso. */
   pct: number | null;
-  /** 1 segunda = rate principal en ese mes. */
-  rate: RateInfo;
+  /** 1 segunda = rate principal en ese mes; null sin segunda moneda. */
+  rate: RateInfo | null;
 }
 
 /** Una fila por mes registrado: lo que entró, lo que se apartó y qué porcentaje es. */
@@ -1227,7 +1237,7 @@ export function incomeRows(state: AppState): IncomeRow[] {
       income,
       saved,
       pct: income ? (saved / income) * 100 : null,
-      rate: rateFor(state, key, state.secondCurrency, state.mainCurrency),
+      rate: state.secondCurrency ? rateFor(state, key, state.secondCurrency, state.mainCurrency) : null,
     };
   });
 }

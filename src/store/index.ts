@@ -7,5 +7,5 @@ export { accountInUse, canHideAccount, canRemoveAccount, canRemoveCard, canTurnO
 export type { AccountInput, BudgetEntryInput, CardInput, ContributionInput, FixedInput, GoalInput, GoalPlan, IncomeInput, OutsideInput, TransferInput, TxInput } from './reducers';
 export { DEBOUNCE_MS, FinanzasStore, FinanzasStores, SESSION_KEY, stateKey } from './store';
 export type { Sheet } from './url';
-export { accountOptions, buildFinanzas, inBoth, incomeAccountOptions, pairRates } from './view';
+export { accountOptions, barRate, buildFinanzas, inBoth, incomeAccountOptions, pairRates } from './view';
 export type { AccountOption, FinanzasInput, Money, PairRate } from './view';

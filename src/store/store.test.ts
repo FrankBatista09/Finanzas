@@ -1437,7 +1437,7 @@ describe('presupuesto y tasas del mes', () => {
     // Quitada también la del día 1, el par vuelve a salir de los envíos del mes.
     actions.removeMonthRate('USD', 'DOP', '2026-10-01');
     expect(h.view().months[OCT]!.rates).toEqual([]);
-    expect(monthCalc(h.view(), OCT).rate.source).toBe('transfers');
+    expect(monthCalc(h.view(), OCT).rate!.source).toBe('transfers');
     h.calls[0]!.ok();
     await tick();
     expect(h.summary()).toEqual([`DELETE /api/months/${OCT}/rates/USD/DOP?date=2026-10-06`, `DELETE /api/months/${OCT}/rates/USD/DOP?date=2026-10-01`]);
@@ -1714,18 +1714,28 @@ describe('ajustes · monedas y cuenta por defecto', () => {
     expect(h.calls[0]!.body).toEqual({ mainCurrency: 'TRY' });
   });
 
-  it('elegir como principal la que hoy es la segunda las intercambia en una sola petición', () => {
+  it('elegir como principal la que hoy es la segunda deja la segunda en ninguna, en una sola petición', () => {
     // Frank: principal DOP, segunda USD.
     createActions(h.store, OCT, flows).setMainCurrency('USD');
-    expect([h.view().mainCurrency, h.view().secondCurrency]).toEqual(['USD', 'DOP']);
+    expect([h.view().mainCurrency, h.view().secondCurrency]).toEqual(['USD', null]);
     expect(h.calls).toHaveLength(1);
-    expect(h.calls[0]!.body).toEqual({ mainCurrency: 'USD', secondCurrency: 'DOP' });
-    // Todo se ve ya en la moneda nueva.
-    expect(monthCalc(h.view(), OCT)).toMatchObject({ main: 'USD', second: 'DOP' });
-    expect(monthCalc(h.view(), OCT).budgetSecond).toBeCloseTo(70000, 8);
+    expect(h.calls[0]!.body).toEqual({ mainCurrency: 'USD', secondCurrency: null });
+    // Todo se ve ya en la moneda nueva, y sin cifras en una segunda.
+    expect(monthCalc(h.view(), OCT)).toMatchObject({ main: 'USD', second: null, budgetSecond: null, usedSecond: null, rate: null });
   });
 
-  it('y al revés: elegir como segunda la que hoy es la principal también las intercambia', () => {
+  it('"None" quita la segunda moneda; elegir una la devuelve', () => {
+    const actions = createActions(h.store, OCT, flows);
+    actions.setSecondCurrency(null);
+    expect(h.view().secondCurrency).toBeNull();
+    expect(h.calls[0]!.body).toEqual({ secondCurrency: null });
+    actions.setSecondCurrency(null);
+    expect(h.calls).toHaveLength(1);
+    actions.setSecondCurrency('TRY');
+    expect([h.view().mainCurrency, h.view().secondCurrency]).toEqual(['DOP', 'TRY']);
+  });
+
+  it('y al revés: elegir como segunda la que hoy es la principal las intercambia', () => {
     createActions(h.store, OCT, flows).setSecondCurrency('DOP');
     expect([h.view().mainCurrency, h.view().secondCurrency]).toEqual(['USD', 'DOP']);
     expect(h.calls).toHaveLength(1);

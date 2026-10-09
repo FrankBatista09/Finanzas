@@ -43,7 +43,7 @@ describe('oro: saldo en gramos y valor con el precio del oro', () => {
     // A la segunda moneda, con la tasa del mes: 627,500 DOP ÷ 58.76.
     expect(goldOf(s).inSecond).toBeCloseTo((125.5 * 5000) / 58.76, 8);
     expect(b.totalMain).toBeCloseTo(plain.totalMain + 627500, 6);
-    expect(b.totalSecond).toBeCloseTo(plain.totalSecond + 627500 / 58.76, 6);
+    expect(b.totalSecond).toBeCloseTo(plain.totalSecond! + 627500 / 58.76, 6);
     expect(b.goldExcluded).toBe(false);
   });
 

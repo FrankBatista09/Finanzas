@@ -75,7 +75,7 @@ export function OutsideCard({ adding: { control, draft, setDraft } }: { adding: 
             </Th>
             <Th width={60}>{t('currencyShort')}</Th>
             <Th align="right">{main}</Th>
-            <Th align="right">{second}</Th>
+            {second && <Th align="right">{second}</Th>}
             <Th>{s('notes')}</Th>
             <Th blank width={56} />
           </tr>
@@ -124,7 +124,7 @@ export function OutsideCard({ adding: { control, draft, setDraft } }: { adding: 
                   label={s('newOutsideCurrency')}
                 />
               </Td>
-              <Td kind="edit" colSpan={3}>
+              <Td kind="edit" colSpan={second ? 3 : 2}>
                 <CellText
                   value={draft.desc}
                   onCommit={(desc) => setDraft((d) => ({ ...d, desc }))}
@@ -163,7 +163,7 @@ export function OutsideCard({ adding: { control, draft, setDraft } }: { adding: 
 interface OutsideRowProps {
   row: OutsideExpense;
   inMain: number;
-  inSecond: number;
+  inSecond: number | null;
   accounts: readonly AccountOption[];
   readOnly: boolean;
   actions: Actions;
@@ -215,9 +215,11 @@ const OutsideRow = memo(function OutsideRow({ row, inMain, inSecond, accounts, r
       <Td kind="num" nowrap medium>
         {f2(inMain)}
       </Td>
-      <Td kind="num" nowrap tone="muted">
-        {f2(inSecond)}
-      </Td>
+      {inSecond !== null && (
+        <Td kind="num" nowrap tone="muted">
+          {f2(inSecond)}
+        </Td>
+      )}
       <NotesCell value={row.desc} onCommit={(desc) => actions.patchOutside(row.id, { desc })} readOnly={readOnly} name={row.name} />
       <Td kind="action">
         {!readOnly && (
