@@ -95,7 +95,12 @@ describe('gasto fijo', () => {
   const named = (over: Partial<FixedDraft>): FixedDraft => ({ ...EMPTY_FIXED, name: 'Spotify', amount: 350, ...over });
 
   it('el borrador vacío: sin concepto, sin día, sin monto y con la moneda y la cuenta sin tocar', () => {
-    expect(EMPTY_FIXED).toEqual({ name: '', day: '', amount: 0, cur: null, accountId: null });
+    expect(EMPTY_FIXED).toEqual({ name: '', day: '', amount: 0, cur: null, accountId: null, onCard: false });
+  });
+
+  it('«Pagar con» tarjeta: lo agregado va marcado onCard; con cuenta, igual que siempre', () => {
+    expect(fixedInput(named({ onCard: true }), ctx)).toMatchObject({ onCard: true });
+    expect('onCard' in fixedInput(named({}), ctx)).toBe(false);
   });
 
   it('necesita concepto y monto mayor que 0', () => {

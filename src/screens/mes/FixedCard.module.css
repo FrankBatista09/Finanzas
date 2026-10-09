@@ -2,3 +2,31 @@
 .currency {
   white-space: nowrap;
 }
+
+/* La fila de la tarjeta: nombre con su marca «de la tarjeta» y, debajo, de dónde sale el total. Ambos pueden partirse en líneas: si no, esta fila ensanchaba la columna del concepto y la tabla pasaba del ancho de su tarjeta. */
+.cardName {
+  font-weight: 500;
+}
+
+.cardTag {
+  margin-left: 8px;
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: var(--fs-label);
+  font-weight: 400;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.cardDetail {
+  font-size: var(--fs-label);
+  color: var(--text-muted);
+}
+
+.cardAccount {
+  max-width: 130px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}

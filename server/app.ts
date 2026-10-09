@@ -295,6 +295,21 @@ export function createApp(): Hono<AppEnv> {
   // Suma al mes lo que sobró del anterior
   app.post('/months/:key/leftover', async (c) => c.json((await db.addLeftover(c.env.DB, uid(c), monthParam(c))) satisfies Month, 201));
 
+  // Tarjeta de crédito del mes: otros cargos, pagar (total o en parte) y deshacer el pago
+  app.patch('/months/:key/card', async (c) => {
+    const key = monthParam(c);
+    const input = await jsonBody(c, v.cardOtherSchema);
+    return c.json((await db.setCardOther(c.env.DB, uid(c), key, input.other)) satisfies Month);
+  });
+
+  app.post('/months/:key/card/pay', async (c) => {
+    const key = monthParam(c);
+    const input = await jsonBody(c, v.cardPaySchema);
+    return c.json((await db.payCard(c.env.DB, uid(c), key, input)) satisfies Month);
+  });
+
+  app.delete('/months/:key/card/pay', async (c) => c.json((await db.unpayCard(c.env.DB, uid(c), monthParam(c))) satisfies Month));
+
   // Tasas escritas a mano: una por par de monedas y fecha
   app.put('/months/:key/rates', async (c) => {
     const key = monthParam(c);

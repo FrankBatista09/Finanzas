@@ -23,6 +23,12 @@ export const CATS = [
 
 export const METHODS = ['Debit card', 'Credit card', 'Transfer', 'Bank app', 'Cash'] as const;
 
+/**
+ * Método de pago que carga la transacción a la tarjeta de crédito: no sale de ninguna cuenta ni cuenta como usado
+ * hasta que se paga la tarjeta (shared/calc.ts cardCalc). Con "Debit card" y el resto, todo sigue igual.
+ */
+export const CREDIT_CARD_METHOD = 'Credit card';
+
 /** Categoría y método de la transacción que nace al pasar un gasto de "fuera de presupuesto" al presupuesto (no los tiene). */
 export const MOVED_TO_BUDGET = { cat: 'Other', method: 'Transfer' } as const;
 

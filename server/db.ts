@@ -19,6 +19,7 @@ import type {
   AccountCreate,
   AccountPatch,
   BudgetEntryCreate,
+  CardPayRequest,
   CloseRequest,
   CloseResponse,
   ContributionCreate,
@@ -43,7 +44,7 @@ import type {
   TxCreate,
   TxPatch,
 } from '../shared/api';
-import { accountsById, budgetsFromLog, convert, defaultAccount, leftoverFor, monthCalc, outsideOf, rateFor, sortedKeys } from '../shared/calc';
+import { accountsById, budgetsFromLog, cardAccountFor, cardCalc, convert, defaultAccount, leftoverFor, monthCalc, outsideOf, rateFor, sortedKeys } from '../shared/calc';
 import {
   CURRENCIES,
   DEFAULT_ACCOUNTS,
@@ -104,6 +105,10 @@ interface MonthRow {
   key: string;
   closed: number;
   closed_at: string | null;
+  // 0009. Opcionales en el tipo: una base que aún no la tiene se lee como sin tarjeta (ver migration.test.ts).
+  card_other?: number | null;
+  card_paid?: number | null;
+  card_account_id?: string | null;
 }
 
 interface AccountRow {
@@ -143,6 +148,7 @@ interface FixedRow {
   paid: number;
   account_id: string;
   sort: number;
+  on_card?: number | null;
 }
 
 interface TxRow {
@@ -239,6 +245,7 @@ function toFixed(r: FixedRow): FixedExpense {
     paid: r.paid === 1,
     accountId: r.account_id,
     sort: r.sort,
+    ...(r.on_card === 1 ? { onCard: true } : {}),
   };
 }
 
@@ -315,6 +322,9 @@ function toMonths(months: MonthRow[], parts: MonthParts): Record<MonthKey, Month
   const byKey: Record<MonthKey, Month> = {};
   for (const r of months) {
     byKey[r.key] = { key: r.key, closed: r.closed === 1, closedAt: r.closed_at, budgetLog: [], budgets: {}, rates: [], fixed: [], transfers: [], tx: [] };
+    // Month.card solo existe en los meses que tienen algo de la tarjeta (un mes sin ella queda como siempre).
+    const card = { other: r.card_other ?? 0, paid: r.card_paid ?? null, accountId: r.card_account_id ?? null };
+    if (card.other !== 0 || card.paid !== null || card.accountId !== null) byKey[r.key]!.card = card;
   }
   for (const r of parts.budgetLog) {
     byKey[r.month_key]?.budgetLog.push({ id: r.id, date: r.date, accountId: r.account_id, amount: r.amount, kind: r.kind, note: r.note });
@@ -347,10 +357,10 @@ const BY_DATE = 'date, rowid';
 type MonthTable = 'fixed_expenses' | 'transactions' | 'transfers' | 'outside_expenses';
 
 const ACCOUNT_INSERT = ['user_id', 'id', 'name', 'currency', 'opening', 'hidden', 'sort'];
-const MONTH_INSERT = ['user_id', 'key', 'closed', 'closed_at'];
+const MONTH_INSERT = ['user_id', 'key', 'closed', 'closed_at', 'card_other', 'card_paid', 'card_account_id'];
 const BUDGET_LOG_INSERT = ['user_id', 'id', 'month_key', 'date', 'account_id', 'amount', 'kind', 'note'];
 const RATE_INSERT = ['user_id', 'month_key', 'from_currency', 'to_currency', 'date', 'rate'];
-const FIXED_INSERT = ['user_id', 'id', 'month_key', 'name', 'day', 'amount', 'currency', 'paid', 'account_id', 'sort'];
+const FIXED_INSERT = ['user_id', 'id', 'month_key', 'name', 'day', 'amount', 'currency', 'paid', 'account_id', 'sort', 'on_card'];
 const TRANSFER_INSERT = ['user_id', 'id', 'month_key', 'date', 'via', 'from_account_id', 'to_account_id', 'amount', 'rate', 'budget', 'fee'];
 const TX_INSERT = [
   'user_id',
@@ -933,10 +943,11 @@ const NO_ACCOUNT = 'Account not found.';
 
 /**
  * "Algo usa la cuenta": un gasto fijo, una transacción, un gasto fuera de presupuesto, un envío (de salida o de llegada), un ingreso o un
- * movimiento del presupuesto de algún mes, o un aporte a una meta. ?1 es el usuario y ?2, la cuenta.
+ * movimiento del presupuesto de algún mes, un pago de la tarjeta de crédito o un aporte a una meta. ?1 es el usuario y ?2, la cuenta.
  */
 const ACCOUNT_IN_USE = `(
   EXISTS (SELECT 1 FROM fixed_expenses WHERE user_id = ?1 AND account_id = ?2)
+  OR EXISTS (SELECT 1 FROM months WHERE user_id = ?1 AND card_account_id = ?2)
   OR EXISTS (SELECT 1 FROM transactions WHERE user_id = ?1 AND account_id = ?2)
   OR EXISTS (SELECT 1 FROM outside_expenses WHERE user_id = ?1 AND account_id = ?2)
   OR EXISTS (SELECT 1 FROM transfers WHERE user_id = ?1 AND (from_account_id = ?2 OR to_account_id = ?2))
@@ -1313,8 +1324,8 @@ function createMonthStatements(db: D1Database, userId: string, key: MonthKey): D
     recurringIncomesStatement(db, userId, key),
     db
       .prepare(
-        `INSERT INTO fixed_expenses (user_id, id, month_key, name, day, amount, currency, paid, account_id, sort)
-         SELECT ?1, lower(hex(randomblob(16))), ?2, name, day, amount, currency, 0, account_id, sort
+        `INSERT INTO fixed_expenses (user_id, id, month_key, name, day, amount, currency, paid, account_id, sort, on_card)
+         SELECT ?1, lower(hex(randomblob(16))), ?2, name, day, amount, currency, 0, account_id, sort, on_card
          FROM fixed_expenses WHERE user_id = ?1 AND month_key = ${PREVIOUS_MONTH} ORDER BY ${BY_SORT}`,
       )
       .bind(userId, key),
@@ -1448,6 +1459,63 @@ export async function deleteMonth(db: D1Database, userId: string, key: MonthKey)
   if (!row) throw monthNotFoundError(key);
 }
 
+// ── Tarjeta de crédito ───────────────────────────────────────────────────────
+
+/** Los «otros cargos» de la tarjeta del mes (>= 0, en la moneda principal). Mes cerrado → 409. */
+export async function setCardOther(db: D1Database, userId: string, key: MonthKey, other: number): Promise<Month> {
+  const results = await db.batch([
+    db.prepare(`UPDATE months SET card_other = ?3 WHERE user_id = ?1 AND key = ?2 AND closed = 0`).bind(userId, key, other),
+    ...monthStatements(db, userId, key),
+  ]);
+  return writtenMonth(results, key);
+}
+
+/**
+ * Paga la tarjeta del mes: guarda lo pagado y la cuenta de la que sale. El importe tiene que ser > 0 y no pasar del
+ * total de la tarjeta, que se calcula aquí con el estado (shared/calc.ts cardCalc) y no se fía del cliente; pagar
+ * otra vez sustituye el pago anterior. Sin `accountId` se usa cardAccountFor. Cuenta de oro o desconocida → 400,
+ * mes cerrado → 409. El total sale de una lectura previa a la escritura, como en addLeftover.
+ */
+export async function payCard(db: D1Database, userId: string, key: MonthKey, input: CardPayRequest): Promise<Month> {
+  const state = await loadState(db, userId);
+  const month = state.months[key];
+  if (!month) throw monthNotFoundError(key);
+  if (month.closed) throw monthClosedError(key);
+  const { total } = cardCalc(state, key);
+  // Tolerancia de coma flotante: el diálogo propone el total tal cual y no debe rechazarse por un 1e-12.
+  if (!(input.amount <= total + 1e-6)) {
+    throw validationError(
+      total > 0
+        ? `amount: the card total for ${key} is ${total.toFixed(2)}; it cannot be paid for more than that.`
+        : `There is nothing to pay on the credit card in ${key}.`,
+    );
+  }
+  const accountId = input.accountId ?? cardAccountFor(state, key)?.id;
+  if (!accountId) throw noAccountsError();
+  const results = await db.batch([
+    db
+      .prepare(
+        `UPDATE months SET card_paid = ?3, card_account_id = ?4
+         WHERE user_id = ?1 AND key = ?2 AND closed = 0
+           AND EXISTS (SELECT 1 FROM accounts WHERE user_id = ?1 AND id = ?4 AND currency <> '${GOLD}')`,
+      )
+      .bind(userId, key, Math.min(input.amount, Math.max(total, 0)), accountId),
+    ...monthStatements(db, userId, key),
+  ]);
+  // La cuenta no sirvió (no existe o es de oro): nada se escribió y el error dice por qué.
+  if (monthFrom(results, key)?.card?.accountId !== accountId) throw await createError(db, userId, key, [accountId]);
+  return writtenMonth(results, key);
+}
+
+/** Deshace el pago de la tarjeta del mes: sin importe ni cuenta. Mes cerrado → 409. */
+export async function unpayCard(db: D1Database, userId: string, key: MonthKey): Promise<Month> {
+  const results = await db.batch([
+    db.prepare(`UPDATE months SET card_paid = NULL, card_account_id = NULL WHERE user_id = ?1 AND key = ?2 AND closed = 0`).bind(userId, key),
+    ...monthStatements(db, userId, key),
+  ]);
+  return writtenMonth(results, key);
+}
+
 // ── Gastos fijos ─────────────────────────────────────────────────────────────
 
 const FIXED_PATCH = {
@@ -1458,6 +1526,7 @@ const FIXED_PATCH = {
   paid: 'paid',
   accountId: 'account_id',
   sort: 'sort',
+  onCard: 'on_card',
 } as const;
 const NO_FIXED = 'Monthly expense not found.';
 
@@ -1471,14 +1540,14 @@ export async function createFixed(db: D1Database, userId: string, input: FixedCr
   const row = await firstOrConflict<FixedRow>(
     db
       .prepare(
-        `INSERT INTO fixed_expenses (user_id, id, month_key, name, day, amount, currency, paid, account_id, sort)
+        `INSERT INTO fixed_expenses (user_id, id, month_key, name, day, amount, currency, paid, account_id, sort, on_card)
          SELECT m.user_id, ?2, m.key, ?4, ?5, ?6, ?7, ?8, a.id,
-                COALESCE((SELECT MAX(sort) FROM fixed_expenses WHERE user_id = m.user_id AND month_key = m.key), -1) + 1
+                COALESCE((SELECT MAX(sort) FROM fixed_expenses WHERE user_id = m.user_id AND month_key = m.key), -1) + 1, ?10
          FROM months m JOIN accounts a ON a.user_id = m.user_id AND a.id = ?9 ${moneyOnly('a')}
          WHERE m.user_id = ?1 AND m.key = ?3 AND m.closed = 0
          RETURNING *`,
       )
-      .bind(userId, input.id ?? newId(), input.monthKey, input.name, input.day ?? '', input.amount, input.cur, input.paid ? 1 : 0, accountId),
+      .bind(userId, input.id ?? newId(), input.monthKey, input.name, input.day ?? '', input.amount, input.cur, input.paid ? 1 : 0, accountId, input.onCard ? 1 : 0),
   );
   if (!row) throw await createError(db, userId, input.monthKey, [accountId]);
   return toFixed(row);
@@ -2094,7 +2163,7 @@ function dataStatements(db: D1Database, userId: string, state: UserData, stamp: 
       db,
       'months',
       MONTH_INSERT,
-      months.map((m) => [userId, m.key, m.closed ? 1 : 0, m.closedAt]),
+      months.map((m) => [userId, m.key, m.closed ? 1 : 0, m.closedAt, m.card?.other ?? 0, m.card?.paid ?? null, m.card?.accountId ?? null]),
     ),
     ...insertMany(
       db,
@@ -2116,7 +2185,7 @@ function dataStatements(db: D1Database, userId: string, state: UserData, stamp: 
       'fixed_expenses',
       FIXED_INSERT,
       months.flatMap((m) =>
-        m.fixed.map((f) => [userId, f.id, m.key, f.name, String(f.day ?? ''), f.amount, f.cur, f.paid ? 1 : 0, f.accountId, f.sort]),
+        m.fixed.map((f) => [userId, f.id, m.key, f.name, String(f.day ?? ''), f.amount, f.cur, f.paid ? 1 : 0, f.accountId, f.sort, f.onCard ? 1 : 0]),
       ),
     ),
     ...insertMany(
