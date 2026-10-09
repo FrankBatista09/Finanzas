@@ -89,7 +89,7 @@ export function FixedCard({ className, cardClassName }: { className?: string; ca
             <Th align="center" width={PAID_W} className={styles.paid}>
               {s('paid')}
             </Th>
-            <Th width={ITEM_TH_W}>{s('item')}</Th>
+            <Th elastic>{s('item')}</Th>
             <Th width={DAY_W}>{s('day')}</Th>
             <Th align="right" width={AMOUNT_W}>
               {t('amount')}
@@ -220,14 +220,11 @@ const PAID_W = 24;
 /** Wide enough for 12321321.00 plus the number spinner; as a min-width on the input it also keeps the column from being squeezed. */
 const AMOUNT_W = 108;
 
-/** Just the header word "Día"/"Day": the cell holds a day number, a longer text only scrolls inside its input. */
-const DAY_W = 32;
+/** Header word plus a little air: the cell holds a day number, a longer text only scrolls inside its input. As the input's min-width it also keeps the column from shrinking now that Item takes the leftover. */
+const DAY_W = 44;
 
 /** Small on purpose: Item is the column that gives up space, long names truncate with an ellipsis. */
 const ITEM_W = 60;
-
-/** Width hint for the Item header: a bounded share of the table instead of the leftover room. */
-const ITEM_TH_W = 90;
 
 interface CardRowProps {
   card: CardCalc;

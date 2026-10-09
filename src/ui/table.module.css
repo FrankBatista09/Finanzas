@@ -24,6 +24,11 @@
   text-align: left;
 }
 
+/* Elastic column: in auto table layout a 100% width takes what the content-sized columns leave free. */
+.elastic {
+  width: 100%;
+}
+
 /* Columna sin título (la de eliminar). El prototipo no le pone padding, así que lleva el de 1px del navegador:
    la columna mide su ancho + 2px, y de eso depende el reparto del resto de la tabla. */
 .thBlank {
