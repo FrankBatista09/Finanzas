@@ -322,7 +322,7 @@ describe('reduce · tasas del mes', () => {
     expect(rateFor(s, OCT, 'USD', 'DOP', '2026-10-10').rate).toBe(59);
     expect(rateFor(s, OCT, 'USD', 'DOP', '2026-10-17').rate).toBe(59.5);
     expect(rateFor(s, OCT, 'USD', 'DOP', '2026-10-25')).toEqual({ rate: 60, source: 'month', monthKey: OCT, date: '2026-10-20' });
-    expect(monthCalc(s, OCT).rate.rate).toBe(60);
+    expect(monthCalc(s, OCT).rate!.rate).toBe(60);
     // Lo ya registrado no cambia: las siete transacciones de octubre son de los días 1 a 7.
     expect(monthCalc(s, OCT).varSpent).toBe(monthCalc(seedState(), OCT).varSpent);
   });
@@ -427,7 +427,7 @@ describe('reduce · filas del mes', () => {
     const s = frozen({ ...seedState(), months: { ...seedState().months, [OCT]: { ...seedState().months[OCT]!, rates: [] } } });
     const row = newTransfer(s, OCT, { date: '2026-10-08', via: 'PayPal', fromAccountId: 'us', toAccountId: 'dr', amount: 500, rate: 57 }, 'tr-new')!;
     const next = reduce(s, { type: 'transfer/add', row });
-    expect(monthCalc(next, OCT).rate.rate).toBeCloseTo((1500 * 58.76 + 500 * 57) / 2000, 10);
+    expect(monthCalc(next, OCT).rate!.rate).toBeCloseTo((1500 * 58.76 + 500 * 57) / 2000, 10);
   });
 
   it('editar o eliminar una fila que no existe deja el estado igual', () => {
@@ -1206,12 +1206,19 @@ describe('cuentas: reglas', () => {
   });
 
   it('currencyChange: las dos monedas quedan siempre distintas', () => {
+    const none = { ...s, secondCurrency: null };
     // Principal DOP, segunda USD.
     expect(currencyChange(s, 'main', 'TRY')).toEqual({ mainCurrency: 'TRY' });
     expect(currencyChange(s, 'second', 'TRY')).toEqual({ secondCurrency: 'TRY' });
-    // Elegir la que ocupa el otro puesto las intercambia: van las dos.
-    expect(currencyChange(s, 'main', 'USD')).toEqual({ mainCurrency: 'USD', secondCurrency: 'DOP' });
+    // Elegir como principal la que es la segunda deja la segunda en ninguna; elegir como segunda la principal las intercambia.
+    expect(currencyChange(s, 'main', 'USD')).toEqual({ mainCurrency: 'USD', secondCurrency: null });
     expect(currencyChange(s, 'second', 'DOP')).toEqual({ mainCurrency: 'USD', secondCurrency: 'DOP' });
+    // Quitar la segunda; sin segunda ya no hay nada que quitar ni con quién intercambiar.
+    expect(currencyChange(s, 'second', null)).toEqual({ secondCurrency: null });
+    expect(currencyChange(none, 'second', null)).toEqual({});
+    expect(currencyChange(none, 'second', 'DOP')).toEqual({});
+    expect(currencyChange(none, 'main', 'TRY')).toEqual({ mainCurrency: 'TRY' });
+    expect(currencyChange(s, 'main', null)).toBeNull();
     // La que ya está no cambia nada.
     expect(currencyChange(s, 'main', 'DOP')).toEqual({});
     expect(currencyChange(s, 'second', 'USD')).toEqual({});

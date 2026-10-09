@@ -102,6 +102,7 @@ export const tr: Shape<typeof en> = {
   currencies: 'Para birimleri',
   mainCurrency: 'Ana para birimi',
   secondCurrency: 'İkinci para birimi',
+  noSecondCurrency: 'Yok',
   defaultAccount: 'Varsayılan hesap',
   automatic: 'Otomatik',
   automaticNamed: 'Otomatik ({name})',

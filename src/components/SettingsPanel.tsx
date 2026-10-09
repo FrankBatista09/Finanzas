@@ -119,9 +119,9 @@ export function SettingsPanel({ id, opener, onClose }: SettingsPanelProps) {
         <h2 id={currenciesId} className={styles.heading}>
           {t('currencies')}
         </h2>
-        {/* Las dos tienen que ser distintas: elegir en una fila la moneda de la otra las intercambia. */}
-        <CurrencyRow id={mainId} name={t('mainCurrency')} value={main} onPick={actions.setMainCurrency} />
-        <CurrencyRow id={secondId} name={t('secondCurrency')} value={second} onPick={actions.setSecondCurrency} />
+        {/* Las dos tienen que ser distintas: elegir como segunda la principal las intercambia; elegir como principal la segunda deja la segunda en "None". */}
+        <CurrencyRow id={mainId} name={t('mainCurrency')} value={main} onPick={(c) => c && actions.setMainCurrency(c)} />
+        <CurrencyRow id={secondId} name={t('secondCurrency')} value={second} onPick={actions.setSecondCurrency} none={t('noSecondCurrency')} />
         <div className={styles.field}>
           <label htmlFor={accountId}>{t('defaultAccount')}</label>
           <Select
@@ -177,7 +177,20 @@ export function SettingsPanel({ id, opener, onClose }: SettingsPanelProps) {
 }
 
 /** Una moneda a elegir entre las tres, como el idioma: los códigos se ven igual en todos los idiomas. */
-function CurrencyRow({ id, name, value, onPick }: { id: string; name: string; value: Currency; onPick: (currency: Currency) => void }) {
+function CurrencyRow({
+  id,
+  name,
+  value,
+  onPick,
+  none,
+}: {
+  id: string;
+  name: string;
+  value: Currency | null;
+  onPick: (currency: Currency | null) => void;
+  /** Texto de la opción "ninguna"; sin él la fila no la ofrece. */
+  none?: string;
+}) {
   return (
     <div className={styles.field}>
       <span id={id}>{name}</span>
@@ -187,6 +200,11 @@ function CurrencyRow({ id, name, value, onPick }: { id: string; name: string; va
             {c}
           </button>
         ))}
+        {none !== undefined && (
+          <button type="button" className={cx(styles.choice, value === null && styles.choiceOn)} aria-pressed={value === null} onClick={() => onPick(null)}>
+            {none}
+          </button>
+        )}
       </div>
     </div>
   );

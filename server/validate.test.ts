@@ -377,8 +377,16 @@ describe('ajustes (PATCH /api/settings)', () => {
       expect(messageOf(() => parse(settingsUpdateSchema, { mainCurrency: currency })), String(currency)).toBe(
         'Invalid data: mainCurrency: must be DOP, USD or TRY',
       );
+    }
+    for (const currency of ['EUR', 'usd', '', 'None', 1]) {
       expect(() => parse(settingsUpdateSchema, { secondCurrency: currency }), String(currency)).toThrow(ApiError);
     }
+  });
+
+  it('segunda moneda opcional: null o "none" la quitan, y con ninguna no hay par que comparar', () => {
+    expect(parse(settingsUpdateSchema, { secondCurrency: null })).toEqual({ secondCurrency: null });
+    expect(parse(settingsUpdateSchema, { secondCurrency: 'none' })).toEqual({ secondCurrency: null });
+    expect(parse(settingsUpdateSchema, { mainCurrency: 'USD', secondCurrency: 'none' })).toEqual({ mainCurrency: 'USD', secondCurrency: null });
   });
 
   it('cuenta por defecto: un id o null (la automática)', () => {

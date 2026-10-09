@@ -70,7 +70,7 @@ export function createActions(
   const settings = (patch: SettingsUpdate | null) => {
     if (patch && Object.keys(patch).length > 0) store.dispatch({ type: 'settings/patch', patch });
   };
-  const setCurrency = (role: 'main' | 'second', currency: Currency) => {
+  const setCurrency = (role: 'main' | 'second', currency: Currency | null) => {
     if (store.state) settings(currencyChange(store.state, role, currency));
   };
 

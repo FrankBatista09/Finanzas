@@ -50,7 +50,7 @@ describe('monthCalc · October 2026 (mes en curso, moneda principal DOP)', () =>
     expect(c.fixedPaid).toBeCloseTo(38304.71, 6);
     expect(c.varSpent).toBe(10845);
     expect(f2(c.used)).toBe('49,149.71');
-    expect(f2(c.usedSecond)).toBe('836.45');
+    expect(f2(c.usedSecond!)).toBe('836.45');
     expect(f2(c.avail)).toBe('20,850.29');
     expect(f2(c.pending)).toBe('3,720.86');
     expect(f2(c.after)).toBe('17,129.43');
@@ -59,7 +59,7 @@ describe('monthCalc · October 2026 (mes en curso, moneda principal DOP)', () =>
 
   it('presupuesto = suma de las partes por cuenta', () => {
     expect(c.budget).toBe(70000);
-    expect(f2(c.budgetSecond)).toBe('1,191.29');
+    expect(f2(c.budgetSecond!)).toBe('1,191.29');
     expect(c.budgetParts.map((p) => [p.account.id, p.amount, p.inMain])).toEqual([
       ['us', 0, 0],
       ['dr', 70000, 70000],
@@ -228,7 +228,7 @@ describe('tasas con fecha: cada fila se convierte con la vigente en SU fecha', (
     // Lo que es del mes entero sí sigue a la última tasa: Claude (106 USD, fijo pagado) pasa de 6,360 a 6,572.
     expect(before.fixedPaid).toBeCloseTo(32076.15 + 106 * 60, 6);
     expect(after.fixedPaid).toBeCloseTo(32076.15 + 106 * 62, 6);
-    expect(after.rate.rate).toBe(62);
+    expect(after.rate!.rate).toBe(62);
     // Y una transacción de ese mismo día ya va con la nueva.
     later.months['2026-10']!.tx.push(usdTx(later, 'today', '2026-10-08', 10));
     expect(monthCalc(structuredClone(later), '2026-10').varSpent).toBeCloseTo(10845 + 580 + 600 + 620, 8);
@@ -364,7 +364,7 @@ describe('ingresos que suben el presupuesto (Income.budget)', () => {
     expect(c.budget).toBe(73000);
     expect(c.budgetParts.find((p) => p.account.id === 'dr')).toMatchObject({ amount: 73000, fromLog: 70000, fromIncomes: 3000, inMain: 73000 });
     expect(f2(c.avail)).toBe('23,850.29');
-    expect(f2(c.budgetSecond)).toBe('1,242.34');
+    expect(f2(c.budgetSecond!)).toBe('1,242.34');
     expect(monthCalc(s, '2026-09').budget).toBe(71000);
     expect(monthCalc(s, '2026-08').budget).toBe(70000);
     // Sigue siendo un ingreso: entra a la cuenta y cuenta en el ingreso del mes.
@@ -761,7 +761,7 @@ describe('otra moneda principal', () => {
   it('todo el mes se expresa en la moneda principal', () => {
     const c = monthCalc(tryState(), '2026-10');
     expect(c.main).toBe('TRY');
-    expect(c.rate.rate).toBe(40);
+    expect(c.rate!.rate).toBe(40);
     expect(c.budget).toBeCloseTo((70000 / 58.76) * 40, 6);
     expect(c.varSpent).toBeCloseTo((10845 / 58.76) * 40, 6);
     expect(c.usedSecond).toBeCloseTo(49149.71 / 58.76, 4);
@@ -845,5 +845,25 @@ describe('ring y formato', () => {
     expect(f2(Number.NaN)).toBe('0.00');
     expect(f0(999.5)).toBe('1,000');
     expect(f0(-0.4)).toBe('0');
+  });
+});
+
+describe('sin segunda moneda', () => {
+  const none: AppState = { ...seedState(), secondCurrency: null };
+
+  it('monthCalc y balances no dan cifras en la segunda; las de la principal no cambian', () => {
+    const c = monthCalc(none, '2026-10');
+    const full = monthCalc(seedState(), '2026-10');
+    expect(c).toMatchObject({ second: null, rate: null, usedSecond: null, budgetSecond: null });
+    expect([c.budget, c.used, c.avail, c.income]).toEqual([full.budget, full.used, full.avail, full.income]);
+    const b = balances(none, '2026-10');
+    expect(b.totalSecond).toBeNull();
+    expect(b.accounts.every((a) => a.inSecond === null && a.valued)).toBe(true);
+    expect(b.totalMain).toBeCloseTo(balances(seedState(), '2026-10').totalMain, 8);
+  });
+
+  it('convert y rateFor siguen cruzando por la principal; incomeRows no trae tasa', () => {
+    expect(convert(none, '2026-10', 100, 'USD', 'DOP')).toBeCloseTo(5876, 8);
+    expect(incomeRows(none).every((r) => r.rate === null)).toBe(true);
   });
 });

@@ -101,6 +101,7 @@ export const es: Shape<typeof en> = {
   currencies: 'Monedas',
   mainCurrency: 'Moneda principal',
   secondCurrency: 'Segunda moneda',
+  noSecondCurrency: 'Ninguna',
   defaultAccount: 'Cuenta por defecto',
   automatic: 'Automática',
   automaticNamed: 'Automática ({name})',

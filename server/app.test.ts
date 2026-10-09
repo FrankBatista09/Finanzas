@@ -363,6 +363,22 @@ describe('PATCH /api/settings', () => {
     expect((await eda.get<StateResponse>('/api/state')).body.state).toMatchObject({ mainCurrency: 'DOP', secondCurrency: 'USD' });
   });
 
+  it('segunda moneda opcional: null o "none" la quitan y se guarda sin migración; elegir otra la devuelve', async () => {
+    const { api, eda } = await pair();
+    for (const secondCurrency of [null, 'none']) {
+      await api.patch('/api/settings', { secondCurrency: 'TRY' });
+      const r = await api.patch<SettingsResponse>('/api/settings', { secondCurrency });
+      expect(r.status).toBe(200);
+      expect(r.body).toMatchObject({ mainCurrency: 'DOP', secondCurrency: null });
+      expect((await api.get<StateResponse>('/api/state')).body.state.secondCurrency).toBeNull();
+    }
+    // Sin segunda no hay con quién chocar: la principal puede ser cualquiera.
+    expect((await api.patch<SettingsResponse>('/api/settings', { mainCurrency: 'USD' })).body).toMatchObject({ mainCurrency: 'USD', secondCurrency: null });
+    // Es de cada usuario.
+    expect((await eda.get<StateResponse>('/api/state')).body.state.secondCurrency).toBe('USD');
+    expect((await api.patch<SettingsResponse>('/api/settings', { secondCurrency: 'DOP' })).body).toMatchObject({ mainCurrency: 'USD', secondCurrency: 'DOP' });
+  });
+
   it('monedas iguales: 400, vengan las dos o solo una que coincide con la otra que ya tiene', async () => {
     const { api } = await seeded();
     const same = { code: 'validation', message: 'Invalid data: secondCurrency: must be different from mainCurrency' };
@@ -412,7 +428,8 @@ describe('PATCH /api/settings', () => {
       { theme: [ocean] },
       { mainCurrency: 'EUR' },
       { mainCurrency: 'usd' },
-      { secondCurrency: null },
+      { secondCurrency: 'none ' },
+      { secondCurrency: 'XAU' },
       { defaultAccountId: '' },
       { defaultAccountId: 7 },
       { defaultRate: 60 },
@@ -765,7 +782,7 @@ describe('tasas del mes', () => {
     expect(monthCalc((await api.get<StateResponse>('/api/state')).body.state, '2026-10').varSpent).toBeCloseTo(10845 + 587.6 + 600, 8);
     expect(await balance(api, 'dr')).toBeCloseTo(drBefore - 600, 8);
     // Lo que es del mes entero sí sigue a la última: la tasa del mes y el fijo en USD.
-    expect(monthCalc(after, '2026-10').rate.rate).toBe(60);
+    expect(monthCalc(after, '2026-10').rate!.rate).toBe(60);
     expect(monthCalc(after, '2026-10').fixedPaid).toBeCloseTo(32076.15 + 106 * 60, 6);
   });
 

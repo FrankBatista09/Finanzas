@@ -14,8 +14,8 @@ import { latestKey } from './reducers';
 export interface Money {
   /** En la moneda principal. */
   main: number;
-  /** En la segunda moneda. */
-  second: number;
+  /** En la segunda moneda; null si el usuario no tiene segunda moneda. */
+  second: number | null;
 }
 
 /**
@@ -25,7 +25,7 @@ export interface Money {
 export function inBoth(state: AppState, key: MonthKey, amount: number, cur: Currency, date?: ISODate): Money {
   return {
     main: convert(state, key, amount, cur, state.mainCurrency, date),
-    second: convert(state, key, amount, cur, state.secondCurrency, date),
+    second: state.secondCurrency ? convert(state, key, amount, cur, state.secondCurrency, date) : null,
   };
 }
 
@@ -44,7 +44,7 @@ export interface PairRate extends RateInfo {
 export function pairRates(state: AppState, key: MonthKey): PairRate[] {
   const typed = state.months[key]?.rates ?? [];
   const pairs = CURRENCIES.flatMap((a, i) => CURRENCIES.slice(i + 1).map((b): [Currency, Currency] => [a, b]));
-  const isBar = ([a, b]: [Currency, Currency]) => [a, b].includes(state.mainCurrency) && [a, b].includes(state.secondCurrency);
+  const isBar = ([a, b]: [Currency, Currency]) => !!state.secondCurrency && [a, b].includes(state.mainCurrency) && [a, b].includes(state.secondCurrency);
   pairs.sort((x, y) => Number(isBar(y)) - Number(isBar(x)));
 
   return pairs.map(([a, b]) => {
@@ -57,6 +57,46 @@ export function pairRates(state: AppState, key: MonthKey): PairRate[] {
     const [from, to] = written ? [written.from, written.to] : forward.rate >= 1 ? [a, b] : [b, a];
     return { from, to, ...(from === a ? forward : rateFor(state, key, from, to)) };
   });
+}
+
+/**
+ * Las monedas que el usuario usa de verdad en este mes: la principal, la segunda (si hay), las de sus cuentas
+ * visibles y las de los gastos del mes (un gasto en liras sin cuenta en liras también se convierte). En el orden de siempre.
+ */
+export function usedCurrencies(
+  main: Currency,
+  second: Currency | null,
+  visible: readonly { currency: Currency }[],
+  month: { fixed: readonly { cur: Currency }[]; tx: readonly { cur: Currency }[] },
+): Currency[] {
+  const used = new Set<Currency>([main, ...(second ? [second] : []), ...visible.map((a) => a.currency), ...month.fixed.map((f) => f.cur), ...month.tx.map((t) => t.cur)]);
+  return CURRENCIES.filter((c) => used.has(c));
+}
+
+/**
+ * Las tasas que hacen falta de verdad: con k monedas en uso, k-1 pares, cada moneda contra la principal. El par
+ * que queda entre dos monedas que no son la principal sale cruzando por ella (calc.rateFor), no se pide.
+ * Además, cualquier tasa escrita para este mes (si está escrita se tiene que poder ver, corregir y quitar).
+ * Conserva el orden de `rates`.
+ */
+export function shownRates(rates: readonly PairRate[], used: readonly Currency[], main: Currency): PairRate[] {
+  return rates.filter((r) => r.source === 'month' || ((r.from === main || r.to === main) && used.includes(r.from) && used.includes(r.to)));
+}
+
+/**
+ * La tasa que enseña la barra superior: la de la segunda moneda contra la principal y, sin segunda, la primera tasa
+ * que hace falta (null si ninguna: todo el dinero está en una moneda y no hay nada que enseñar).
+ */
+export function barRate(
+  rates: readonly PairRate[],
+  used: readonly Currency[],
+  main: Currency,
+  second: Currency | null,
+  secondRate: RateInfo | null,
+): PairRate | null {
+  if (second && secondRate) return { from: second, to: main, ...secondRate };
+  const needed = shownRates(rates, used, main);
+  return needed.find((r) => r.source !== 'month') ?? needed[0] ?? null;
 }
 
 export interface AccountOption {
@@ -105,6 +145,8 @@ export function buildFinanzas({ user, state, monthKey, today, actions }: Finanza
   const month = state.months[monthKey];
   if (!month) return null;
   const calc = monthCalc(state, monthKey);
+  const rates = pairRates(state, monthKey);
+  const money = moneyAccounts(state);
   return {
     user,
     state,
@@ -112,17 +154,18 @@ export function buildFinanzas({ user, state, monthKey, today, actions }: Finanza
     month,
     calc,
     rate: calc.rate,
+    barRate: barRate(rates, usedCurrencies(calc.main, calc.second, money, month), calc.main, calc.second, calc.rate),
     main: calc.main,
     second: calc.second,
     accounts: [...state.accounts].sort((a, b) => a.sort - b.sort),
-    visibleAccounts: moneyAccounts(state),
+    visibleAccounts: money,
     defaultAccount: defaultAccount(state),
     accountOptions: (...include) => accountOptions(state, ...include),
     incomeAccountOptions: (...include) => incomeAccountOptions(state, ...include),
     balances: balances(state, monthKey),
     latestMonth: latestKey(state) === monthKey,
     inBoth: (amount, cur, key = monthKey, date) => inBoth(state, key, amount, cur, date),
-    rates: pairRates(state, monthKey),
+    rates,
     rateOf: (from, to, key = monthKey, date) => rateFor(state, key, from, to, date),
     leftover: leftoverFor(state, monthKey),
     readOnly: month.closed,

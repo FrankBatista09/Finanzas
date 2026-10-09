@@ -2399,7 +2399,7 @@ describe('month_summary: presupuesto por cuenta, monedas y tasas', () => {
     expect(lines).toContain(`Transactions: 7 (${f2(c.varSpent)} TRY)`);
     expect(lines).toContain(`Month income: 232,000.00 TRY · Income − used: ${f2(c.incomeLeft)} TRY`);
     expect(lines).toContain(
-      `Account balances at the end of October 2026: US account 13,482.00 USD (539,280.00 TRY); DR account 220,641.93 DOP (${f2(b.accounts[1]!.inMain)} TRY); TR account 4,000.00 TRY · Total money: ${f2(b.totalMain)} TRY (${f2(b.totalSecond)} USD)`,
+      `Account balances at the end of October 2026: US account 13,482.00 USD (539,280.00 TRY); DR account 220,641.93 DOP (${f2(b.accounts[1]!.inMain)} TRY); TR account 4,000.00 TRY · Total money: ${f2(b.totalMain)} TRY (${f2(b.totalSecond!)} USD)`,
     );
     // Cada tasa se lee en el sentido en que vale más de 1: "TRY to DOP: 1.47", no "DOP to TRY: 0.68".
     expect(lines).toContain('Month rates: TRY to DOP: 1.47 (crossed through USD); USD to TRY: 40.00 (typed on 2026-10-01)');
@@ -2861,12 +2861,30 @@ describe('list_accounts', () => {
       // Con dólares como moneda principal, la cuenta por defecto pasa a ser la primera en dólares… salvo que haya una elegida.
       'US account · USD · balance 13,482.00 USD',
       'DR account · DOP · balance 220,641.93 DOP (3,754.97 USD) · default account',
-      `Total money: 17,236.97 USD (${f2(b.totalSecond)} TRY)`,
+      `Total money: 17,236.97 USD (${f2(b.totalSecond!)} TRY)`,
       'Rates used (October 2026): USD to DOP: 58.76 (typed on 2026-10-06); USD to TRY: 42.00 (default value, not set yet)',
       'Today is 2026-10-07.',
     ]);
     expect(b.totalSecond).toBeCloseTo(17236.968 * 42, 0);
     expect(r.data).toMatchObject({ mainCurrency: 'USD', secondCurrency: 'TRY', totalMoney: { main: b.totalMain, second: b.totalSecond } });
+  });
+
+  it('sin segunda moneda no salen cifras en ella: ni entre paréntesis ni en los datos', async () => {
+    const { env, db } = await seeded();
+    await updateSettings(db, F, { secondCurrency: null });
+    const accounts = await call(env, 'list_accounts');
+    expect(accounts.text.split('\n')[0]).toBe('Frank · 2 accounts · main currency DOP, no second currency');
+    expect(accounts.text).toMatch(/\nTotal money: [\d,.]+ DOP\n/);
+    expect(accounts.data).toMatchObject({ mainCurrency: 'DOP', secondCurrency: null });
+    expect(accounts.data!.totalMoney).not.toHaveProperty('second');
+    expect(accounts.data!.accounts[0]).not.toHaveProperty('inSecond');
+
+    const summary = await call(env, 'month_summary');
+    expect(summary.text).toMatch(/\nUsed so far: [\d,.]+ DOP\n/);
+    expect(summary.text).not.toContain('USD)');
+    expect(summary.data).toMatchObject({ currency: 'DOP', secondCurrency: null });
+    for (const key of ['budgetSecond', 'usedSecond']) expect(summary.data).not.toHaveProperty(key);
+    expect(summary.data!.totalMoney).not.toHaveProperty('second');
   });
 
   it('quien nunca abrió la web ve sus cuentas iniciales, en cero, sin que se cree ningún mes', async () => {

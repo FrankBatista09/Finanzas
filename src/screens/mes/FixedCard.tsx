@@ -101,7 +101,7 @@ export function FixedCard({ className, cardClassName }: { className?: string; ca
             <Th width={96}>{s('payWith')}</Th>
             <Th>{t('account')}</Th>
             <Th align="right">{main}</Th>
-            <Th align="right">{second}</Th>
+            {second && <Th align="right">{second}</Th>}
             <Th blank width={32} />
           </tr>
         </thead>
@@ -200,7 +200,7 @@ export function FixedCard({ className, cardClassName }: { className?: string; ca
                   />
                 </Td>
               )}
-              <Td kind="add" colSpan={3}>
+              <Td kind="add" colSpan={second ? 3 : 2}>
                 <AddButton />
               </Td>
             </AddRow>
@@ -287,9 +287,11 @@ function CardRow({ card, readOnly, accountName, onPay, onDetails }: CardRowProps
       <Td kind="num" nowrap>
         {f2(money.main)}
       </Td>
-      <Td kind="num" nowrap tone="muted">
-        {f2(money.second)}
-      </Td>
+      {money.second !== null && (
+        <Td kind="num" nowrap tone="muted">
+          {f2(money.second)}
+        </Td>
+      )}
       <Td kind="action" />
     </Tr>
   );
@@ -299,7 +301,7 @@ interface FixedRowProps {
   row: FixedExpense;
   /** El importe en la moneda principal y en la segunda, con las tasas del mes. */
   inMain: number;
-  inSecond: number;
+  inSecond: number | null;
   /** Opciones del selector de cuenta (rows.ts rowAccountOptions). */
   accounts: readonly AccountOption[];
   /** Todas las tarjetas (también las apagadas: la de la fila se queda en su selector) y la primera activa, a la que va un gasto que no dice cuál. */
@@ -388,9 +390,11 @@ const FixedRow = memo(function FixedRow({ row: f, inMain, inSecond, accounts, ca
       <Td kind="num" nowrap>
         {f2(inMain)}
       </Td>
-      <Td kind="num" nowrap tone="muted">
-        {f2(inSecond)}
-      </Td>
+      {inSecond !== null && (
+        <Td kind="num" nowrap tone="muted">
+          {f2(inSecond)}
+        </Td>
+      )}
       <Td kind="action">{!readOnly && <DeleteButton onClick={() => actions.removeFixed(f.id)} label={t('deleteNamed', named)} />}</Td>
     </Tr>
   );

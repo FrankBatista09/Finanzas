@@ -136,7 +136,7 @@ describe('pairRates: las tasas del mes, una por par, con su origen', () => {
     s.secondCurrency = 'USD';
     expect(pairRates(s, OCT).map((r) => `${r.from}>${r.to}`)).toEqual(['USD>TRY', 'USD>DOP', 'TRY>DOP']);
     // Coincide con la tasa de la barra superior (MonthCalc.rate: 1 segunda = rate principal).
-    expect(pairRates(s, OCT)[0]).toMatchObject(monthCalc(s, OCT).rate);
+    expect(pairRates(s, OCT)[0]).toMatchObject(monthCalc(s, OCT).rate!);
   });
 
   it('un mes que no existe: sin tasas escritas, resuelve con lo que haya antes', () => {
@@ -215,7 +215,7 @@ describe('buildFinanzas: el valor de useFinanzas()', () => {
     expect(f.rateOf('USD', 'DOP', OCT, '2026-10-05')).toEqual({ rate: 58, source: 'month', monthKey: OCT, date: '2026-10-01' });
     expect(f.rateOf('DOP', 'USD', undefined, '2026-10-05').rate).toBeCloseTo(1 / 58, 12);
     // La barra superior y la lista de tasas enseñan la última.
-    expect(f.rate.rate).toBe(60);
+    expect(f.rate!.rate).toBe(60);
     expect(f.rates[0]).toMatchObject({ rate: 60, date: '2026-10-06' });
   });
 
@@ -254,7 +254,7 @@ describe('buildFinanzas: el valor de useFinanzas()', () => {
     expect(f.latestMonth).toBe(false);
     expect(f.balances).toEqual(balances(s, '2026-09'));
     expect(f.balances.totalMain).not.toBe(build(s).balances.totalMain);
-    expect(f.rate.source).toBe('transfers');
+    expect(f.rate!.source).toBe('transfers');
     // El último mes cuenta como tal aunque esté cerrado.
     s.months[OCT]!.closed = true;
     expect(build(s)).toMatchObject({ readOnly: true, latestMonth: true });

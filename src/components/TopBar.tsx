@@ -68,7 +68,7 @@ export function DownloadExcelDialog({ months, initial, onCancel, onDownload }: D
 
 /** Barra superior: marca, selector de usuario, selector de mes, Excel, tasa del mes y ajustes. */
 export function TopBar() {
-  const { user, state, monthKey, rate, main, second, readOnly, actions } = useFinanzas();
+  const { user, state, monthKey, barRate: bar, readOnly, actions } = useFinanzas();
   const { sheet, goToMonth, excelStatus, users, goToUser } = useShell();
   const { t, label, rateHint } = useI18n();
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -79,8 +79,8 @@ export function TopBar() {
 
   // De dónde sale la tasa. Si no es la escrita para este mes se dice al lado; si es el valor fijo de respaldo
   // se destaca: todas las cifras convertidas descansan entonces en una tasa que nadie ha escrito.
-  const hint = rateHint(rate, second, main);
-  const fallback = rate.source === 'default';
+  const hint = bar ? rateHint(bar, bar.from, bar.to) : '';
+  const fallback = bar?.source === 'default';
 
   const keys = sortedKeys(state);
   const idx = keys.indexOf(monthKey);
@@ -160,13 +160,16 @@ export function TopBar() {
         />
       )}
 
-      <div className={styles.rate}>
-        <span>{t('monthRate')}</span>
-        <span className={cx(styles.chip, fallback && styles.chipWarn)} title={hint}>
-          1 {second} = {chipRate(rate.rate)} {main}
-        </span>
-        {rate.source !== 'month' && <span className={fallback ? styles.rateWarn : styles.rateHint}>{hint}</span>}
-      </div>
+      {/* Sin ninguna tasa que hacer falta (todo el dinero en una moneda) no hay nada que enseñar. */}
+      {bar && (
+        <div className={styles.rate}>
+          <span>{t('monthRate')}</span>
+          <span className={cx(styles.chip, fallback && styles.chipWarn)} title={hint}>
+            1 {bar.from} = {chipRate(bar.rate)} {bar.to}
+          </span>
+          {bar.source !== 'month' && <span className={fallback ? styles.rateWarn : styles.rateHint}>{hint}</span>}
+        </div>
+      )}
 
       <button
         ref={settingsButton}

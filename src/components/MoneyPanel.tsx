@@ -49,9 +49,11 @@ export function MoneyPanel() {
           <div className={cx(styles.total, balances.totalMain < 0 && styles.errorText)}>
             {f2(balances.totalMain)} <span className={styles.totalUnit}>{main}</span>
           </div>
-          <div className={styles.totalSecond}>
-            ≈ {f2(balances.totalSecond)} {second}
-          </div>
+          {second && balances.totalSecond !== null && (
+            <div className={styles.totalSecond}>
+              ≈ {f2(balances.totalSecond)} {second}
+            </div>
+          )}
           {balances.goldExcluded && <div className={styles.totalNote}>{t('goldNotIncluded')}</div>}
         </div>
         {/* key: al cambiar de mes los campos se montan de nuevo y no arrastran un borrador a medias. */}

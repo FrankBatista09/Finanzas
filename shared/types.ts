@@ -359,8 +359,8 @@ export interface AppState {
 
   /** Moneda en la que se ven el presupuesto, los totales y las columnas de las tablas. */
   mainCurrency: Currency;
-  /** Moneda de las líneas "≈". Distinta de la principal. */
-  secondCurrency: Currency;
+  /** Moneda de las líneas "≈". Distinta de la principal; null = ninguna (no se muestra nada en una segunda moneda). */
+  secondCurrency: Currency | null;
   /** Cuenta de la que sale un gasto cuando no se indica otra (también los que registra Claude). null = ver defaultAccount(). */
   defaultAccountId: string | null;
   /** Tasa USD→DOP de respaldo cuando ningún mes la tiene (settings.default_rate). */
