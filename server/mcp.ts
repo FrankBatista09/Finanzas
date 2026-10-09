@@ -35,6 +35,9 @@ import {
   accountsById,
   balances,
   budgetHistory,
+  cardCalc,
+  cardCalcs,
+  cardHint,
   convert,
   currentKey,
   cardAccountFor,
@@ -53,15 +56,15 @@ import {
   transferFees,
   transferReceived,
 } from '../shared/calc';
-import type { AccountBalance, Balances, MonthCalc, RateInfo, RateSource } from '../shared/calc';
+import type { AccountBalance, Balances, CardCalc, MonthCalc, RateInfo, RateSource } from '../shared/calc';
 import { APP_NAME, CATS, GOLD, GOLD_UNIT, isGold, METHODS, TIMEZONE, VIAS } from '../shared/constants';
 import { f0, f2, fGrams, fRate } from '../shared/format';
 import { canonicalCat, canonicalMethod } from '../shared/i18n';
 import { currentMonthKey, isISODate, isMonthKey, label, monthOf, monthSpan, todayISO } from '../shared/month';
-import type { Account, AccountCurrency, AppState, AppUser, Currency, FixedExpense, ISODate, Month, MonthKey } from '../shared/types';
+import type { Account, AccountCurrency, AppState, AppUser, CreditCard, Currency, FixedExpense, ISODate, Month, MonthKey } from '../shared/types';
 import { checkBearer } from './auth';
 import { readLimitedBody } from './body';
-import { createIncome, createOutside, createTransfer, ensureMonth, getMonth, loadState, patchFixed, payCard, userAccounts, userState } from './db';
+import { createIncome, createOutside, createTransfer, ensureMonth, getMonth, listCards, loadState, patchFixed, payCard, userAccounts, userState } from './db';
 import type { Env } from './env';
 import {
   ApiError,
@@ -75,7 +78,7 @@ import {
   toApiError,
   validationError,
 } from './errors';
-import { ingestTransaction, matchAccount } from './ingest';
+import { ingestTransaction, matchAccount, matchCard } from './ingest';
 import { configuredUsers, userFromBody } from './users';
 import { fixedPatchSchema, incomeCreateSchema, MAX_AMOUNT, MAX_LEN, parse, transferCreateSchema } from './validate';
 
@@ -271,7 +274,7 @@ function instructions(users: readonly AppUser[]): string {
     'Rates: each month has its own rates between currencies. When a tool says that a rate is a default value, nobody has set it yet: tell the person, because the converted amounts are only approximate until they type the rate of the month in the web app.',
     'Outside-budget expenses: an expense the person says is outside their budget is recorded with add_outside_expense. It lowers the account balance like any expense but does not count in used, available or the categories.',
     'Fixed expenses (the "Monthly expenses" list of the app): the same items every month (electricity, internet, subscriptions…). They are not recorded as transactions: mark them as paid with mark_fixed_paid.',
-    'Credit card: it is a deferred payment. A purchase with method "Credit card" (or a fixed expense on the card) does not touch any account or the budget when it is made; the month has a credit card total, and only when the person pays the bill (all of it or part, with pay_credit_card, as many payments as they make) is the budget charged and the paying account debited. What is left unpaid stays pending in the month and, if the month closes with it unpaid, carries to the next one.',
+    'Credit card: it is a deferred payment. A purchase with method "Credit card" (or a fixed expense on the card) does not touch any account or the budget when it is made; the month has a credit card total, and only when the person pays the bill (all of it or part, with pay_credit_card, as many payments as they make) is the budget charged and the paying account debited. What is left unpaid stays pending in the month and, if the month closes with it unpaid, carries to the next one. The person may have several credit cards, or none (list_credit_cards): pass `card` to add_transaction or pay_credit_card when they name one.',
     'A closed month is read-only: it can be consulted, but it accepts no expenses, transfers or changes until the person reopens it in the web app. If a tool answers that the month is closed, tell the person; do not record it under another date.',
     'After recording something, confirm to the person what was recorded and for whom, with the amount, the account and its new balance, based on the text the tool returns.',
   ].join('\n');
@@ -613,6 +616,7 @@ const monthKey = () =>
 const DEFAULT_LIST = 20;
 const MAX_LIST = 200;
 
+const CARD_HINT = 'by name or id, as the person calls it (part of the name is enough if it identifies only one; see list_credit_cards)';
 const ACCOUNT_HINT = 'by name or id, as the person calls it (part of the name is enough if it identifies only one; see list_accounts)';
 
 const addTransactionArgs = z.strictObject({
@@ -628,6 +632,7 @@ const addTransactionArgs = z.strictObject({
   place: text(MAX_LEN.place).optional().describe('Shop or place of the expense, if the person said it: "Supermercado Nacional", "Texaco".'),
   category: listed(CATS, canonicalCat, 'Category that best describes the expense.'),
   method: listed(METHODS, canonicalMethod, 'Payment method.'),
+  card: accountName(`Only with method "Credit card": which credit card, ${CARD_HINT}. Omit it unless the person names one: their first active card is used.`),
   notes: text(MAX_LEN.notes).optional().describe('Free note, if the person added some detail.'),
 });
 
@@ -734,10 +739,13 @@ const markFixedPaidArgs = z.strictObject({
 });
 
 const payCreditCardArgs = z.strictObject({
-  amount: positive().describe("How much of the credit card bill was paid, in the person's main currency. At most what is still left to pay this month; it can be less (a partial payment)."),
+  amount: positive().describe("How much of the credit card bill was paid, in the currency of that card (see list_credit_cards). At most what is still left to pay this month; it can be less (a partial payment)."),
   account: accountName(`Account the payment came out of, ${ACCOUNT_HINT}. Omit it unless the person names one: the account of the previous card payment or their default account is used.`),
+  card: accountName(`Which credit card was paid, ${CARD_HINT}. Omit it if the person has only one active card, or does not say: the first active card is used.`),
   month: monthKey().optional().describe('Month of the credit card bill, YYYY-MM. By default, the month in progress.'),
 });
+
+const listCreditCardsArgs = z.strictObject({});
 
 // ── Herramientas ─────────────────────────────────────────────────────────────
 
@@ -843,7 +851,7 @@ const addTransaction = defineTool({
       t.cat,
       t.method,
       `${t.date} (${label(t.monthKey)})`,
-      onCard ? 'charged to the credit card' : after && paidFrom && `paid from ${accountPart(after.state, t.monthKey, paidFrom.account, t.amount, t.cur, t.date)}`,
+      onCard ? `charged to the credit card${after && after.state.cards.length > 1 ? ` ${after.state.cards.find((x) => x.id === t.cardId)?.name ?? ''}`.trimEnd() : ''}` : after && paidFrom && `paid from ${accountPart(after.state, t.monthKey, paidFrom.account, t.amount, t.cur, t.date)}`,
     ];
     const sentences = [`Recorded for ${user.name}: ${parts.filter(Boolean).join(SEP)}.`];
     if (onCard) sentences.push('No account or budget is charged until the credit card is paid (pay_credit_card).');
@@ -973,6 +981,21 @@ const listTransactions = defineTool({
 /** Cómo se nombra cada fila de la historia del presupuesto. */
 const HISTORY_KIND = { initial: 'initial', adjust: 'adjustment', leftover: 'leftover', income: 'income', transfer: 'transfer' } as const;
 
+/** El aviso de una tarjeta, solo en el último mes registrado (en uno anterior no tiene sentido) y si tiene límite y corte. */
+function hintOf(state: AppState, key: MonthKey, k: CardCalc, today: ISODate) {
+  return key === sortedKeys(state).at(-1) ? cardHint(k.card, k.remainder, today) : null;
+}
+
+function hintText(name: string, cur: Currency, h: NonNullable<ReturnType<typeof cardHint>>): string {
+  const parts = [
+    h.payToUnder10 > 0
+      ? `to end the cutoff under 10% pay at least ${money(h.payToUnder10, cur)} before ${h.nextCutoff} (in ${h.daysToCutoff} days)`
+      : `under 10% of the limit; next cutoff ${h.nextCutoff} (in ${h.daysToCutoff} days)`,
+  ];
+  if (h.upcomingDue) parts.push(`payment due ${h.upcomingDue.date} (in ${h.upcomingDue.days} days)`);
+  return `${name}: ${parts.join(SEP)}`;
+}
+
 const monthSummary = defineTool({
   name: 'month_summary',
   title: 'Month summary',
@@ -1046,15 +1069,19 @@ const monthSummary = defineTool({
       `Available after pending fixed: ${money(c.after, main)}`,
       `Monthly expenses: ${c.paidCount} of ${c.fixedCount} paid${SEP}Fixed paid: ${money(c.fixedPaid, main)}${SEP}Fixed pending: ${money(c.pending, main)}`,
     );
-    if (c.card.total !== 0 || c.card.payments.length > 0) {
-      const k = c.card;
+    // Solo las tarjetas activas que tienen algo este mes (o que debían algo).
+    const cards = c.cards.filter((k) => k.total !== 0 || k.payments.length > 0);
+    for (const k of cards) {
+      const cur = k.cur;
       lines.push(
-        `Credit card: total ${money(k.total, main)} (previous ${money(k.previous, main)}${SEP}other charges ${money(k.other, main)}${SEP}charged this month ${money(k.charged, main)})${SEP}` +
+        `Credit card "${k.card.name}": total ${money(k.total, cur)} (previous ${money(k.previous, cur)}${SEP}other charges ${money(k.other, cur)}${SEP}charged this month ${money(k.charged, cur)})${SEP}` +
           (k.payments.length === 0
             ? 'not paid yet'
-            : `paid ${money(k.paid, main)} in ${k.payments.length} payment${k.payments.length === 1 ? '' : 's'} (${k.payments.map((p) => `${p.date} ${money(p.amount, main)} from ${accountsById(state).get(p.accountId)?.name ?? p.accountId}`).join('; ')})`) +
-          `${SEP}left to pay ${money(k.remainder, main)} (it carries to the next month if this one closes with it unpaid). Charges on the card are not in Used or in the account balances until it is paid.`,
+            : `paid ${money(k.paid, cur)} in ${k.payments.length} payment${k.payments.length === 1 ? '' : 's'} (${k.payments.map((p) => `${p.date} ${money(p.amount, cur)} from ${accountsById(state).get(p.accountId)?.name ?? p.accountId}`).join('; ')})`) +
+          `${SEP}left to pay ${money(k.remainder, cur)} (it carries to the next month if this one closes with it unpaid). Charges on the card are not in Used or in the account balances until it is paid.`,
       );
+      const h = hintOf(state, m.key, k, today);
+      if (h) lines.push(`${k.card.name} limit ${money(k.card.limit!, cur)}${SEP}${(h.utilization * 100).toFixed(1)}% used${SEP}${hintText(k.card.name, cur, h)}`);
     }
     if (pending.length > 0) {
       lines.push(`Still to pay: ${pending.map((f) => `${f.name} ${moneyIn(state, m.key, f.amount, f.cur, main)}${f.day ? `, day ${f.day}` : ''}`).join('; ')}`);
@@ -1129,15 +1156,21 @@ const monthSummary = defineTool({
         transactions: { count: c.txCount, total: c.varSpent },
         // Pago diferido: `total` = previous + other + charged; `paid` = suma de `payments`; `remainder` = lo que falta por
         // pagar (si el mes se cierra así, pasa al siguiente). En la moneda principal.
-        creditCard: {
-          total: c.card.total,
-          previous: c.card.previous,
-          other: c.card.other,
-          charged: c.card.charged,
-          paid: c.card.paid,
-          payments: c.card.payments.map((p) => ({ id: p.id, date: p.date, accountId: p.accountId, amount: p.amount })),
-          remainder: c.card.remainder,
-        },
+        creditCards: c.cards.map((k) => ({
+          id: k.card.id,
+          name: k.card.name,
+          currency: k.cur,
+          total: k.total,
+          previous: k.previous,
+          other: k.other,
+          charged: k.charged,
+          paid: k.paid,
+          payments: k.payments.map((p) => ({ id: p.id, date: p.date, accountId: p.accountId, amount: p.amount })),
+          remainder: k.remainder,
+          limit: k.card.limit,
+          utilization: k.card.limit ? Math.max(0, k.remainder) / k.card.limit : null,
+          hint: hintOf(state, m.key, k, today),
+        })),
         // Aparte de `transactions`, `used` y `available`: resta de los saldos de las cuentas, nada más.
         outsideBudget: { ...outsideSummary(state, m.key), expenses: outsideOf(m) },
         // Ya contadas en `transactions` y en `categories` (Other): no son filas de transacción, salen de los envíos.
@@ -1396,6 +1429,12 @@ const listAccounts = defineTool({
   },
 });
 
+/** El total de la tarjeta a la que está cargado un gasto (la suya, o la primera activa si no dice). */
+function cardTotalLine(c: MonthCalc, cardId: string | null | undefined): string[] {
+  const k = c.cards.find((x) => x.card.id === (cardId ?? c.cards[0]?.card.id));
+  return k ? [`${k.card.name} total: ${money(k.total, k.cur)}.`] : [];
+}
+
 const markFixedPaid = defineTool({
   name: 'mark_fixed_paid',
   title: 'Mark fixed expense as paid',
@@ -1445,7 +1484,7 @@ const markFixedPaid = defineTool({
       ? `${fixed.name} was already ${paid ? 'paid' : 'not paid'} for ${user.name} in ${where}: nothing was changed.`
       : `${paid ? 'Paid' : 'Marked as not paid'} for ${user.name}: ${what.filter(Boolean).join(SEP)}.`;
     return {
-      text: [head, fixedLine(c), usedLine(c), ...(onCard ? [`Credit card total: ${money(c.card.total, c.main)}.`] : []), ...(paidFrom ? [balanceSentence(paidFrom)] : [])].join(' '),
+      text: [head, fixedLine(c), usedLine(c), ...(onCard ? cardTotalLine(c, fixed.cardId) : []), ...(paidFrom ? [balanceSentence(paidFrom)] : [])].join(' '),
       data: {
         fixed,
         changed,
@@ -1456,39 +1495,50 @@ const markFixedPaid = defineTool({
   },
 });
 
+/** La tarjeta que nombra la persona o, sin nombre, la única activa / la primera activa. */
+async function resolveCard({ db }: ToolContext, userId: string, named: string | undefined): Promise<CreditCard> {
+  const cards = await listCards(db, userId);
+  if (named === undefined) {
+    const first = cards.find((c) => c.active);
+    if (!first) throw validationError('There is no active credit card: the person can add one in the app (Month screen).');
+    return first;
+  }
+  return matchCard(cards, named);
+}
+
 const payCreditCard = defineTool({
   name: 'pay_credit_card',
   title: 'Pay credit card',
   description: [
-    "Adds a payment of the credit card bill of a month in the finances of `user`: the amount (in the person's main currency, at most what is still left to pay; it may be only part of it) is subtracted from the account it is paid from and counts as used in the budget. A month can have several payments, each from its own account. What is left unpaid stays pending in the month and, if the month closes with it unpaid, carries to the next one. Use it when the person says they paid the credit card (or part of it).",
-    'Purchases on the card (add_transaction with method "Credit card", or fixed expenses on the card) do not touch any account or the budget when they are made: only this payment does. Each call adds one more payment; the answer says what is left.',
-    `Defaults: ${IN_PROGRESS}, and the account of the previous card payment or the person's default account. In a closed month it fails, and the amount cannot be more than what is left to pay (month_summary shows it).`,
+    "Adds a payment of the bill of one credit card in a month in the finances of `user`: the amount (in the currency of that card, at most what is still left to pay; it may be only part of it) is subtracted from the account it is paid from and counts as used in the budget. A month can have several payments, each from its own account. What is left unpaid stays pending in the month and, if the month closes with it unpaid, carries to the next one. Use it when the person says they paid a credit card (or part of it).",
+    'Purchases on a card (add_transaction with method "Credit card", or fixed expenses on the card) do not touch any account or the budget when they are made: only this payment does. Each call adds one more payment; the answer says what is left.',
+    `Defaults: ${IN_PROGRESS}, the first active card (pass \`card\` when the person has several and names one; see list_credit_cards), and the account of the previous payment of that card or the person's default account. In a closed month it fails, and the amount cannot be more than what is left to pay (month_summary shows it).`,
   ].join(' '),
   schema: payCreditCardArgs,
   readOnly: false,
   idempotent: false,
-  async run({ amount, account: named, month }, ctx) {
+  async run({ amount, account: named, month, card: cardName }, ctx) {
     const { db, now, user } = ctx;
     const before = await loadState(db, user.id);
     const m = resolveMonth(before, month, ctx);
+    const card = await resolveCard(ctx, user.id, cardName);
     // Sin cuenta nombrada: la del último pago de la tarjeta (cardAccountFor); con una nombrada, la que diga la persona.
-    const account = named === undefined ? cardAccountFor(before, m.key) : await resolveAccount(ctx, named);
+    const account = named === undefined ? cardAccountFor(before, m.key, card.id) : await resolveAccount(ctx, named);
     if (!account) throw noAccountsError();
     if (!isMoneyAccount(account)) throw goldAccountError(account.name);
-    await payCard(db, user.id, m.key, { amount, accountId: account.id }, now);
+    await payCard(db, user.id, m.key, card.id, { amount, accountId: account.id }, now);
 
     const after = await afterWrite(ctx, (state) => ({
       state,
       calc: monthCalc(state, m.key),
       balance: balanceOf(balancesNow(state, now, m.key).all, account.id),
+      card: state.months[m.key] ? cardCalcs(state, m.key).find((k) => k.card.id === card.id) : undefined,
     }));
-    const k = after?.calc.card;
-    const sentences = [
-      `Paid ${money(amount, before.mainCurrency)} of the credit card for ${user.name} in ${label(m.key)}, from ${account.name}.`,
-    ];
+    const k = after?.card;
+    const sentences = [`Paid ${money(amount, card.cur)} of ${card.name} for ${user.name} in ${label(m.key)}, from ${account.name}.`];
     if (k) {
       sentences.push(
-        `Card total: ${money(k.total, before.mainCurrency)}${SEP}paid so far: ${money(k.paid, before.mainCurrency)}${SEP}left to pay: ${money(k.remainder, before.mainCurrency)}` +
+        `Card total: ${money(k.total, card.cur)}${SEP}paid so far: ${money(k.paid, card.cur)}${SEP}left to pay: ${money(k.remainder, card.cur)}` +
           (k.remainder > 1e-6 ? ' (it carries to the next month if this one closes with it unpaid).' : '.'),
       );
     }
@@ -1497,7 +1547,7 @@ const payCreditCard = defineTool({
     return {
       text: sentences.join(' '),
       data: {
-        creditCard: k ? { total: k.total, paid: k.paid, payments: k.payments, remainder: k.remainder } : null,
+        creditCard: k ? { id: card.id, name: card.name, currency: card.cur, total: k.total, paid: k.paid, payments: k.payments, remainder: k.remainder } : null,
         account: accountData(account, after?.balance ?? null),
         month: after ? monthStatus(after.calc) : null,
       },
@@ -1505,9 +1555,59 @@ const payCreditCard = defineTool({
   },
 });
 
+const listCreditCards = defineTool({
+  name: 'list_credit_cards',
+  title: 'List credit cards',
+  description: [
+    'Lists the credit cards in the finances of `user` (the person may have none, one or several): name, bank, last 4 digits, currency, limit, cutoff day and due day, whether it is on, how much is owed on it now, what share of the limit that is, and the hint "pay at least X before the cutoff to end it under 10% of the limit" when the limit and the cutoff day are set.',
+    'Call it when you need to know which cards exist (before add_transaction with method "Credit card" or pay_credit_card when the person names a card you do not know), or when they ask how much they owe on a card or when to pay it.',
+    'The amounts owed are those of the latest month. Cards that are off are listed too, marked as off.',
+  ].join(' '),
+  schema: listCreditCardsArgs,
+  readOnly: true,
+  idempotent: true,
+  async run(_args, ctx) {
+    const { db, now, user } = ctx;
+    const state = await userState(db, user.id);
+    const today = todayISO(now);
+    const last = sortedKeys(state).at(-1);
+    const rows = [...state.cards].sort((a, b) => a.sort - b.sort).map((card) => {
+      const calc = last ? cardCalc(state, last, card.id) : undefined;
+      const owed = calc?.remainder ?? 0;
+      return { card, owed, util: card.limit ? Math.max(0, owed) / card.limit : null, hint: cardHint(card, owed, today) };
+    });
+    const lines = [
+      `${user.name}${SEP}${rows.length === 0 ? 'no credit cards' : `${rows.length} credit card${rows.length === 1 ? '' : 's'}`}`,
+      ...rows.map(({ card, owed, util, hint }) =>
+        [
+          `${card.name}${card.bank ? ` (${card.bank}${card.last4 ? ` ****${card.last4}` : ''})` : card.last4 ? ` (****${card.last4})` : ''}`,
+          card.cur,
+          card.active ? 'on' : 'off',
+          `owed ${money(owed, card.cur)}`,
+          card.limit ? `limit ${money(card.limit, card.cur)}${SEP}${((util ?? 0) * 100).toFixed(1)}% used` : 'no limit set',
+          card.cutoffDay ? `cutoff day ${card.cutoffDay}` : 'no cutoff day',
+          card.dueDay ? `due day ${card.dueDay}` : 'due day unknown',
+          hint && hintText(card.name, card.cur, hint),
+        ]
+          .filter(Boolean)
+          .join(SEP),
+      ),
+      `Today is ${today}.`,
+    ];
+    return {
+      text: lines.join('\n'),
+      data: {
+        today,
+        month: last ?? null,
+        cards: rows.map(({ card, owed, util, hint }) => ({ ...card, owed, utilization: util, hint })),
+      },
+    };
+  },
+});
+
 /** En el orden en que las lista tools/list. */
 const TOOLS = new Map(
-  [addTransaction, addOutsideExpense, listTransactions, monthSummary, addTransfer, markFixedPaid, addIncome, listAccounts, payCreditCard].map((t) => [t.name, t]),
+  [addTransaction, addOutsideExpense, listTransactions, monthSummary, addTransfer, markFixedPaid, addIncome, listAccounts, payCreditCard, listCreditCards].map((t) => [t.name, t]),
 );
 // ── Métodos ──────────────────────────────────────────────────────────────────
 

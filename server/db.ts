@@ -24,6 +24,8 @@ import type {
   CloseResponse,
   ContributionCreate,
   ContributionPatch,
+  CreditCardCreate,
+  CreditCardPatch,
   FixedCreate,
   FixedPatch,
   GoalCreate,
@@ -44,8 +46,22 @@ import type {
   TxCreate,
   TxPatch,
 } from '../shared/api';
-import { accountsById, budgetsFromLog, cardAccountFor, cardCalc, convert, defaultAccount, leftoverFor, monthCalc, outsideOf, rateFor, sortedKeys } from '../shared/calc';
 import {
+  accountsById,
+  budgetsFromLog,
+  cardAccountFor,
+  cardCalc,
+  cardOffBlocked,
+  convert,
+  defaultAccount,
+  leftoverFor,
+  monthCalc,
+  outsideOf,
+  rateFor,
+  sortedKeys,
+} from '../shared/calc';
+import {
+  CREDIT_CARD_METHOD,
   CURRENCIES,
   DEFAULT_ACCOUNTS,
   DEFAULT_GOALS,
@@ -65,6 +81,8 @@ import type {
   Account,
   CardPayment,
   AccountCurrency,
+  CreditCard,
+  MonthCard,
   AppState,
   BudgetEntryKind,
   Contribution,
@@ -92,6 +110,7 @@ import {
   monthClosedError,
   monthNotFoundError,
   noAccountsError,
+  unknownCardError,
   notFoundError,
   unknownAccountError,
   validationError,
@@ -106,9 +125,7 @@ interface MonthRow {
   key: string;
   closed: number;
   closed_at: string | null;
-  // 0009. Opcionales en el tipo: una base que aún no la tiene se lee como sin tarjeta (ver migration.test.ts).
-  card_other?: number | null;
-  // card_paid / card_account_id (0009) ya no se leen ni se escriben: los pagos viven en card_payments (0010).
+  // card_other / card_paid / card_account_id (0009) ya no se leen ni se escriben: viven en month_cards y card_payments (0011).
 }
 
 interface AccountRow {
@@ -149,6 +166,7 @@ interface FixedRow {
   account_id: string;
   sort: number;
   on_card?: number | null;
+  card_id?: string | null;
 }
 
 interface TxRow {
@@ -165,6 +183,7 @@ interface TxRow {
   notes: string;
   source: TxSource;
   created_at: string | null;
+  card_id?: string | null;
 }
 
 interface OutsideRow {
@@ -179,7 +198,27 @@ interface OutsideRow {
   sort: number;
 }
 
+interface CreditCardRow {
+  id: string;
+  name: string;
+  bank: string | null;
+  last4: string | null;
+  currency: Currency;
+  credit_limit: number | null;
+  cutoff_day: number | null;
+  due_day: number | null;
+  active: number;
+  sort: number;
+}
+
+interface MonthCardRow {
+  month_key: string;
+  card_id: string;
+  other: number;
+}
+
 interface CardPaymentRow {
+  card_id: string;
   id: string;
   month_key: string;
   date: string;
@@ -255,6 +294,7 @@ function toFixed(r: FixedRow): FixedExpense {
     accountId: r.account_id,
     sort: r.sort,
     ...(r.on_card === 1 ? { onCard: true } : {}),
+    ...(r.on_card === 1 && r.card_id ? { cardId: r.card_id } : {}),
   };
 }
 
@@ -273,6 +313,22 @@ function toTx(r: TxRow): Transaction {
     notes: r.notes,
     source: r.source,
     createdAt: r.created_at,
+    ...(r.card_id ? { cardId: r.card_id } : {}),
+  };
+}
+
+function toCreditCard(r: CreditCardRow): CreditCard {
+  return {
+    id: r.id,
+    name: r.name,
+    bank: r.bank,
+    last4: r.last4,
+    cur: r.currency,
+    limit: r.credit_limit,
+    cutoffDay: r.cutoff_day,
+    dueDay: r.due_day,
+    active: r.active === 1,
+    sort: r.sort,
   };
 }
 
@@ -329,6 +385,7 @@ interface MonthParts {
   tx: TxRow[];
   outside: OutsideRow[];
   cardPayments: CardPaymentRow[];
+  monthCards: MonthCardRow[];
 }
 
 /** Arma cada mes con sus filas, que llegan ya en su orden de lectura. */
@@ -336,13 +393,24 @@ function toMonths(months: MonthRow[], parts: MonthParts): Record<MonthKey, Month
   const byKey: Record<MonthKey, Month> = {};
   for (const r of months) {
     byKey[r.key] = { key: r.key, closed: r.closed === 1, closedAt: r.closed_at, budgetLog: [], budgets: {}, rates: [], fixed: [], transfers: [], tx: [] };
-    // Month.card solo existe en los meses que tienen algo de la tarjeta (un mes sin ella queda como siempre).
-    if ((r.card_other ?? 0) !== 0) byKey[r.key]!.card = { other: r.card_other ?? 0, payments: [] };
+  }
+  // Month.cards solo existe en los meses que tienen algo de alguna tarjeta (un mes sin ellas queda como siempre).
+  const entry = (month: Month, cardId: string): MonthCard => {
+    const cards = (month.cards ??= []);
+    let hit = cards.find((c) => c.cardId === cardId);
+    if (!hit) cards.push((hit = { cardId, other: 0, payments: [] }));
+    return hit;
+  };
+  for (const r of parts.monthCards) {
+    const month = byKey[r.month_key];
+    if (month && r.other !== 0) entry(month, r.card_id).other = r.other;
   }
   for (const r of parts.cardPayments) {
     const month = byKey[r.month_key];
-    if (month) (month.card ??= { other: 0, payments: [] }).payments.push(toCardPayment(r));
+    if (month) entry(month, r.card_id).payments.push(toCardPayment(r));
   }
+  // Un orden fijo, el mismo se lea como se lea.
+  for (const month of Object.values(byKey)) month.cards?.sort((a, b) => (a.cardId < b.cardId ? -1 : a.cardId > b.cardId ? 1 : 0));
   for (const r of parts.budgetLog) {
     byKey[r.month_key]?.budgetLog.push({ id: r.id, date: r.date, accountId: r.account_id, amount: r.amount, kind: r.kind, note: r.note });
   }
@@ -374,11 +442,13 @@ const BY_DATE = 'date, rowid';
 type MonthTable = 'fixed_expenses' | 'transactions' | 'transfers' | 'outside_expenses';
 
 const ACCOUNT_INSERT = ['user_id', 'id', 'name', 'currency', 'opening', 'hidden', 'sort'];
-const MONTH_INSERT = ['user_id', 'key', 'closed', 'closed_at', 'card_other'];
-const CARD_PAYMENT_INSERT = ['user_id', 'id', 'month_key', 'date', 'account_id', 'amount', 'sort'];
+const MONTH_INSERT = ['user_id', 'key', 'closed', 'closed_at'];
+const CREDIT_CARD_INSERT = ['user_id', 'id', 'name', 'bank', 'last4', 'currency', 'credit_limit', 'cutoff_day', 'due_day', 'active', 'sort'];
+const MONTH_CARD_INSERT = ['user_id', 'month_key', 'card_id', 'other'];
+const CARD_PAYMENT_INSERT = ['user_id', 'id', 'month_key', 'card_id', 'date', 'account_id', 'amount', 'sort'];
 const BUDGET_LOG_INSERT = ['user_id', 'id', 'month_key', 'date', 'account_id', 'amount', 'kind', 'note'];
 const RATE_INSERT = ['user_id', 'month_key', 'from_currency', 'to_currency', 'date', 'rate'];
-const FIXED_INSERT = ['user_id', 'id', 'month_key', 'name', 'day', 'amount', 'currency', 'paid', 'account_id', 'sort', 'on_card'];
+const FIXED_INSERT = ['user_id', 'id', 'month_key', 'name', 'day', 'amount', 'currency', 'paid', 'account_id', 'sort', 'on_card', 'card_id'];
 const TRANSFER_INSERT = ['user_id', 'id', 'month_key', 'date', 'via', 'from_account_id', 'to_account_id', 'amount', 'rate', 'budget', 'fee'];
 const TX_INSERT = [
   'user_id',
@@ -395,6 +465,7 @@ const TX_INSERT = [
   'notes',
   'source',
   'created_at',
+  'card_id',
 ];
 const OUTSIDE_INSERT = ['user_id', 'id', 'month_key', 'date', 'name', 'description', 'account_id', 'amount', 'currency', 'sort'];
 const INCOME_INSERT = ['user_id', 'id', 'date', 'description', 'account_id', 'amount', 'currency', 'budget', 'rate', 'recurring'];
@@ -767,7 +838,7 @@ export async function updateSettings(db: D1Database, userId: string, update: Set
 // ── Lectura ──────────────────────────────────────────────────────────────────
 
 async function readState(db: D1Database, userId: string): Promise<{ state: AppState; initialized: boolean }> {
-  const [months, accounts, budgets, rates, fixed, transfers, tx, outside, cardPayments, incomes, goals, contribs, settings] = await db.batch([
+  const [months, accounts, budgets, rates, fixed, transfers, tx, outside, cardPayments, monthCards, cards, incomes, goals, contribs, settings] = await db.batch([
     db.prepare('SELECT * FROM months WHERE user_id = ? ORDER BY key').bind(userId),
     db.prepare(`SELECT * FROM accounts WHERE user_id = ? ORDER BY ${BY_SORT}`).bind(userId),
     db.prepare(`SELECT * FROM month_budget_log WHERE user_id = ? ORDER BY ${BY_DATE}`).bind(userId),
@@ -777,6 +848,8 @@ async function readState(db: D1Database, userId: string): Promise<{ state: AppSt
     db.prepare('SELECT * FROM transactions WHERE user_id = ? ORDER BY rowid').bind(userId),
     db.prepare(`SELECT * FROM outside_expenses WHERE user_id = ? ORDER BY ${BY_SORT}`).bind(userId),
     db.prepare(`SELECT * FROM card_payments WHERE user_id = ? ORDER BY ${BY_SORT}`).bind(userId),
+    db.prepare('SELECT * FROM month_cards WHERE user_id = ? ORDER BY rowid').bind(userId),
+    db.prepare(`SELECT * FROM credit_cards WHERE user_id = ? ORDER BY ${BY_SORT}`).bind(userId),
     db.prepare('SELECT * FROM incomes WHERE user_id = ? ORDER BY rowid').bind(userId),
     db.prepare(`SELECT * FROM goals WHERE user_id = ? ORDER BY ${BY_SORT}`).bind(userId),
     db.prepare('SELECT * FROM contributions WHERE user_id = ? ORDER BY rowid').bind(userId),
@@ -795,8 +868,10 @@ async function readState(db: D1Database, userId: string): Promise<{ state: AppSt
         tx: rows<TxRow>(tx),
         outside: rows<OutsideRow>(outside),
         cardPayments: rows<CardPaymentRow>(cardPayments),
+        monthCards: rows<MonthCardRow>(monthCards),
       }),
       accounts: accountList,
+      cards: rows<CreditCardRow>(cards).map(toCreditCard),
       incomes: rows<IncomeRow>(incomes).map(toIncome),
       goals: rows<GoalRow>(goals).map(toGoal),
       contribs: rows<ContributionRow>(contribs).map(toContribution),
@@ -889,7 +964,7 @@ export async function userAccounts(db: D1Database, userId: string): Promise<{ ac
   }
   // defaultAccount solo mira las cuentas y los ajustes: el resto del estado va vacío.
   const { initialized: _initialized, ...settings } = stored;
-  return { accounts, defaultAccount: defaultAccount({ ...settings, accounts, months: {}, incomes: [], goals: [], contribs: [] }) };
+  return { accounts, defaultAccount: defaultAccount({ ...settings, accounts, months: {}, incomes: [], goals: [], contribs: [], cards: [] }) };
 }
 
 /**
@@ -927,14 +1002,15 @@ function monthStatements(db: D1Database, userId: string, key: MonthKey): D1Prepa
     db.prepare('SELECT * FROM transactions WHERE user_id = ? AND month_key = ? ORDER BY rowid').bind(userId, key),
     db.prepare(`SELECT * FROM outside_expenses WHERE user_id = ? AND month_key = ? ORDER BY ${BY_SORT}`).bind(userId, key),
     db.prepare(`SELECT * FROM card_payments WHERE user_id = ? AND month_key = ? ORDER BY ${BY_SORT}`).bind(userId, key),
+    db.prepare('SELECT * FROM month_cards WHERE user_id = ? AND month_key = ? ORDER BY rowid').bind(userId, key),
   ];
 }
 
-const MONTH_READS = 8;
+const MONTH_READS = 9;
 
 /** El mes que leyeron las últimas sentencias de un batch (monthStatements), o null si el usuario no lo tiene. */
 function monthFrom(results: D1Result<unknown>[], key: MonthKey): Month | null {
-  const [month, budgets, rates, fixed, transfers, tx, outside, cardPayments] = results.slice(-MONTH_READS);
+  const [month, budgets, rates, fixed, transfers, tx, outside, cardPayments, monthCards] = results.slice(-MONTH_READS);
   const months = toMonths(rows<MonthRow>(month), {
     budgetLog: rows<BudgetLogRow>(budgets),
     rates: rows<RateRow>(rates),
@@ -943,6 +1019,7 @@ function monthFrom(results: D1Result<unknown>[], key: MonthKey): Month | null {
     tx: rows<TxRow>(tx),
     outside: rows<OutsideRow>(outside),
     cardPayments: rows<CardPaymentRow>(cardPayments),
+    monthCards: rows<MonthCardRow>(monthCards),
   });
   return months[key] ?? null;
 }
@@ -1346,8 +1423,8 @@ function createMonthStatements(db: D1Database, userId: string, key: MonthKey): D
     recurringIncomesStatement(db, userId, key),
     db
       .prepare(
-        `INSERT INTO fixed_expenses (user_id, id, month_key, name, day, amount, currency, paid, account_id, sort, on_card)
-         SELECT ?1, lower(hex(randomblob(16))), ?2, name, day, amount, currency, 0, account_id, sort, on_card
+        `INSERT INTO fixed_expenses (user_id, id, month_key, name, day, amount, currency, paid, account_id, sort, on_card, card_id)
+         SELECT ?1, lower(hex(randomblob(16))), ?2, name, day, amount, currency, 0, account_id, sort, on_card, card_id
          FROM fixed_expenses WHERE user_id = ?1 AND month_key = ${PREVIOUS_MONTH} ORDER BY ${BY_SORT}`,
       )
       .bind(userId, key),
@@ -1481,36 +1558,176 @@ export async function deleteMonth(db: D1Database, userId: string, key: MonthKey)
   if (!row) throw monthNotFoundError(key);
 }
 
-// ── Tarjeta de crédito ───────────────────────────────────────────────────────
+// ── Tarjetas de crédito ──────────────────────────────────────────────────────
 
-/** Los «otros cargos» de la tarjeta del mes (>= 0, en la moneda principal). Mes cerrado → 409. */
-export async function setCardOther(db: D1Database, userId: string, key: MonthKey, other: number): Promise<Month> {
+const CARD_PATCH = {
+  name: 'name',
+  bank: 'bank',
+  last4: 'last4',
+  cur: 'currency',
+  limit: 'credit_limit',
+  cutoffDay: 'cutoff_day',
+  dueDay: 'due_day',
+  active: 'active',
+  sort: 'sort',
+} as const;
+const NO_CARD = 'Credit card not found.';
+
+/**
+ * "Algo usa la tarjeta": otros cargos o pagos en algún mes, un gasto fijo o una transacción que la nombran, o los
+ * que no nombran ninguna (van a la primera activa) cuando esta lo es. ?1 es el usuario y ?2, la tarjeta.
+ */
+const CARD_IN_USE = `(
+  EXISTS (SELECT 1 FROM month_cards WHERE user_id = ?1 AND card_id = ?2)
+  OR EXISTS (SELECT 1 FROM card_payments WHERE user_id = ?1 AND card_id = ?2)
+  OR EXISTS (SELECT 1 FROM fixed_expenses WHERE user_id = ?1 AND card_id = ?2)
+  OR EXISTS (SELECT 1 FROM transactions WHERE user_id = ?1 AND card_id = ?2)
+  OR (?2 = (SELECT id FROM credit_cards WHERE user_id = ?1 AND active = 1 ORDER BY sort, rowid LIMIT 1)
+      AND (EXISTS (SELECT 1 FROM fixed_expenses WHERE user_id = ?1 AND on_card = 1 AND card_id IS NULL)
+        OR EXISTS (SELECT 1 FROM transactions WHERE user_id = ?1 AND method = '${CREDIT_CARD_METHOD}' AND card_id IS NULL))))`;
+
+/** Las tarjetas del usuario (también las apagadas), en su orden. */
+export async function listCards(db: D1Database, userId: string): Promise<CreditCard[]> {
+  const res = await db.prepare(`SELECT * FROM credit_cards WHERE user_id = ? ORDER BY ${BY_SORT}`).bind(userId).all<CreditCardRow>();
+  return res.results.map(toCreditCard);
+}
+
+const cardNameTaken = () => conflictError('There is already a credit card with that name.');
+/** Un texto opcional del formulario: vacío = sin dato. */
+const orNull = (v: string | null | undefined): string | null => (v == null || v === '' ? null : v);
+
+/** La tarjeta nueva va al final. Sin `cur`, la moneda principal del usuario. 409 si ya hay otra con ese nombre. */
+export async function createCard(db: D1Database, userId: string, input: CreditCardCreate): Promise<CreditCard> {
+  if ((await listCards(db, userId)).some((c) => sameName(c.name, input.name))) throw cardNameTaken();
+  const row = await firstOrConflict<CreditCardRow>(
+    db
+      .prepare(
+        `INSERT INTO credit_cards (${CREDIT_CARD_INSERT.join(', ')})
+         SELECT ?1, ?2, ?3, ?4, ?5,
+                COALESCE(?6, (SELECT value FROM settings WHERE user_id = ?1 AND key = 'main_currency' AND value IN ('DOP','USD','TRY')), '${DEFAULT_MAIN_CURRENCY}'),
+                ?7, ?8, ?9, ?10, COALESCE((SELECT MAX(sort) FROM credit_cards WHERE user_id = ?1), -1) + 1
+         WHERE NOT EXISTS (SELECT 1 FROM credit_cards WHERE user_id = ?1 AND lower(name) = lower(?3))
+         RETURNING *`,
+      )
+      .bind(
+        userId,
+        input.id ?? newId(),
+        input.name,
+        orNull(input.bank),
+        orNull(input.last4),
+        input.cur ?? null,
+        input.limit ?? null,
+        input.cutoffDay ?? null,
+        input.dueDay ?? null,
+        input.active === false ? 0 : 1,
+      ),
+  );
+  if (!row) throw cardNameTaken();
+  return toCreditCard(row);
+}
+
+/**
+ * Edita una tarjeta. Apagarla solo se puede si en el último mes no debe nada y no tiene cargos (cardOffBlocked): 409.
+ * Cambiar su moneda, solo si nada la usa (409): reinterpretaría sus importes.
+ */
+export async function patchCard(db: D1Database, userId: string, id: string, patch: CreditCardPatch): Promise<CreditCard> {
+  const current = (await listCards(db, userId)).find((c) => c.id === id);
+  if (!current) throw notFoundError(NO_CARD);
+  if (patch.name !== undefined && (await listCards(db, userId)).some((c) => c.id !== id && sameName(c.name, patch.name!))) throw cardNameTaken();
+  if (patch.active === false && current.active) {
+    const state = await loadState(db, userId);
+    if (cardOffBlocked(state, id)) throw conflictError(`Pay off ${current.name} before turning it off.`);
+  }
+  if (patch.cur !== undefined && patch.cur !== current.cur) {
+    const used = await db.prepare(`SELECT ${CARD_IN_USE} AS used`).bind(userId, id).first<{ used: number }>();
+    if (used?.used) throw conflictError(`${current.name} has activity: its currency cannot change.`);
+  }
+  const normalized = { ...patch, ...(patch.bank !== undefined && { bank: orNull(patch.bank) }), ...(patch.last4 !== undefined && { last4: orNull(patch.last4) }) };
+  const sets = setClause<CreditCardPatch>(CARD_PATCH, normalized);
+  if (sets.columns.length === 0) return current;
+  const row = await db
+    .prepare(`UPDATE credit_cards SET ${sets.sql} WHERE user_id = ? AND id = ? RETURNING *`)
+    .bind(...sets.values, userId, id)
+    .first<CreditCardRow>();
+  if (!row) throw notFoundError(NO_CARD);
+  return toCreditCard(row);
+}
+
+/** Borra la tarjeta solo si nada la usa (409 si no: se apaga). Sus «otros cargos» en 0 no cuentan como uso. */
+export async function deleteCard(db: D1Database, userId: string, id: string): Promise<void> {
   const results = await db.batch([
-    db.prepare(`UPDATE months SET card_other = ?3 WHERE user_id = ?1 AND key = ?2 AND closed = 0`).bind(userId, key, other),
-    ...monthStatements(db, userId, key),
+    db.prepare('DELETE FROM month_cards WHERE user_id = ?1 AND card_id = ?2 AND other = 0').bind(userId, id),
+    db.prepare(`DELETE FROM credit_cards WHERE user_id = ?1 AND id = ?2 AND NOT ${CARD_IN_USE} RETURNING id`).bind(userId, id),
   ]);
+  if (rows<{ id: string }>(results[1]).length) return;
+  const exists = await db.prepare('SELECT 1 AS found FROM credit_cards WHERE user_id = ? AND id = ?').bind(userId, id).first();
+  if (!exists) throw notFoundError(NO_CARD);
+  throw conflictError('This credit card is in use: turn it off instead of deleting it.');
+}
+
+/**
+ * La tarjeta a la que va un gasto fijo o una transacción nueva: la que nombra (tiene que existir y estar activa) o, si
+ * no nombra ninguna, la primera activa. Sin ninguna tarjeta → 400.
+ */
+async function cardForCharge(db: D1Database, userId: string, cardId: string | null | undefined): Promise<string> {
+  const cards = await listCards(db, userId);
+  if (cardId != null) {
+    const card = cards.find((c) => c.id === cardId);
+    if (!card) throw unknownCardError(cardId);
+    if (!card.active) throw validationError(`${card.name} is turned off: turn it on first.`);
+    return card.id;
+  }
+  const first = cards.find((c) => c.active);
+  if (!first) throw validationError('There is no active credit card: add one first.');
+  return first.id;
+}
+
+async function requireCard(db: D1Database, userId: string, cardId: string): Promise<void> {
+  const row = await db.prepare('SELECT 1 AS found FROM credit_cards WHERE user_id = ? AND id = ?').bind(userId, cardId).first();
+  if (!row) throw notFoundError(NO_CARD);
+}
+
+/** Los «otros cargos» de una tarjeta en el mes (>= 0, en la moneda de la tarjeta; 0 borra la fila). Mes cerrado → 409. */
+export async function setCardOther(db: D1Database, userId: string, key: MonthKey, cardId: string, other: number): Promise<Month> {
+  await requireCard(db, userId, cardId);
+  const write =
+    other === 0
+      ? db
+          .prepare(`DELETE FROM month_cards WHERE user_id = ?1 AND month_key = ?2 AND card_id = ?3 AND month_key IN (SELECT key FROM months WHERE user_id = ?1 AND closed = 0)`)
+          .bind(userId, key, cardId)
+      : db
+          .prepare(
+            `INSERT INTO month_cards (${MONTH_CARD_INSERT.join(', ')})
+             SELECT m.user_id, m.key, ?3, ?4 FROM months m WHERE m.user_id = ?1 AND m.key = ?2 AND m.closed = 0
+             ON CONFLICT (user_id, month_key, card_id) DO UPDATE SET other = excluded.other`,
+          )
+          .bind(userId, key, cardId, other);
+  const results = await db.batch([write, ...monthStatements(db, userId, key)]);
   return writtenMonth(results, key);
 }
 
 /**
- * Añade un pago de la tarjeta del mes (puede haber varios, cada uno con su cuenta y su fecha). El importe tiene que ser
- * > 0 y no pasar de lo que falta por pagar, que se calcula aquí con el estado (shared/calc.ts cardCalc) y no se fía del
+ * Añade un pago de una tarjeta en el mes (puede haber varios, cada uno con su cuenta y su fecha). El importe tiene que
+ * ser > 0 y no pasar de lo que falta por pagar, que se calcula aquí con el estado (shared/calc.ts cardCalc) y no se fía del
  * cliente. Sin `accountId` se usa cardAccountFor; sin `date`, hoy llevado al mes. Cuenta de oro o desconocida → 400,
- * mes cerrado → 409, nada que pagar → 400. Lo que falta sale de una lectura previa a la escritura, como en addLeftover.
+ * mes cerrado → 409, nada que pagar → 400, tarjeta desconocida → 404. Lo que falta sale de una lectura previa a la
+ * escritura, como en addLeftover.
  */
-export async function payCard(db: D1Database, userId: string, key: MonthKey, input: CardPayRequest, now: Date = new Date()): Promise<Month> {
+export async function payCard(db: D1Database, userId: string, key: MonthKey, cardId: string, input: CardPayRequest, now: Date = new Date()): Promise<Month> {
   const state = await loadState(db, userId);
   const month = state.months[key];
   if (!month) throw monthNotFoundError(key);
+  const card = state.cards.find((c) => c.id === cardId);
+  if (!card) throw notFoundError(NO_CARD);
   if (month.closed) throw monthClosedError(key);
-  const { remainder } = cardCalc(state, key);
+  const { remainder } = cardCalc(state, key, cardId);
   // Tolerancia de coma flotante: el diálogo propone lo que falta tal cual y no debe rechazarse por un 1e-12.
-  if (!(remainder > 1e-6)) throw validationError(`There is nothing left to pay on the credit card in ${key}.`);
+  if (!(remainder > 1e-6)) throw validationError(`There is nothing left to pay on ${card.name} in ${key}.`);
   if (!(input.amount <= remainder + 1e-6)) {
-    throw validationError(`amount: the credit card has ${remainder.toFixed(2)} left to pay in ${key}; it cannot be paid for more than that.`);
+    throw validationError(`amount: ${card.name} has ${remainder.toFixed(2)} left to pay in ${key}; it cannot be paid for more than that.`);
   }
   if (input.date !== undefined && !inMonth(input.date, key)) throw outsideMonth('date', key);
-  const accountId = input.accountId ?? cardAccountFor(state, key)?.id;
+  const accountId = input.accountId ?? cardAccountFor(state, key, cardId)?.id;
   if (!accountId) throw noAccountsError();
   let results: D1Result<unknown>[];
   try {
@@ -1518,12 +1735,12 @@ export async function payCard(db: D1Database, userId: string, key: MonthKey, inp
       db
         .prepare(
           `INSERT INTO card_payments (${CARD_PAYMENT_INSERT.join(', ')})
-           SELECT m.user_id, ?3, m.key, ?4, a.id, ?5,
+           SELECT m.user_id, ?3, m.key, ?7, ?4, a.id, ?5,
                   COALESCE((SELECT MAX(sort) FROM card_payments WHERE user_id = m.user_id AND month_key = m.key), -1) + 1
            FROM months m JOIN accounts a ON a.user_id = m.user_id AND a.id = ?6 ${moneyOnly('a')}
            WHERE m.user_id = ?1 AND m.key = ?2 AND m.closed = 0`,
         )
-        .bind(userId, key, input.id ?? newId(), input.date ?? entryDate(key, now), Math.min(input.amount, remainder), accountId),
+        .bind(userId, key, input.id ?? newId(), input.date ?? entryDate(key, now), Math.min(input.amount, remainder), accountId, cardId),
       ...monthStatements(db, userId, key),
     ]);
   } catch (err) {
@@ -1534,21 +1751,27 @@ export async function payCard(db: D1Database, userId: string, key: MonthKey, inp
   return writtenMonth(results, key);
 }
 
-/** Quita todos los pagos de la tarjeta del mes. Mes cerrado → 409. */
-export async function unpayCard(db: D1Database, userId: string, key: MonthKey): Promise<Month> {
+/** Quita todos los pagos de esa tarjeta en el mes. Mes cerrado → 409. */
+export async function unpayCard(db: D1Database, userId: string, key: MonthKey, cardId: string): Promise<Month> {
+  await requireCard(db, userId, cardId);
   const results = await db.batch([
-    db.prepare(`DELETE FROM card_payments WHERE user_id = ?1 AND month_key = ?2 AND month_key IN (SELECT key FROM months WHERE user_id = ?1 AND closed = 0)`).bind(userId, key),
+    db
+      .prepare(`DELETE FROM card_payments WHERE user_id = ?1 AND month_key = ?2 AND card_id = ?3 AND month_key IN (SELECT key FROM months WHERE user_id = ?1 AND closed = 0)`)
+      .bind(userId, key, cardId),
     ...monthStatements(db, userId, key),
   ]);
   return writtenMonth(results, key);
 }
 
-/** Quita un pago de la tarjeta del mes. Mes cerrado → 409; un pago que no existe en ese mes → 404. */
-export async function removeCardPayment(db: D1Database, userId: string, key: MonthKey, paymentId: string): Promise<Month> {
+/** Quita un pago de esa tarjeta en el mes. Mes cerrado → 409; un pago que no existe en ese mes y tarjeta → 404. */
+export async function removeCardPayment(db: D1Database, userId: string, key: MonthKey, cardId: string, paymentId: string): Promise<Month> {
+  await requireCard(db, userId, cardId);
   const results = await db.batch([
     db
-      .prepare(`DELETE FROM card_payments WHERE user_id = ?1 AND month_key = ?2 AND id = ?3 AND month_key IN (SELECT key FROM months WHERE user_id = ?1 AND closed = 0)`)
-      .bind(userId, key, paymentId),
+      .prepare(
+        `DELETE FROM card_payments WHERE user_id = ?1 AND month_key = ?2 AND card_id = ?4 AND id = ?3 AND month_key IN (SELECT key FROM months WHERE user_id = ?1 AND closed = 0)`,
+      )
+      .bind(userId, key, paymentId, cardId),
     ...monthStatements(db, userId, key),
   ]);
   const month = writtenMonth(results, key);
@@ -1567,34 +1790,49 @@ const FIXED_PATCH = {
   accountId: 'account_id',
   sort: 'sort',
   onCard: 'on_card',
+  cardId: 'card_id',
 } as const;
 const NO_FIXED = 'Monthly expense not found.';
 
 /** Las cuentas que nombra un patch con `accountId`. */
 const patchedAccount = (patch: { accountId?: string }): string[] => (patch.accountId === undefined ? [] : [patch.accountId]);
 
+/** El patch de una fila con tarjeta, ya resuelto: `cardId` null deja la fila sin tarjeta. */
+type CardResolved<P> = Omit<P, 'cardId'> & { cardId?: string | null };
+
 /** El nuevo fijo va al final del mes: sort = max(sort) + 1. Sin `accountId` se paga de la cuenta por defecto. */
 export async function createFixed(db: D1Database, userId: string, input: FixedCreate): Promise<FixedExpense> {
   const accountId = input.accountId ?? (await defaultAccountId(db, userId));
+  // Con tarjeta: la que diga o la primera activa. Sin tarjeta, `cardId` no cuenta.
+  const cardId = input.onCard ? await cardForCharge(db, userId, input.cardId) : null;
   // La fila sale del mes abierto y de la cuenta del usuario: si falta alguno de los dos, no se inserta nada.
   const row = await firstOrConflict<FixedRow>(
     db
       .prepare(
-        `INSERT INTO fixed_expenses (user_id, id, month_key, name, day, amount, currency, paid, account_id, sort, on_card)
+        `INSERT INTO fixed_expenses (user_id, id, month_key, name, day, amount, currency, paid, account_id, sort, on_card, card_id)
          SELECT m.user_id, ?2, m.key, ?4, ?5, ?6, ?7, ?8, a.id,
-                COALESCE((SELECT MAX(sort) FROM fixed_expenses WHERE user_id = m.user_id AND month_key = m.key), -1) + 1, ?10
+                COALESCE((SELECT MAX(sort) FROM fixed_expenses WHERE user_id = m.user_id AND month_key = m.key), -1) + 1, ?10, ?11
          FROM months m JOIN accounts a ON a.user_id = m.user_id AND a.id = ?9 ${moneyOnly('a')}
          WHERE m.user_id = ?1 AND m.key = ?3 AND m.closed = 0
          RETURNING *`,
       )
-      .bind(userId, input.id ?? newId(), input.monthKey, input.name, input.day ?? '', input.amount, input.cur, input.paid ? 1 : 0, accountId, input.onCard ? 1 : 0),
+      .bind(userId, input.id ?? newId(), input.monthKey, input.name, input.day ?? '', input.amount, input.cur, input.paid ? 1 : 0, accountId, input.onCard ? 1 : 0, cardId),
   );
   if (!row) throw await createError(db, userId, input.monthKey, [accountId]);
   return toFixed(row);
 }
 
 export async function patchFixed(db: D1Database, userId: string, id: string, patch: FixedPatch): Promise<FixedExpense> {
-  const sets = setClause<FixedPatch>(FIXED_PATCH, patch);
+  let resolved: CardResolved<FixedPatch> = patch;
+  if (patch.onCard !== undefined || patch.cardId !== undefined) {
+    const row = await db.prepare('SELECT on_card, card_id FROM fixed_expenses WHERE user_id = ? AND id = ?').bind(userId, id).first<{ on_card: number; card_id: string | null }>();
+    if (row) {
+      const onCard = patch.onCard ?? row.on_card === 1;
+      if (!onCard) resolved = { ...patch, cardId: row.card_id === null ? undefined : null };
+      else if (patch.cardId !== undefined || row.card_id === null) resolved = { ...patch, cardId: await cardForCharge(db, userId, patch.cardId) };
+    }
+  }
+  const sets = setClause<CardResolved<FixedPatch>>(FIXED_PATCH, resolved);
   return toFixed(await patchInMonth<FixedRow>(db, userId, 'fixed_expenses', id, sets, NO_FIXED, patchedAccount(patch)));
 }
 
@@ -1614,6 +1852,7 @@ const TX_PATCH = {
   cur: 'currency',
   accountId: 'account_id',
   notes: 'notes',
+  cardId: 'card_id',
 } as const;
 const NO_TX = 'Transaction not found.';
 
@@ -1626,11 +1865,13 @@ export async function createTransaction(
   now: Date = new Date(),
 ): Promise<Transaction> {
   const accountId = input.accountId ?? (await defaultAccountId(db, userId));
+  // Solo una transacción con tarjeta de crédito lleva tarjeta: la que diga o la primera activa.
+  const cardId = input.method === CREDIT_CARD_METHOD ? await cardForCharge(db, userId, input.cardId) : null;
   const row = await firstOrConflict<TxRow>(
     db
       .prepare(
         `INSERT INTO transactions (${TX_INSERT.join(', ')})
-         SELECT m.user_id, ?2, m.key, ?4, ?5, ?6, ?7, ?8, ?9, ?10, a.id, ?12, ?13, ?14
+         SELECT m.user_id, ?2, m.key, ?4, ?5, ?6, ?7, ?8, ?9, ?10, a.id, ?12, ?13, ?14, ?15
          FROM months m JOIN accounts a ON a.user_id = m.user_id AND a.id = ?11 ${moneyOnly('a')}
          WHERE m.user_id = ?1 AND m.key = ?3 AND m.closed = 0
          RETURNING *`,
@@ -1650,6 +1891,7 @@ export async function createTransaction(
         input.notes ?? '',
         source,
         now.toISOString(),
+        cardId,
       ),
   );
   if (!row) throw await createError(db, userId, input.monthKey, [accountId]);
@@ -1657,7 +1899,16 @@ export async function createTransaction(
 }
 
 export async function patchTransaction(db: D1Database, userId: string, id: string, patch: TxPatch): Promise<Transaction> {
-  const sets = setClause<TxPatch>(TX_PATCH, patch);
+  let resolved: CardResolved<TxPatch> = patch;
+  if (patch.method !== undefined || patch.cardId !== undefined) {
+    const row = await db.prepare('SELECT method, card_id FROM transactions WHERE user_id = ? AND id = ?').bind(userId, id).first<{ method: string; card_id: string | null }>();
+    if (row) {
+      const method = patch.method ?? row.method;
+      if (method !== CREDIT_CARD_METHOD) resolved = { ...patch, cardId: row.card_id === null ? undefined : null };
+      else if (patch.cardId !== undefined || row.card_id === null) resolved = { ...patch, cardId: await cardForCharge(db, userId, patch.cardId) };
+    }
+  }
+  const sets = setClause<CardResolved<TxPatch>>(TX_PATCH, resolved);
   return toTx(await patchInMonth<TxRow>(db, userId, 'transactions', id, sets, NO_TX, patchedAccount(patch)));
 }
 
@@ -1738,7 +1989,7 @@ export async function moveOutsideToBudget(
     db,
     db.prepare(
       `INSERT INTO transactions (${TX_INSERT.join(', ')})
-       SELECT o.user_id, ?3, o.month_key, o.date, o.name, '', ?4, ?5, o.amount, o.currency, o.account_id, o.description, 'web', ?6
+       SELECT o.user_id, ?3, o.month_key, o.date, o.name, '', ?4, ?5, o.amount, o.currency, o.account_id, o.description, 'web', ?6, NULL
        FROM outside_expenses o
        WHERE o.user_id = ?1 AND o.id = ?2 AND o.month_key IN ${OPEN_MONTHS.replace('?', '?1')}
        RETURNING *`,
@@ -2150,12 +2401,14 @@ const DATA_TABLES = [
   'transactions',
   'outside_expenses',
   'card_payments',
+  'month_cards',
   'transfers',
   'fixed_expenses',
   'month_budget_log',
   'month_rates',
   'months',
   'goals',
+  'credit_cards',
   'accounts',
 ] as const;
 
@@ -2175,19 +2428,20 @@ function storableRates(key: MonthKey, rates: readonly MonthRate[]): MonthRate[] 
 }
 
 /** Los datos de un usuario: su estado sin los ajustes. */
-type UserData = Pick<AppState, 'months' | 'accounts' | 'incomes' | 'goals' | 'contribs'>;
+type UserData = Pick<AppState, 'months' | 'accounts' | 'incomes' | 'goals' | 'contribs' | 'cards'>;
 
 /**
  * Sentencias que dejan como datos del usuario exactamente los de `state`: borran todo lo que tiene (salvo sus
  * ajustes) y lo insertan de nuevo, en el orden del estado. `stamp` es la fecha de alta de las transacciones que
  * no traen la suya. Del presupuesto se guarda el registro (Month.budgetLog); Month.budgets es su suma y no se guarda.
  */
-function dataStatements(db: D1Database, userId: string, state: UserData, stamp: string): D1PreparedStatement[] {
+function dataStatements(db: D1Database, userId: string, state: UserData, stamp: string, keepCards = false): D1PreparedStatement[] {
   const months = Object.keys(state.months)
     .sort()
     .map((k) => state.months[k]!);
   return [
-    ...DATA_TABLES.map((table) => db.prepare(`DELETE FROM ${table} WHERE user_id = ?`).bind(userId)),
+    // Un Excel importado no trae tarjetas: se conservan (credit_cards no se borra) y solo se reescribe lo que cuelga de los meses.
+    ...DATA_TABLES.filter((table) => !(keepCards && table === 'credit_cards')).map((table) => db.prepare(`DELETE FROM ${table} WHERE user_id = ?`).bind(userId)),
     ...insertMany(
       db,
       'accounts',
@@ -2200,17 +2454,35 @@ function dataStatements(db: D1Database, userId: string, state: UserData, stamp: 
       GOAL_INSERT,
       state.goals.map((g) => [userId, g.id, g.name, g.cur, g.monthly, g.start, g.end, g.approxCur ?? null, g.sort]),
     ),
+    ...(keepCards
+      ? []
+      : insertMany(
+          db,
+          'credit_cards',
+          CREDIT_CARD_INSERT,
+          state.cards.map((c) => [userId, c.id, c.name, c.bank, c.last4, c.cur, c.limit, c.cutoffDay, c.dueDay, c.active ? 1 : 0, c.sort]),
+        )),
     ...insertMany(
       db,
       'months',
       MONTH_INSERT,
-      months.map((m) => [userId, m.key, m.closed ? 1 : 0, m.closedAt, m.card?.other ?? 0]),
+      months.map((m) => [userId, m.key, m.closed ? 1 : 0, m.closedAt]),
+    ),
+    ...insertMany(
+      db,
+      'month_cards',
+      MONTH_CARD_INSERT,
+      months.flatMap((m) => (m.cards ?? []).filter((c) => c.other !== 0).map((c) => [userId, m.key, c.cardId, c.other])),
     ),
     ...insertMany(
       db,
       'card_payments',
       CARD_PAYMENT_INSERT,
-      months.flatMap((m) => (m.card?.payments ?? []).map((p, i) => [userId, p.id, m.key, clampToMonth(p.date || lastDay(m.key), m.key), p.accountId, p.amount, i])),
+      months.flatMap((m) =>
+        (m.cards ?? []).flatMap((c) =>
+          c.payments.map((p, i) => [userId, p.id, m.key, c.cardId, clampToMonth(p.date || lastDay(m.key), m.key), p.accountId, p.amount, i]),
+        ),
+      ),
     ),
     ...insertMany(
       db,
@@ -2232,7 +2504,7 @@ function dataStatements(db: D1Database, userId: string, state: UserData, stamp: 
       'fixed_expenses',
       FIXED_INSERT,
       months.flatMap((m) =>
-        m.fixed.map((f) => [userId, f.id, m.key, f.name, String(f.day ?? ''), f.amount, f.cur, f.paid ? 1 : 0, f.accountId, f.sort, f.onCard ? 1 : 0]),
+        m.fixed.map((f) => [userId, f.id, m.key, f.name, String(f.day ?? ''), f.amount, f.cur, f.paid ? 1 : 0, f.accountId, f.sort, f.onCard ? 1 : 0, f.onCard ? (f.cardId ?? null) : null]),
       ),
     ),
     ...insertMany(
@@ -2261,6 +2533,7 @@ function dataStatements(db: D1Database, userId: string, state: UserData, stamp: 
           t.notes,
           t.source,
           t.createdAt ?? stamp,
+          t.method === CREDIT_CARD_METHOD ? (t.cardId ?? null) : null,
         ]),
       ),
     ),
@@ -2317,6 +2590,7 @@ export async function resetAll(db: D1Database, userId: string, key: MonthKey = c
     incomes: [],
     goals: [...DEFAULT_GOALS],
     contribs: [],
+    cards: [],
   };
   await db.batch([
     ...dataStatements(db, userId, blank, new Date().toISOString()),
@@ -2352,7 +2626,7 @@ export async function applyImport(
       const month = months[key];
       if (month?.closed && month.closedAt === null) months[key] = { ...month, closedAt: stamp };
     }
-    await db.batch(dataStatements(db, userId, { ...next, months }, stamp));
+    await db.batch(dataStatements(db, userId, { ...next, months }, stamp, true));
   }
   return { months: payload.months.map((m) => m.key), contributions: payload.contribs?.length ?? 0 };
 }

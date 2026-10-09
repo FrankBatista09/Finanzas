@@ -2,31 +2,32 @@
 
 import { describe, expect, it } from 'vitest';
 import { seedState } from '../../../shared/seed';
-import type { AppState } from '../../../shared/types';
+import type { AppState, CreditCard } from '../../../shared/types';
 import { isFullyPaid, payAmount, payForm, payRest } from './cardPay';
 
 const OCT = '2026-10';
+const CARD: CreditCard = { id: 'card', name: 'Credit card', bank: null, last4: null, cur: 'DOP', limit: null, cutoffDay: null, dueDay: null, active: true, sort: 0 };
 const owing = (other: number): AppState => {
-  const s = seedState();
-  s.months[OCT] = { ...s.months[OCT]!, card: { other, payments: [] } };
+  const s = { ...seedState(), cards: [CARD] };
+  s.months[OCT] = { ...s.months[OCT]!, cards: [{ cardId: 'card', other, payments: [] }] };
   return s;
 };
 
 describe('payForm', () => {
   it('propone pagar todo, con dos decimales, desde la cuenta por defecto', () => {
-    expect(payForm(owing(1234.5), OCT)).toEqual({ amount: '1234.50', accountId: 'dr' });
+    expect(payForm(owing(1234.5), OCT, 'card')).toEqual({ amount: '1234.50', accountId: 'dr' });
   });
 
   it('propone pagar solo lo que falta', () => {
     const s = owing(1000);
-    s.months[OCT] = { ...s.months[OCT]!, card: { other: 1000, payments: [{ id: 'p', date: '2026-10-05', accountId: 'dr', amount: 400 }] } };
-    expect(payForm(s, OCT).amount).toBe('600.00');
+    s.months[OCT] = { ...s.months[OCT]!, cards: [{ cardId: 'card', other: 1000, payments: [{ id: 'p', date: '2026-10-05', accountId: 'dr', amount: 400 }] }] };
+    expect(payForm(s, OCT, 'card').amount).toBe('600.00');
   });
 
   it('propone la cuenta del último pago de la tarjeta', () => {
     const s = owing(100);
-    s.months['2026-09'] = { ...s.months['2026-09']!, card: { other: 5, payments: [{ id: 'p', date: '2026-09-30', accountId: 'us', amount: 5 }] } };
-    expect(payForm(s, OCT).accountId).toBe('us');
+    s.months['2026-09'] = { ...s.months['2026-09']!, cards: [{ cardId: 'card', other: 5, payments: [{ id: 'p', date: '2026-09-30', accountId: 'us', amount: 5 }] }] };
+    expect(payForm(s, OCT, 'card').accountId).toBe('us');
   });
 });
 

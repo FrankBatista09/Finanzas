@@ -132,6 +132,11 @@ export interface FixedExpense {
    * gasto que no usa la tarjeta.
    */
   onCard?: boolean;
+  /**
+   * Con qué tarjeta (CreditCard.id) cuando `onCard`. Ausente/null = la primera tarjeta activa (shared/calc.ts
+   * defaultCardId). El servidor solo lo manda cuando tiene valor.
+   */
+  cardId?: string | null;
 }
 
 export interface Transaction {
@@ -150,6 +155,8 @@ export interface Transaction {
   notes: string;
   source: TxSource;
   createdAt: string | null;
+  /** Solo cuenta si `method` es 'Credit card': con qué tarjeta. Ausente/null = la primera tarjeta activa. */
+  cardId?: string | null;
 }
 
 /**
@@ -235,11 +242,32 @@ export interface CardPayment {
   amount: number;
 }
 
+/** Una tarjeta de crédito del usuario (opcional: sin ninguna, la app no muestra ni suma nada de tarjetas). */
+export interface CreditCard {
+  id: string;
+  name: string;
+  bank: string | null;
+  /** Cuatro dígitos, o null. */
+  last4: string | null;
+  /** Moneda de la tarjeta: en ella van el límite, los otros cargos, los pagos y lo que se debe. */
+  cur: Currency;
+  /** > 0, o null si no se sabe. */
+  limit: number | null;
+  /** Día del mes (1–31) del corte, o null. */
+  cutoffDay: number | null;
+  /** Día del mes (1–31) del pago, o null si aún no se sabe. */
+  dueDay: number | null;
+  /** Una tarjeta apagada no suma a nada (shared/calc.ts: se usan las tarjetas activas AHORA en todos los meses). */
+  active: boolean;
+  sort: number;
+}
+
 /**
- * Lo que se guarda de la tarjeta de crédito en un mes. El saldo que viene del mes anterior NO se guarda: se deriva
- * (shared/calc.ts cardCalc). Todo en la moneda principal.
+ * Lo que se guarda de UNA tarjeta de crédito en un mes. El saldo que viene del mes anterior NO se guarda: se deriva
+ * (shared/calc.ts cardCalc). Todo en la moneda de la tarjeta.
  */
 export interface MonthCard {
+  cardId: string;
   /** "Otros cargos" escritos a mano (>= 0): lo que se pasó a la tarjeta fuera de las filas del mes. */
   other: number;
   /** Los pagos del mes, en el orden en que se hicieron: varios, cada uno con su cuenta y su fecha. */
@@ -272,10 +300,10 @@ export interface Month {
    */
   outside?: OutsideExpense[];
   /**
-   * La tarjeta de crédito del mes. Ausente = sin otros cargos ni pago: el servidor solo lo manda en los meses que
-   * tienen algo, y así no cambia la forma de un mes que no la usa. Léase con `cardOf` (shared/calc.ts).
+   * Lo guardado de cada tarjeta en el mes (otros cargos y pagos). Ausente = nada: el servidor solo lo manda en los
+   * meses que tienen algo, y así no cambia la forma de un mes que no lo usa. Léase con `cardOf` (shared/calc.ts).
    */
-  card?: MonthCard;
+  cards?: MonthCard[];
 }
 
 export interface Goal {
@@ -326,6 +354,8 @@ export interface AppState {
   incomes: Income[];
   goals: Goal[];
   contribs: Contribution[];
+  /** Tarjetas de crédito del usuario, en su orden (también las apagadas). */
+  cards: CreditCard[];
 
   /** Moneda en la que se ven el presupuesto, los totales y las columnas de las tablas. */
   mainCurrency: Currency;

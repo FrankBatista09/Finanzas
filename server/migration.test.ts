@@ -22,17 +22,23 @@ function dump(db: NodeD1Database, table: string, order = 'rowid'): Record<string
 }
 
 /**
- * El servidor de hoy lee también `outside_expenses` (0008) y `card_payments` (0010). Para leer una base que aún no las
- * tiene se le prestan las tablas vacías mientras se lee y se quitan después: así la migración que sigue se aplica sobre su esquema real.
+ * El servidor de hoy lee también `outside_expenses` (0008), `card_payments` (0010), `credit_cards` y `month_cards` (0011). Para
+ * leer una base que aún no las tiene se le prestan las tablas vacías mientras se lee y se quitan después: así la migración
+ * que sigue se aplica sobre su esquema real.
  */
 async function readAsToday(sqlite: NodeD1Database, user: string) {
-  sqlite.sqlite.exec('CREATE TABLE outside_expenses (user_id, id, month_key, date, name, description, account_id, amount, currency, sort)');
-  sqlite.sqlite.exec('CREATE TABLE card_payments (user_id, id, month_key, date, account_id, amount, sort)');
+  const lent: Record<string, string> = {
+    outside_expenses: 'user_id, id, month_key, date, name, description, account_id, amount, currency, sort',
+    card_payments: 'user_id, id, month_key, card_id, date, account_id, amount, sort',
+    credit_cards: 'user_id, id, name, bank, last4, currency, credit_limit, cutoff_day, due_day, active, sort',
+    month_cards: 'user_id, month_key, card_id, other',
+  };
+  const missing = Object.keys(lent).filter((t) => !sqlite.sqlite.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(t));
+  for (const table of missing) sqlite.sqlite.exec(`CREATE TABLE ${table} (${lent[table]})`);
   try {
     return await loadState(asD1(sqlite), user);
   } finally {
-    sqlite.sqlite.exec('DROP TABLE outside_expenses');
-    sqlite.sqlite.exec('DROP TABLE card_payments');
+    for (const table of missing) sqlite.sqlite.exec(`DROP TABLE ${table}`);
   }
 }
 
@@ -95,7 +101,9 @@ describe('migración 0002 sobre una base con datos de 0001', () => {
     before.contributions = before.contributions!.map((row) => ({ ...row, rate: null, account_id: null }));
     // Y a los meses y a los gastos fijos, las columnas de la tarjeta de crédito (0009), sin tarjeta.
     before.months = before.months?.map((row) => ({ ...row, card_other: 0, card_paid: null, card_account_id: null }));
-    before.fixed_expenses = before.fixed_expenses?.map((row) => ({ ...row, on_card: 0 }));
+    before.fixed_expenses = before.fixed_expenses?.map((row) => ({ ...row, on_card: 0, card_id: null }));
+    // Y a las transacciones, `card_id` (0011), vacío: sin método de crédito no hay tarjeta.
+    before.transactions = before.transactions!.map((row) => ({ ...row, card_id: null }));
     for (const table of UNTOUCHED) expect(dump(db, table), table).toEqual(before[table]);
     // Y la base queda coherente: ninguna clave foránea rota.
     expect(db.sqlite.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
@@ -579,7 +587,7 @@ describe('migración 0007: tasa propia, ingresos recurrentes y cuenta de un apor
   const BEFORE = LATER.slice(0, LATER.indexOf(FILE));
 
   it('las columnas nuevas nacen vacías: ninguna fila existente cambia', async () => {
-    expect(LATER.at(-4)).toBe(FILE);
+    expect(LATER.indexOf(FILE)).toBeGreaterThan(-1);
     const db = legacyDb();
     applyMigrations(db, BEFORE);
     const incomes = dump(db, 'incomes');

@@ -13,7 +13,9 @@ import {
   canRemoveAccount,
   canRemoveGoal,
   cardOtherChange,
+  cardPatchChange,
   cardPayment,
+  cardRemoval,
   cardUnpay,
   cardUnpayOne,
   contributionChange,
@@ -27,6 +29,7 @@ import {
   monthRate,
   newAccount,
   newBudgetEntry,
+  newCard,
   newContribution,
   newFixed,
   newGoal,
@@ -177,25 +180,44 @@ export function createActions(
       if (typed && monthKey) store.dispatch({ type: 'rate/remove', key: monthKey, from: typed.from, to: typed.to, date: typed.date });
     },
 
-    setCardOther(other) {
-      const action = store.state && monthKey ? cardOtherChange(store.state, monthKey, other) : null;
+    setCardOther(cardId, other) {
+      const action = store.state && monthKey ? cardOtherChange(store.state, monthKey, cardId, other) : null;
       if (!action) return false;
       store.dispatch(action);
       return true;
     },
-    payCard(amount, accountId) {
-      const action = store.state && monthKey ? cardPayment(store.state, monthKey, amount, accountId, makeId(), today()) : null;
+    payCard(cardId, amount, accountId) {
+      const action = store.state && monthKey ? cardPayment(store.state, monthKey, cardId, amount, accountId, makeId(), today()) : null;
       if (!action) return false;
       store.dispatch(action);
       return true;
     },
-    unpayCard() {
-      const action = store.state && monthKey ? cardUnpay(store.state, monthKey) : null;
+    unpayCard(cardId) {
+      const action = store.state && monthKey ? cardUnpay(store.state, monthKey, cardId) : null;
       if (action) store.dispatch(action);
     },
-    removeCardPayment(id) {
-      const action = store.state && monthKey ? cardUnpayOne(store.state, monthKey, id) : null;
+    removeCardPayment(cardId, id) {
+      const action = store.state && monthKey ? cardUnpayOne(store.state, monthKey, cardId, id) : null;
       if (action) store.dispatch(action);
+    },
+
+    addCard(input) {
+      const row = store.state ? newCard(store.state, input, makeId()) : null;
+      if (!row) return false;
+      store.dispatch({ type: 'creditCard/add', row });
+      return true;
+    },
+    patchCard(id, patch) {
+      const action = store.state ? cardPatchChange(store.state, id, patch) : null;
+      if (!action) return false;
+      store.dispatch(action);
+      return true;
+    },
+    removeCard(id) {
+      const action = store.state ? cardRemoval(store.state, id) : null;
+      if (!action) return false;
+      store.dispatch(action);
+      return true;
     },
 
     addFixed(input) {

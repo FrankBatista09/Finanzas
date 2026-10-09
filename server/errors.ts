@@ -64,6 +64,11 @@ export function unknownAccountError(id: string): ApiError {
   return validationError(`Unknown account "${id.slice(0, 64)}".`);
 }
 
+/** Una fila nombra una tarjeta de crédito que el usuario no tiene. Dato inválido del cuerpo: 400. */
+export function unknownCardError(id: string): ApiError {
+  return validationError(`Unknown credit card "${id.slice(0, 64)}".`);
+}
+
 /**
  * Una fila de dinero (parte del presupuesto, gasto fijo, transacción, envío, cuenta por defecto) nombra una
  * cuenta de oro, que guarda gramos y no dinero. Como una cuenta desconocida, es un dato inválido: 400.

@@ -25,6 +25,7 @@ import type {
   Account,
   AppUser,
   Contribution,
+  CreditCard,
   FixedExpense,
   Goal,
   Income,
@@ -250,6 +251,24 @@ export function createApp(): Hono<AppEnv> {
     return c.json(OK);
   });
 
+  // Tarjetas de crédito
+  app.get('/credit-cards', async (c) => c.json((await db.listCards(c.env.DB, uid(c))) satisfies CreditCard[]));
+
+  app.post('/credit-cards', async (c) => {
+    const input = await jsonBody(c, v.creditCardCreateSchema);
+    return c.json((await db.createCard(c.env.DB, uid(c), input)) satisfies CreditCard, 201);
+  });
+
+  app.patch('/credit-cards/:id', async (c) => {
+    const patch = await jsonBody(c, v.creditCardPatchSchema);
+    return c.json((await db.patchCard(c.env.DB, uid(c), idParam(c), patch)) satisfies CreditCard);
+  });
+
+  app.delete('/credit-cards/:id', async (c) => {
+    await db.deleteCard(c.env.DB, uid(c), idParam(c));
+    return c.json(OK);
+  });
+
   // Meses
   app.get('/months', async (c) => c.json((await db.listMonths(c.env.DB, uid(c))) satisfies MonthSummary[]));
 
@@ -295,23 +314,27 @@ export function createApp(): Hono<AppEnv> {
   // Suma al mes lo que sobró del anterior
   app.post('/months/:key/leftover', async (c) => c.json((await db.addLeftover(c.env.DB, uid(c), monthParam(c))) satisfies Month, 201));
 
-  // Tarjeta de crédito del mes: otros cargos, añadir pagos (total o en parte) y quitarlos (todos o uno)
-  app.patch('/months/:key/card', async (c) => {
+  // Tarjetas de crédito del mes: otros cargos, añadir pagos (total o en parte) y quitarlos (todos o uno), por tarjeta
+  const cardParam = (c: Ctx) => c.req.param('cardId') ?? '';
+
+  app.patch('/months/:key/cards/:cardId/other', async (c) => {
     const key = monthParam(c);
     const input = await jsonBody(c, v.cardOtherSchema);
-    return c.json((await db.setCardOther(c.env.DB, uid(c), key, input.other)) satisfies Month);
+    return c.json((await db.setCardOther(c.env.DB, uid(c), key, cardParam(c), input.other)) satisfies Month);
   });
 
-  app.post('/months/:key/card/pay', async (c) => {
+  app.post('/months/:key/cards/:cardId/pay', async (c) => {
     const key = monthParam(c);
     const input = await jsonBody(c, v.cardPaySchema);
-    return c.json((await db.payCard(c.env.DB, uid(c), key, input)) satisfies Month);
+    return c.json((await db.payCard(c.env.DB, uid(c), key, cardParam(c), input)) satisfies Month);
   });
 
-  app.delete('/months/:key/card/pay', async (c) => c.json((await db.unpayCard(c.env.DB, uid(c), monthParam(c))) satisfies Month));
+  app.delete('/months/:key/cards/:cardId/pay', async (c) =>
+    c.json((await db.unpayCard(c.env.DB, uid(c), monthParam(c), cardParam(c))) satisfies Month),
+  );
 
-  app.delete('/months/:key/card/pay/:paymentId', async (c) =>
-    c.json((await db.removeCardPayment(c.env.DB, uid(c), monthParam(c), c.req.param('paymentId') ?? '')) satisfies Month),
+  app.delete('/months/:key/cards/:cardId/pay/:paymentId', async (c) =>
+    c.json((await db.removeCardPayment(c.env.DB, uid(c), monthParam(c), cardParam(c), c.req.param('paymentId') ?? '')) satisfies Month),
   );
 
   // Tasas escritas a mano: una por par de monedas y fecha

@@ -12,6 +12,7 @@ import {
   addBudgetEntry,
   addLeftover,
   createAccount,
+  createCard,
   createFixed,
   getMonth,
   listIncomes,
@@ -19,6 +20,7 @@ import {
   patchAccount,
   patchMonth,
   replaceAll,
+  setCardOther,
   setMonthRate,
   updateSettings,
 } from './db';
@@ -44,7 +46,7 @@ const NOW = new Date('2026-10-07T16:00:00Z');
 const F = FRANK.id;
 const E = EDA.id;
 
-const TOOL_NAMES = ['add_transaction', 'add_outside_expense', 'list_transactions', 'month_summary', 'add_transfer', 'mark_fixed_paid', 'add_income', 'list_accounts', 'pay_credit_card'];
+const TOOL_NAMES = ['add_transaction', 'add_outside_expense', 'list_transactions', 'month_summary', 'add_transfer', 'mark_fixed_paid', 'add_income', 'list_accounts', 'pay_credit_card', 'list_credit_cards'];
 const FIXED_NAMES = 'Electricity, Internet, Health insurance, Fridge payment, Claude, Google One, iCloud+, Cluely, Smartfit, Netflix, Unicaribe';
 /** Cómo nombra un error a los usuarios de las pruebas: el id que va en `user` y el nombre de cada quien. */
 const BOTH = 'frank (Frank), eda (Eda)';
@@ -789,12 +791,12 @@ describe('/mcp: tools/list', () => {
     return ((await rpc(env, 'tools/list')).result as { tools: Record<string, any>[] }).tools;
   }
 
-  it('lista las nueve herramientas del diseño, con o sin params', async () => {
+  it('lista las diez herramientas del diseño, con o sin params', async () => {
     const { env } = makeEnv();
     expect((await tools()).map((t) => t.name)).toEqual(TOOL_NAMES);
     for (const params of [{}, { cursor: 'x' }, null]) {
       const result = (await rpc(env, 'tools/list', params)).result as { tools: unknown[]; nextCursor?: string };
-      expect(result.tools).toHaveLength(9);
+      expect(result.tools).toHaveLength(10);
       expect(result.nextCursor).toBeUndefined();
     }
   });
@@ -840,6 +842,7 @@ describe('/mcp: tools/list', () => {
       'Record income',
       'List accounts',
       'Pay credit card',
+      'List credit cards',
     ]);
     // Cada descripción dice de quién son las finanzas que toca.
     for (const tool of all) expect(tool.description, tool.name).toContain('in the finances of `user`');
@@ -857,6 +860,7 @@ describe('/mcp: tools/list', () => {
       add_income: [false, false],
       list_accounts: [true, true],
       pay_credit_card: [false, false],
+      list_credit_cards: [true, true],
     });
   });
 
@@ -864,7 +868,7 @@ describe('/mcp: tools/list', () => {
     const byName = Object.fromEntries((await tools()).map((t) => [t.name, t.inputSchema]));
 
     const tx = byName.add_transaction;
-    expect(Object.keys(tx.properties)).toEqual(['user', 'description', 'amount', 'currency', 'account', 'date', 'place', 'category', 'method', 'notes']);
+    expect(Object.keys(tx.properties)).toEqual(['user', 'description', 'amount', 'currency', 'account', 'date', 'place', 'category', 'method', 'card', 'notes']);
     expect(tx.required).toEqual(['user', 'description', 'amount']);
     expect(tx.properties.amount).toMatchObject({ type: 'number', exclusiveMinimum: 0 });
     // Sin valor por defecto: la moneda que se aplica es la de la cuenta, y eso lo dice la descripción.
@@ -1254,7 +1258,7 @@ describe('add_transaction', () => {
       notes: '',
       source: 'claude',
       createdAt: NOW.toISOString(),
-    } satisfies Record<keyof Transaction, unknown>);
+    } satisfies Record<Exclude<keyof Transaction, 'cardId'>, unknown>);
     expect(r.data).toEqual({
       user: FRANK,
       transaction: stored,
@@ -1296,6 +1300,8 @@ describe('add_transaction', () => {
 
   it('categoría y método dichos en español o en turco se guardan con su nombre canónico', async () => {
     const { env, db } = await seeded();
+    // Con «Credit card» hace falta una tarjeta donde cargarla.
+    await createCard(db, F, { name: 'Visa' });
     const cases: [category: string, method: string, cat: string, stored: string][] = [
       // "Tarjeta", "Kart" o "card" a secas: la de débito.
       ['Transporte', 'Tarjeta', 'Transport', 'Debit card'],
@@ -1632,7 +1638,7 @@ describe('month_summary', () => {
         ],
       },
       transactions: { count: 7, total: 10845 },
-      creditCard: { total: 0, previous: 0, other: 0, charged: 0, paid: 0, payments: [], remainder: 0 },
+      creditCards: [],
       outsideBudget: { count: 0, total: 0, expenses: [] },
       transferFees: [],
       categories: [
@@ -2008,7 +2014,7 @@ describe('mark_fixed_paid', () => {
         paid: true,
         accountId: 'dr',
         sort: 9,
-      } satisfies Record<Exclude<keyof FixedExpense, 'onCard'>, unknown>,
+      } satisfies Record<Exclude<keyof FixedExpense, 'onCard' | 'cardId'>, unknown>,
       changed: true,
       // Mientras está pagado, resta de la cuenta de la que se paga.
       account: { id: 'dr', name: 'DR account', currency: 'DOP', balance: await balanceOf(db, 'dr') },
@@ -2924,6 +2930,7 @@ describe('add_outside_expense', () => {
 describe('tarjeta de crédito', () => {
   it('una compra con «Credit card» queda cargada a la tarjeta y pay_credit_card la paga (en parte) desde la cuenta', async () => {
     const { env, db } = await seeded();
+    await createCard(db, F, { id: 'card', name: 'Credit card' });
     const before = await balanceOf(db, 'dr');
     const bought = await call(env, 'add_transaction', { description: 'Taxi', amount: 800, method: 'Credit card', category: 'Transport' });
     expect(bought.text).toContain('charged to the credit card');
@@ -2931,8 +2938,8 @@ describe('tarjeta de crédito', () => {
     expect(await balanceOf(db, 'dr')).toBe(before);
 
     const summary = await call(env, 'month_summary');
-    expect(summary.data!.creditCard).toMatchObject({ total: 800, previous: 0, other: 0, charged: 800, paid: 0, payments: [], remainder: 800 });
-    expect(summary.text).toContain('Credit card: total 800.00 DOP');
+    expect(summary.data!.creditCards[0]).toMatchObject({ total: 800, previous: 0, other: 0, charged: 800, paid: 0, payments: [], remainder: 800 });
+    expect(summary.text).toContain('Credit card "Credit card": total 800.00 DOP');
 
     expect(await fails(env, 'pay_credit_card', { amount: 800.5 })).toContain('cannot be paid for more than that');
     const paid = await call(env, 'pay_credit_card', { amount: 300 });
@@ -2951,14 +2958,49 @@ describe('tarjeta de crédito', () => {
     expect(await fails(env, 'pay_credit_card', { amount: 400.5 })).toContain('cannot be paid for more than that');
   });
 
+  it('con varias tarjetas: add_transaction y pay_credit_card nombran la suya, y list_credit_cards y month_summary dicen cuánto pagar', async () => {
+    const { env, db } = await seeded();
+    expect(await fails(env, 'pay_credit_card', { amount: 1 })).toContain('no active credit card');
+    const visa = await createCard(db, F, { name: 'Visa', bank: 'Popular', last4: '4242', limit: 60000, cutoffDay: 13 });
+    const usd = await createCard(db, F, { name: 'Dollars', cur: 'USD' });
+    await setCardOther(db, F, '2026-10', visa.id, 12000);
+
+    const bought = await call(env, 'add_transaction', { description: 'Hotel', amount: 20, currency: 'USD', method: 'Credit card', card: 'dollars' });
+    expect(bought.text).toContain('charged to the credit card Dollars');
+    expect(bought.data!.transaction.cardId).toBe(usd.id);
+    const plain = await call(env, 'add_transaction', { description: 'Taxi', amount: 100, method: 'Credit card' });
+    expect(plain.data!.transaction.cardId).toBe(visa.id);
+    expect(await fails(env, 'add_transaction', { description: 'x', amount: 1, method: 'Credit card', card: 'amex' })).toContain('unknown credit card "amex"');
+
+    const listed = await call(env, 'list_credit_cards');
+    expect(listed.text).toContain('Visa (Popular ****4242) · DOP · on · owed 12,100.00 DOP · limit 60,000.00 DOP · 20.2% used · cutoff day 13 · due day unknown');
+    expect(listed.text).toContain('to end the cutoff under 10% pay at least 6,100.01 DOP before 2026-10-13 (in 6 days)');
+    expect(listed.data!.cards.map((c: { name: string; owed: number }) => [c.name, c.owed])).toEqual([['Visa', 12100], ['Dollars', 20]]);
+    expect(listed.data!.cards[0].hint).toMatchObject({ payToUnder10: 6100.01, nextCutoff: '2026-10-13', daysToCutoff: 6 });
+
+    const summary = await call(env, 'month_summary');
+    expect(summary.data!.creditCards.map((c: { name: string }) => c.name)).toEqual(['Visa', 'Dollars']);
+    expect(summary.data!.creditCards[0]).toMatchObject({ remainder: 12100, limit: 60000, hint: { payToUnder10: 6100.01 } });
+    expect(summary.text).toContain('Credit card "Dollars": total 20.00 USD');
+
+    // Sin nombre, la primera activa; con nombre, esa; no se puede pasar de lo que debe esa tarjeta.
+    expect(await fails(env, 'pay_credit_card', { amount: 21, card: 'Dollars' })).toContain('Dollars has 20.00 left to pay');
+    const paid = await call(env, 'pay_credit_card', { amount: 100 });
+    expect(paid.data!.creditCard).toMatchObject({ name: 'Visa', paid: 100, remainder: 12000 });
+    const paidUsd = await call(env, 'pay_credit_card', { amount: 5, card: 'Dollars', account: 'US account' });
+    expect(paidUsd.data!.creditCard).toMatchObject({ name: 'Dollars', currency: 'USD', remainder: 15 });
+    expect(paidUsd.text).toContain('Paid 5.00 USD of Dollars');
+  });
+
   it('mark_fixed_paid con on_card carga el gasto a la tarjeta sin tocar ninguna cuenta', async () => {
     const { env, db } = await seeded();
+    await createCard(db, F, { id: 'card', name: 'Credit card' });
     const before = await balanceOf(db, 'dr');
     const r = await call(env, 'mark_fixed_paid', { name: 'Netflix', on_card: true });
     expect(r.data!.fixed).toMatchObject({ name: 'Netflix', paid: true, onCard: true });
     expect(r.text).toContain('charged to the credit card');
     expect(r.data!.account).toBeNull();
     expect(await balanceOf(db, 'dr')).toBe(before);
-    expect((await call(env, 'month_summary')).data!.creditCard.total).toBeCloseTo(1137.3, 6);
+    expect((await call(env, 'month_summary')).data!.creditCards[0].total).toBeCloseTo(1137.3, 6);
   });
 });

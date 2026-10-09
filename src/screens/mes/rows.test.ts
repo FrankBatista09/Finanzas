@@ -1,17 +1,22 @@
 import { describe, expect, it } from 'vitest';
 import { CATS, METHODS } from '../../../shared/constants';
 import { seedState } from '../../../shared/seed';
-import type { AppState, Currency, ISODate, MonthKey } from '../../../shared/types';
+import type { AppState, CreditCard, Currency, ISODate, MonthKey } from '../../../shared/types';
 import { createI18n } from '../../i18n';
 import { accountOptions, inBoth, pairRates } from '../../store';
 import type { TransferFee } from '../../../shared/calc';
 import {
   barWidth,
+  cardOptions,
   historyRows,
   lastFee,
   labelled,
+  methodChoices,
   newRateDate,
   optionsWith,
+  parsePayWith,
+  payWithOptions,
+  payWithValue,
   rateRows,
   rateText,
   rowAccountOptions,
@@ -540,5 +545,35 @@ describe('lastFee: la comisión que se propone para un envío nuevo', () => {
     expect(lastFee(months(), '2026-08', 'Remitly')).toBe(0);
     expect(lastFee(months(), '2026-10', 'Wise')).toBe(0);
     expect(lastFee({}, '2026-10', 'Remitly')).toBe(0);
+  });
+});
+
+describe('tarjetas de crédito en los selectores', () => {
+  const card = (id: string, name: string, over: Partial<CreditCard> = {}): CreditCard => ({ id, name, bank: null, last4: null, cur: 'DOP', limit: null, cutoffDay: null, dueDay: null, active: true, sort: 0, ...over });
+  const cards = [card('a', 'Visa'), card('b', 'Master', { sort: 1 }), card('c', 'Old', { sort: 2, active: false })];
+
+  it('«Pagar con»: la cuenta y una opción por tarjeta activa; la de la fila se queda aunque esté apagada', () => {
+    expect(payWithOptions('Account', cards)).toEqual([
+      { value: 'account', label: 'Account' },
+      { value: 'card:a', label: 'Visa' },
+      { value: 'card:b', label: 'Master' },
+    ]);
+    expect(payWithOptions('Account', cards, 'c').map((o) => o.value)).toEqual(['account', 'card:a', 'card:b', 'card:c']);
+    expect(payWithOptions('Account', [])).toEqual([{ value: 'account', label: 'Account' }]);
+  });
+
+  it('el valor del selector y su vuelta', () => {
+    expect(payWithValue(false, 'a', 'a')).toBe('account');
+    expect(payWithValue(true, 'b', 'a')).toBe('card:b');
+    expect(payWithValue(true, null, 'a')).toBe('card:a');
+    expect(parsePayWith('account')).toEqual({ onCard: false });
+    expect(parsePayWith('card:b')).toEqual({ onCard: true, cardId: 'b' });
+  });
+
+  it('sin tarjetas activas no se ofrece «Credit card» (salvo que la fila ya la tenga)', () => {
+    expect(methodChoices(true)).toContain('Credit card');
+    expect(methodChoices(false)).not.toContain('Credit card');
+    expect(methodChoices(false, 'Credit card')).toContain('Credit card');
+    expect(cardOptions(cards).map((o) => o.label)).toEqual(['Visa', 'Master']);
   });
 });

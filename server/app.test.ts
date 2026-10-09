@@ -62,6 +62,7 @@ const arrivedState = (language: AppState['language'] = 'en'): AppState => ({
   incomes: [],
   goals: [...DEFAULT_GOALS],
   contribs: [],
+  cards: [],
   mainCurrency: 'DOP',
   secondCurrency: 'USD',
   defaultAccountId: null,

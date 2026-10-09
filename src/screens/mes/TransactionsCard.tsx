@@ -1,9 +1,9 @@
 import { memo, useMemo, useRef, useState } from 'react';
-import { FEE_CATEGORY, outsideOf, transferFees } from '../../../shared/calc';
+import { defaultCardId, FEE_CATEGORY, isCardTx, outsideOf, transferFees } from '../../../shared/calc';
 import type { TransferFee } from '../../../shared/calc';
-import { CATS, CURRENCIES, METHODS } from '../../../shared/constants';
+import { CATS, CREDIT_CARD_METHOD, CURRENCIES } from '../../../shared/constants';
 import { f2 } from '../../../shared/format';
-import type { Transaction } from '../../../shared/types';
+import type { CreditCard, Transaction } from '../../../shared/types';
 import { useI18n, useStrings } from '../../i18n';
 import { useFinanzas } from '../../store';
 import type { AccountOption, Actions } from '../../store';
@@ -28,7 +28,7 @@ import { outsideCardVisible } from './OutsideCard';
 import type { OutsideAdding } from './OutsideCard';
 import { afterTxAdded, canAddTx, draftAccount, draftCurrency, newTxDraft, txInput } from './drafts';
 import { NotesCell } from './NotesCell';
-import { historyRows, labelled, MAX_LEN, optionsWith, rowAccountOptions, shortDate } from './rows';
+import { cardOptions, historyRows, labelled, MAX_LEN, methodChoices, optionsWith, rowAccountOptions, shortDate } from './rows';
 import { MES } from './strings';
 import styles from './TransactionsCard.module.css';
 
@@ -52,6 +52,8 @@ export function TransactionsCard({ outside }: { outside: OutsideAdding }) {
   // El enlace de "fuera de presupuesto" solo abre la fila (nunca la cierra), va aparte del botón de su tarjeta y solo
   // se ve mientras esa tarjeta no existe: con ella a la vista, su propia cabecera tiene el botón.
   const outsideLink = useRef<HTMLButtonElement>(null);
+  // La tarjeta a la que va una transacción de crédito que no dice cuál: la primera activa.
+  const firstCard = defaultCardId(state);
 
   const add = () => {
     if (!canAddTx(draft) || !actions.addTx(txInput(draft, draftDate, ctx))) return false;
@@ -138,12 +140,23 @@ export function TransactionsCard({ outside }: { outside: OutsideAdding }) {
                 />
               </Td>
               <Td kind="edit">
-                <CellSelect
-                  value={draft.method}
-                  options={labelled(METHODS, methodLabel)}
-                  onCommit={(method) => setDraft((d) => ({ ...d, method }))}
-                  label={s('newTxMethod')}
-                />
+                <div className={styles.methodCell}>
+                  <CellSelect
+                    value={draft.method}
+                    options={labelled(methodChoices(firstCard !== null, draft.method), methodLabel)}
+                    onCommit={(method) => setDraft((d) => ({ ...d, method }))}
+                    label={s('newTxMethod')}
+                  />
+                  {draft.method === CREDIT_CARD_METHOD && firstCard && (
+                    <CellSelect
+                      value={draft.cardId ?? firstCard}
+                      options={cardOptions(state.cards, draft.cardId)}
+                      onCommit={(cardId) => setDraft((d) => ({ ...d, cardId }))}
+                      tone="soft"
+                      label={s('newTxCard')}
+                    />
+                  )}
+                </div>
               </Td>
               <Td kind="edit">
                 <CellNumber
@@ -203,6 +216,8 @@ export function TransactionsCard({ outside }: { outside: OutsideAdding }) {
                 inMain={money.main}
                 inSecond={money.second}
                 accounts={rowAccountOptions(visible, accounts, r.tx.accountId)}
+                cards={state.cards}
+                firstCard={firstCard}
                 readOnly={readOnly}
                 actions={actions}
               />
@@ -264,12 +279,15 @@ interface TxRowProps {
   inSecond: number;
   /** Opciones del selector de cuenta (rows.ts rowAccountOptions). */
   accounts: readonly AccountOption[];
+  /** Las tarjetas y la primera activa (a la que va una transacción de crédito que no dice cuál). */
+  cards: readonly CreditCard[];
+  firstCard: string | null;
   readOnly: boolean;
   actions: Actions;
 }
 
 /** memo: al editar una celda solo se vuelve a pintar su fila; las demás conservan su identidad en la caché. */
-const TxRow = memo(function TxRow({ row: tx, inMain, inSecond, accounts, readOnly, actions }: TxRowProps) {
+const TxRow = memo(function TxRow({ row: tx, inMain, inSecond, accounts, cards, firstCard, readOnly, actions }: TxRowProps) {
   const { t, catLabel, methodLabel } = useI18n();
   const s = useStrings(MES);
   // La descripción de la transacción, para las etiquetas de sus celdas ("Amount of Coffee").
@@ -310,14 +328,26 @@ const TxRow = memo(function TxRow({ row: tx, inMain, inSecond, accounts, readOnl
         />
       </Td>
       <Td kind="edit">
-        <CellSelect
-          value={tx.method}
-          options={labelled(optionsWith(METHODS, tx.method), methodLabel)}
-          onCommit={(method) => actions.patchTx(tx.id, { method })}
-          disabled={readOnly}
-          tone="soft"
-          label={s('methodOf', named)}
-        />
+        <div className={styles.methodCell}>
+          <CellSelect
+            value={tx.method}
+            options={labelled(methodChoices(firstCard !== null, tx.method), methodLabel)}
+            onCommit={(method) => actions.patchTx(tx.id, { method })}
+            disabled={readOnly}
+            tone="soft"
+            label={s('methodOf', named)}
+          />
+          {isCardTx(tx) && (tx.cardId ?? firstCard) && (
+            <CellSelect
+              value={tx.cardId ?? firstCard!}
+              options={cardOptions(cards, tx.cardId ?? firstCard)}
+              onCommit={(cardId) => actions.patchTx(tx.id, { cardId })}
+              disabled={readOnly}
+              tone="soft"
+              label={s('cardOfNamed', named)}
+            />
+          )}
+        </div>
       </Td>
       <Td kind="edit">
         <CellNumber value={tx.amount} onCommit={(amount) => actions.patchTx(tx.id, { amount })} readOnly={readOnly} label={s('amountOf', named)} />

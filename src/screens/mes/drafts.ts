@@ -7,7 +7,7 @@
 
 import { isMoneyAccount } from '../../../shared/calc';
 import type { MoneyAccount } from '../../../shared/calc';
-import { CATS, METHODS, VIAS } from '../../../shared/constants';
+import { CATS, CREDIT_CARD_METHOD, METHODS, VIAS } from '../../../shared/constants';
 import { fRate } from '../../../shared/format';
 import type { Account, Currency, ISODate, MonthKey } from '../../../shared/types';
 import type { FixedInput, OutsideInput, PairRate, TransferInput, TxInput } from '../../store';
@@ -48,9 +48,11 @@ export interface FixedDraft extends Paying {
   amount: number;
   /** "Pay with" = tarjeta de crédito: la cuenta no cuenta (el gasto no sale de ninguna hasta que se paga la tarjeta). */
   onCard: boolean;
+  /** Con qué tarjeta si `onCard`; null = la primera activa (y la sigue si cambia). */
+  cardId: string | null;
 }
 
-export const EMPTY_FIXED: FixedDraft = { name: '', day: '', amount: 0, cur: null, accountId: null, onCard: false };
+export const EMPTY_FIXED: FixedDraft = { name: '', day: '', amount: 0, cur: null, accountId: null, onCard: false, cardId: null };
 
 /** Concepto y monto mayor que 0. Después de agregar, el borrador vuelve entero a EMPTY_FIXED. */
 export function canAddFixed(draft: FixedDraft): boolean {
@@ -66,7 +68,7 @@ export function fixedInput(draft: FixedDraft, ctx: DraftContext): FixedInput {
     amount: draft.amount,
     cur: draftCurrency(draft, ctx),
     ...(account && { accountId: account.id }),
-    ...(draft.onCard && { onCard: true }),
+    ...(draft.onCard && { onCard: true, ...(draft.cardId && { cardId: draft.cardId }) }),
   };
 }
 
@@ -81,10 +83,12 @@ export interface TxDraft extends Paying {
   method: string;
   amount: number;
   notes: string;
+  /** Con qué tarjeta si el método es de crédito; null = la primera activa. */
+  cardId: string | null;
 }
 
 export function newTxDraft(): TxDraft {
-  return { date: null, desc: '', place: '', cat: CATS[0], method: METHODS[0], amount: 0, cur: null, accountId: null, notes: '' };
+  return { date: null, desc: '', place: '', cat: CATS[0], method: METHODS[0], amount: 0, cur: null, accountId: null, notes: '', cardId: null };
 }
 
 /** Descripción y monto mayor que 0. */
@@ -105,6 +109,7 @@ export function txInput(draft: TxDraft, draftDate: ISODate, ctx: DraftContext): 
     cur: draftCurrency(draft, ctx),
     ...(account && { accountId: account.id }),
     notes: draft.notes,
+    ...(draft.method === CREDIT_CARD_METHOD && draft.cardId && { cardId: draft.cardId }),
   };
 }
 

@@ -95,7 +95,7 @@ describe('gasto fijo', () => {
   const named = (over: Partial<FixedDraft>): FixedDraft => ({ ...EMPTY_FIXED, name: 'Spotify', amount: 350, ...over });
 
   it('el borrador vacío: sin concepto, sin día, sin monto y con la moneda y la cuenta sin tocar', () => {
-    expect(EMPTY_FIXED).toEqual({ name: '', day: '', amount: 0, cur: null, accountId: null, onCard: false });
+    expect(EMPTY_FIXED).toEqual({ name: '', day: '', amount: 0, cur: null, accountId: null, onCard: false, cardId: null });
   });
 
   it('«Pagar con» tarjeta: lo agregado va marcado onCard; con cuenta, igual que siempre', () => {
@@ -137,10 +137,11 @@ describe('transacción', () => {
     cur: 'USD',
     accountId: 'us',
     notes: 'Con propina',
+    cardId: null,
   };
 
   it('arranca en Food / Card (los nombres canónicos, que son los que se guardan), sin fecha, moneda ni cuenta propias', () => {
-    expect(newTxDraft()).toEqual({ date: null, desc: '', place: '', cat: 'Food', method: 'Debit card', amount: 0, cur: null, accountId: null, notes: '' });
+    expect(newTxDraft()).toEqual({ date: null, desc: '', place: '', cat: 'Food', method: 'Debit card', amount: 0, cur: null, accountId: null, notes: '', cardId: null });
   });
 
   it('necesita descripción y monto mayor que 0; lugar y notas son opcionales', () => {
@@ -157,7 +158,11 @@ describe('transacción', () => {
   it('sin fecha propia usa la del shell; con fecha propia, esa', () => {
     expect(txInput({ ...filled, date: null }, '2026-10-07', ctx).date).toBe('2026-10-07');
     expect(txInput(filled, '2026-10-07', ctx).date).toBe('2026-10-05');
-    expect(txInput(filled, '2026-10-07', ctx)).toEqual(filled);
+    // El borrador sin tarjeta (`cardId: null`) no manda ninguna; con método de crédito y tarjeta elegida, la manda.
+    const { cardId: _none, ...sent } = filled;
+    expect(txInput(filled, '2026-10-07', ctx)).toEqual(sent);
+    expect(txInput({ ...filled, method: 'Credit card', cardId: 'b' }, '2026-10-07', ctx)).toMatchObject({ method: 'Credit card', cardId: 'b' });
+    expect(txInput({ ...filled, cardId: 'b' }, '2026-10-07', ctx)).not.toHaveProperty('cardId');
   });
 
   it('sin tocar, sale de la cuenta por defecto y en su moneda; al elegir otra cuenta, en la de esa', () => {
@@ -179,6 +184,7 @@ describe('transacción', () => {
       cur: 'USD',
       accountId: 'us',
       notes: '',
+      cardId: null,
     });
     // Lo que estaba sin tocar sigue sin tocar: mañana la fecha será la de mañana, y la cuenta, la de por defecto.
     expect(afterTxAdded({ ...filled, date: null, cur: null, accountId: null })).toMatchObject({ date: null, cur: null, accountId: null });

@@ -19,6 +19,7 @@ export function newUserState(current: MonthKey = '2026-10'): AppState {
     incomes: [],
     goals: DEFAULT_GOALS.map((g) => ({ ...g })),
     contribs: [],
+    cards: [],
     months: { [current]: { key: current, closed: false, closedAt: null, budgetLog: [], budgets: {}, rates: [], fixed: [], transfers: [], tx: [] } },
   };
 }

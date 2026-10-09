@@ -36,6 +36,11 @@
 //   PATCH  /api/accounts/:id     AccountPatch → Account            (cambiar `currency` → 409 si la cuenta tiene movimientos)
 //   DELETE /api/accounts/:id                  → OkResponse        (409 conflict si algo la usa: se oculta, no se borra)
 //
+//   GET    /api/credit-cards                  → CreditCard[]
+//   POST   /api/credit-cards     CreditCardCreate → CreditCard     (201)
+//   PATCH  /api/credit-cards/:id CreditCardPatch → CreditCard      (apagarla → 409 si debe algo o tiene cargos en el último mes)
+//   DELETE /api/credit-cards/:id              → OkResponse        (409 conflict si algo la usa: se apaga, no se borra)
+//
 //   GET    /api/months                        → MonthSummary[]
 //   GET    /api/months/:key                   → Month
 //   PATCH  /api/months/:key      MonthPatch   → Month             (fija la parte del presupuesto de una cuenta: el
@@ -48,10 +53,10 @@
 //                                                                  una por par y fecha: repetir la fecha la sustituye)
 //   DELETE /api/months/:key/rates/:from/:to?date=YYYY-MM-DD → Month (quita la tasa de ese par y esa fecha, esté
 //                                                                  guardada en un sentido o en el otro)
-//   PATCH  /api/months/:key/card CardOtherUpdate → Month          (los «otros cargos» de la tarjeta de crédito del mes)
-//   POST   /api/months/:key/card/pay CardPayRequest → Month       (añade un pago de la tarjeta, total o en parte; puede haber varios en el mes)
-//   DELETE /api/months/:key/card/pay          → Month             (quita todos los pagos del mes)
-//   DELETE /api/months/:key/card/pay/:paymentId → Month           (quita uno)
+//   PATCH  /api/months/:key/cards/:cardId/other CardOtherUpdate → Month (los «otros cargos» de esa tarjeta en el mes)
+//   POST   /api/months/:key/cards/:cardId/pay CardPayRequest → Month (añade un pago de esa tarjeta, total o en parte; puede haber varios en el mes)
+//   DELETE /api/months/:key/cards/:cardId/pay → Month             (quita todos los pagos de esa tarjeta en el mes)
+//   DELETE /api/months/:key/cards/:cardId/pay/:paymentId → Month  (quita uno)
 //   POST   /api/months/:key/close CloseRequest? → CloseResponse   (cierra y crea el siguiente, en un batch de D1;
 //                                                                  el cuerpo es opcional)
 //   POST   /api/months/:key/reopen            → Month
@@ -105,10 +110,12 @@
 //     convertido con la tasa de su fecha) pero no cuentan en lo usado, lo disponible, las categorías ni el
 //     conteo del mes. Mes cerrado → 409; cuenta de oro o desconocida → 400; una cuenta con uno no se elimina.
 //     Mover (a uno u otro lado) borra la fila y crea la otra en un solo batch: nunca queda duplicada ni perdida.
-//   · Tarjeta de crédito (pago diferido): lo cargado a ella no toca ninguna cuenta ni el presupuesto; solo su pago lo
-//     hace. Se carga con una transacción de método «Credit card» o con un gasto fijo `onCard: true` marcado como
-//     pagado. El total del mes (shared/calc.ts cardCalc) = saldo que viene del mes anterior + otros cargos + lo
-//     cargado. Cada pago (<= lo que falta por pagar) cuenta como usado y le resta a su cuenta; lo que falta sigue
+//   · Tarjetas de crédito (pago diferido), varias y opcionales (/api/credit-cards): lo cargado a una no toca ninguna cuenta ni
+//     el presupuesto; solo su pago lo hace. Se carga con una transacción de método «Credit card» o con un gasto fijo
+//     `onCard: true` marcado como pagado; `cardId` dice a cuál (sin él, a la primera activa; sin ninguna tarjeta → 400).
+//     El total de cada tarjeta en el mes (shared/calc.ts cardCalc, en la moneda de la tarjeta) = saldo que viene del mes
+//     anterior + otros cargos + lo cargado. Solo las tarjetas activas suman a los totales, y se usan las activas AHORA
+//     en todos los meses (limitación conocida). Una tarjeta con algo que la usa no se borra (409). Cada pago (<= lo que falta por pagar) cuenta como usado y le resta a su cuenta; lo que falta sigue
 //     como pendiente del mes y, si el mes se cierra sin pagarlo, pasa al siguiente. Mes cerrado → 409; importe
 //     mayor que lo que falta o <= 0, o nada que pagar → 400; cuenta de oro o desconocida → 400.
 //   · El cliente puede mandar `id` al crear (actualizaciones optimistas sin reconciliar ids). Si falta, lo genera el servidor.
@@ -169,6 +176,7 @@ import type {
   AppState,
   AppUser,
   Contribution,
+  CreditCard,
   Currency,
   FixedExpense,
   Goal,
@@ -302,6 +310,24 @@ export interface CloseResponse {
   next: Month;
 }
 
+/** Moneda por defecto: la del usuario (lo decide la interfaz); el servidor, sin ella, usa DOP. */
+export interface CreditCardCreate {
+  id?: string;
+  name: string;
+  bank?: string | null;
+  /** Cuatro dígitos. */
+  last4?: string | null;
+  cur?: Currency;
+  /** > 0. */
+  limit?: number | null;
+  /** 1–31. */
+  cutoffDay?: number | null;
+  /** 1–31; null mientras no se sepa. */
+  dueDay?: number | null;
+  active?: boolean;
+}
+export type CreditCardPatch = Partial<Pick<CreditCard, 'name' | 'bank' | 'last4' | 'cur' | 'limit' | 'cutoffDay' | 'dueDay' | 'active' | 'sort'>>;
+
 export interface FixedCreate {
   id?: string;
   monthKey: MonthKey;
@@ -313,17 +339,19 @@ export interface FixedCreate {
   accountId?: string;
   /** Se paga con la tarjeta de crédito (FixedExpense.onCard). Por defecto false. */
   onCard?: boolean;
+  /** Con qué tarjeta, si `onCard`; por defecto la primera activa. */
+  cardId?: string;
 }
-export type FixedPatch = Partial<Pick<FixedExpense, 'name' | 'day' | 'amount' | 'cur' | 'paid' | 'accountId' | 'sort' | 'onCard'>>;
+export type FixedPatch = Partial<Pick<FixedExpense, 'name' | 'day' | 'amount' | 'cur' | 'paid' | 'accountId' | 'sort' | 'onCard'>> & { cardId?: string };
 
-/** PATCH /api/months/:key/card: los «otros cargos» de la tarjeta del mes, en la moneda principal (>= 0). */
+/** PATCH /api/months/:key/cards/:cardId/other: los «otros cargos» de esa tarjeta en el mes, en la moneda de la tarjeta (>= 0). */
 export interface CardOtherUpdate {
   other: number;
 }
 
 /**
- * POST /api/months/:key/card/pay: añade un pago de la tarjeta del mes. `amount` (> 0 y <= lo que falta por pagar, que
- * calcula el servidor) en la moneda principal; `accountId`, la cuenta de dinero de la que sale: si falta, la del
+ * POST /api/months/:key/cards/:cardId/pay: añade un pago de esa tarjeta. `amount` (> 0 y <= lo que falta por pagar, que
+ * calcula el servidor) en la moneda de la tarjeta; `accountId`, la cuenta de dinero de la que sale: si falta, la del
  * último pago de la tarjeta o, si no hay, la cuenta por defecto. `date` (dentro del mes) por defecto es hoy.
  */
 export interface CardPayRequest {
@@ -345,10 +373,12 @@ export interface TxCreate {
   cur: Currency;
   accountId?: string;
   notes?: string;
+  /** Solo si `method` es 'Credit card': con qué tarjeta; por defecto la primera activa. */
+  cardId?: string;
 }
 export type TxPatch = Partial<
   Pick<Transaction, 'date' | 'desc' | 'place' | 'cat' | 'method' | 'amount' | 'cur' | 'accountId' | 'notes'>
->;
+> & { cardId?: string };
 
 /** Gasto fuera de presupuesto (OutsideExpense). Sin `accountId` sale de la cuenta por defecto; sin `cur`, la moneda de esa cuenta. */
 export interface OutsideCreate {
@@ -458,6 +488,8 @@ export interface IngestTransaction {
    * Por defecto, la cuenta por defecto del usuario.
    */
   account?: string;
+  /** Tarjeta de crédito (id o nombre), solo con método 'Credit card'. Por defecto, la primera activa. */
+  card?: string;
   notes?: string;
 }
 
