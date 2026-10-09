@@ -225,6 +225,16 @@ export interface Income {
   recurring?: boolean;
 }
 
+/** Un pago de la tarjeta de crédito: lo que salió de una cuenta de dinero, en la moneda principal. */
+export interface CardPayment {
+  id: string;
+  /** 'YYYY-MM-DD' */
+  date: ISODate;
+  accountId: string;
+  /** > 0, en la moneda principal. */
+  amount: number;
+}
+
 /**
  * Lo que se guarda de la tarjeta de crédito en un mes. El saldo que viene del mes anterior NO se guarda: se deriva
  * (shared/calc.ts cardCalc). Todo en la moneda principal.
@@ -232,10 +242,8 @@ export interface Income {
 export interface MonthCard {
   /** "Otros cargos" escritos a mano (>= 0): lo que se pasó a la tarjeta fuera de las filas del mes. */
   other: number;
-  /** Lo que se pagó de la tarjeta este mes; null = sin pagar. */
-  paid: number | null;
-  /** Cuenta de dinero de la que salió ese pago; null = ninguna. */
-  accountId: string | null;
+  /** Los pagos del mes, en el orden en que se hicieron: varios, cada uno con su cuenta y su fecha. */
+  payments: CardPayment[];
 }
 
 export interface Month {

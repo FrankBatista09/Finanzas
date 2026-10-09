@@ -29,8 +29,8 @@ const balanceOf = (state: Awaited<ReturnType<typeof loadState>>, id: string) => 
 describe('migración 0008', () => {
   it('solo añade la tabla y no cambia ninguna fila existente', () => {
     const files = migrationFiles();
-    expect(files.at(-2)).toBe('0008_outside_expenses.sql');
-    const db = createTestDb(files.slice(0, -2));
+    expect(files.at(-3)).toBe('0008_outside_expenses.sql');
+    const db = createTestDb(files.slice(0, -3));
     db.sqlite.exec(`
       INSERT INTO months (user_id, key, closed, closed_at) VALUES ('frank', '2026-10', 0, NULL);
       INSERT INTO accounts (user_id, id, name, currency, opening, hidden, sort) VALUES ('frank', 'dr', 'DR account', 'DOP', 100, 0, 0);

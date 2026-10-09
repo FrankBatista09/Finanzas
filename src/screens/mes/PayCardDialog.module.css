@@ -1,0 +1,23 @@
+/* Los pagos ya hechos: una línea cada uno, con su × a la derecha. */
+.payments {
+  margin: 0;
+  padding: 0 22px 14px;
+  list-style: none;
+  font-size: 13.5px;
+  color: var(--text-soft);
+}
+
+.payment {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 3px 0;
+}
+
+.paymentInfo {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

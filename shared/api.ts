@@ -49,8 +49,9 @@
 //   DELETE /api/months/:key/rates/:from/:to?date=YYYY-MM-DD → Month (quita la tasa de ese par y esa fecha, esté
 //                                                                  guardada en un sentido o en el otro)
 //   PATCH  /api/months/:key/card CardOtherUpdate → Month          (los «otros cargos» de la tarjeta de crédito del mes)
-//   POST   /api/months/:key/card/pay CardPayRequest → Month       (paga la tarjeta, total o en parte; el resto pasa al mes siguiente)
-//   DELETE /api/months/:key/card/pay          → Month             (deshace el pago)
+//   POST   /api/months/:key/card/pay CardPayRequest → Month       (añade un pago de la tarjeta, total o en parte; puede haber varios en el mes)
+//   DELETE /api/months/:key/card/pay          → Month             (quita todos los pagos del mes)
+//   DELETE /api/months/:key/card/pay/:paymentId → Month           (quita uno)
 //   POST   /api/months/:key/close CloseRequest? → CloseResponse   (cierra y crea el siguiente, en un batch de D1;
 //                                                                  el cuerpo es opcional)
 //   POST   /api/months/:key/reopen            → Month
@@ -107,8 +108,9 @@
 //   · Tarjeta de crédito (pago diferido): lo cargado a ella no toca ninguna cuenta ni el presupuesto; solo su pago lo
 //     hace. Se carga con una transacción de método «Credit card» o con un gasto fijo `onCard: true` marcado como
 //     pagado. El total del mes (shared/calc.ts cardCalc) = saldo que viene del mes anterior + otros cargos + lo
-//     cargado; el pago (<= el total) cuenta como usado y le resta a la cuenta que paga, y lo que no se pagó pasa
-//     al mes siguiente. Mes cerrado → 409; importe mayor que el total o <= 0 → 400; cuenta de oro o desconocida → 400.
+//     cargado. Cada pago (<= lo que falta por pagar) cuenta como usado y le resta a su cuenta; lo que falta sigue
+//     como pendiente del mes y, si el mes se cierra sin pagarlo, pasa al siguiente. Mes cerrado → 409; importe
+//     mayor que lo que falta o <= 0, o nada que pagar → 400; cuenta de oro o desconocida → 400.
 //   · El cliente puede mandar `id` al crear (actualizaciones optimistas sin reconciliar ids). Si falta, lo genera el servidor.
 //   · Envíos: `fee` (>= 0, por defecto 0) es la comisión, en la moneda de la cuenta de origen: le resta a su saldo
 //     y cuenta como una transacción del mes en "Other" (shared/calc.ts transferFees). No es una fila de
@@ -320,13 +322,15 @@ export interface CardOtherUpdate {
 }
 
 /**
- * POST /api/months/:key/card/pay: paga la tarjeta del mes. `amount` (> 0 y <= el total de la tarjeta, que calcula el
- * servidor) en la moneda principal; `accountId`, la cuenta de dinero de la que sale: si falta, la de un pago anterior
- * de la tarjeta o, si no hay, la cuenta por defecto. Pagar otra vez sustituye el pago anterior.
+ * POST /api/months/:key/card/pay: añade un pago de la tarjeta del mes. `amount` (> 0 y <= lo que falta por pagar, que
+ * calcula el servidor) en la moneda principal; `accountId`, la cuenta de dinero de la que sale: si falta, la del
+ * último pago de la tarjeta o, si no hay, la cuenta por defecto. `date` (dentro del mes) por defecto es hoy.
  */
 export interface CardPayRequest {
+  id?: string;
   amount: number;
   accountId?: string;
+  date?: ISODate;
 }
 
 export interface TxCreate {

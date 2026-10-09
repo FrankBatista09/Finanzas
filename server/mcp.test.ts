@@ -845,7 +845,7 @@ describe('/mcp: tools/list', () => {
     for (const tool of all) expect(tool.description, tool.name).toContain('in the finances of `user`');
   });
 
-  it('las de lectura se anuncian como tales y solo mark_fixed_paid y pay_credit_card, de las de escritura, son idempotentes', async () => {
+  it('las de lectura se anuncian como tales y solo mark_fixed_paid, de las de escritura, es idempotente', async () => {
     const hints = Object.fromEntries((await tools()).map((t) => [t.name, [t.annotations.readOnlyHint, t.annotations.idempotentHint]]));
     expect(hints).toEqual({
       add_transaction: [false, false],
@@ -856,7 +856,7 @@ describe('/mcp: tools/list', () => {
       mark_fixed_paid: [false, true],
       add_income: [false, false],
       list_accounts: [true, true],
-      pay_credit_card: [false, true],
+      pay_credit_card: [false, false],
     });
   });
 
@@ -1632,7 +1632,7 @@ describe('month_summary', () => {
         ],
       },
       transactions: { count: 7, total: 10845 },
-      creditCard: { total: 0, previous: 0, other: 0, charged: 0, paid: null, accountId: null, remainder: 0 },
+      creditCard: { total: 0, previous: 0, other: 0, charged: 0, paid: 0, payments: [], remainder: 0 },
       outsideBudget: { count: 0, total: 0, expenses: [] },
       transferFees: [],
       categories: [
@@ -2931,19 +2931,24 @@ describe('tarjeta de crédito', () => {
     expect(await balanceOf(db, 'dr')).toBe(before);
 
     const summary = await call(env, 'month_summary');
-    expect(summary.data!.creditCard).toMatchObject({ total: 800, previous: 0, other: 0, charged: 800, paid: null, remainder: 800 });
+    expect(summary.data!.creditCard).toMatchObject({ total: 800, previous: 0, other: 0, charged: 800, paid: 0, payments: [], remainder: 800 });
     expect(summary.text).toContain('Credit card: total 800.00 DOP');
 
     expect(await fails(env, 'pay_credit_card', { amount: 800.5 })).toContain('cannot be paid for more than that');
     const paid = await call(env, 'pay_credit_card', { amount: 300 });
-    expect(paid.data!.creditCard).toMatchObject({ total: 800, paid: 300, accountId: 'dr', remainder: 500 });
+    expect(paid.data!.creditCard).toMatchObject({ total: 800, paid: 300, payments: [{ accountId: 'dr', amount: 300 }], remainder: 500 });
     expect(paid.data!.account.balance).toBeCloseTo(before - 300, 8);
     expect(await balanceOf(db, 'dr')).toBeCloseTo(before - 300, 8);
-    expect(paid.text).toContain('carried to the next month: 500.00 DOP');
-    // Repetir con otra cuenta sustituye el pago.
+    expect(paid.text).toContain('left to pay: 500.00 DOP');
+    // Repetir con otra cuenta AÑADE un segundo pago: el primero se conserva.
     const again = await call(env, 'pay_credit_card', { amount: 100, account: 'US account' });
-    expect(again.data!.creditCard).toMatchObject({ accountId: 'us' });
-    expect(await balanceOf(db, 'dr')).toBeCloseTo(before, 8);
+    expect(again.data!.creditCard).toMatchObject({ paid: 400, remainder: 400, payments: [{ accountId: 'dr', amount: 300 }, { accountId: 'us', amount: 100 }] });
+    expect(await balanceOf(db, 'dr')).toBeCloseTo(before - 300, 8);
+    const after = await call(env, 'month_summary');
+    expect(after.text).toContain('paid 400.00 DOP in 2 payments');
+    expect(after.text).toContain('left to pay 400.00 DOP');
+    // Pagar de más de lo que falta se rechaza.
+    expect(await fails(env, 'pay_credit_card', { amount: 400.5 })).toContain('cannot be paid for more than that');
   });
 
   it('mark_fixed_paid con on_card carga el gasto a la tarjeta sin tocar ninguna cuenta', async () => {

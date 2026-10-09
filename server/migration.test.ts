@@ -22,15 +22,17 @@ function dump(db: NodeD1Database, table: string, order = 'rowid'): Record<string
 }
 
 /**
- * El servidor de hoy lee también `outside_expenses` (0008). Para leer una base que aún no la tiene se le presta la
- * tabla vacía mientras se lee y se quita después: así la migración que sigue se aplica sobre su esquema real.
+ * El servidor de hoy lee también `outside_expenses` (0008) y `card_payments` (0010). Para leer una base que aún no las
+ * tiene se le prestan las tablas vacías mientras se lee y se quitan después: así la migración que sigue se aplica sobre su esquema real.
  */
 async function readAsToday(sqlite: NodeD1Database, user: string) {
   sqlite.sqlite.exec('CREATE TABLE outside_expenses (user_id, id, month_key, date, name, description, account_id, amount, currency, sort)');
+  sqlite.sqlite.exec('CREATE TABLE card_payments (user_id, id, month_key, date, account_id, amount, sort)');
   try {
     return await loadState(asD1(sqlite), user);
   } finally {
     sqlite.sqlite.exec('DROP TABLE outside_expenses');
+    sqlite.sqlite.exec('DROP TABLE card_payments');
   }
 }
 
@@ -577,7 +579,7 @@ describe('migración 0007: tasa propia, ingresos recurrentes y cuenta de un apor
   const BEFORE = LATER.slice(0, LATER.indexOf(FILE));
 
   it('las columnas nuevas nacen vacías: ninguna fila existente cambia', async () => {
-    expect(LATER.at(-3)).toBe(FILE);
+    expect(LATER.at(-4)).toBe(FILE);
     const db = legacyDb();
     applyMigrations(db, BEFORE);
     const incomes = dump(db, 'incomes');

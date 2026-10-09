@@ -202,8 +202,8 @@ export const fixedPatchSchema = z.strictObject({
 
 export const cardOtherSchema = z.strictObject({ other: nonNegative() }) satisfies z.ZodType<CardOtherUpdate>;
 
-// Que el importe no pase del total de la tarjeta lo comprueba payCard (server/db.ts): el total sale del estado.
-export const cardPaySchema = z.strictObject({ amount: positive(), accountId: id().optional() }) satisfies z.ZodType<CardPayRequest>;
+// Que el importe no pase de lo que falta por pagar lo comprueba payCard (server/db.ts): lo que falta sale del estado.
+export const cardPaySchema = z.strictObject({ id: id().optional(), amount: positive(), accountId: id().optional(), date: isoDate().optional() }) satisfies z.ZodType<CardPayRequest>;
 
 // ── Transacciones ────────────────────────────────────────────────────────────
 

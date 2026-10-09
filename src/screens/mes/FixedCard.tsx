@@ -24,6 +24,7 @@ import {
   Tr,
   useAddRow,
 } from '../../ui';
+import { isFullyPaid } from './cardPay';
 import { PayCardDialog } from './PayCardDialog';
 import { canAddFixed, draftAccount, draftCurrency, EMPTY_FIXED, fixedInput } from './drafts';
 import styles from './FixedCard.module.css';
@@ -174,7 +175,12 @@ export function FixedCard({ className }: { className?: string }) {
             </AddRow>
           )}
           {/* La tarjeta de crédito: una fila de cada mes, derivada (no se guarda ni se borra). */}
-          <CardRow card={calc.card} readOnly={readOnly} accountName={accounts.find((a) => a.id === calc.card.accountId)?.name} onPay={() => setPaying(true)} />
+          <CardRow
+            card={calc.card}
+            readOnly={readOnly}
+            accountName={[...new Set(calc.card.payments.map((p) => accounts.find((a) => a.id === p.accountId)?.name ?? '—'))].join(', ') || undefined}
+            onPay={() => setPaying(true)}
+          />
         </tbody>
       </SheetTable>
       {paying && <PayCardDialog onClose={() => setPaying(false)} />}
@@ -198,7 +204,7 @@ function payWithOptions(s: (key: 'payWithAccount' | 'payWithCard') => string) {
 interface CardRowProps {
   card: CardCalc;
   readOnly: boolean;
-  /** Nombre de la cuenta de la que salió el pago, si ya se pagó. */
+  /** Nombres de las cuentas de las que salieron los pagos, si ya se pagó algo. */
   accountName: string | undefined;
   onPay: () => void;
 }
@@ -206,22 +212,25 @@ interface CardRowProps {
 /**
  * La fila de la tarjeta de crédito, al pie de «Gastos mensuales» en todos los meses. Su total (saldo anterior + otros
  * cargos + lo cargado este mes) va en las columnas de importes; el monto es el de «otros cargos», que se escribe aquí.
- * Marcar su casilla abre el diálogo de pago; desmarcarla deshace el pago.
+ * Su casilla está marcada solo con todo pagado; con un pago parcial queda a medias y la fila dice cuánto falta. Pulsarla
+ * siempre abre el diálogo: allí se paga lo que falta o se quita algún pago.
  */
 function CardRow({ card, readOnly, accountName, onPay }: CardRowProps) {
   const { main, inBoth, actions } = useFinanzas();
   const s = useStrings(MES);
-  const paid = card.paid !== null;
-  // Con la tarjeta en cero no hay nada que pagar (el servidor lo rechazaría): la casilla solo sirve para deshacer.
-  const canTick = readOnly ? false : paid || card.total > 0;
+  const started = card.payments.length > 0;
+  const paid = started && isFullyPaid(card.remainder);
+  const partial = started && !paid;
+  // Con la tarjeta en cero y sin pagos no hay nada que pagar (el servidor lo rechazaría): la casilla no sirve.
+  const canTick = readOnly ? false : started || card.total > 0;
   const named = { name: s('cardName') };
-  const partial = paid && card.paid! < card.total - 0.005;
   return (
     <Tr unpaid={!paid && card.total > 0} title={s('cardTitle')}>
       <Td kind="center">
         <CellCheckbox
           checked={paid}
-          onCommit={(checked) => (checked ? onPay() : actions.unpayCard())}
+          indeterminate={partial}
+          onCommit={onPay}
           disabled={!canTick}
           label={s('paidNamed', named)}
         />
@@ -233,7 +242,7 @@ function CardRow({ card, readOnly, accountName, onPay }: CardRowProps) {
         </div>
         <div className={styles.cardDetail}>
           {s('cardDetail', { prev: f2(card.previous), other: f2(card.other), charged: f2(card.charged) })}
-          {partial && ` · ${s('cardPaidOf', { paid: f2(card.paid!), total: f2(card.total) })}`}
+          {partial && ` · ${s('cardPaidOf', { paid: f2(card.paid), total: f2(card.total), left: f2(card.remainder) })}`}
         </div>
       </Td>
       <Td kind="center" tone="faint">

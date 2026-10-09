@@ -107,12 +107,14 @@ export interface Actions {
   /** Los «otros cargos» de la tarjeta de crédito del mes seleccionado (moneda principal, >= 0). false si el monto no es válido o el mes está cerrado. */
   setCardOther(other: number): boolean;
   /**
-   * Paga la tarjeta del mes seleccionado: `amount` en la moneda principal (> 0 y como mucho el total de la tarjeta,
-   * `calc.card.total`) desde esa cuenta de dinero. Lo que no se paga pasa al mes siguiente. false si no se puede.
+   * Añade un pago de la tarjeta del mes seleccionado: `amount` en la moneda principal (> 0 y como mucho lo que falta,
+   * `calc.card.remainder`) desde esa cuenta de dinero, con la fecha de hoy. Puede haber varios pagos en el mes. false si no se puede.
    */
   payCard(amount: number, accountId: string): boolean;
-  /** Deshace el pago de la tarjeta del mes seleccionado. */
+  /** Quita todos los pagos de la tarjeta del mes seleccionado. */
   unpayCard(): void;
+  /** Quita un pago de la tarjeta del mes seleccionado. */
+  removeCardPayment(id: string): void;
 
   /** Agrega al mes seleccionado. false si falta el concepto, el monto no es > 0 o la cuenta indicada no existe. */
   addFixed(input: FixedInput): boolean;

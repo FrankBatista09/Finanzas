@@ -53,6 +53,7 @@ import type {
   Income,
   ISODate,
   Month,
+  CardPayment,
   MonthCard,
   MonthKey,
   MonthRate,
@@ -73,10 +74,11 @@ export type Action =
   | { type: 'budget/remove'; key: MonthKey; id: string }
   /** `row` es el movimiento 'leftover' tal como se espera que lo escriba el servidor (leftoverEntry). */
   | { type: 'budget/leftover'; key: MonthKey; row: BudgetEntry }
-  /** Tarjeta de crédito del mes: otros cargos, pago (importe en la moneda principal y cuenta) y deshacer el pago. */
+  /** Tarjeta de crédito del mes: otros cargos, añadir un pago (moneda principal), quitarlos todos o quitar uno. */
   | { type: 'card/other'; key: MonthKey; other: number }
-  | { type: 'card/pay'; key: MonthKey; amount: number; accountId: string }
+  | { type: 'card/pay'; key: MonthKey; payment: CardPayment }
   | { type: 'card/unpay'; key: MonthKey }
+  | { type: 'card/unpayOne'; key: MonthKey; id: string }
   | { type: 'rate/set'; key: MonthKey; rate: MonthRate }
   | { type: 'rate/remove'; key: MonthKey; from: Currency; to: Currency; date: ISODate }
   | { type: 'fixed/add'; row: FixedExpense }
@@ -217,9 +219,8 @@ function patchMonth(m: Month, patch: MonthPatch, date: ISODate): Month {
 
 /** El mes con esa tarjeta; sin nada que guardar queda sin `card`, como lo manda el servidor. */
 function withCard(m: Month, card: MonthCard): Month {
-  const same = card.other === cardOf(m).other && card.paid === cardOf(m).paid && card.accountId === cardOf(m).accountId;
-  if (same) return m;
-  if (card.other === 0 && card.paid === null && card.accountId === null) {
+  if (card.other === cardOf(m).other && card.payments === cardOf(m).payments) return m;
+  if (card.other === 0 && card.payments.length === 0) {
     const { card: _gone, ...rest } = m;
     return rest;
   }
@@ -299,9 +300,11 @@ export function reduce(state: AppState, action: Action): AppState {
     case 'card/other':
       return withMonth(state, action.key, (m) => withCard(m, { ...cardOf(m), other: action.other }));
     case 'card/pay':
-      return withMonth(state, action.key, (m) => withCard(m, { ...cardOf(m), paid: action.amount, accountId: action.accountId }));
+      return withMonth(state, action.key, (m) => withCard(m, { ...cardOf(m), payments: [...cardOf(m).payments, action.payment] }));
     case 'card/unpay':
-      return withMonth(state, action.key, (m) => withCard(m, { ...cardOf(m), paid: null, accountId: null }));
+      return withMonth(state, action.key, (m) => withCard(m, { ...cardOf(m), payments: [] }));
+    case 'card/unpayOne':
+      return withMonth(state, action.key, (m) => withCard(m, { ...cardOf(m), payments: cardOf(m).payments.filter((p) => p.id !== action.id) }));
 
     case 'rate/set':
       return withMonth(state, action.key, (m) => setRate(m, action.rate));
@@ -888,7 +891,7 @@ export function accountInUse(state: AppState, id: string): boolean {
       m.fixed.some((f) => f.accountId === id) ||
       m.tx.some((t) => t.accountId === id) ||
       (m.outside ?? []).some((o) => o.accountId === id) ||
-      m.card?.accountId === id ||
+      (m.card?.payments ?? []).some((p) => p.accountId === id) ||
       m.transfers.some((t) => t.fromAccountId === id || t.toAccountId === id),
   );
 }
@@ -1091,25 +1094,31 @@ export function cardOtherChange(state: AppState, key: MonthKey, other: number): 
 }
 
 /**
- * Un importe escrito con dos decimales que cae a menos de medio centavo del total es el total: el diálogo propone
- * el total redondeado, y confirmarlo tal cual no debe dejar un resto de céntimos para el mes siguiente.
+ * Un importe escrito con dos decimales que cae a menos de medio centavo de lo que falta por pagar es eso mismo: el
+ * diálogo propone lo que falta redondeado, y confirmarlo tal cual no debe dejar un resto de céntimos.
  */
 export function snapToTotal(amount: number, total: number): number {
   return Math.abs(amount - total) < 0.005 ? total : amount;
 }
 
 /**
- * Pagar la tarjeta del mes: un mes abierto, un importe > 0 y no mayor que el total (calc.cardCalc), y una cuenta de
- * dinero que exista. Como el servidor (db.payCard): lo demás no se envía. null si no se puede.
+ * Añadir un pago de la tarjeta del mes: un mes abierto, un importe > 0 y no mayor que lo que falta por pagar
+ * (calc.cardCalc.remainder), y una cuenta de dinero que exista. Como el servidor (db.payCard): lo demás no se envía.
+ * `date` es hoy; el servidor la lleva al mes si cae fuera. null si no se puede.
  */
-export function cardPayment(state: AppState, key: MonthKey, amount: number, accountId: string): Action | null {
+export function cardPayment(state: AppState, key: MonthKey, amount: number, accountId: string, id: string, date: ISODate): Action | null {
   if (!openMonth(state, key) || !hasMoneyAccount(state, accountId) || !positive(amount)) return null;
-  const total = cardCalc(state, key).total;
-  const paid = snapToTotal(amount, total);
-  return paid <= total ? { type: 'card/pay', key, amount: paid, accountId } : null;
+  const left = cardCalc(state, key).remainder;
+  const paid = snapToTotal(amount, left);
+  return left > 0 && paid <= left ? { type: 'card/pay', key, payment: { id, date: clampToMonth(date, key), accountId, amount: paid } } : null;
 }
 
-/** Deshacer el pago: un mes abierto con la tarjeta pagada. */
+/** Quitar todos los pagos: un mes abierto con alguno. */
 export function cardUnpay(state: AppState, key: MonthKey): Action | null {
-  return openMonth(state, key) && cardOf(state.months[key]!).paid !== null ? { type: 'card/unpay', key } : null;
+  return openMonth(state, key) && cardOf(state.months[key]!).payments.length > 0 ? { type: 'card/unpay', key } : null;
+}
+
+/** Quitar un pago: un mes abierto que lo tiene. */
+export function cardUnpayOne(state: AppState, key: MonthKey, id: string): Action | null {
+  return openMonth(state, key) && cardOf(state.months[key]!).payments.some((p) => p.id === id) ? { type: 'card/unpayOne', key, id } : null;
 }

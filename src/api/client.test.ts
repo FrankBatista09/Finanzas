@@ -279,6 +279,7 @@ describe('cabecera X-User', () => {
     setCardOther: (api) => api.setCardOther('2026-10', { other: 100 }),
     payCard: (api) => api.payCard('2026-10', { amount: 50, accountId: 'dr' }),
     unpayCard: (api) => api.unpayCard('2026-10'),
+    removeCardPayment: (api) => api.removeCardPayment('2026-10', 'x'),
     putMonthRate: (api) => api.putMonthRate('2026-10', { from: 'USD', to: 'DOP', rate: 59, date: '2026-10-07' }),
     deleteMonthRate: (api) => api.deleteMonthRate('2026-10', 'USD', 'DOP', '2026-10-07'),
     closeMonth: (api) => api.closeMonth('2026-10'),

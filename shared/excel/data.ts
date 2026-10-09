@@ -229,7 +229,7 @@ function importedMonth(m: ImportMonth, before: Month | undefined, known: readonl
     // El libro no conoce los gastos fuera de presupuesto: los del mes que se sustituye se conservan, para que no
     // se pierdan y para que el saldo que se calcula al importar (openingFor) los siga restando, como al exportar.
     ...(before?.outside?.length ? { outside: before.outside } : {}),
-    // Tampoco conoce la tarjeta de crédito: sus otros cargos y su pago se conservan con el mes (sus saldos siguen
+    // Tampoco conoce la tarjeta de crédito: sus otros cargos y sus pagos se conservan con el mes (sus saldos siguen
     // restando lo pagado). Los gastos fijos del archivo nacen sin «en tarjeta», que el libro no trae.
     ...(before?.card ? { card: before.card } : {}),
   };
