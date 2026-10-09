@@ -35,8 +35,8 @@ import { MES } from './strings';
 
 /**
  * "Gastos mensuales": los mismos conceptos cada mes, con su casilla de pagado y la cuenta de la que se pagan.
- * Los importes calculados van en la moneda principal y en la segunda. La fila para agregar va al final (ahí cae
- * el gasto nuevo) y la abre el botón de la cabecera.
+ * Los importes calculados van en la moneda principal y en la segunda. Las filas de las tarjetas van primero; la fila para
+ * agregar va tras los gastos (ahí cae el gasto nuevo) y la abre el botón de la cabecera.
  */
 export function FixedCard({ className, cardClassName }: { className?: string; cardClassName?: string }) {
   const { state, month, calc, main, second, inBoth, accounts, defaultAccount, accountOptions, readOnly, actions } = useFinanzas();
@@ -89,7 +89,7 @@ export function FixedCard({ className, cardClassName }: { className?: string; ca
             <Th align="center" width={PAID_W} className={styles.paid}>
               {s('paid')}
             </Th>
-            <Th>{s('item')}</Th>
+            <Th width={ITEM_TH_W}>{s('item')}</Th>
             <Th width={60}>{s('day')}</Th>
             <Th align="right" width={AMOUNT_W}>
               {t('amount')}
@@ -106,6 +106,17 @@ export function FixedCard({ className, cardClassName }: { className?: string; ca
           </tr>
         </thead>
         <tbody>
+          {/* Derived card rows come first, in the cards' sort order, so adding a card pushes every regular expense down one row. */}
+          {calc.cards.map((card) => (
+            <CardRow
+              key={card.card.id}
+              card={card}
+              readOnly={readOnly}
+              accountName={[...new Set(card.payments.map((p) => accounts.find((a) => a.id === p.accountId)?.name ?? '—'))].join(', ') || undefined}
+              onPay={() => setPaying(card.card.id)}
+              onDetails={() => setViewing(card.card.id)}
+            />
+          ))}
           {withMoney(sortFixed(month.fixed), inBoth).map(({ row, main: inMain, second: inSecond }) => (
             <FixedRow
               key={row.id}
@@ -129,7 +140,7 @@ export function FixedCard({ className, cardClassName }: { className?: string; ca
                   value={draft.name}
                   onCommit={(name) => setDraft((d) => ({ ...d, name }))}
                   placeholder={s('newFixed')}
-                  minWidth={120}
+                  minWidth={ITEM_W}
                   maxLength={MAX_LEN.name}
                   label={s('newFixed')}
                 />
@@ -193,17 +204,6 @@ export function FixedCard({ className, cardClassName }: { className?: string; ca
               </Td>
             </AddRow>
           )}
-          {/* Las tarjetas de crédito activas: una fila de cada una en cada mes, derivadas (no se guardan ni se borran). */}
-          {calc.cards.map((card) => (
-            <CardRow
-              key={card.card.id}
-              card={card}
-              readOnly={readOnly}
-              accountName={[...new Set(card.payments.map((p) => accounts.find((a) => a.id === p.accountId)?.name ?? '—'))].join(', ') || undefined}
-              onPay={() => setPaying(card.card.id)}
-              onDetails={() => setViewing(card.card.id)}
-            />
-          ))}
         </tbody>
       </SheetTable>
     </ExpandableCard>
@@ -217,7 +217,13 @@ const PAY_WITH_WIDTH = 70;
 const PAID_W = 24;
 
 /** Wide enough for 12321321.00 plus the number spinner; as a min-width on the input it also keeps the column from being squeezed. */
-const AMOUNT_W = 124;
+const AMOUNT_W = 108;
+
+/** Small on purpose: Item is the column that gives up space, long names truncate with an ellipsis. */
+const ITEM_W = 60;
+
+/** Width hint for the Item header: a bounded share of the table instead of the leftover room. */
+const ITEM_TH_W = 90;
 
 interface CardRowProps {
   card: CardCalc;
@@ -319,7 +325,9 @@ const FixedRow = memo(function FixedRow({ row: f, inMain, inSecond, accounts, ca
           onCommit={(name) => actions.patchFixed(f.id, { name })}
           commitOn="blur"
           readOnly={readOnly}
-          minWidth={120}
+          minWidth={ITEM_W}
+          className={styles.item}
+          title={f.name}
           maxLength={MAX_LEN.name}
           label={s('item')}
         />

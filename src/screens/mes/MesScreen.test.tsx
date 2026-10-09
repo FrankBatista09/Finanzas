@@ -187,9 +187,9 @@ describe('mes abierto · October 2026', () => {
   it('gastos mensuales: fila para agregar al final', () => {
     const card = section(html, 'Fixed monthly expenses', 'By category');
     const inputs = els(card, 'input');
-    // Después de la fila de agregar va la de la tarjeta de crédito: su casilla y su campo de «otros cargos».
-    const last = inputs.slice(-5, -2);
-    expect(last[0]).toMatchObject({ type: 'text', value: '', placeholder: 'New monthly expense', style: 'min-width:120px', maxLength: '120' });
+    // The card row is above the expenses, so the add row is the last one.
+    const last = inputs.slice(-3);
+    expect(last[0]).toMatchObject({ type: 'text', value: '', placeholder: 'New monthly expense', style: 'min-width:60px', maxLength: '120' });
     expect(last[1]).toMatchObject({ type: 'text', value: '', placeholder: 'Day', 'aria-label': 'Day of the new expense', maxLength: '20' });
     expect(last[2]).toMatchObject({ type: 'number', value: '', placeholder: '0.00', 'aria-label': 'Amount of the new expense' });
     expect(els(card, 'select').at(-3)).toMatchObject({ 'aria-label': 'Currency of the new expense' });
@@ -200,8 +200,9 @@ describe('mes abierto · October 2026', () => {
     expect(selected(card, 'Currency of the new expense')).toBe('DOP');
     expect(els(card, 'td')).toContainEqual(expect.objectContaining({ colSpan: '3' }));
     // El botón de la cabecera (con la fila abierta, su "Cancel"), 11 × de las filas y, al final, "Add".
-    // 'Credit card' is the name of the card's derived row, a button that opens its details.
-    expect(buttons(card)).toEqual(['Cancel', ...Array<string>(11).fill('×'), 'Add', 'Credit card']);
+    // 'Credit card' is the name of the card's derived row (first in the body), a button that opens its details.
+    expect(buttons(card)).toEqual(['Cancel', 'Credit card', ...Array<string>(11).fill('×'), 'Add']);
+    expect(card.indexOf('Paid: Credit card')).toBeLessThan(card.indexOf('Paid: Electricity'));
     expect(els(card, 'button')).toContainEqual(expect.objectContaining({ title: 'Delete', 'aria-label': 'Delete Netflix' }));
   });
 
