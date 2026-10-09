@@ -1651,7 +1651,7 @@ describe('tarjetas de crédito', () => {
     s.months['2026-10'] = { ...s.months['2026-10']!, cards: [{ cardId: cards[0]!.id, other, payments: [] }] };
     return s;
   };
-  const cardsCard = (html: string) => section(html, '>Credit cards</h2>', '>Transfers</h2>');
+  const cardsCard = (html: string) => section(html, '>Credit cards', '>Transfers</h2>');
 
   it('sin tarjetas: la invitación con su botón, ninguna fila de tarjeta en los gastos y «Credit card» fuera de los métodos', () => {
     const html = render('2026-10', { state: seedState() });
@@ -1668,8 +1668,8 @@ describe('tarjetas de crédito', () => {
     const html = render('2026-10', { state: owing([card('a', 'Visa', { bank: 'Popular', last4: '4242', limit: 60000, cutoffDay: 13 })]) });
     const ct = text(cardsCard(html));
     expect(ct).toContain('Visa Popular · •••• 4242 Edit');
-    expect(ct).toContain('Limit 60,000.00 DOP Cutoff day 13 Due —');
-    expect(ct).toContain('You owe 12,000.00 DOP · 20.0 % of limit cutoff in 6 days');
+    expect(ct).toContain('Limit 60,000.00 DOP');
+    expect(ct).toContain('You owe 12,000.00 DOP · 20.0 % of limit Cutoff day 13 Due — cutoff in 6 days');
     expect(ct).toContain('To end the cutoff under 10 %, pay at least 6,000.01 DOP before Oct 13.');
     expect(ct).toContain('Add the due date');
     expect(cardsCard(html)).toContain('aria-label="20.0 % of the limit used; the marker is at 10 %"');
@@ -1695,20 +1695,27 @@ describe('tarjetas de crédito', () => {
   it('sin límite o sin corte, en vez del aviso pide esos datos', () => {
     const ct = text(cardsCard(render('2026-10', { state: owing([card('a', 'Visa')]) })));
     expect(ct).toContain('Add a limit and a cutoff day to see how much to pay.');
-    expect(ct).toContain('Limit — Cutoff — Due —');
+    expect(ct).toContain('Limit — You owe 12,000.00 DOP Cutoff — Due —');
   });
 
-  it('con tres tarjetas la lista se desplaza (sin flechas) y las trae todas; una apagada sale atenuada', () => {
+  it('con tres tarjetas se ve una a la vez, con contador y flechas; sin flecha atrás en la primera', () => {
     const cards = [card('a', 'Visa'), card('b', 'Master'), card('c', 'Gold', { active: false })];
     const html = render('2026-10', { state: owing(cards, 0) });
     const box = cardsCard(html);
-    for (const name of ['Visa', 'Master', 'Gold']) expect(text(box)).toContain(name);
-    expect(els(box, 'div').filter((d) => d['data-testid'] === 'credit-card')).toHaveLength(3);
-    expect(box).not.toContain('Show earlier cards');
-    expect(box).not.toContain('Show later cards');
+    expect(text(box)).toContain('Credit cards 1 / 3');
+    expect(text(box)).toContain('Visa');
+    expect(text(box)).not.toContain('Master');
+    expect(els(box, 'div').filter((d) => d['data-testid'] === 'credit-card')).toHaveLength(1);
+    const arrow = (label: string) => els(box, 'button').find((b) => b['aria-label'] === label);
+    expect(arrow('Previous card')).toHaveProperty('disabled');
+    expect(arrow('Next card')).toBeDefined();
+    expect(arrow('Next card')).not.toHaveProperty('disabled');
     expect(box).toContain('role="region"');
-    // Con dos o menos la lista no se desplaza.
-    expect(cardsCard(render('2026-10', { state: owing(cards.slice(0, 2), 0) }))).not.toContain('role="region"');
+    // Con una sola no hay contador, flechas ni región.
+    const one = cardsCard(render('2026-10', { state: owing(cards.slice(0, 1), 0) }));
+    expect(one).not.toContain('role="region"');
+    expect(one).not.toContain('Next card');
+    expect(text(one)).not.toContain(' / ');
     // La apagada no tiene fila en los gastos mensuales.
     expect(section(html, 'Monthly expenses', 'By category')).not.toContain('Paid: Gold');
     expect(text(section(html, 'Monthly expenses', 'By category'))).toContain('Master from card');

@@ -1,4 +1,4 @@
-/* «Credit cards»: two cards at a time in a list of fixed height; with more, the list scrolls and settles on a card. */
+/* «Credit cards»: one card at a time; arrows in the header move between them. */
 .add {
   flex: none;
   padding: 3px 9px;
@@ -34,52 +34,11 @@
 }
 
 .list {
-  /* Room for the tallest card: header line, three fields, amount, bar and a tip that wraps to a few lines. */
-  --card-item-h: 200px;
-  --card-gap: var(--gap-10);
-  display: flex;
-  flex-direction: column;
-  gap: var(--card-gap);
+  /* Room for the tallest card: header line, limit/amount block, bar and a tip that wraps to a few lines. */
+  --card-item-h: 210px;
 }
 
-/* Two cards and the gap between them; the rest is reached by scrolling, and each card snaps to the top. */
-.scroll {
-  height: calc(2 * var(--card-item-h) + var(--card-gap));
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  scroll-snap-type: y mandatory;
-  padding-right: 8px;
-  scrollbar-width: thin;
-  scrollbar-color: var(--border-dashed) transparent;
-}
-
-/* A visible thin bar in browsers that style it this way (a classic, always-on scrollbar even on macOS). */
-@supports selector(::-webkit-scrollbar) {
-  .scroll {
-    scrollbar-width: auto;
-    scrollbar-color: auto;
-  }
-
-  .scroll::-webkit-scrollbar {
-    width: 8px;
-  }
-
-  .scroll::-webkit-scrollbar-track {
-    border-radius: 4px;
-    background: var(--track);
-  }
-
-  .scroll::-webkit-scrollbar-thumb {
-    border-radius: 4px;
-    background: var(--border-dashed);
-  }
-
-  .scroll::-webkit-scrollbar-thumb:hover {
-    background: var(--text-muted);
-  }
-}
-
-.scroll:focus-visible {
+.list:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
@@ -98,7 +57,6 @@
   font-family: var(--font-ui);
   font-size: var(--fs-body);
   line-height: 1.4;
-  scroll-snap-align: start;
   overflow: hidden;
 }
 
@@ -148,9 +106,6 @@ p.muted,
 }
 
 .fields {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 2px var(--gap-14);
   color: var(--text-muted);
   font-size: var(--fs-meta);
 }
@@ -167,9 +122,79 @@ p.muted,
   flex-wrap: wrap;
   display: flex;
   justify-content: space-between;
-  align-items: baseline;
+  align-items: flex-end;
   gap: var(--gap-8);
   font-weight: 500;
+}
+
+.main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+/* Cutoff day, due day and days to the cutoff, stacked and right-aligned. */
+.side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  margin-left: auto;
+  gap: 1px;
+  color: var(--text-muted);
+  font-size: var(--fs-meta);
+  font-weight: 400;
+  text-align: right;
+}
+
+.side b {
+  color: var(--text-soft);
+  font-weight: 500;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.counter {
+  margin-left: var(--gap-8);
+  color: var(--text-muted);
+  opacity: 0.7;
+  font: 400 var(--fs-meta) var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.nav {
+  display: inline-flex;
+  gap: 2px;
+  margin-right: var(--gap-8);
+}
+
+.arrow {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--border-dashed);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.arrow:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent-text);
+}
+
+.arrow:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.arrow:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 
 /* The amounts inside a sentence, in the mono face of the money cells. */
