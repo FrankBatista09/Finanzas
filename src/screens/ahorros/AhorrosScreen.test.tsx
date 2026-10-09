@@ -94,7 +94,8 @@ describe('AhorrosScreen (inglés, el idioma por defecto)', () => {
 
   it('cada tarjeta lleva su "Edit" y, después de la última, va la de "Add goal"', () => {
     const buttons = els(html, 'button');
-    expect(inner(html, 'button').slice(0, 5)).toEqual(['Edit', 'Edit', 'Edit', '+ Add goal', 'Cancel']);
+    // The icon-only expand buttons have no text: they are left out of the list.
+    expect(inner(html, 'button').filter(Boolean).slice(0, 5)).toEqual(['Edit', 'Edit', 'Edit', '+ Add goal', 'Cancel']);
     expect(buttons.slice(0, 3).map((b) => b['aria-label'])).toEqual(['Edit Emergency fund', 'Edit Personal savings', 'Edit Trip to Turkey']);
     expect(buttons.slice(0, 4).every((b) => b.type === 'button')).toBe(true);
     expect(buttons[3]!.class).toBe(styles.addGoal);
@@ -337,7 +338,8 @@ describe('AhorrosScreen (inglés, el idioma por defecto)', () => {
     const empty = screen({ state: s });
     expect(inner(empty, 'h2')).toEqual(['Income by month', 'Contributions', 'Income']);
     expect(empty).toContain(`class="${styles.goals}"`);
-    expect(inner(empty, 'button').slice(0, 3)).toEqual(['+ Add goal', 'Cancel', 'Add']);
+    // The icon-only expand buttons have no text: they are left out of the list.
+    expect(inner(empty, 'button').filter(Boolean).slice(0, 3)).toEqual(['+ Add goal', 'Cancel', 'Add']);
 
     // La fila de agregar no tiene campos: dice qué hace falta, y su botón está apagado.
     const tbody = body(empty, 'Contributions');
@@ -533,7 +535,8 @@ describe('AhorrosScreen en español', () => {
   });
 
   it('editar y agregar metas', () => {
-    expect(inner(html, 'button').slice(0, 5)).toEqual(['Editar', 'Editar', 'Editar', '+ Agregar meta', 'Cancelar']);
+    // The icon-only expand buttons have no text: they are left out of the list.
+    expect(inner(html, 'button').filter(Boolean).slice(0, 5)).toEqual(['Editar', 'Editar', 'Editar', '+ Agregar meta', 'Cancelar']);
     expect(els(html, 'button')[0]!['aria-label']).toBe('Editar Emergency fund');
   });
 
@@ -560,7 +563,8 @@ describe('AhorrosScreen en español', () => {
     s.goals = [];
     s.contribs = [];
     const empty = screen({ state: s, lang: 'es' });
-    expect(inner(empty, 'button').slice(0, 3)).toEqual(['+ Agregar meta', 'Cancelar', 'Agregar']);
+    // The icon-only expand buttons have no text: they are left out of the list.
+    expect(inner(empty, 'button').filter(Boolean).slice(0, 3)).toEqual(['+ Agregar meta', 'Cancelar', 'Agregar']);
     expect(text(body(empty, 'Aportes')).trim()).toBe('Agrega primero una meta para registrar aportes. Agregar');
 
     s.incomes.push({ id: 'x', date: '2026-09-10', desc: '', accountId: 'dr', amount: 4200, cur: 'TRY', budget: false });
@@ -593,7 +597,8 @@ describe('AhorrosScreen en turco', () => {
     expect(t).toContain('Ekim 2026 340,808.00 205,660.00 60.3%');
 
     expect(t).toContain('Katkılar Toplam 625,794.00 DOP');
-    expect(inner(html, 'button').slice(0, 5)).toEqual(['Düzenle', 'Düzenle', 'Düzenle', '+ Hedef ekle', 'İptal']);
+    // The icon-only expand buttons have no text: they are left out of the list.
+    expect(inner(html, 'button').filter(Boolean).slice(0, 5)).toEqual(['Düzenle', 'Düzenle', 'Düzenle', '+ Hedef ekle', 'İptal']);
     expect(els(html, 'button')[2]!['aria-label']).toBe('Düzenle: Trip to Turkey');
     const contribs = body(html, 'Katkılar');
     const add = rowsOf(contribs)[0]!;

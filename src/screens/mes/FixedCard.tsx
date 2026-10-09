@@ -11,7 +11,7 @@ import {
   AddButton,
   AddRow,
   AddRowButton,
-  Card,
+  ExpandableCard,
   CardHeader,
   CellCheckbox,
   CellNumber,
@@ -25,6 +25,8 @@ import {
   Tr,
   useAddRow,
 } from '../../ui';
+import { CardDetailsDialog } from './CardDetailsDialog';
+import { cardStatus } from './cardItems';
 import { isFullyPaid } from './cardPay';
 import { PayCardDialog } from './PayCardDialog';
 import { canAddFixed, draftAccount, draftCurrency, EMPTY_FIXED, fixedInput } from './drafts';
@@ -39,8 +41,10 @@ import { MES } from './strings';
  */
 export function FixedCard({ className }: { className?: string }) {
   const { state, month, calc, main, second, inBoth, accounts, defaultAccount, accountOptions, readOnly, actions } = useFinanzas();
-  // La tarjeta cuyo diálogo de pago está abierto.
+  // La tarjeta cuyo diálogo de pago está abierto, y la de la que se ve el detalle. Los diálogos se pintan fuera de la
+  // tarjeta expandible, para no montarlos dos veces.
   const [paying, setPaying] = useState<string | null>(null);
+  const [viewing, setViewing] = useState<string | null>(null);
   const { t } = useI18n();
   const s = useStrings(MES);
   // App monta la hoja de nuevo al cambiar de usuario o de mes (key): el borrador no pasa de uno a otro.
@@ -60,7 +64,16 @@ export function FixedCard({ className }: { className?: string }) {
   };
 
   return (
-    <Card className={className}>
+    <ExpandableCard
+      title={s('fixedTitle')}
+      className={className}
+      outside={
+        <>
+          {viewing && <CardDetailsDialog cardId={viewing} onClose={() => setViewing(null)} onPay={() => setPaying(viewing)} />}
+          {paying && <PayCardDialog cardId={paying} onClose={() => setPaying(null)} />}
+        </>
+      }
+    >
       <CardHeader
         title={s('fixedTitle')}
         meta={
@@ -187,12 +200,12 @@ export function FixedCard({ className }: { className?: string }) {
               readOnly={readOnly}
               accountName={[...new Set(card.payments.map((p) => accounts.find((a) => a.id === p.accountId)?.name ?? '—'))].join(', ') || undefined}
               onPay={() => setPaying(card.card.id)}
+              onDetails={() => setViewing(card.card.id)}
             />
           ))}
         </tbody>
       </SheetTable>
-      {paying && <PayCardDialog cardId={paying} onClose={() => setPaying(null)} />}
-    </Card>
+    </ExpandableCard>
   );
 }
 
@@ -205,15 +218,16 @@ interface CardRowProps {
   /** Nombres de las cuentas de las que salieron los pagos, si ya se pagó algo. */
   accountName: string | undefined;
   onPay: () => void;
+  onDetails: () => void;
 }
 
 /**
  * La fila de la tarjeta de crédito, al pie de «Gastos mensuales» en todos los meses. Su total (saldo anterior + otros
  * cargos + lo cargado este mes) va en las columnas de importes; el monto es el de «otros cargos», que se escribe aquí.
  * Su casilla está marcada solo con todo pagado; con un pago parcial queda a medias y la fila dice cuánto falta. Pulsarla
- * siempre abre el diálogo: allí se paga lo que falta o se quita algún pago.
+ * siempre abre el diálogo: allí se paga lo que falta o se quita algún pago. El nombre abre el desglose del mes.
  */
-function CardRow({ card, readOnly, accountName, onPay }: CardRowProps) {
+function CardRow({ card, readOnly, accountName, onPay, onDetails }: CardRowProps) {
   const { inBoth, actions } = useFinanzas();
   const s = useStrings(MES);
   const started = card.payments.length > 0;
@@ -237,12 +251,15 @@ function CardRow({ card, readOnly, accountName, onPay }: CardRowProps) {
       </Td>
       <Td>
         <div className={styles.cardName}>
-          {named.name}
+          <button type="button" className={styles.cardLink} title={s('cardDetails')} aria-label={s('cardDetails')} onClick={onDetails}>
+            {named.name}
+          </button>
           <span className={styles.cardTag}>{s('cardTag')}</span>
         </div>
         <div className={styles.cardDetail}>
-          {s('cardDetail', { prev: f2(card.previous), other: f2(card.other), charged: f2(card.charged) })}
-          {partial && ` · ${s('cardPaidOf', { paid: f2(card.paid), total: f2(card.total), left: f2(card.remainder) })}`}
+          {cardStatus(card) === 'paid'
+            ? s('cardPaidOf', { paid: f2(card.paid), total: f2(card.total), left: f2(Math.max(0, card.remainder)) })
+            : s('cardStatusOwed', { total: f2(card.total) })}
         </div>
       </Td>
       <Td kind="center" tone="faint">

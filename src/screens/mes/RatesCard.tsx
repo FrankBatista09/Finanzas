@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { CURRENCIES } from '../../../shared/constants';
 import { useI18n, useStrings } from '../../i18n';
 import { useFinanzas } from '../../store';
-import { AddButton, AddRow, AddRowButton, Card, CardHeader, CardNote, CellDate, CellSelect, cx, DeleteButton, SheetTable, Td, Th, useAddRow } from '../../ui';
+import { AddButton, AddRow, AddRowButton, ExpandableCard, CardHeader, CardNote, CellDate, CellSelect, cx, DeleteButton, SheetTable, Td, Th, useAddRow } from '../../ui';
 import { canAddRate, EMPTY_RATE, pickRateCurrency, rateDate, ratePair } from './drafts';
 import { RateCell } from './RateCell';
 import styles from './RatesCard.module.css';
@@ -37,7 +37,7 @@ export function RatesCard() {
   };
 
   return (
-    <Card>
+    <ExpandableCard title={t('monthRates')}>
       <CardHeader title={t('monthRates')} action={!readOnly && <AddRowButton control={adding}>{t('addRate')}</AddRowButton>} />
       <CardNote>{s('ratesNote')}</CardNote>
       <SheetTable label={t('monthRates')}>
@@ -134,6 +134,6 @@ export function RatesCard() {
           )}
         </tbody>
       </SheetTable>
-    </Card>
+    </ExpandableCard>
   );
 }

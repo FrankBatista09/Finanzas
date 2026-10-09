@@ -5,7 +5,7 @@ import { f2 } from '../../../shared/format';
 import { useI18n, useStrings } from '../../i18n';
 import { useFinanzas } from '../../store';
 import type { AddRowControl } from '../../ui';
-import { AddButton, AddRow, AddRowButton, Card, CardHeader, CellDate, CellNumber, CellSelect, DeleteButton, Num, SheetTable, Td, Th, useAddRow } from '../../ui';
+import { AddButton, AddRow, AddRowButton, ExpandableCard, CardHeader, CellDate, CellNumber, CellSelect, DeleteButton, Num, SheetTable, Td, Th, useAddRow } from '../../ui';
 import styles from './AhorrosScreen.module.css';
 import { Converted, FallbackNote } from './Converted';
 import { RateCell } from './RateCell';
@@ -26,7 +26,7 @@ export function ContributionsCard() {
   const adding = useAddRow();
 
   return (
-    <Card className={styles.contribs}>
+    <ExpandableCard title={s('contribsTitle')} className={styles.contribs}>
       <CardHeader
         className={styles.head}
         title={s('contribsTitle')}
@@ -100,7 +100,7 @@ export function ContributionsCard() {
         </tbody>
       </SheetTable>
       <FallbackNote show={rows.some((r) => r.goalNote.fallback || r.mainNote.fallback)} />
-    </Card>
+    </ExpandableCard>
   );
 }
 

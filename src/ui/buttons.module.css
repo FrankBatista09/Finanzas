@@ -72,3 +72,30 @@
   outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
+
+/* Icon button next to "+ Add …" in a table card's header. */
+.expand {
+  flex: none;
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--border-dashed);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text-soft);
+  cursor: pointer;
+}
+
+.expand:hover {
+  border-color: var(--accent);
+  color: var(--accent-text);
+}
+
+.expand:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}

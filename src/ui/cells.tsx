@@ -10,6 +10,7 @@ import { AddRowContext } from './addRowContext';
 import styles from './cells.module.css';
 import { cx } from './cx';
 import type { Tone } from './cx';
+import { useExpanded } from './expandContext';
 import { useDraft } from './useDraft';
 import type { CommitOn } from './useDraft';
 
@@ -66,13 +67,14 @@ export function CellText({
 }: CellTextProps) {
   const draft = useDraft({ value, format: same, parse: same, onCommit, commitOn });
   const listId = useId();
+  const expanded = useExpanded();
   const offers = suggestions && suggestions.length > 0 && !readOnly;
   return (
     <>
       <input
         ref={draft.ref}
         type="text"
-        className={cx(styles.input, mono && styles.mono, small && styles.small, tone(t), className)}
+        className={cx(styles.input, mono && styles.mono, small && styles.small, expanded && styles.fit, tone(t), className)}
         style={width(minWidth)}
         value={draft.value}
         onChange={draft.onChange}
@@ -165,11 +167,12 @@ export interface CellNumberProps extends InputBase {
 }
 
 export function CellNumber({ label, minWidth, tone: t, dense, className, ...rest }: CellNumberProps) {
+  const expanded = useExpanded();
   return (
     <NumberField
       {...rest}
       aria-label={label}
-      className={cx(styles.input, styles.number, dense && styles.dense, tone(t), className)}
+      className={cx(styles.input, styles.number, dense && styles.dense, expanded && styles.fit, tone(t), className)}
       style={width(minWidth)}
     />
   );
@@ -244,13 +247,14 @@ export function CellSelect<T extends string = string>({
   dense,
   className,
 }: CellSelectProps<T>) {
+  const expanded = useExpanded();
   const items = options.map((o) => (typeof o === 'string' ? { value: o, label: o as string } : o));
   // Un valor que no está en la lista (una categoría importada del Excel) se muestra tal cual en vez de
   // aparentar que es la primera opción.
   if (!items.some((o) => o.value === value)) items.unshift({ value, label: value });
   return (
     <select
-      className={cx(styles.select, mono && styles.selectMono, dense && styles.dense, tone(t), className)}
+      className={cx(styles.select, mono && styles.selectMono, dense && styles.dense, expanded && styles.fit, tone(t), className)}
       style={width(minWidth)}
       value={value}
       onChange={(e) => onCommit?.(e.target.value as T)}

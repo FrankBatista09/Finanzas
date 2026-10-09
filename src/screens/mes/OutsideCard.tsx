@@ -6,7 +6,7 @@ import type { OutsideExpense } from '../../../shared/types';
 import { useI18n, useStrings } from '../../i18n';
 import { useFinanzas } from '../../store';
 import type { AccountOption, Actions } from '../../store';
-import { AddButton, AddRow, AddRowButton, Card, CardHeader, CellDate, CellNumber, CellSelect, CellText, DeleteButton, Num, SheetTable, Td, Th, useAddRow } from '../../ui';
+import { AddButton, AddRow, AddRowButton, ExpandableCard, CardHeader, CellDate, CellNumber, CellSelect, CellText, DeleteButton, Num, SheetTable, Td, Th, useAddRow } from '../../ui';
 import type { AddRowControl } from '../../ui';
 import { afterOutsideAdded, canAddOutside, draftAccount, draftCurrency, newOutsideDraft, outsideInput } from './drafts';
 import type { OutsideDraft } from './drafts';
@@ -53,7 +53,7 @@ export function OutsideCard({ adding: { control, draft, setDraft } }: { adding: 
   };
 
   return (
-    <Card>
+    <ExpandableCard title={s('outsideTitle')}>
       <CardHeader
         wrap
         title={s('outsideTitle')}
@@ -156,7 +156,7 @@ export function OutsideCard({ adding: { control, draft, setDraft } }: { adding: 
             })}
         </tbody>
       </SheetTable>
-    </Card>
+    </ExpandableCard>
   );
 }
 

@@ -1,6 +1,9 @@
+import { useContext } from 'react';
 import type { HTMLAttributes, ReactNode } from 'react';
 import styles from './Card.module.css';
 import { cx } from './cx';
+import { ExpandedContext, ExpandOpenContext } from './expandContext';
+import { ExpandButton } from './buttons';
 
 export interface CardProps extends HTMLAttributes<HTMLDivElement> {
   /** Padding 14px 16px 16px, para tarjetas sin tabla. Las que llevan tabla van sin padding (la tabla llega al borde). */
@@ -30,14 +33,18 @@ export interface CardHeaderProps {
 }
 
 export function CardHeader({ title, meta, action, wrap, inset, className }: CardHeaderProps) {
-  const shown = action != null && action !== false;
+  const expand = useContext(ExpandOpenContext);
+  const expanded = useContext(ExpandedContext);
+  const shown = (action != null && action !== false) || expand !== null;
   return (
-    <div className={cx(styles.header, wrap && styles.wrap, inset && styles.inset, className)}>
-      <h2 className={styles.title}>{title}</h2>
+    <div className={cx(styles.header, wrap && styles.wrap, inset && styles.inset, expanded && styles.expanded, className)}>
+      {/* In the expanded view the dialog title already says it. */}
+      {!expanded && <h2 className={styles.title}>{title}</h2>}
       {shown ? (
         <div className={styles.side}>
           {meta != null && <div className={styles.meta}>{meta}</div>}
           {action}
+          {expand && <ExpandButton onClick={expand} />}
         </div>
       ) : (
         meta != null && <div className={styles.meta}>{meta}</div>

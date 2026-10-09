@@ -1,7 +1,7 @@
 import { f2 } from '../../../shared/format';
 import { useI18n, useStrings } from '../../i18n';
 import { useFinanzas } from '../../store';
-import { AddRowButton, Card, CardHeader, CardNote, Num, useAddRow } from '../../ui';
+import { AddRowButton, ExpandableCard, CardHeader, CardNote, Num, useAddRow } from '../../ui';
 import { IncomeTable } from '../ahorros/IncomeTable';
 import { EMPTY_MONTH_INCOME, incomeItems } from '../ahorros/model';
 import { MES } from './strings';
@@ -20,7 +20,7 @@ export function IncomeCard() {
   const adding = useAddRow();
 
   return (
-    <Card>
+    <ExpandableCard title={t('income')}>
       <CardHeader
         title={t('income')}
         meta={
@@ -43,6 +43,6 @@ export function IncomeCard() {
         readOnly={readOnly}
         compact
       />
-    </Card>
+    </ExpandableCard>
   );
 }
