@@ -15,7 +15,7 @@ import { defineStrings } from '../../i18n';
 export const MES = defineStrings({
   en: {
     // Gastos mensuales
-    fixedTitle: 'Monthly expenses',
+    fixedTitle: 'Fixed monthly expenses',
     fixedMeta: '{paid} of {total} paid · total',
     paid: 'Paid',
     item: 'Item',
@@ -206,7 +206,7 @@ export const MES = defineStrings({
   },
 
   es: {
-    fixedTitle: 'Gastos mensuales',
+    fixedTitle: 'Gastos mensuales fijos',
     fixedMeta: '{paid} de {total} pagados · total',
     paid: 'Pagado',
     item: 'Concepto',
@@ -389,7 +389,7 @@ export const MES = defineStrings({
   },
 
   tr: {
-    fixedTitle: 'Aylık giderler',
+    fixedTitle: 'Sabit aylık giderler',
     fixedMeta: '{paid} / {total} ödendi · toplam',
     paid: 'Ödendi',
     item: 'Kalem',

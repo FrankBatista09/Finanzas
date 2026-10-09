@@ -38,7 +38,7 @@ import { MES } from './strings';
  * Los importes calculados van en la moneda principal y en la segunda. La fila para agregar va al final (ahí cae
  * el gasto nuevo) y la abre el botón de la cabecera.
  */
-export function FixedCard({ className }: { className?: string }) {
+export function FixedCard({ className, cardClassName }: { className?: string; cardClassName?: string }) {
   const { state, month, calc, main, second, inBoth, accounts, defaultAccount, accountOptions, readOnly, actions } = useFinanzas();
   // La tarjeta cuyo diálogo de pago está abierto, y la de la que se ve el detalle. Los diálogos se pintan fuera de la
   // tarjeta expandible, para no montarlos dos veces.
@@ -66,6 +66,7 @@ export function FixedCard({ className }: { className?: string }) {
     <ExpandableCard
       title={s('fixedTitle')}
       className={className}
+      cardClassName={cardClassName}
       outside={
         <>
           {viewing && <CardDetailsDialog cardId={viewing} onClose={() => setViewing(null)} onPay={() => setPaying(viewing)} />}
@@ -82,15 +83,15 @@ export function FixedCard({ className }: { className?: string }) {
         }
         action={!readOnly && <AddRowButton control={adding}>{s('addFixed')}</AddRowButton>}
       />
-      <SheetTable label={s('fixedTitle')}>
+      <SheetTable label={s('fixedTitle')} className={styles.table} scrollClassName={styles.body}>
         <thead>
           <tr>
-            <Th align="center" width={44}>
+            <Th align="center" width={PAID_W} className={styles.paid} title={s('paid')}>
               {s('paid')}
             </Th>
             <Th>{s('item')}</Th>
             <Th width={60}>{s('day')}</Th>
-            <Th align="right" width={110}>
+            <Th align="right" width={AMOUNT_W}>
               {t('amount')}
             </Th>
             {/* En una línea: "Para birimi" (turco) son dos palabras y partiría la cabecera en dos renglones. */}
@@ -148,6 +149,7 @@ export function FixedCard({ className }: { className?: string }) {
                   value={draft.amount}
                   onCommit={(amount) => setDraft((d) => ({ ...d, amount }))}
                   blankZero
+                  minWidth={AMOUNT_W}
                   placeholder="0.00"
                   label={s('newFixedAmount')}
                 />
@@ -210,6 +212,12 @@ export function FixedCard({ className }: { className?: string }) {
 
 /** Ancho mínimo del selector «Pagar con»: lo justo para que se lea «Account» sin ensanchar la tabla en pantallas de 1440px. */
 const PAY_WITH_WIDTH = 70;
+
+/** The checkbox column only needs the checkbox and its short header. */
+const PAID_W = 24;
+
+/** Wide enough for 12321321.00 plus the number spinner; as a min-width on the input it also keeps the column from being squeezed. */
+const AMOUNT_W = 124;
 
 interface CardRowProps {
   card: CardCalc;
@@ -329,7 +337,7 @@ const FixedRow = memo(function FixedRow({ row: f, inMain, inSecond, accounts, ca
         />
       </Td>
       <Td kind="edit">
-        <CellNumber value={f.amount} onCommit={(amount) => actions.patchFixed(f.id, { amount })} readOnly={readOnly} label={s('amountOf', named)} />
+        <CellNumber value={f.amount} onCommit={(amount) => actions.patchFixed(f.id, { amount })} readOnly={readOnly} minWidth={AMOUNT_W} label={s('amountOf', named)} />
       </Td>
       <Td kind="edit">
         <CellSelect

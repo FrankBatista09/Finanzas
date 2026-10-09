@@ -22,14 +22,16 @@ export interface SheetTableProps {
   /** Nombre accesible de la tabla. */
   label?: string;
   className?: string;
+  /** Extra class for the scroll wrapper (e.g. to let it shrink and scroll vertically inside a height-capped card). */
+  scrollClassName?: string;
   children: ReactNode;
 }
 
 /** <table> dentro de su contenedor con scroll horizontal. */
-export function SheetTable({ minWidth, label, className, children }: SheetTableProps) {
+export function SheetTable({ minWidth, label, className, scrollClassName, children }: SheetTableProps) {
   const expanded = useExpanded();
   return (
-    <div className={styles.scroll}>
+    <div className={cx(styles.scroll, scrollClassName)}>
       <table className={cx(styles.table, className)} style={minWidth && !expanded ? { minWidth } : undefined} aria-label={label}>
         {children}
       </table>

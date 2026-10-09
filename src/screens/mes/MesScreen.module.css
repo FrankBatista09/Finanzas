@@ -12,6 +12,14 @@
   min-width: 0;
 }
 
+.capped {
+  /* Grows with its rows until it reaches the bottom of the right column, then the table body scrolls (var unset: no cap). */
+  max-height: var(--fixed-max-h, none);
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+}
+
 .side {
   flex: 1 1 380px;
   min-width: 0;

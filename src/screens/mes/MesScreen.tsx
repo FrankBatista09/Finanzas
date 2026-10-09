@@ -7,6 +7,7 @@ import { useI18n } from '../../i18n';
 import { useFinanzas } from '../../store';
 import { Stack } from '../../ui';
 import { CategoriesCard } from './CategoriesCard';
+import { useColumnCap } from './columnCap';
 import { CloseBox } from './CloseBox';
 import { ClosedBanner } from './ClosedBanner';
 import { CreditCardsCard } from './CreditCardsCard';
@@ -25,12 +26,13 @@ export function MesScreen() {
   // Lo guarda la pantalla porque el enlace de "Transaction history" abre la tarjeta aunque todavía no se vea.
   const outside = useOutsideAdding();
   const { t } = useI18n();
+  const { columns, side } = useColumnCap();
   return (
     <Stack>
       {readOnly && <ClosedBanner />}
-      <div className={styles.columns}>
-        <FixedCard className={styles.fixed} />
-        <div className={styles.side}>
+      <div ref={columns} className={styles.columns}>
+        <FixedCard className={styles.fixed} cardClassName={styles.capped} />
+        <div ref={side} className={styles.side}>
           <CategoriesCard />
           <RatesCard />
           <CreditCardsCard />

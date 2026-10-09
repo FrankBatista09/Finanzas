@@ -126,11 +126,11 @@ describe('mes abierto · October 2026', () => {
   });
 
   it('gastos mensuales: cabecera, columnas y filas en el orden de la hoja', () => {
-    const card = section(html, 'Monthly expenses', 'By category');
+    const card = section(html, 'Fixed monthly expenses', 'By category');
     const ct = text(card);
-    expect(ct).toContain('Monthly expenses 6 of 11 paid · total 42,025.57 DOP');
+    expect(ct).toContain('Fixed monthly expenses 6 of 11 paid · total 42,025.57 DOP');
     expect(ct).toContain('Paid Item Day Amount Currency Pay with Account DOP USD');
-    expect(els(card, 'table')).toEqual([expect.objectContaining({ 'aria-label': 'Monthly expenses' })]);
+    expect(els(card, 'table')).toEqual([expect.objectContaining({ 'aria-label': 'Fixed monthly expenses' })]);
 
     const inputs = els(card, 'input');
     const boxes = inputs.filter((i) => i.type === 'checkbox');
@@ -170,7 +170,7 @@ describe('mes abierto · October 2026', () => {
   });
 
   it('gastos mensuales: cada gasto lleva la cuenta de la que se paga', () => {
-    const card = section(html, 'Monthly expenses', 'By category');
+    const card = section(html, 'Fixed monthly expenses', 'By category');
     // Lo que se cobra en USD sale de la US account; el resto, de la DR account.
     expect(selected(card, 'Account of Claude')).toBe('us');
     expect(selected(card, 'Account of Electricity')).toBe('dr');
@@ -180,12 +180,12 @@ describe('mes abierto · October 2026', () => {
   });
 
   it('los gastos sin pagar van con el fondo de pendiente', () => {
-    const card = section(html, 'Monthly expenses', 'By category');
+    const card = section(html, 'Fixed monthly expenses', 'By category');
     expect(els(card, 'tr').filter((tr) => /unpaid/.test(tr.class ?? ''))).toHaveLength(5);
   });
 
   it('gastos mensuales: fila para agregar al final', () => {
-    const card = section(html, 'Monthly expenses', 'By category');
+    const card = section(html, 'Fixed monthly expenses', 'By category');
     const inputs = els(card, 'input');
     // Después de la fila de agregar va la de la tarjeta de crédito: su casilla y su campo de «otros cargos».
     const last = inputs.slice(-5, -2);
@@ -251,7 +251,7 @@ describe('mes abierto · October 2026', () => {
     expect(pair).toContain('>Transfers</h2>');
     expect(pair).toContain(INCOME);
     expect(pair).not.toContain('>Month rates</h2>');
-    const order = ['>Monthly expenses</h2>', '>By category</h2>', '>Month rates</h2>', '<div class="_pair_', '>Transfers</h2>', INCOME, HISTORY].map((x) => html.indexOf(x));
+    const order = ['>Fixed monthly expenses</h2>', '>By category</h2>', '>Month rates</h2>', '<div class="_pair_', '>Transfers</h2>', INCOME, HISTORY].map((x) => html.indexOf(x));
     expect(order.every((x) => x >= 0)).toBe(true);
     expect(order).toEqual([...order].sort((a, b) => a - b));
   });
@@ -542,7 +542,7 @@ describe('mes cerrado · September 2026', () => {
   });
 
   it('conserva las cifras del mes', () => {
-    expect(t).toContain('Monthly expenses 11 of 11 paid · total 42,081.54 DOP');
+    expect(t).toContain('Fixed monthly expenses 11 of 11 paid · total 42,081.54 DOP');
     expect(bare(html)).toContain('Date Via From → To Amount Rate Budget → USD = 87,825.00 DOP Fee → USD = 46,896.00 DOP Fee Income Total 339,731.22 DOP');
     const transfers = els(section(html, 'Transfers', INCOME), 'input').filter((i) => i.type !== 'checkbox');
     expect(transfers.map((i) => i.value)).toEqual(['2026-09-02', 'Remitly', '1500', '58.55', '', '2026-09-17', 'Remitly', '800', '58.62', '']);
@@ -577,7 +577,7 @@ describe('casos límite', () => {
     const state = seedState();
     Object.assign(state.months['2026-10']!, { fixed: [], transfers: [], tx: [] });
     const t = text(render('2026-10', { state }));
-    expect(t).toContain('Monthly expenses 0 of 0 paid · total 0.00 DOP');
+    expect(t).toContain('Fixed monthly expenses 0 of 0 paid · total 0.00 DOP');
     expect(t).toContain('By category DOP No expenses yet this month.');
     expect(t).toContain('Transaction history 0 transactions · total 0.00 DOP');
     expect(t).toContain('Close October 2026 Delete month');
@@ -650,7 +650,7 @@ describe('casos límite', () => {
     expect(t).toContain('Paid Item Day Amount Currency Pay with Account USD TRY');
     expect(t).toContain('Date Name Place Category Method Amount Cur. Account USD TRY Description');
     // 42,025.57 DOP / 58.76.
-    expect(t).toContain('Monthly expenses 6 of 11 paid · total 715.21 USD');
+    expect(t).toContain('Fixed monthly expenses 6 of 11 paid · total 715.21 USD');
     expect(t).toContain('Transaction history 7 transactions · total 184.56 USD');
     expect(t).toContain('By category USD Fixed expenses 652');
     // Claude: 106 USD = 4,240 TRY.
@@ -716,7 +716,7 @@ describe('casos límite', () => {
     const state = seedState();
     const month = state.months['2026-10']!;
     month.fixed = [...month.fixed].reverse();
-    const card = section(render('2026-10', { state }), 'Monthly expenses', 'By category');
+    const card = section(render('2026-10', { state }), 'Fixed monthly expenses', 'By category');
     const names = els(card, 'input')
       .filter((i) => i['aria-label'] === 'Item')
       .map((i) => i.value);
@@ -976,9 +976,9 @@ describe('conversión con la tasa de la fecha', () => {
   it('un gasto fijo no tiene fecha: va con la última tasa del mes', () => {
     const html = render('2026-10', { state: dated() });
     // Claude: 106 USD × 60.
-    expect(bare(section(html, 'Monthly expenses', 'By category'))).toContain('6,360.00 106.00');
+    expect(bare(section(html, 'Fixed monthly expenses', 'By category'))).toContain('6,360.00 106.00');
     // Electricity: 1,337.15 / 60.
-    expect(bare(section(html, 'Monthly expenses', 'By category'))).toContain('1,337.15 22.29');
+    expect(bare(section(html, 'Fixed monthly expenses', 'By category'))).toContain('1,337.15 22.29');
   });
 
   it('un ingreso del mes también va con la de su fecha', () => {
@@ -1250,7 +1250,7 @@ describe('en español', () => {
   const t = text(html);
 
   it('títulos, columnas y metas con sus cifras', () => {
-    expect(t).toContain('Gastos mensuales 6 de 11 pagados · total 42,025.57 DOP');
+    expect(t).toContain('Gastos mensuales fijos 6 de 11 pagados · total 42,025.57 DOP');
     expect(t).toContain('Pagado Concepto Día Monto Moneda Pagar con Cuenta DOP USD');
     // La nota de las tasas y, en la primera columna, la fecha desde la que vale cada una.
     expect(t).toContain('Tasas del mes Cancelar Una tasa nueva vale desde su fecha. Las transacciones anteriores conservan la que tenían. Vigente desde Desde');
@@ -1387,7 +1387,7 @@ describe('en español', () => {
     const state = seedState();
     Object.assign(state.months['2026-10']!, { fixed: [], transfers: [], tx: [] });
     const empty = text(render('2026-10', { lang: 'es', state }));
-    expect(empty).toContain('Gastos mensuales 0 de 0 pagados · total 0.00 DOP');
+    expect(empty).toContain('Gastos mensuales fijos 0 de 0 pagados · total 0.00 DOP');
     expect(empty).toContain('Por categoría DOP Aún no hay gastos este mes.');
     expect(empty).toContain('Historial de transacciones 0 transacciones · total 0.00 DOP');
 
@@ -1404,7 +1404,7 @@ describe('en turco', () => {
   const t = text(html);
 
   it('títulos, columnas y metas con sus cifras', () => {
-    expect(t).toContain('Aylık giderler 6 / 11 ödendi · toplam 42,025.57 DOP');
+    expect(t).toContain('Sabit aylık giderler 6 / 11 ödendi · toplam 42,025.57 DOP');
     expect(t).toContain('Ödendi Kalem Gün Tutar Para birimi Ödeme şekli Hesap DOP USD');
     expect(t).toContain('Ay kurları İptal Yeni kur, tarihinden itibaren geçerlidir. Önceki işlemler kendi kurunu korur. Başlangıç Nereden Kur Nereye 01/10 1 USD =');
     expect(t.replace(/&quot;/g, '"')).toContain(
@@ -1509,7 +1509,7 @@ describe('en turco', () => {
     const state = seedState();
     Object.assign(state.months['2026-10']!, { fixed: [], transfers: [], tx: [] });
     const empty = text(render('2026-10', { lang: 'tr', state }));
-    expect(empty).toContain('Aylık giderler 0 / 0 ödendi · toplam 0.00 DOP');
+    expect(empty).toContain('Sabit aylık giderler 0 / 0 ödendi · toplam 0.00 DOP');
     expect(empty).toContain('Kategoriye göre DOP Bu ay henüz gider yok.');
 
     const closed = render('2026-09', { lang: 'tr' });
@@ -1579,16 +1579,16 @@ describe('la comisión de un envío en el historial', () => {
 describe('de dónde sale el idioma', () => {
   it('manda <I18nProvider> (el de la app) sobre el idioma del estado', () => {
     const t = text(render('2026-10', { lang: 'en', provider: 'tr' }));
-    expect(t).toContain('Aylık giderler 6 / 11 ödendi');
-    expect(t).not.toContain('Monthly expenses');
+    expect(t).toContain('Sabit aylık giderler 6 / 11 ödendi');
+    expect(t).not.toContain('Fixed monthly expenses');
   });
 
   it('cambiar de idioma no deja textos del anterior', () => {
     // Textos de la interfaz de cada idioma que no coinciden con ningún dato de ejemplo.
     const own: Record<Language, string[]> = {
-      en: ['Monthly expenses', 'By category', 'Transaction history', 'Month rates', 'Closing the month', 'New transaction', 'Adds to budget', 'Moves budget'],
-      es: ['Gastos mensuales', 'Por categoría', 'Historial de transacciones', 'Tasas del mes', 'Al cerrar el mes', 'Nueva transacción', 'Suma al presupuesto', 'Mueve presupuesto'],
-      tr: ['Aylık giderler', 'Kategoriye göre', 'İşlem geçmişi', 'Ay kurları', 'Ay kapatıldığında', 'Yeni işlem', 'Bütçeye eklenir', 'Bütçeyi taşır'],
+      en: ['Fixed monthly expenses', 'By category', 'Transaction history', 'Month rates', 'Closing the month', 'New transaction', 'Adds to budget', 'Moves budget'],
+      es: ['Gastos mensuales fijos', 'Por categoría', 'Historial de transacciones', 'Tasas del mes', 'Al cerrar el mes', 'Nueva transacción', 'Suma al presupuesto', 'Mueve presupuesto'],
+      tr: ['Sabit aylık giderler', 'Kategoriye göre', 'İşlem geçmişi', 'Ay kurları', 'Ay kapatıldığında', 'Yeni işlem', 'Bütçeye eklenir', 'Bütçeyi taşır'],
     };
     for (const lang of ['en', 'es', 'tr'] as const) {
       const html = render('2026-10', { lang });
@@ -1661,7 +1661,7 @@ describe('tarjetas de crédito', () => {
     expect(html).not.toContain('Paid: Credit card');
     expect(html).not.toContain('<option value="Credit card"');
     // El selector «Pagar con» solo ofrece la cuenta.
-    expect(els(section(html, 'Monthly expenses', 'By category'), 'option').map((o) => o.value)).not.toContain('card:a');
+    expect(els(section(html, 'Fixed monthly expenses', 'By category'), 'option').map((o) => o.value)).not.toContain('card:a');
   });
 
   it('una tarjeta: nombre, límite, corte, lo que se debe, el aviso en rojo y el enlace para el día de pago; su fila en los gastos', () => {
@@ -1674,7 +1674,7 @@ describe('tarjetas de crédito', () => {
     expect(ct).toContain('Add the due date');
     expect(cardsCard(html)).toContain('aria-label="20.0 % of the limit used; the marker is at 10 %"');
     expect(els(cardsCard(html), 'button').find((b) => b.role === 'switch')).toMatchObject({ 'aria-checked': 'true', 'aria-label': 'Card on: Visa' });
-    const fixed = section(html, 'Monthly expenses', 'By category');
+    const fixed = section(html, 'Fixed monthly expenses', 'By category');
     expect(text(fixed)).toContain('Visa from card');
     expect(fixed).toContain('aria-label="Paid: Visa"');
     expect(fixed).toContain('aria-label="Other charges on Visa"');
@@ -1717,14 +1717,14 @@ describe('tarjetas de crédito', () => {
     expect(one).not.toContain('Next card');
     expect(text(one)).not.toContain(' / ');
     // La apagada no tiene fila en los gastos mensuales.
-    expect(section(html, 'Monthly expenses', 'By category')).not.toContain('Paid: Gold');
-    expect(text(section(html, 'Monthly expenses', 'By category'))).toContain('Master from card');
+    expect(section(html, 'Fixed monthly expenses', 'By category')).not.toContain('Paid: Gold');
+    expect(text(section(html, 'Fixed monthly expenses', 'By category'))).toContain('Master from card');
   });
 
   it('«Pagar con» ofrece la cuenta y cada tarjeta activa; el método de crédito elige la tarjeta en la transacción', () => {
     const cards = [card('a', 'Visa'), card('b', 'Master'), card('c', 'Gold', { active: false })];
     const html = render('2026-10', { state: owing(cards, 0) });
-    const fixed = section(html, 'Monthly expenses', 'By category');
+    const fixed = section(html, 'Fixed monthly expenses', 'By category');
     const select = fixed.match(/<select\b[^>]*aria-label="Pay with of Claude"[^>]*>(.*?)<\/select>/)![1]!;
     expect(els(select, 'option').map((o) => o.value)).toEqual(['account', 'card:a', 'card:b']);
     expect(text(select)).toBe(' Account Visa Master ');
