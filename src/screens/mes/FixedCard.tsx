@@ -90,7 +90,7 @@ export function FixedCard({ className, cardClassName }: { className?: string; ca
               {s('paid')}
             </Th>
             <Th width={ITEM_TH_W}>{s('item')}</Th>
-            <Th width={60}>{s('day')}</Th>
+            <Th width={DAY_W}>{s('day')}</Th>
             <Th align="right" width={AMOUNT_W}>
               {t('amount')}
             </Th>
@@ -151,6 +151,7 @@ export function FixedCard({ className, cardClassName }: { className?: string; ca
                   onCommit={(day) => setDraft((d) => ({ ...d, day }))}
                   mono
                   placeholder={s('day')}
+                  minWidth={DAY_W}
                   maxLength={MAX_LEN.day}
                   label={s('newFixedDay')}
                 />
@@ -218,6 +219,9 @@ const PAID_W = 24;
 
 /** Wide enough for 12321321.00 plus the number spinner; as a min-width on the input it also keeps the column from being squeezed. */
 const AMOUNT_W = 108;
+
+/** Just the header word "Día"/"Day": the cell holds a day number, a longer text only scrolls inside its input. */
+const DAY_W = 32;
 
 /** Small on purpose: Item is the column that gives up space, long names truncate with an ellipsis. */
 const ITEM_W = 60;
@@ -340,6 +344,7 @@ const FixedRow = memo(function FixedRow({ row: f, inMain, inSecond, accounts, ca
           mono
           tone="soft"
           placeholder="—"
+          minWidth={DAY_W}
           maxLength={MAX_LEN.day}
           label={s('dayOf', named)}
         />
