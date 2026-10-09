@@ -9,6 +9,7 @@ import { Stack } from '../../ui';
 import { CategoriesCard } from './CategoriesCard';
 import { CloseBox } from './CloseBox';
 import { ClosedBanner } from './ClosedBanner';
+import { CreditCardsCard } from './CreditCardsCard';
 import { FixedCard } from './FixedCard';
 import { IncomeCard } from './IncomeCard';
 import styles from './MesScreen.module.css';
@@ -32,6 +33,7 @@ export function MesScreen() {
         <div className={styles.side}>
           <CategoriesCard />
           <RatesCard />
+          <CreditCardsCard />
         </div>
       </div>
       {/* Envíos e ingresos, uno al lado del otro con el mismo ancho y alto; cuando no caben, se apilan. */}

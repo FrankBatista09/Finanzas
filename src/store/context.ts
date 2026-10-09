@@ -6,12 +6,13 @@
 // (state.language) y traen los ayudantes atados a él (meses, categorías, métodos, origen de una tasa).
 
 import { createContext, useContext } from 'react';
-import type { CloseRequest, ContributionPatch, FixedPatch, GoalPatch, IncomePatch, OutsidePatch, TransferPatch, TxPatch } from '../../shared/api';
+import type { CloseRequest, ContributionPatch, CreditCardPatch, FixedPatch, GoalPatch, IncomePatch, OutsidePatch, TransferPatch, TxPatch } from '../../shared/api';
 import type { Balances, Leftover, MonthCalc, MoneyAccount, RateInfo } from '../../shared/calc';
 import type { Account, AppState, AppUser, Currency, ISODate, Language, Month, MonthKey, ThemeColors } from '../../shared/types';
 import type {
   AccountInput,
   BudgetEntryInput,
+  CardInput,
   ContributionInput,
   FixedInput,
   GoalInput,
@@ -104,17 +105,24 @@ export interface Actions {
   /** Quita la tasa escrita de ese par (en cualquiera de los dos sentidos) y esa fecha del mes seleccionado. */
   removeMonthRate(from: Currency, to: Currency, date: ISODate): void;
 
-  /** Los «otros cargos» de la tarjeta de crédito del mes seleccionado (moneda principal, >= 0). false si el monto no es válido o el mes está cerrado. */
-  setCardOther(other: number): boolean;
+  /** Los «otros cargos» de una tarjeta de crédito en el mes seleccionado (en la moneda de la tarjeta, >= 0). false si el monto no es válido o el mes está cerrado. */
+  setCardOther(cardId: string, other: number): boolean;
   /**
-   * Añade un pago de la tarjeta del mes seleccionado: `amount` en la moneda principal (> 0 y como mucho lo que falta,
-   * `calc.card.remainder`) desde esa cuenta de dinero, con la fecha de hoy. Puede haber varios pagos en el mes. false si no se puede.
+   * Añade un pago de esa tarjeta en el mes seleccionado: `amount` en la moneda de la tarjeta (> 0 y como mucho lo que falta,
+   * `CardCalc.remainder`) desde esa cuenta de dinero, con la fecha de hoy. Puede haber varios pagos en el mes. false si no se puede.
    */
-  payCard(amount: number, accountId: string): boolean;
-  /** Quita todos los pagos de la tarjeta del mes seleccionado. */
-  unpayCard(): void;
-  /** Quita un pago de la tarjeta del mes seleccionado. */
-  removeCardPayment(id: string): void;
+  payCard(cardId: string, amount: number, accountId: string): boolean;
+  /** Quita todos los pagos de esa tarjeta en el mes seleccionado. */
+  unpayCard(cardId: string): void;
+  /** Quita un pago de esa tarjeta en el mes seleccionado. */
+  removeCardPayment(cardId: string, id: string): void;
+
+  /** Agrega una tarjeta de crédito (al final). false si falta el nombre, está repetido o algún dato no vale. */
+  addCard(input: CardInput): boolean;
+  /** Edita una tarjeta. false si no se puede (p. ej. apagarla debiendo algo: ver canTurnOffCard). */
+  patchCard(id: string, patch: CreditCardPatch): boolean;
+  /** Borra una tarjeta que nada usa. false si está en uso. */
+  removeCard(id: string): boolean;
 
   /** Agrega al mes seleccionado. false si falta el concepto, el monto no es > 0 o la cuenta indicada no existe. */
   addFixed(input: FixedInput): boolean;

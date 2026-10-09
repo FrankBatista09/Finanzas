@@ -52,6 +52,7 @@ const IMMEDIATE_FIELDS: ReadonlySet<string> = new Set([
   'secondCurrency',
   'defaultAccountId',
   'budget',
+  'cardId',
 ]);
 
 export interface SaveFailure {
@@ -302,13 +303,21 @@ export class FinanzasStore {
       case 'month/reopen':
         return api.reopenMonth(action.key, opts);
       case 'card/other':
-        return api.setCardOther(action.key, { other: action.other }, opts);
+        return api.setCardOther(action.key, action.cardId, { other: action.other }, opts);
       case 'card/pay':
-        return api.payCard(action.key, { id: action.payment.id, amount: action.payment.amount, accountId: action.payment.accountId, date: action.payment.date }, opts);
+        return api.payCard(action.key, action.cardId, { id: action.payment.id, amount: action.payment.amount, accountId: action.payment.accountId, date: action.payment.date }, opts);
       case 'card/unpay':
-        return api.unpayCard(action.key, opts);
+        return api.unpayCard(action.key, action.cardId, opts);
       case 'card/unpayOne':
-        return api.removeCardPayment(action.key, action.id, opts);
+        return api.removeCardPayment(action.key, action.cardId, action.id, opts);
+      case 'creditCard/add': {
+        const { id, name, bank, last4, cur, limit, cutoffDay, dueDay, active } = action.row;
+        return api.createCreditCard({ id, name, bank, last4, cur, limit, cutoffDay, dueDay, active }, opts);
+      }
+      case 'creditCard/patch':
+        return api.patchCreditCard(action.id, action.patch, opts);
+      case 'creditCard/remove':
+        return api.deleteCreditCard(action.id, opts);
       case 'rate/set':
         return api.putMonthRate(action.key, action.rate, opts);
       case 'rate/remove':
@@ -324,16 +333,16 @@ export class FinanzasStore {
         // La cifra la calcula el servidor; `row` es solo lo que se ve mientras responde.
         return api.addLeftover(action.key, opts);
       case 'fixed/add': {
-        const { id, monthKey, name, day, amount, cur, paid, accountId, onCard } = action.row;
-        return api.createFixed({ id, monthKey, name, day, amount, cur, paid, accountId, ...(onCard && { onCard }) }, opts);
+        const { id, monthKey, name, day, amount, cur, paid, accountId, onCard, cardId } = action.row;
+        return api.createFixed({ id, monthKey, name, day, amount, cur, paid, accountId, ...(onCard && { onCard, ...(cardId && { cardId }) }) }, opts);
       }
       case 'fixed/patch':
         return api.patchFixed(action.id, action.patch, opts);
       case 'fixed/remove':
         return api.deleteFixed(action.id, opts);
       case 'tx/add': {
-        const { id, monthKey, date, desc, place, cat, method, amount, cur, accountId, notes } = action.row;
-        return api.createTransaction({ id, monthKey, date, desc, place, cat, method, amount, cur, accountId, notes }, opts);
+        const { id, monthKey, date, desc, place, cat, method, amount, cur, accountId, notes, cardId } = action.row;
+        return api.createTransaction({ id, monthKey, date, desc, place, cat, method, amount, cur, accountId, notes, ...(cardId && { cardId }) }, opts);
       }
       case 'tx/patch':
         return api.patchTransaction(action.id, action.patch, opts);

@@ -15,11 +15,11 @@ export interface PayForm {
 export const isFullyPaid = (left: number): boolean => left < 0.005;
 
 /**
- * Lo que propone al abrirse: pagar todo lo que falta (con dos decimales) desde la cuenta del último pago de la
+ * Lo que propone al abrirse: pagar todo lo que falta (con dos decimales) desde la cuenta del último pago de esa
  * tarjeta o, si nunca se pagó, la cuenta por defecto. Sin ninguna cuenta de dinero, la cuenta queda vacía.
  */
-export function payForm(state: AppState, key: MonthKey): PayForm {
-  return { amount: Math.max(0, cardCalc(state, key).remainder).toFixed(2), accountId: cardAccountFor(state, key)?.id ?? '' };
+export function payForm(state: AppState, key: MonthKey, cardId: string): PayForm {
+  return { amount: Math.max(0, cardCalc(state, key, cardId).remainder).toFixed(2), accountId: cardAccountFor(state, key, cardId)?.id ?? '' };
 }
 
 /**

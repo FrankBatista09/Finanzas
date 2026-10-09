@@ -2,10 +2,10 @@
 // Funciones puras, sin React y sin textos: los que dependen del idioma están en strings.ts.
 
 import type { TransferFee } from '../../../shared/calc';
-import { CURRENCIES, VIAS } from '../../../shared/constants';
+import { CREDIT_CARD_METHOD, CURRENCIES, METHODS, VIAS } from '../../../shared/constants';
 import { fRate } from '../../../shared/format';
 import { firstDay } from '../../../shared/month';
-import type { Account, Currency, FixedExpense, ISODate, Month, MonthKey, MonthRate, Transaction } from '../../../shared/types';
+import type { Account, CreditCard, Currency, FixedExpense, ISODate, Month, MonthKey, MonthRate, Transaction } from '../../../shared/types';
 import type { AccountOption, Money, PairRate } from '../../store';
 
 // Topes de texto que exige el servidor. La celda no deja pasarse: así el guardado no se rechaza
@@ -58,6 +58,43 @@ export function lastFee(months: Readonly<Record<MonthKey, Pick<Month, 'transfers
     }
   }
   return hit?.fee ?? 0;
+}
+
+// ── Tarjetas de crédito en los selectores ────────────────────────────────────
+
+/** Valor de «Pagar con» para una cuenta; con tarjeta es `card:<id>`. */
+export const PAY_ACCOUNT = 'account';
+const PAY_CARD = 'card:';
+
+/** El valor del selector «Pagar con» de un gasto fijo: la tarjeta que tiene, o la primera activa si no dice cuál. */
+export function payWithValue(onCard: boolean, cardId: string | null | undefined, firstActive: string | null): string {
+  return onCard ? `${PAY_CARD}${cardId ?? firstActive ?? ''}` : PAY_ACCOUNT;
+}
+
+/** Lo contrario: el selector elegido pasa a `onCard` y a la tarjeta (sin tarjeta cuando es una cuenta). */
+export function parsePayWith(value: string): { onCard: boolean; cardId?: string } {
+  return value.startsWith(PAY_CARD) ? { onCard: true, cardId: value.slice(PAY_CARD.length) } : { onCard: false };
+}
+
+export interface CardOption {
+  value: string;
+  label: string;
+}
+
+/** Las tarjetas activas por su nombre; la que ya tiene la fila se queda aunque esté apagada, para que el selector no mienta. */
+export function cardOptions(cards: readonly CreditCard[], current?: string | null): CardOption[] {
+  return [...cards].filter((c) => c.active || c.id === current).sort((a, b) => a.sort - b.sort).map((c) => ({ value: c.id, label: c.name }));
+}
+
+/** «Pagar con»: la cuenta y una opción por tarjeta activa (más la de la fila, si está apagada). */
+export function payWithOptions(accountLabel: string, cards: readonly CreditCard[], current?: string | null): CardOption[] {
+  return [{ value: PAY_ACCOUNT, label: accountLabel }, ...cardOptions(cards, current).map((o) => ({ value: `${PAY_CARD}${o.value}`, label: o.label }))];
+}
+
+/** Los métodos de pago que se ofrecen: sin ninguna tarjeta activa no tiene sentido «Credit card» (salvo que la fila ya lo tenga). */
+export function methodChoices(hasCard: boolean, current?: string): readonly string[] {
+  const base: readonly string[] = hasCard ? METHODS : METHODS.filter((m) => m !== CREDIT_CARD_METHOD);
+  return current === undefined || base.includes(current) ? base : [...base, current];
 }
 
 /**

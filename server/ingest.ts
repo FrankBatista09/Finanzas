@@ -3,11 +3,11 @@
 
 import type { IngestResponse, IngestTransaction } from '../shared/api';
 import { isMoneyAccount } from '../shared/calc';
-import { CATS, METHODS } from '../shared/constants';
+import { CATS, CREDIT_CARD_METHOD, METHODS } from '../shared/constants';
 import { canonicalCat, canonicalMethod } from '../shared/i18n';
 import { currentMonthKey, label, monthOf, monthSpan, todayISO } from '../shared/month';
-import type { Account, AppUser } from '../shared/types';
-import { createTransaction, ensureMonth, getMonth, userAccounts } from './db';
+import type { Account, AppUser, CreditCard } from '../shared/types';
+import { createTransaction, ensureMonth, getMonth, listCards, userAccounts } from './db';
 import { goldAccountError, invalidData, monthClosedError, noAccountsError, validationError } from './errors';
 import { userFromBody } from './users';
 import { ingestSchema, parse } from './validate';
@@ -74,6 +74,31 @@ export function matchAccount(accounts: readonly Account[], text: string, field =
   );
 }
 
+/**
+ * La tarjeta de crédito que nombra `text`: su id o su nombre (sin distinguir mayúsculas ni acentos), primero el nombre
+ * completo y, si ninguna se llama así, un comienzo que solo tenga una. Las apagadas solo se miran si ninguna activa
+ * coincide. 400 `validation` con los nombres de las tarjetas si no hay ninguna o hay varias.
+ */
+export function matchCard(cards: readonly CreditCard[], text: string, field = 'card'): CreditCard {
+  const byId = cards.find((c) => c.id === text.trim());
+  if (byId) return byId;
+  const wanted = fold(text);
+  const on = cards.filter((c) => c.active);
+  const off = cards.filter((c) => !c.active);
+  const tiers = [
+    on.filter((c) => fold(c.name) === wanted),
+    off.filter((c) => fold(c.name) === wanted),
+    on.filter((c) => fold(c.name).startsWith(wanted)),
+    off.filter((c) => fold(c.name).startsWith(wanted)),
+  ];
+  const found = wanted ? tiers.find((tier) => tier.length > 0) : undefined;
+  if (found?.length === 1) return found[0]!;
+  const names = cards.map((c) => c.name).join(', ') || 'none yet';
+  throw validationError(
+    invalidData(found ? `${field}: "${shown(text)}" matches several credit cards; use the full name of one of: ${names}` : `${field}: unknown credit card "${shown(text)}" (credit cards: ${names})`),
+  );
+}
+
 // ── Registro ─────────────────────────────────────────────────────────────────
 
 /**
@@ -116,6 +141,10 @@ export async function ingestTransaction(
     );
   }
 
+  // La tarjeta, solo si el pago es con tarjeta de crédito; sin nombre, createTransaction usa la primera activa.
+  const method = data.method ? canonicalMethod(data.method) : METHODS[0];
+  const cardId = method === CREDIT_CARD_METHOD && data.card !== undefined ? matchCard(await listCards(db, user.id), data.card).id : undefined;
+
   const { month, created } = await ensureMonth(db, user.id, monthKey);
   if (month.closed) throw monthClosedError(monthKey);
 
@@ -128,7 +157,8 @@ export async function ingestTransaction(
       desc: data.description,
       place: data.place ?? '',
       cat: data.category ? canonicalCat(data.category) : CATS[0],
-      method: data.method ? canonicalMethod(data.method) : METHODS[0],
+      method,
+      ...(cardId && { cardId }),
       amount: data.amount,
       cur: data.currency ?? account.currency,
       accountId: account.id,

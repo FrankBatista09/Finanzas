@@ -15,6 +15,8 @@ import type {
   ContributionPatch,
   CardOtherUpdate,
   CardPayRequest,
+  CreditCardCreate,
+  CreditCardPatch,
   FixedCreate,
   FixedPatch,
   GoalCreate,
@@ -184,6 +186,7 @@ export const fixedCreateSchema = z.strictObject({
   paid: bool().optional(),
   accountId: id().optional(),
   onCard: bool().optional(),
+  cardId: id().optional(),
 }) satisfies z.ZodType<FixedCreate>;
 
 // Al editar una celda el monto puede quedar en 0 (el prototipo deja vaciar el campo); al crear no.
@@ -196,9 +199,39 @@ export const fixedPatchSchema = z.strictObject({
   accountId: id().optional(),
   sort: sortIndex().optional(),
   onCard: bool().optional(),
+  cardId: id().optional(),
 }) satisfies z.ZodType<FixedPatch>;
 
 // ── Tarjeta de crédito ───────────────────────────────────────────────────────
+
+const dayOfMonth = () => num().int({ error: 'must be a whole number' }).min(1, { error: 'must be between 1 and 31' }).max(31, { error: 'must be between 1 and 31' });
+// Los opcionales aceptan null (sin dato). Un texto vacío del formulario no llega aquí: la interfaz manda null.
+const bank = () => text(MAX_LEN.name).nullable();
+const last4 = () => z.string({ error: typed('must be text') }).regex(/^\d{4}$/, { error: 'must be 4 digits' }).nullable();
+
+export const creditCardCreateSchema = z.strictObject({
+  id: id().optional(),
+  name: requiredText(MAX_LEN.name),
+  bank: bank().optional(),
+  last4: last4().optional(),
+  cur: currency().optional(),
+  limit: positive().nullable().optional(),
+  cutoffDay: dayOfMonth().nullable().optional(),
+  dueDay: dayOfMonth().nullable().optional(),
+  active: bool().optional(),
+}) satisfies z.ZodType<CreditCardCreate>;
+
+export const creditCardPatchSchema = z.strictObject({
+  name: requiredText(MAX_LEN.name).optional(),
+  bank: bank().optional(),
+  last4: last4().optional(),
+  cur: currency().optional(),
+  limit: positive().nullable().optional(),
+  cutoffDay: dayOfMonth().nullable().optional(),
+  dueDay: dayOfMonth().nullable().optional(),
+  active: bool().optional(),
+  sort: sortIndex().optional(),
+}) satisfies z.ZodType<CreditCardPatch>;
 
 export const cardOtherSchema = z.strictObject({ other: nonNegative() }) satisfies z.ZodType<CardOtherUpdate>;
 
@@ -219,6 +252,7 @@ export const txCreateSchema = z.strictObject({
   cur: currency(),
   accountId: id().optional(),
   notes: text(MAX_LEN.notes).optional(),
+  cardId: id().optional(),
 }) satisfies z.ZodType<TxCreate>;
 
 export const txPatchSchema = z.strictObject({
@@ -231,6 +265,7 @@ export const txPatchSchema = z.strictObject({
   cur: currency().optional(),
   accountId: id().optional(),
   notes: text(MAX_LEN.notes).optional(),
+  cardId: id().optional(),
 }) satisfies z.ZodType<TxPatch>;
 
 // ── Fuera de presupuesto ─────────────────────────────────────────────────────
@@ -448,6 +483,8 @@ export interface IngestInput {
   currency?: Currency | undefined;
   /** Id o nombre de la cuenta, tal como vino: cuál es lo resuelve server/ingest.ts (matchAccount). */
   account?: string | undefined;
+  /** Id o nombre de la tarjeta de crédito (solo con método 'Credit card'): cuál es lo resuelve server/ingest.ts (matchCard). */
+  card?: string | undefined;
   notes?: string | undefined;
 }
 
@@ -465,6 +502,7 @@ export const ingestSchema = z.strictObject({
   amount: positive(),
   currency: optionalField(currency()),
   account: optionalField(text(MAX_LEN.name)),
+  card: optionalField(text(MAX_LEN.name)),
   notes: optionalField(text(MAX_LEN.notes)),
 }) satisfies z.ZodType<IngestInput>;
 

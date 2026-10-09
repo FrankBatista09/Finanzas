@@ -1,0 +1,33 @@
+/* Diálogo de una tarjeta de crédito: lo mismo que el de una meta (src/screens/ahorros/GoalDialog.module.css). */
+.pair {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--gap-14) var(--gap-12);
+}
+
+.error {
+  min-height: 16px;
+  font-size: var(--fs-meta);
+  line-height: 16px;
+  color: var(--error);
+}
+
+.remove {
+  margin-right: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+
+.removeHint {
+  padding: 0 14px;
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+
+.actions {
+  margin-left: auto;
+  display: flex;
+  gap: var(--gap-8);
+}

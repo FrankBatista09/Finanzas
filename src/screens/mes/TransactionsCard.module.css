@@ -35,3 +35,9 @@
 .moveButton:hover {
   color: var(--accent-text);
 }
+
+/* Método y, si es de crédito, la tarjeta debajo: así la columna no se ensancha y la tabla sigue cabiendo a 1440px. */
+.methodCell {
+  display: flex;
+  flex-direction: column;
+}

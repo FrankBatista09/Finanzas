@@ -5,7 +5,7 @@ import { balances } from '../shared/calc';
 import { DEFAULT_ACCOUNTS, DEFAULT_GOALS } from '../shared/constants';
 import { seedState } from '../shared/seed';
 import type { Account, AppState } from '../shared/types';
-import { createAccount, createFixed, getMonth, listAccounts, listGoals, loadState, patchAccount, replaceAll, updateSettings } from './db';
+import { createAccount, createCard, createFixed, getMonth, listAccounts, listGoals, loadState, patchAccount, replaceAll, updateSettings } from './db';
 import type { Env } from './env';
 import { ingestTransaction, matchAccount } from './ingest';
 import { client, count, EDA, FRANK, makeEnv, TOKEN } from './test-util';
@@ -239,7 +239,9 @@ describe('POST /api/ingest/transaction', () => {
   });
 
   it('una categoría o un método dichos en español o en turco se guardan con su nombre canónico', async () => {
-    const { api } = fresh();
+    const { api, db } = fresh();
+    // Con tarjeta de crédito hace falta una tarjeta donde cargarla.
+    await createCard(db, E, { name: 'Visa' });
     const stored = async (category: string, method: string) => {
       const r = await api.post<IngestResponse>(PATH, { user: 'eda', description: 'x', amount: 1, date: '2026-10-07', category, method }, AUTH);
       expect(r.status, `${category} / ${method}`).toBe(201);

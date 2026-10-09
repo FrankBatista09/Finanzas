@@ -74,6 +74,7 @@ const EMPTY: AppState = {
   incomes: [],
   goals: [],
   contribs: [],
+  cards: [],
   mainCurrency: DEFAULT_MAIN_CURRENCY,
   secondCurrency: DEFAULT_SECOND_CURRENCY,
   defaultAccountId: null,

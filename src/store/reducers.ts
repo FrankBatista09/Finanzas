@@ -15,6 +15,7 @@ import type {
   AccountPatch,
   BudgetEntryCreate,
   ContributionPatch,
+  CreditCardPatch,
   FixedPatch,
   GoalPatch,
   IncomePatch,
@@ -30,15 +31,18 @@ import {
   budgetsFromLog,
   cardCalc,
   cardOf,
+  cardOffBlocked,
   convert,
   defaultAccount,
+  defaultCardId,
+  isCardTx,
   isMoneyAccount,
   leftoverFor,
   openingFor,
   rateFor,
   sortedKeys,
 } from '../../shared/calc';
-import { CURRENCIES, GOLD, GOLD_DECIMALS, isGold, MAX_LEN, MOVED_TO_BUDGET } from '../../shared/constants';
+import { CREDIT_CARD_METHOD, CURRENCIES, GOLD, GOLD_DECIMALS, isGold, MAX_LEN, MOVED_TO_BUDGET } from '../../shared/constants';
 import { clampToMonth, firstDay, inMonth, isISODate, isMonthKey } from '../../shared/month';
 import type {
   Account,
@@ -46,6 +50,7 @@ import type {
   AppState,
   BudgetEntry,
   Contribution,
+  CreditCard,
   Currency,
   FixedExpense,
   Goal,
@@ -74,11 +79,15 @@ export type Action =
   | { type: 'budget/remove'; key: MonthKey; id: string }
   /** `row` es el movimiento 'leftover' tal como se espera que lo escriba el servidor (leftoverEntry). */
   | { type: 'budget/leftover'; key: MonthKey; row: BudgetEntry }
-  /** Tarjeta de crédito del mes: otros cargos, añadir un pago (moneda principal), quitarlos todos o quitar uno. */
-  | { type: 'card/other'; key: MonthKey; other: number }
-  | { type: 'card/pay'; key: MonthKey; payment: CardPayment }
-  | { type: 'card/unpay'; key: MonthKey }
-  | { type: 'card/unpayOne'; key: MonthKey; id: string }
+  /** Una tarjeta de crédito en el mes: otros cargos, añadir un pago (moneda de la tarjeta), quitarlos todos o quitar uno. */
+  | { type: 'card/other'; key: MonthKey; cardId: string; other: number }
+  | { type: 'card/pay'; key: MonthKey; cardId: string; payment: CardPayment }
+  | { type: 'card/unpay'; key: MonthKey; cardId: string }
+  | { type: 'card/unpayOne'; key: MonthKey; cardId: string; id: string }
+  /** Las tarjetas de crédito del usuario (no de un mes). */
+  | { type: 'creditCard/add'; row: CreditCard }
+  | { type: 'creditCard/patch'; id: string; patch: CreditCardPatch }
+  | { type: 'creditCard/remove'; id: string }
   | { type: 'rate/set'; key: MonthKey; rate: MonthRate }
   | { type: 'rate/remove'; key: MonthKey; from: Currency; to: Currency; date: ISODate }
   | { type: 'fixed/add'; row: FixedExpense }
@@ -131,7 +140,7 @@ export function isPatch(action: Action): action is PatchAction {
 }
 
 type MonthList = 'fixed' | 'tx' | 'transfers' | 'outside';
-type TopList = 'accounts' | 'incomes' | 'goals' | 'contribs';
+type TopList = 'accounts' | 'incomes' | 'goals' | 'contribs' | 'cards';
 
 function withMonth(state: AppState, key: MonthKey, fn: (m: Month) => Month): AppState {
   const m = state.months[key];
@@ -217,14 +226,17 @@ function patchMonth(m: Month, patch: MonthPatch, date: ISODate): Month {
   return log.length === m.budgetLog.length ? m : withLog(m, log);
 }
 
-/** El mes con esa tarjeta; sin nada que guardar queda sin `card`, como lo manda el servidor. */
+/** El mes con esa tarjeta; sin nada que guardar queda sin ella (y sin `cards` si era la única), como lo manda el servidor. */
 function withCard(m: Month, card: MonthCard): Month {
-  if (card.other === cardOf(m).other && card.payments === cardOf(m).payments) return m;
-  if (card.other === 0 && card.payments.length === 0) {
-    const { card: _gone, ...rest } = m;
+  const before = cardOf(m, card.cardId);
+  if (card.other === before.other && card.payments === before.payments) return m;
+  const others = (m.cards ?? []).filter((c) => c.cardId !== card.cardId);
+  const cards = card.other === 0 && card.payments.length === 0 ? others : [...others, card].sort((a, b) => (a.cardId < b.cardId ? -1 : a.cardId > b.cardId ? 1 : 0));
+  if (cards.length === 0) {
+    const { cards: _gone, ...rest } = m;
     return rest;
   }
-  return { ...m, card };
+  return { ...m, cards };
 }
 
 const samePair = (r: Pick<MonthRate, 'from' | 'to'>, from: Currency, to: Currency) =>
@@ -298,13 +310,22 @@ export function reduce(state: AppState, action: Action): AppState {
       return withMonth(state, action.key, (m) => (m.budgetLog.some((e) => e.kind === 'leftover') ? m : withLog(m, [...m.budgetLog, action.row])));
 
     case 'card/other':
-      return withMonth(state, action.key, (m) => withCard(m, { ...cardOf(m), other: action.other }));
+      return withMonth(state, action.key, (m) => withCard(m, { ...cardOf(m, action.cardId), other: action.other }));
     case 'card/pay':
-      return withMonth(state, action.key, (m) => withCard(m, { ...cardOf(m), payments: [...cardOf(m).payments, action.payment] }));
+      return withMonth(state, action.key, (m) => withCard(m, { ...cardOf(m, action.cardId), payments: [...cardOf(m, action.cardId).payments, action.payment] }));
     case 'card/unpay':
-      return withMonth(state, action.key, (m) => withCard(m, { ...cardOf(m), payments: [] }));
+      return withMonth(state, action.key, (m) => withCard(m, { ...cardOf(m, action.cardId), payments: [] }));
     case 'card/unpayOne':
-      return withMonth(state, action.key, (m) => withCard(m, { ...cardOf(m), payments: cardOf(m).payments.filter((p) => p.id !== action.id) }));
+      return withMonth(state, action.key, (m) =>
+        withCard(m, { ...cardOf(m, action.cardId), payments: cardOf(m, action.cardId).payments.filter((p) => p.id !== action.id) }),
+      );
+
+    case 'creditCard/add':
+      return { ...state, cards: upsert(state.cards, action.row) };
+    case 'creditCard/patch':
+      return patchTop(state, 'cards', action.id, action.patch);
+    case 'creditCard/remove':
+      return removeTop(state, 'cards', action.id);
 
     case 'rate/set':
       return withMonth(state, action.key, (m) => setRate(m, action.rate));
@@ -495,7 +516,7 @@ function keepValid<P extends object>(patch: P, invalid: { [K in keyof P]?: (valu
 
 /** Edición de un gasto fijo: concepto no vacío, monto >= 0 y una cuenta de dinero que exista. */
 export function fixedChange(state: AppState, patch: FixedPatch): FixedPatch {
-  return keepValid(patch, { name: isBlank, amount: notAmount, cur: notCurrency, accountId: (id) => !hasMoneyAccount(state, id) });
+  return keepValid(patch, { name: isBlank, amount: notAmount, cur: notCurrency, accountId: (id) => !hasMoneyAccount(state, id), cardId: (id) => !hasActiveCard(state, id), onCard: (on) => on && !defaultCardId(state) });
 }
 
 /** Edición de una transacción: descripción no vacía, fecha válida, monto >= 0 y una cuenta de dinero que exista. */
@@ -506,6 +527,8 @@ export function txChange(state: AppState, patch: TxPatch): TxPatch {
     amount: notAmount,
     cur: notCurrency,
     accountId: (id) => !hasMoneyAccount(state, id),
+    cardId: (id) => !hasActiveCard(state, id),
+    method: (m) => m === CREDIT_CARD_METHOD && !defaultCardId(state),
   });
 }
 
@@ -583,6 +606,8 @@ export interface FixedInput {
   accountId?: string;
   /** Se paga con la tarjeta de crédito: la cuenta no se usa (se guarda la por defecto, que el servidor exige). */
   onCard?: boolean;
+  /** Con qué tarjeta, si `onCard`. Sin indicar: la primera activa. */
+  cardId?: string;
 }
 
 export interface TxInput {
@@ -596,6 +621,8 @@ export interface TxInput {
   /** Cuenta de la que sale. Sin indicar: la cuenta por defecto del usuario. */
   accountId?: string;
   notes?: string;
+  /** Con qué tarjeta, si el método es de crédito. Sin indicar: la primera activa. */
+  cardId?: string;
 }
 
 export interface OutsideInput {
@@ -685,8 +712,9 @@ export function newFixed(state: AppState, monthKey: MonthKey, input: FixedInput,
   const name = input.name.trim();
   const accountId = accountFor(state, input.accountId);
   if (!month || !name || !positive(input.amount) || !isCurrency(input.cur) || !accountId) return null;
+  if (input.onCard && !defaultCardId(state)) return null;
   const sort = month.fixed.reduce((max, f) => Math.max(max, f.sort), -1) + 1;
-  return { id, monthKey, name, day: (input.day ?? '').trim(), amount: input.amount, cur: input.cur, paid: false, accountId, sort, ...(input.onCard ? { onCard: true } : {}) };
+  return { id, monthKey, name, day: (input.day ?? '').trim(), amount: input.amount, cur: input.cur, paid: false, accountId, sort, ...(input.onCard ? { onCard: true, ...cardFor(state, input.cardId) } : {}) };
 }
 
 /** Descripción, fecha válida, monto > 0 y una cuenta que exista. La transacción va al mes seleccionado, sea cual sea su fecha. */
@@ -694,6 +722,8 @@ export function newTx(state: AppState, monthKey: MonthKey, input: TxInput, id: s
   const desc = input.desc.trim();
   const accountId = accountFor(state, input.accountId);
   if (!state.months[monthKey] || !desc || !isISODate(input.date) || !positive(input.amount) || !isCurrency(input.cur) || !accountId) return null;
+  // Con tarjeta de crédito hace falta una tarjeta activa donde cargarla (el servidor lo exige).
+  if (input.method === CREDIT_CARD_METHOD && !defaultCardId(state)) return null;
   return {
     id,
     monthKey,
@@ -708,6 +738,7 @@ export function newTx(state: AppState, monthKey: MonthKey, input: TxInput, id: s
     notes: (input.notes ?? '').trim(),
     source: 'web',
     createdAt: null,
+    ...(input.method === CREDIT_CARD_METHOD ? cardFor(state, input.cardId) : {}),
   };
 }
 
@@ -853,6 +884,12 @@ export function newIncome(state: AppState, input: IncomeInput, id: string): Inco
   return { ...base, amount: input.amount, cur: input.cur, budget: input.budget === true, rate: validRate(input.rate) };
 }
 
+/** `cardId` de una fila nueva con tarjeta: el que se pidió si es una tarjeta activa; si no, la primera activa; sin ninguna, nada. */
+function cardFor(state: AppState, wanted: string | undefined): { cardId?: string } {
+  const id = state.cards.some((c) => c.id === wanted && c.active) ? wanted : defaultCardId(state);
+  return id ? { cardId: id } : {};
+}
+
 /** Monto > 0, fecha válida y una meta que exista. */
 export function newContribution(state: AppState, input: ContributionInput, id: string): Contribution | null {
   if (!state.goals.some((g) => g.id === input.goalId) || !isISODate(input.date) || !positive(input.amount) || !isCurrency(input.cur)) return null;
@@ -891,7 +928,7 @@ export function accountInUse(state: AppState, id: string): boolean {
       m.fixed.some((f) => f.accountId === id) ||
       m.tx.some((t) => t.accountId === id) ||
       (m.outside ?? []).some((o) => o.accountId === id) ||
-      (m.card?.payments ?? []).some((p) => p.accountId === id) ||
+      (m.cards ?? []).some((c) => c.payments.some((p) => p.accountId === id)) ||
       m.transfers.some((t) => t.fromAccountId === id || t.toAccountId === id),
   );
 }
@@ -1086,11 +1123,107 @@ export function canRemoveGoal(state: AppState, id: string): boolean {
   return state.goals.some((g) => g.id === id) && !state.contribs.some((c) => c.goalId === id);
 }
 
-// ── Tarjeta de crédito ───────────────────────────────────────────────────────
+// ── Tarjetas de crédito ──────────────────────────────────────────────────────
 
-/** Los «otros cargos» del mes: un mes abierto y un número finito >= 0. */
-export function cardOtherChange(state: AppState, key: MonthKey, other: number): Action | null {
-  return openMonth(state, key) && nonNegative(other) ? { type: 'card/other', key, other } : null;
+const hasCard = (state: AppState, id: string) => state.cards.some((c) => c.id === id);
+const hasActiveCard = (state: AppState, id: string) => state.cards.some((c) => c.id === id && c.active);
+
+/** Los campos de una tarjeta tal como los acepta el servidor; null si alguno no vale. */
+export interface CardInput {
+  name: string;
+  bank?: string | null;
+  last4?: string | null;
+  cur?: Currency;
+  limit?: number | null;
+  cutoffDay?: number | null;
+  dueDay?: number | null;
+  active?: boolean;
+}
+
+const validDay = (n: number | null | undefined) => n == null || (Number.isInteger(n) && n >= 1 && n <= 31);
+const validLast4 = (v: string | null | undefined) => v == null || v === '' || /^\d{4}$/.test(v);
+const validLimit = (n: number | null | undefined) => n == null || positive(n);
+
+/** Nombre (obligatorio, único sin distinguir mayúsculas), día de corte y de pago entre 1 y 31, límite > 0 y 4 dígitos. Queda al final. */
+export function newCard(state: AppState, input: CardInput, id: string): CreditCard | null {
+  const name = named(input.name);
+  const bank = input.bank?.trim() || null;
+  if (!name || (bank !== null && bank.length > MAX_LEN.name) || sameCardName(state, name)) return null;
+  if (!validDay(input.cutoffDay) || !validDay(input.dueDay) || !validLimit(input.limit) || !validLast4(input.last4)) return null;
+  const cur = input.cur ?? state.mainCurrency;
+  if (!isCurrency(cur)) return null;
+  const sort = state.cards.reduce((max, c) => Math.max(max, c.sort), -1) + 1;
+  return {
+    id,
+    name,
+    bank,
+    last4: input.last4 || null,
+    cur,
+    limit: input.limit ?? null,
+    cutoffDay: input.cutoffDay ?? null,
+    dueDay: input.dueDay ?? null,
+    active: input.active !== false,
+    sort,
+  };
+}
+
+function sameCardName(state: AppState, name: string, exceptId?: string): boolean {
+  const fold = (t: string) => t.normalize('NFC').toLowerCase();
+  return state.cards.some((c) => c.id !== exceptId && fold(c.name) === fold(name));
+}
+
+/**
+ * Una tarjeta en uso no se puede borrar (el servidor respondería 409): algo la nombra (otros cargos, pagos, un gasto fijo
+ * o una transacción) o, siendo la primera activa, hay gastos fijos o transacciones de tarjeta sin nombrar ninguna.
+ */
+export function cardInUse(state: AppState, id: string): boolean {
+  const first = defaultCardId(state);
+  return Object.values(state.months).some(
+    (m) =>
+      (m.cards ?? []).some((c) => c.cardId === id) ||
+      m.fixed.some((f) => f.onCard === true && (f.cardId ?? first) === id) ||
+      m.tx.some((t) => isCardTx(t) && (t.cardId ?? first) === id),
+  );
+}
+
+export function canRemoveCard(state: AppState, id: string): boolean {
+  return hasCard(state, id) && !cardInUse(state, id);
+}
+
+/** Se puede apagar una tarjeta activa solo si en el último mes no debe nada ni tiene cargos (calc.cardOffBlocked). */
+export function canTurnOffCard(state: AppState, id: string): boolean {
+  return state.cards.some((c) => c.id === id && c.active) && !cardOffBlocked(state, id);
+}
+
+/**
+ * Editar una tarjeta (los campos que vengan). null si no existe o algo no vale: nombre vacío o repetido, días fuera de 1–31, límite <= 0,
+ * apagarla debiendo algo, o cambiarle la moneda estando en uso (el servidor respondería 409).
+ */
+export function cardPatchChange(state: AppState, id: string, patch: CreditCardPatch): Action | null {
+  const card = state.cards.find((c) => c.id === id);
+  if (!card) return null;
+  const clean: CreditCardPatch = { ...patch };
+  if (patch.name !== undefined) {
+    const name = named(patch.name);
+    if (!name || sameCardName(state, name, id)) return null;
+    clean.name = name;
+  }
+  if (patch.bank !== undefined) clean.bank = patch.bank?.trim() || null;
+  if (patch.last4 !== undefined) clean.last4 = patch.last4 || null;
+  if (!validDay(patch.cutoffDay) || !validDay(patch.dueDay) || !validLimit(patch.limit) || !validLast4(patch.last4)) return null;
+  if (patch.cur !== undefined && (!isCurrency(patch.cur) || (patch.cur !== card.cur && cardInUse(state, id)))) return null;
+  if (patch.active === false && card.active && !canTurnOffCard(state, id)) return null;
+  const changed = (Object.keys(clean) as (keyof CreditCardPatch)[]).some((k) => clean[k] !== card[k as keyof CreditCard]);
+  return changed ? { type: 'creditCard/patch', id, patch: clean } : null;
+}
+
+export function cardRemoval(state: AppState, id: string): Action | null {
+  return canRemoveCard(state, id) ? { type: 'creditCard/remove', id } : null;
+}
+
+/** Los «otros cargos» de una tarjeta en el mes: un mes abierto, una tarjeta que exista y un número finito >= 0. */
+export function cardOtherChange(state: AppState, key: MonthKey, cardId: string, other: number): Action | null {
+  return openMonth(state, key) && hasCard(state, cardId) && nonNegative(other) ? { type: 'card/other', key, cardId, other } : null;
 }
 
 /**
@@ -1102,23 +1235,23 @@ export function snapToTotal(amount: number, total: number): number {
 }
 
 /**
- * Añadir un pago de la tarjeta del mes: un mes abierto, un importe > 0 y no mayor que lo que falta por pagar
+ * Añadir un pago de una tarjeta en el mes: un mes abierto, un importe > 0 y no mayor que lo que falta por pagar
  * (calc.cardCalc.remainder), y una cuenta de dinero que exista. Como el servidor (db.payCard): lo demás no se envía.
  * `date` es hoy; el servidor la lleva al mes si cae fuera. null si no se puede.
  */
-export function cardPayment(state: AppState, key: MonthKey, amount: number, accountId: string, id: string, date: ISODate): Action | null {
-  if (!openMonth(state, key) || !hasMoneyAccount(state, accountId) || !positive(amount)) return null;
-  const left = cardCalc(state, key).remainder;
+export function cardPayment(state: AppState, key: MonthKey, cardId: string, amount: number, accountId: string, id: string, date: ISODate): Action | null {
+  if (!openMonth(state, key) || !hasCard(state, cardId) || !hasMoneyAccount(state, accountId) || !positive(amount)) return null;
+  const left = cardCalc(state, key, cardId).remainder;
   const paid = snapToTotal(amount, left);
-  return left > 0 && paid <= left ? { type: 'card/pay', key, payment: { id, date: clampToMonth(date, key), accountId, amount: paid } } : null;
+  return left > 0 && paid <= left ? { type: 'card/pay', key, cardId, payment: { id, date: clampToMonth(date, key), accountId, amount: paid } } : null;
 }
 
-/** Quitar todos los pagos: un mes abierto con alguno. */
-export function cardUnpay(state: AppState, key: MonthKey): Action | null {
-  return openMonth(state, key) && cardOf(state.months[key]!).payments.length > 0 ? { type: 'card/unpay', key } : null;
+/** Quitar todos los pagos de una tarjeta: un mes abierto con alguno. */
+export function cardUnpay(state: AppState, key: MonthKey, cardId: string): Action | null {
+  return openMonth(state, key) && cardOf(state.months[key]!, cardId).payments.length > 0 ? { type: 'card/unpay', key, cardId } : null;
 }
 
 /** Quitar un pago: un mes abierto que lo tiene. */
-export function cardUnpayOne(state: AppState, key: MonthKey, id: string): Action | null {
-  return openMonth(state, key) && cardOf(state.months[key]!).payments.some((p) => p.id === id) ? { type: 'card/unpayOne', key, id } : null;
+export function cardUnpayOne(state: AppState, key: MonthKey, cardId: string, id: string): Action | null {
+  return openMonth(state, key) && cardOf(state.months[key]!, cardId).payments.some((p) => p.id === id) ? { type: 'card/unpayOne', key, cardId, id } : null;
 }

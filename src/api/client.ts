@@ -17,6 +17,8 @@ import type {
   ContributionPatch,
   CardOtherUpdate,
   CardPayRequest,
+  CreditCardCreate,
+  CreditCardPatch,
   FixedCreate,
   FixedPatch,
   GoalCreate,
@@ -46,6 +48,7 @@ import type {
 import type {
   Account,
   Contribution,
+  CreditCard,
   Currency,
   FixedExpense,
   Goal,
@@ -196,6 +199,13 @@ export function createApiClient(fetchImpl: FetchLike = (input, init) => fetch(in
         json<Account>('PATCH', `/api/accounts/${seg(id)}`, { json: patch, opts }),
       deleteAccount: (id: string, opts?: RequestOptions) => json<OkResponse>('DELETE', `/api/accounts/${seg(id)}`, { opts }),
 
+      // ── Tarjetas de crédito ───────────────────────────────────────────────
+      listCreditCards: (opts?: RequestOptions) => json<CreditCard[]>('GET', '/api/credit-cards', { opts }),
+      createCreditCard: (body: CreditCardCreate, opts?: RequestOptions) => json<CreditCard>('POST', '/api/credit-cards', { json: body, opts }),
+      patchCreditCard: (id: string, patch: CreditCardPatch, opts?: RequestOptions) =>
+        json<CreditCard>('PATCH', `/api/credit-cards/${seg(id)}`, { json: patch, opts }),
+      deleteCreditCard: (id: string, opts?: RequestOptions) => json<OkResponse>('DELETE', `/api/credit-cards/${seg(id)}`, { opts }),
+
       // ── Meses ─────────────────────────────────────────────────────────────
       listMonths: (opts?: RequestOptions) => json<MonthSummary[]>('GET', '/api/months', { opts }),
       getMonth: (key: MonthKey, opts?: RequestOptions) => json<Month>('GET', `/api/months/${seg(key)}`, { opts }),
@@ -209,15 +219,16 @@ export function createApiClient(fetchImpl: FetchLike = (input, init) => fetch(in
         json<Month>('DELETE', `/api/months/${seg(key)}/budget-log/${seg(id)}`, { opts }),
       /** Suma a ese mes lo que sobró del anterior (409 si ya lo tiene). */
       addLeftover: (key: MonthKey, opts?: RequestOptions) => json<Month>('POST', `/api/months/${seg(key)}/leftover`, { opts }),
-      /** Los «otros cargos» de la tarjeta de crédito del mes. */
-      setCardOther: (key: MonthKey, body: CardOtherUpdate, opts?: RequestOptions) =>
-        json<Month>('PATCH', `/api/months/${seg(key)}/card`, { json: body, opts }),
-      /** Añade un pago de la tarjeta del mes (el importe no puede pasar de lo que falta; 400 si pasa). */
-      payCard: (key: MonthKey, body: CardPayRequest, opts?: RequestOptions) =>
-        json<Month>('POST', `/api/months/${seg(key)}/card/pay`, { json: body, opts }),
-      unpayCard: (key: MonthKey, opts?: RequestOptions) => json<Month>('DELETE', `/api/months/${seg(key)}/card/pay`, { opts }),
-      removeCardPayment: (key: MonthKey, paymentId: string, opts?: RequestOptions) =>
-        json<Month>('DELETE', `/api/months/${seg(key)}/card/pay/${seg(paymentId)}`, { opts }),
+      /** Los «otros cargos» de una tarjeta de crédito en el mes. */
+      setCardOther: (key: MonthKey, cardId: string, body: CardOtherUpdate, opts?: RequestOptions) =>
+        json<Month>('PATCH', `/api/months/${seg(key)}/cards/${seg(cardId)}/other`, { json: body, opts }),
+      /** Añade un pago de una tarjeta en el mes (el importe no puede pasar de lo que falta; 400 si pasa). */
+      payCard: (key: MonthKey, cardId: string, body: CardPayRequest, opts?: RequestOptions) =>
+        json<Month>('POST', `/api/months/${seg(key)}/cards/${seg(cardId)}/pay`, { json: body, opts }),
+      unpayCard: (key: MonthKey, cardId: string, opts?: RequestOptions) =>
+        json<Month>('DELETE', `/api/months/${seg(key)}/cards/${seg(cardId)}/pay`, { opts }),
+      removeCardPayment: (key: MonthKey, cardId: string, paymentId: string, opts?: RequestOptions) =>
+        json<Month>('DELETE', `/api/months/${seg(key)}/cards/${seg(cardId)}/pay/${seg(paymentId)}`, { opts }),
       /** Escribe la tasa de un par desde una fecha del mes (una por par y fecha: sustituye a la de esa fecha, en el sentido que fuera). */
       putMonthRate: (key: MonthKey, rate: MonthRate, opts?: RequestOptions) =>
         json<Month>('PUT', `/api/months/${seg(key)}/rates`, { json: rate, opts }),

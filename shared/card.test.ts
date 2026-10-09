@@ -1,10 +1,14 @@
-// Tarjeta de crédito como pago diferido: el total (saldo anterior + otros cargos + lo cargado), lo que arrastra de
+// Tarjeta de crédito como pago diferido (aquí con UNA tarjeta, la 'card' de la migración 0011; con varias: cards.test.ts): el total (saldo anterior + otros cargos + lo cargado), lo que arrastra de
 // un mes a otro y qué cifras mueve cada cosa. Lo cargado no toca saldos ni "usado": solo el pago.
 
 import { describe, expect, it } from 'vitest';
 import { balances, cardAccountFor, cardCalc, monthCalc } from './calc';
 import { seedState } from './seed';
-import type { AppState, CardPayment, FixedExpense, MonthCard, Transaction } from './types';
+import type { AppState, CardPayment, CreditCard, FixedExpense, MonthCard, Transaction } from './types';
+
+/** La tarjeta única de siempre, en la moneda principal. */
+const CARD: CreditCard = { id: 'card', name: 'Credit card', bank: null, last4: null, cur: 'DOP', limit: null, cutoffDay: null, dueDay: null, active: true, sort: 0 };
+const seed = (): AppState => ({ ...seedState(), cards: [CARD] });
 
 const AUG = '2026-08';
 const SEP = '2026-09';
@@ -43,28 +47,28 @@ const tx = (over: Partial<Transaction>): Transaction => ({
 
 /** El estado de ejemplo con cambios en octubre: la tarjeta del mes y lo que se le cargue. */
 function october(card: MonthCard | undefined, extra: { fixed?: FixedExpense[]; tx?: Transaction[] } = {}): AppState {
-  const s = seedState();
+  const s = seed();
   const m = s.months[OCT]!;
-  s.months[OCT] = { ...m, fixed: [...m.fixed, ...(extra.fixed ?? [])], tx: [...m.tx, ...(extra.tx ?? [])], ...(card && { card }) };
+  s.months[OCT] = { ...m, fixed: [...m.fixed, ...(extra.fixed ?? [])], tx: [...m.tx, ...(extra.tx ?? [])], ...(card && { cards: [card] }) };
   return s;
 }
 
 let seq = 0;
 const pay = (amount: number, accountId: string): CardPayment => ({ id: `p${++seq}`, date: '2026-10-20', accountId, amount });
-const none: MonthCard = { other: 0, payments: [] };
+const none: MonthCard = { cardId: 'card', other: 0, payments: [] };
 const bal = (s: AppState, id: string) => balances(s, OCT).accounts.find((a) => a.account.id === id)!.balance;
 
 describe('el total de la tarjeta', () => {
   it('sin nada cargado es 0 en todos los meses y no cambia ninguna cifra', () => {
-    const s = seedState();
-    for (const key of [AUG, SEP, OCT]) expect(cardCalc(s, key)).toMatchObject({ previous: 0, other: 0, charged: 0, total: 0, paid: 0, remainder: 0 });
+    const s = seed();
+    for (const key of [AUG, SEP, OCT]) expect(cardCalc(s, key, 'card')).toMatchObject({ previous: 0, other: 0, charged: 0, total: 0, paid: 0, remainder: 0 });
     const c = monthCalc(s, OCT);
     expect(c.pending).toBeCloseTo(c.fixedAll - c.fixedPaid, 9);
   });
 
   it('suma saldo anterior + otros cargos + gastos fijos marcados + transacciones con tarjeta, convertidos a la principal', () => {
     const s = october(
-      { other: 300, payments: [] },
+      { cardId: 'card', other: 300, payments: [] },
       {
         fixed: [
           fx({ id: 'a', amount: 1000 }),
@@ -80,11 +84,11 @@ describe('el total de la tarjeta', () => {
       },
     );
     // Septiembre: 1,000 de otros cargos, pagó 400; agosto: 250 sin pagar y sin tocar. 250 + 1,000 − 400 = 850.
-    s.months[AUG] = { ...s.months[AUG]!, card: { other: 250, payments: [] } };
-    s.months[SEP] = { ...s.months[SEP]!, card: { other: 1000, payments: [pay(400, 'dr')] } };
-    expect(cardCalc(s, AUG)).toMatchObject({ total: 250, remainder: 250 });
-    expect(cardCalc(s, SEP)).toMatchObject({ previous: 250, total: 1250, paid: 400, remainder: 850 });
-    const c = cardCalc(s, OCT);
+    s.months[AUG] = { ...s.months[AUG]!, cards: [{ cardId: 'card', other: 250, payments: [] }] };
+    s.months[SEP] = { ...s.months[SEP]!, cards: [{ cardId: 'card', other: 1000, payments: [pay(400, 'dr')] }] };
+    expect(cardCalc(s, AUG, 'card')).toMatchObject({ total: 250, remainder: 250 });
+    expect(cardCalc(s, SEP, 'card')).toMatchObject({ previous: 250, total: 1250, paid: 400, remainder: 850 });
+    const c = cardCalc(s, OCT, 'card');
     expect(c.previous).toBe(850);
     expect(c.other).toBe(300);
     expect(c.charged).toBeCloseTo(1000 + 587.6 + 200 + 293.8, 6);
@@ -92,16 +96,16 @@ describe('el total de la tarjeta', () => {
   });
 
   it('un mes sin pagar arrastra todo su total, también por varios meses', () => {
-    const s = seedState();
-    s.months[AUG] = { ...s.months[AUG]!, card: { other: 100, payments: [] } };
-    expect(cardCalc(s, SEP).previous).toBe(100);
-    expect(cardCalc(s, OCT).previous).toBe(100);
-    expect(cardCalc(s, OCT).total).toBe(100);
+    const s = seed();
+    s.months[AUG] = { ...s.months[AUG]!, cards: [{ cardId: 'card', other: 100, payments: [] }] };
+    expect(cardCalc(s, SEP, 'card').previous).toBe(100);
+    expect(cardCalc(s, OCT, 'card').previous).toBe(100);
+    expect(cardCalc(s, OCT, 'card').total).toBe(100);
   });
 });
 
 describe('lo que mueve en el mes', () => {
-  const base = seedState();
+  const base = seed();
   const b = monthCalc(base, OCT);
   const items = {
     fixed: [fx({ id: 'a', amount: 1000 }), fx({ id: 'c', amount: 500, paid: false })],
@@ -111,7 +115,7 @@ describe('lo que mueve en el mes', () => {
   it('sin pagar: lo cargado no es usado y la tarjeta cuenta como pendiente por su total', () => {
     const s = october(none, items);
     const c = monthCalc(s, OCT);
-    expect(c.card.total).toBe(1200);
+    expect(c.cards[0]!.total).toBe(1200);
     expect(c.used).toBeCloseTo(b.used, 9);
     expect(c.avail).toBeCloseTo(b.avail, 9);
     // El gasto de 500 sin marcar sigue pendiente y la tarjeta suma sus 1,200.
@@ -123,12 +127,12 @@ describe('lo que mueve en el mes', () => {
   });
 
   it('pago parcial: entra a lo usado y lo que falta de la tarjeta sigue pendiente este mes', () => {
-    const s = october({ other: 0, payments: [pay(700, 'dr')] }, items);
+    const s = october({ cardId: 'card', other: 0, payments: [pay(700, 'dr')] }, items);
     const c = monthCalc(s, OCT);
     expect(c.used).toBeCloseTo(b.used + 700, 9);
     // 500 del gasto sin marcar + 500 que faltan de la tarjeta.
     expect(c.pending).toBeCloseTo(b.pending + 500 + 500, 9);
-    expect(c.card.remainder).toBe(500);
+    expect(c.cards[0]!.remainder).toBe(500);
     expect(c.fixedPaid).toBeCloseTo(b.fixedPaid + 700, 9);
     // Fixed expenses del desglose: lo cargado cuenta como gasto fijo, el pago de la tarjeta no se repite.
     const fixedCat = (x: typeof c) => x.categories.find((k) => k.fixed)!.value;
@@ -136,8 +140,8 @@ describe('lo que mueve en el mes', () => {
   });
 
   it('pagar el total deja la tarjeta en 0 para el mes siguiente', () => {
-    const s = october({ other: 0, payments: [pay(1200, 'dr')] }, items);
-    expect(cardCalc(s, OCT).remainder).toBe(0);
+    const s = october({ cardId: 'card', other: 0, payments: [pay(1200, 'dr')] }, items);
+    expect(cardCalc(s, OCT, 'card').remainder).toBe(0);
     expect(monthCalc(s, OCT).used).toBeCloseTo(b.used + 1200, 9);
   });
 });
@@ -146,47 +150,47 @@ describe('saldos de las cuentas', () => {
   const items = { fixed: [fx({ id: 'a', amount: 1000 })], tx: [tx({ id: 't1', amount: 200 }), tx({ id: 't2', amount: 5, cur: 'USD' })] };
 
   it('lo cargado no baja ningún saldo; solo el pago, en la moneda de la cuenta que paga', () => {
-    const base = seedState();
+    const base = seed();
     const charged = october(none, items);
     expect(bal(charged, 'dr')).toBe(bal(base, 'dr'));
     expect(bal(charged, 'us')).toBe(bal(base, 'us'));
 
-    const total = cardCalc(charged, OCT).total; // 1,000 + 200 + 293.8
-    const fromDr = october({ other: 0, payments: [pay(600, 'dr')] }, items);
+    const total = cardCalc(charged, OCT, 'card').total; // 1,000 + 200 + 293.8
+    const fromDr = october({ cardId: 'card', other: 0, payments: [pay(600, 'dr')] }, items);
     expect(bal(fromDr, 'dr')).toBeCloseTo(bal(base, 'dr') - 600, 9);
     expect(bal(fromDr, 'us')).toBe(bal(base, 'us'));
     // Desde la cuenta en USD: 600 DOP a la tasa del mes.
-    const fromUs = october({ other: 0, payments: [pay(total, 'us')] }, items);
+    const fromUs = october({ cardId: 'card', other: 0, payments: [pay(total, 'us')] }, items);
     expect(bal(fromUs, 'us')).toBeCloseTo(bal(base, 'us') - total / 58.76, 9);
     expect(bal(fromUs, 'dr')).toBe(bal(base, 'dr'));
   });
 
   it('un pago de un mes anterior sigue restando en los saldos posteriores', () => {
-    const s = seedState();
-    s.months[SEP] = { ...s.months[SEP]!, card: { other: 300, payments: [pay(300, 'dr')] } };
-    expect(bal(s, 'dr')).toBeCloseTo(bal(seedState(), 'dr') - 300, 9);
+    const s = seed();
+    s.months[SEP] = { ...s.months[SEP]!, cards: [{ cardId: 'card', other: 300, payments: [pay(300, 'dr')] }] };
+    expect(bal(s, 'dr')).toBeCloseTo(bal(seed(), 'dr') - 300, 9);
   });
 });
 
 describe('cuenta que se ofrece para pagar', () => {
   it('la del último pago de la tarjeta si sigue visible; si no, la cuenta por defecto', () => {
-    const s = seedState();
-    expect(cardAccountFor(s, OCT)?.id).toBe('dr');
-    s.months[SEP] = { ...s.months[SEP]!, card: { other: 10, payments: [pay(10, 'us')] } };
-    expect(cardAccountFor(s, OCT)?.id).toBe('us');
+    const s = seed();
+    expect(cardAccountFor(s, OCT, 'card')?.id).toBe('dr');
+    s.months[SEP] = { ...s.months[SEP]!, cards: [{ cardId: 'card', other: 10, payments: [pay(10, 'us')] }] };
+    expect(cardAccountFor(s, OCT, 'card')?.id).toBe('us');
     s.accounts = s.accounts.map((a) => (a.id === 'us' ? { ...a, hidden: true } : a));
-    expect(cardAccountFor(s, OCT)?.id).toBe('dr');
+    expect(cardAccountFor(s, OCT, 'card')?.id).toBe('dr');
   });
 });
 
 describe('varios pagos en el mismo mes', () => {
   const items = { fixed: [fx({ id: 'a', amount: 1000 })], tx: [tx({ id: 't1', amount: 200 })] };
-  const base = seedState();
+  const base = seed();
   const b = monthCalc(base, OCT);
 
   it('la suma de los pagos es lo pagado; lo que falta sigue como pendiente y entra a lo usado lo pagado', () => {
-    const s = october({ other: 0, payments: [pay(300, 'dr'), pay(400, 'us')] }, items);
-    const k = cardCalc(s, OCT);
+    const s = october({ cardId: 'card', other: 0, payments: [pay(300, 'dr'), pay(400, 'us')] }, items);
+    const k = cardCalc(s, OCT, 'card');
     expect(k).toMatchObject({ total: 1200, paid: 700, remainder: 500 });
     const c = monthCalc(s, OCT);
     expect(c.used).toBeCloseTo(b.used + 700, 9);
@@ -196,27 +200,27 @@ describe('varios pagos en el mismo mes', () => {
   });
 
   it('cada pago baja el saldo de su cuenta, convertido a la moneda de esa cuenta', () => {
-    const s = october({ other: 0, payments: [pay(300, 'dr'), pay(587.6, 'us')] }, items);
+    const s = october({ cardId: 'card', other: 0, payments: [pay(300, 'dr'), pay(587.6, 'us')] }, items);
     expect(bal(s, 'dr')).toBeCloseTo(bal(base, 'dr') - 300, 9);
     expect(bal(s, 'us')).toBeCloseTo(bal(base, 'us') - 587.6 / 58.76, 9);
   });
 
   it('lo que falta pasa al mes siguiente derivado, y con todo pagado no pasa nada', () => {
-    const open = october({ other: 0, payments: [pay(300, 'dr'), pay(400, 'us')] }, items);
+    const open = october({ cardId: 'card', other: 0, payments: [pay(300, 'dr'), pay(400, 'us')] }, items);
     const nov = '2026-11';
-    open.months[nov] = { ...open.months[OCT]!, key: nov, fixed: [], tx: [], card: undefined };
-    delete open.months[nov]!.card;
-    expect(cardCalc(open, nov)).toMatchObject({ previous: 500, total: 500, remainder: 500 });
-    const full = october({ other: 0, payments: [pay(300, 'dr'), pay(900, 'us')] }, items);
+    open.months[nov] = { ...open.months[OCT]!, key: nov, fixed: [], tx: [], cards: undefined };
+    delete open.months[nov]!.cards;
+    expect(cardCalc(open, nov, 'card')).toMatchObject({ previous: 500, total: 500, remainder: 500 });
+    const full = october({ cardId: 'card', other: 0, payments: [pay(300, 'dr'), pay(900, 'us')] }, items);
     full.months[nov] = { ...open.months[nov]! };
-    expect(cardCalc(full, nov).previous).toBe(0);
+    expect(cardCalc(full, nov, 'card').previous).toBe(0);
     expect(monthCalc(full, OCT).pending).toBeCloseTo(b.pending, 9);
   });
 
   it('la cuenta que se ofrece es la del último pago del mes', () => {
-    const s = october({ other: 0, payments: [pay(10, 'us'), pay(10, 'dr')] }, items);
-    expect(cardAccountFor(s, OCT)?.id).toBe('dr');
-    s.months[OCT] = { ...s.months[OCT]!, card: { other: 0, payments: [pay(10, 'dr'), pay(10, 'us')] } };
-    expect(cardAccountFor(s, OCT)?.id).toBe('us');
+    const s = october({ cardId: 'card', other: 0, payments: [pay(10, 'us'), pay(10, 'dr')] }, items);
+    expect(cardAccountFor(s, OCT, 'card')?.id).toBe('dr');
+    s.months[OCT] = { ...s.months[OCT]!, cards: [{ cardId: 'card', other: 0, payments: [pay(10, 'dr'), pay(10, 'us')] }] };
+    expect(cardAccountFor(s, OCT, 'card')?.id).toBe('us');
   });
 });

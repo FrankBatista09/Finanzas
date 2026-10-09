@@ -185,6 +185,7 @@ export function seedState(): AppState {
     incomes,
     goals: [...DEFAULT_GOALS, SEED_PLANNED_GOAL].map((g) => ({ ...g })),
     contribs,
+    cards: [],
     months: {
       // Agosto y septiembre no tienen tasa escrita: sale del promedio ponderado de sus envíos.
       '2026-08': month('2026-08', true, [], {

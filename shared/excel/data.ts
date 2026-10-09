@@ -231,7 +231,7 @@ function importedMonth(m: ImportMonth, before: Month | undefined, known: readonl
     ...(before?.outside?.length ? { outside: before.outside } : {}),
     // Tampoco conoce la tarjeta de crédito: sus otros cargos y sus pagos se conservan con el mes (sus saldos siguen
     // restando lo pagado). Los gastos fijos del archivo nacen sin «en tarjeta», que el libro no trae.
-    ...(before?.card ? { card: before.card } : {}),
+    ...(before?.cards ? { cards: before.cards } : {}),
   };
 }
 
