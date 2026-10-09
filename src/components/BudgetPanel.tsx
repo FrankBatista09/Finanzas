@@ -143,12 +143,6 @@ export function BudgetPanel() {
               {t('budgetHistory')}
             </button>
           </div>
-          <div className={styles.incomeLeft}>
-            <span>{t('incomeMinusUsed')}</span>
-            <span className={cx(styles.mono, calc.incomeLeft < 0 ? styles.errorText : styles.inkText)}>
-              {f2(calc.incomeLeft)} {main}
-            </span>
-          </div>
         </div>
 
         <div className={cx(styles.cell, styles.ringCell)}>

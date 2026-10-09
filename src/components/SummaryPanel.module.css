@@ -231,16 +231,6 @@
   color: var(--text-muted);
 }
 
-.incomeLeft {
-  display: flex;
-  justify-content: space-between;
-  gap: 10px;
-  font-size: var(--fs-num);
-  color: var(--text-soft);
-  border-top: 1px dashed var(--border);
-  padding-top: 10px;
-}
-
 /* ── Dona (de presupuesto o de dinero por cuenta) ─────────────────────────── */
 
 .ringCell {

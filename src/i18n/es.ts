@@ -113,7 +113,6 @@ export const es: Shape<typeof en> = {
   budgetAccount: 'Cuenta que se suma al presupuesto',
   addBudgetPart: 'Agregar cuenta al presupuesto',
   budgetAmount: 'Monto de la nueva parte del presupuesto',
-  incomeMinusUsed: 'Ingreso del mes − usado',
   budgetUsed: 'Presupuesto usado',
   budgetUsedOf: 'Presupuesto usado: {used} de {budget} {currency}',
   ofBudget: 'de {budget} {currency}',
