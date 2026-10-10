@@ -871,6 +871,10 @@ export interface BudgetHistoryRow {
   amount: number;
   /** La nota del movimiento, la descripción del ingreso o la vía del envío. */
   note: string;
+  /** El ingreso del que se tomó un movimiento del registro (BudgetEntry.incomeId); null en el resto de filas. */
+  incomeId: string | null;
+  /** Su descripción ('' si no tiene); null si no hay ingreso o ya no existe. */
+  incomeName: string | null;
   /** `amount` en la moneda principal, con la última tasa del mes. */
   inMain: number;
   /** Presupuesto acumulado hasta esta fila incluida, en la moneda principal. El de la última fila es monthCalc().budget. */
@@ -891,19 +895,22 @@ export function budgetHistory(state: AppState, key: MonthKey): BudgetHistoryRow[
   // El presupuesto es dinero: lo de una cuenta de oro no cuenta (la API no deja escribirlo).
   const byId = new Map(state.accounts.filter(isMoneyAccount).map((a) => [a.id, a]));
   const rows: Omit<BudgetHistoryRow, 'inMain' | 'total'>[] = [];
+  const incomeDesc = new Map(state.incomes.map((i) => [i.id, i.desc]));
   for (const e of m.budgetLog) {
     const account = byId.get(e.accountId);
-    if (account) rows.push({ kind: e.kind, id: e.id, date: e.date, account, amount: e.amount || 0, note: e.note });
+    const incomeId = e.incomeId ?? null;
+    const incomeName = incomeId === null ? null : (incomeDesc.get(incomeId) ?? null);
+    if (account) rows.push({ kind: e.kind, id: e.id, date: e.date, account, amount: e.amount || 0, note: e.note, incomeId, incomeName });
   }
   for (const i of budgetIncomes(state, key)) {
     const account = byId.get(i.accountId);
-    if (account) rows.push({ kind: 'income', id: i.id, date: i.date, account, amount: incomeInAccount(state, i, account), note: i.desc });
+    if (account) rows.push({ kind: 'income', id: i.id, date: i.date, account, amount: incomeInAccount(state, i, account), note: i.desc, incomeId: null, incomeName: null });
   }
   for (const t of budgetTransfers(state, key)) {
     const from = byId.get(t.fromAccountId);
     const to = byId.get(t.toAccountId);
-    if (from) rows.push({ kind: 'transfer', id: t.id, side: 'out', date: t.date, account: from, amount: -(t.amount || 0), note: t.via });
-    if (to) rows.push({ kind: 'transfer', id: t.id, side: 'in', date: t.date, account: to, amount: transferReceived(t), note: t.via });
+    if (from) rows.push({ kind: 'transfer', id: t.id, side: 'out', date: t.date, account: from, amount: -(t.amount || 0), note: t.via, incomeId: null, incomeName: null });
+    if (to) rows.push({ kind: 'transfer', id: t.id, side: 'in', date: t.date, account: to, amount: transferReceived(t), note: t.via, incomeId: null, incomeName: null });
   }
   // Orden estable: con la misma fecha se conserva el de arriba.
   rows.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
@@ -913,6 +920,31 @@ export function budgetHistory(state: AppState, key: MonthKey): BudgetHistoryRow[
     total += inMain;
     return { ...r, inMain, total };
   });
+}
+
+/** How much of one income goes to the budget, in the currency of its account. */
+export interface IncomeBudgetUse {
+  /** The income itself, converted to its account's currency at the rate of its date. */
+  amount: number;
+  /** true when the income has "Adds to budget": all of it is already in the budget. */
+  whole: boolean;
+  /** The positive budget entries linked to it (BudgetEntry.incomeId), over every month. */
+  taken: number;
+  /** What can still be taken from it: 0 when `whole`, otherwise amount - taken (never below 0). */
+  available: number;
+}
+
+/** null for an income into a gold account: the budget is money only. */
+export function incomeBudgetUse(state: AppState, income: Income): IncomeBudgetUse | null {
+  const account = accountsById(state).get(income.accountId);
+  if (!account || !isMoneyAccount(account) || !isMoneyIncome(income)) return null;
+  const amount = incomeInAccount(state, income, account);
+  let taken = 0;
+  for (const m of Object.values(state.months)) {
+    for (const e of m.budgetLog) if (e.incomeId === income.id && e.amount > 0) taken += e.amount;
+  }
+  taken = tidy(taken);
+  return { amount, whole: income.budget, taken, available: income.budget ? 0 : Math.max(0, tidy(amount - taken)) };
 }
 
 export interface Leftover {
@@ -1064,6 +1096,9 @@ export interface BudgetSummaryLine {
   /** `amount` in the main currency (same rate as the budget history and monthCalc). */
   inMain: number;
   note: string;
+  /** The income the movement was taken from, and its description ('' if it has none); both null without a link. */
+  incomeId: string | null;
+  incomeName: string | null;
 }
 
 /** How the month's budget came to be, and what is left of it. Money fields are in the main currency. */
@@ -1127,6 +1162,8 @@ export function budgetSummary(state: AppState, key: MonthKey): BudgetSummary {
       currency: r.account.currency,
       inMain: r.inMain,
       note: r.note,
+      incomeId: r.incomeId,
+      incomeName: r.incomeName,
     };
     if (r.kind === 'initial') {
       initial += r.inMain;

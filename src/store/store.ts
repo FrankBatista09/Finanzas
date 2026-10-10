@@ -323,9 +323,9 @@ export class FinanzasStore {
       case 'rate/remove':
         return api.deleteMonthRate(action.key, action.from, action.to, action.date, opts);
       case 'budget/add': {
-        const { id, date, accountId, amount, kind, note } = action.row;
+        const { id, date, accountId, amount, kind, note, incomeId } = action.row;
         // 'leftover' no se escribe por aquí: tiene su propia acción.
-        return api.addBudgetEntry(action.key, { id, date, accountId, amount, kind: kind === 'initial' ? 'initial' : 'adjust', note }, opts);
+        return api.addBudgetEntry(action.key, { id, date, accountId, amount, kind: kind === 'initial' ? 'initial' : 'adjust', note, ...(incomeId && { incomeId }) }, opts);
       }
       case 'budget/remove':
         return api.deleteBudgetEntry(action.key, action.id, opts);

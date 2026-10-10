@@ -111,6 +111,11 @@ export interface BudgetEntry {
   kind: BudgetEntryKind;
   /** Texto libre; '' si no se escribió. */
   note: string;
+  /**
+   * El ingreso (de la misma cuenta) del que se toma este movimiento. Informativo: no cambia ninguna cifra; sirve
+   * para ver de qué ingreso salió el dinero y cuánto queda de él. Ausente o null = de la cuenta en general.
+   */
+  incomeId?: string | null;
 }
 
 export interface FixedExpense {

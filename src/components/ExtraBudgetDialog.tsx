@@ -1,10 +1,12 @@
 import { useId, useState } from 'react';
 import { MAX_LEN } from '../../shared/constants';
+import { f2 } from '../../shared/format';
 import { firstDay, lastDay } from '../../shared/month';
 import { useI18n } from '../i18n';
 import { useFinanzas } from '../store';
 import { Dialog, DialogButton, DialogFields, DialogText, Field, Input, Select } from '../ui';
-import { extraInput, extraProblem, newExtraForm } from './budgetModel';
+import { accountAvailable, extraAmount, extraDefaultAmount, extraIncomeOptions, extraInput, extraProblem, extraWarnings, newExtraForm } from './budgetModel';
+import styles from './ExtraBudgetDialog.module.css';
 
 /**
  * "Extra budget": money added to the month's budget after it was set. It is written as one dated 'adjust' entry,
@@ -12,13 +14,27 @@ import { extraInput, extraProblem, newExtraForm } from './budgetModel';
  * Mounted to open, unmounted to close.
  */
 export function ExtraBudgetDialog({ onClose }: { onClose: () => void }) {
-  const { monthKey, calc, visibleAccounts, today, actions } = useFinanzas();
+  const { state, monthKey, calc, visibleAccounts, today, balances, actions } = useFinanzas();
   const { t } = useI18n();
   const id = useId();
   // Read once on open: a data refresh must not overwrite what is being typed.
   const [form, setForm] = useState(() => newExtraForm(monthKey, today, calc.budgetParts, visibleAccounts));
   const account = visibleAccounts.find((a) => a.id === form.accountId);
   const problem = extraProblem(form, monthKey);
+  const incomes = extraIncomeOptions(state, monthKey, form.accountId);
+  const income = incomes.find((i) => i.id === form.incomeId);
+  const accountAvail = accountAvailable(balances, form.accountId);
+  const warnings = extraWarnings(extraAmount(form.amount), income ? income.available : null, accountAvail);
+  const currency = account?.currency ?? '';
+  const incomeName = (desc: string) => desc || t('extraIncomeNoDesc');
+
+  // Choosing an income proposes what is left of it, capped by what the account holds; the amount stays editable.
+  const chooseIncome = (incomeId: string) =>
+    setForm((f) => {
+      const chosen = incomes.find((i) => i.id === incomeId);
+      const proposed = extraDefaultAmount(chosen ? chosen.available : null, accountAvail);
+      return { ...f, incomeId, amount: proposed === null ? f.amount : String(proposed) };
+    });
 
   const confirm = () => {
     const input = extraInput(form, monthKey);
@@ -49,8 +65,25 @@ export function ExtraBudgetDialog({ onClose }: { onClose: () => void }) {
             id={`${id}-account`}
             value={form.accountId}
             options={visibleAccounts.map((a) => ({ value: a.id, label: `${a.name} (${a.currency})` }))}
-            onChange={(accountId) => setForm((f) => ({ ...f, accountId }))}
+            // An income belongs to one account: changing the account drops it.
+            onChange={(accountId) => setForm((f) => ({ ...f, accountId, incomeId: '' }))}
           />
+          {accountAvail !== null && (
+            <p className={styles.help}>{t('extraAccountBalance', { amount: f2(accountAvail), currency })}</p>
+          )}
+        </Field>
+        <Field label={t('extraFromIncome')} htmlFor={`${id}-income`}>
+          <Select
+            id={`${id}-income`}
+            value={form.incomeId}
+            options={[
+              { value: '', label: t('extraNoIncome') },
+              ...incomes.map((i) => ({ value: i.id, label: `${incomeName(i.desc)} · ${i.date} · ${i.amount} ${i.currency}` })),
+            ]}
+            onChange={chooseIncome}
+          />
+          {income && !income.whole && <p className={styles.help}>{t('extraIncomeLeft', { amount: f2(income.available), currency })}</p>}
+          {income?.whole && <p className={styles.help}>{t('extraIncomeWhole')}</p>}
         </Field>
         <Field label={`${t('amount')}${account ? ` (${account.currency})` : ''}`} htmlFor={`${id}-amount`}>
           <Input
@@ -85,6 +118,16 @@ export function ExtraBudgetDialog({ onClose }: { onClose: () => void }) {
             aria-invalid={problem === 'date' ? true : undefined}
           />
         </Field>
+        {warnings.income !== null && (
+          <p className={styles.warn} role="status">
+            {t('extraIncomeOver', { amount: f2(warnings.income), currency })}
+          </p>
+        )}
+        {warnings.account !== null && (
+          <p className={styles.warn} role="status">
+            {t('extraAccountOver', { amount: f2(warnings.account), currency })}
+          </p>
+        )}
       </DialogFields>
       {problem === 'date' && <DialogText>{t('extraDateOutside')}</DialogText>}
     </Dialog>

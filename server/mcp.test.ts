@@ -1626,11 +1626,11 @@ describe('month_summary', () => {
       budgetSummary: {
         currency: 'DOP',
         initial: 65000,
-        initialLines: [{ id: 'seed-bg-2026-10-1', date: '2026-10-01', accountId: 'dr', account: 'DR account', amount: 65000, currency: 'DOP', inMain: 65000, note: '' }],
+        initialLines: [{ id: 'seed-bg-2026-10-1', date: '2026-10-01', accountId: 'dr', account: 'DR account', amount: 65000, currency: 'DOP', inMain: 65000, note: '', incomeId: null, income: null }],
         leftover: 0,
         incomes: 0,
         transfers: 0,
-        additions: [{ id: 'seed-bg-2026-10-2', date: '2026-10-05', accountId: 'dr', account: 'DR account', amount: 5000, currency: 'DOP', inMain: 5000, note: 'Car repair' }],
+        additions: [{ id: 'seed-bg-2026-10-2', date: '2026-10-05', accountId: 'dr', account: 'DR account', amount: 5000, currency: 'DOP', inMain: 5000, note: 'Car repair', incomeId: null, income: null }],
         added: 5000,
         additionDates: ['2026-10-05'],
         reductions: [],
@@ -3087,6 +3087,28 @@ describe('add_budget_extra', () => {
     expect(await fails(env, 'add_budget_extra', { amount: -5 })).toContain('amount');
     expect(await fails(env, 'add_budget_extra', { amount: 5, date: '2026-08-10' })).toContain('closed');
     expect(await fails(env, 'add_budget_extra', { amount: 5, date: '2031-01-10' })).toContain('2031');
+    expect(await getMonth(db, F, '2026-10')).toEqual(before);
+  });
+});
+
+describe('add_budget_extra with an income', () => {
+  it('links the extra to an income of the same account, matched by description', async () => {
+    const { env, db } = await seeded();
+    const r = await call(env, 'add_budget_extra', { amount: 100, account: 'US account', income: 'salary' });
+    expect(r.isError).toBe(false);
+    expect(r.text).toContain('income "Salary"');
+    expect(r.data!.entry).toMatchObject({ incomeId: 'seed-in-3', income: 'Salary' });
+    expect(r.data!.budgetSummary.additions.at(-1)).toMatchObject({ incomeId: 'seed-in-3', income: 'Salary' });
+    expect((await getMonth(db, F, '2026-10'))!.budgetLog.at(-1)).toMatchObject({ amount: 100, incomeId: 'seed-in-3' });
+  });
+
+  it('rejects an income that is not in the chosen account or does not exist, and writes nothing', async () => {
+    const { env, db } = await seeded();
+    const before = await getMonth(db, F, '2026-10');
+    // The default account is DR; the Salary income is in the US account.
+    expect(await fails(env, 'add_budget_extra', { amount: 100, income: 'Salary' })).toContain('No income');
+    expect(await fails(env, 'add_budget_extra', { amount: 100, income: 'seed-in-3' })).toContain('different account');
+    expect(await fails(env, 'add_budget_extra', { amount: 100, account: 'US account', income: 'Bonus' })).toContain('No income');
     expect(await getMonth(db, F, '2026-10')).toEqual(before);
   });
 });

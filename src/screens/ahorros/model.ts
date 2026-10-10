@@ -11,6 +11,7 @@ import {
   currentKey,
   defaultAccount,
   goalsProgress,
+  incomeBudgetUse,
   incomeIn,
   incomeInMonth,
   incomeRows,
@@ -229,6 +230,13 @@ export interface IncomeItemView {
   /** En la moneda principal, con su tasa propia o la vigente en su fecha. Una raya si son gramos de oro: no son dinero cobrado. */
   main: string;
   mainNote: RateNote;
+  /**
+   * How much of the income was taken for the budget by hand (extra budget entries linked to it), in its account's
+   * currency. null when nothing was, or when the whole income already adds to the budget.
+   */
+  budgetTaken?: { taken: string; amount: string; currency: Currency };
+  /** true: some budget entry points to this income, so it can be neither deleted nor moved to another account. */
+  linked?: boolean;
 }
 
 /**
@@ -241,13 +249,19 @@ export function incomeItems(state: AppState, lang: Language, monthKey?: MonthKey
   const all = sortedIncomes(state);
   const shown =
     monthKey === undefined ? all : (withGold ? all : all.filter(isMoneyIncome)).filter((i) => monthOf(i.date) === monthKey);
+  const linkedIds = new Set(
+    Object.values(state.months).flatMap((m) => m.budgetLog.flatMap((e) => (e.incomeId ? [e.incomeId] : []))),
+  );
   return shown.map((i) => {
     const key = monthOf(i.date);
     const recurring = i.recurring === true;
+    const linked = linkedIds.has(i.id);
     if (!isMoneyIncome(i)) {
       const base = { id: i.id, date: i.date, desc: i.desc, accountId: i.accountId, amount: i.amount, cur: i.cur, budget: false };
-      return { ...base, rate: null, rateAuto: null, recurring, amountText: fGrams(i.amount), main: '—', mainNote: NO_NOTE };
+      return { ...base, rate: null, rateAuto: null, recurring, amountText: fGrams(i.amount), main: '—', mainNote: NO_NOTE, ...(linked && { linked }) };
     }
+    const use = linked ? incomeBudgetUse(state, i) : null;
+    const account = state.accounts.find((a) => a.id === i.accountId);
     return {
       id: i.id,
       date: i.date,
@@ -263,6 +277,10 @@ export function incomeItems(state: AppState, lang: Language, monthKey?: MonthKey
       main: f2(incomeIn(state, i, main)),
       // Con tasa propia no hay de dónde salió la tasa que explicar: la escribió el usuario.
       mainNote: ownRate(state, i) ? NO_NOTE : rateNote(state, key, i.cur, main, lang, i.date),
+      ...(use && !use.whole && use.taken > 0 && account && account.currency !== 'XAU'
+        ? { budgetTaken: { taken: f2(use.taken), amount: f2(use.amount), currency: account.currency } }
+        : {}),
+      ...(linked && { linked }),
     };
   });
 }

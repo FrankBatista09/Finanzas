@@ -152,7 +152,7 @@ export const monthPatchSchema = z.strictObject({
 }) satisfies z.ZodType<MonthPatch>;
 
 // Un movimiento del presupuesto: suma o resta, pero no 0 (no cambiaría nada). El sobrante tiene su propia ruta.
-// Que la fecha caiga en el mes y que la cuenta exista lo comprueba addBudgetEntry (server/db.ts).
+// Que la fecha caiga en el mes, que la cuenta exista y que el ingreso sea de esa cuenta lo comprueba addBudgetEntry (server/db.ts).
 export const budgetEntryCreateSchema = z.strictObject({
   id: id().optional(),
   date: isoDate().optional(),
@@ -160,6 +160,7 @@ export const budgetEntryCreateSchema = z.strictObject({
   amount: anyAmount().refine((n) => n !== 0, { error: 'cannot be 0' }),
   kind: z.enum(['initial', 'adjust'], { error: 'must be initial or adjust' }).optional(),
   note: text(MAX_LEN.desc).optional(),
+  incomeId: id().nullable().optional(),
 }) satisfies z.ZodType<BudgetEntryCreate>;
 
 // Cuerpo opcional del cierre de mes: las partes iniciales del mes siguiente y si se le suma el sobrante.

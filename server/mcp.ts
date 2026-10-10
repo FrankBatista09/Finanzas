@@ -62,7 +62,7 @@ import { APP_NAME, CATS, GOLD, GOLD_UNIT, isGold, METHODS, TIMEZONE, VIAS } from
 import { f0, f2, fGrams, fRate } from '../shared/format';
 import { canonicalCat, canonicalMethod } from '../shared/i18n';
 import { clampToMonth, currentMonthKey, isISODate, isMonthKey, label, monthOf, monthSpan, todayISO } from '../shared/month';
-import type { Account, AccountCurrency, AppState, AppUser, CreditCard, Currency, FixedExpense, ISODate, Month, MonthKey } from '../shared/types';
+import type { Account, AccountCurrency, AppState, AppUser, CreditCard, Currency, FixedExpense, Income, ISODate, Month, MonthKey } from '../shared/types';
 import { checkBearer } from './auth';
 import { readLimitedBody } from './body';
 import { addBudgetEntry, createIncome, createOutside, createTransfer, ensureMonth, getMonth, listCards, loadState, patchFixed, payCard, userAccounts, userState } from './db';
@@ -566,6 +566,37 @@ function findFixed(list: readonly FixedExpense[], name: string): FixedExpense[] 
   return [];
 }
 
+/**
+ * The income of `accountId` that `named` points to: an exact id, otherwise a description (exact, then prefix, then
+ * contained). Several matches prefer the ones dated in `key`; still several is ambiguous.
+ */
+function findBudgetIncome(state: AppState, named: string, accountId: string, key: MonthKey, userName: string): Income {
+  const byId = state.incomes.find((i) => i.id === named);
+  if (byId) {
+    if (byId.accountId !== accountId) throw validationError('That income is in a different account than the extra budget: pass the account of the income.');
+    return byId;
+  }
+  const same = state.incomes.filter((i) => i.accountId === accountId);
+  const query = fold(named);
+  const folded = same.map((i) => ({ i, n: fold(i.desc) }));
+  const tiers: ((n: string) => boolean)[] = [(n) => n === query, (n) => n.startsWith(query), (n) => n.includes(query)];
+  for (const matches of tiers) {
+    let hits = folded.filter((x) => query !== '' && matches(x.n)).map((x) => x.i);
+    if (hits.length > 1) {
+      const inMonth = hits.filter((i) => monthOf(i.date) === key);
+      if (inMonth.length > 0) hits = inMonth;
+    }
+    if (hits.length === 1) return hits[0]!;
+    if (hits.length > 1) {
+      throw validationError(
+        `"${quoted(named)}" matches several incomes of ${userName} in that account: ${hits.map((i) => `${i.desc || '(no description)'} (${i.date}, id ${i.id})`).join('; ')}. Repeat the call with the id.`,
+      );
+    }
+  }
+  const options = same.map((i) => `${i.desc || '(no description)'} (${i.date})`).join('; ');
+  throw validationError(`No income of ${userName} in that account matches "${quoted(named)}".${options ? ` Incomes in it: ${options}.` : ' It has no incomes.'}`);
+}
+
 // ── Argumentos ───────────────────────────────────────────────────────────────
 // Un solo esquema zod por herramienta: valida los argumentos y de él sale el inputSchema que ve el modelo.
 // La excepción es `user`, que depende de la configuración y no del código: se resuelve aparte (resolveUser) y
@@ -727,6 +758,9 @@ const addBudgetExtraArgs = z.strictObject({
   date: isoDate()
     .optional()
     .describe(`Date it was added, YYYY-MM-DD. Omit it if the person gave no date or said "today": today in ${TIMEZONE} is used. It decides the month.`),
+  income: text(MAX_LEN.desc)
+    .optional()
+    .describe('Only if the person says which income the extra budget is taken from ("from the Apply income"): its description or id. It must be an income into the same account. Omit it otherwise.'),
 });
 
 const listAccountsArgs = z.strictObject({});
@@ -1014,7 +1048,7 @@ function summaryText(b: BudgetSummary): string {
   if (b.incomes !== 0) parts.push(`incomes added to the budget ${signed(b.incomes, main)}`);
   if (b.transfers !== 0) parts.push(`moved by transfers ${signed(b.transfers, main)}`);
   for (const l of b.additions) {
-    parts.push(`added on ${l.date}${l.note ? ` (${l.note})` : ''} to ${l.accountName} ${signed(l.amount, l.currency)}`);
+    parts.push(`added on ${l.date}${l.incomeName ? ` from income "${l.incomeName}"` : ''}${l.note ? ` (${l.note})` : ''} to ${l.accountName} ${signed(l.amount, l.currency)}`);
   }
   for (const l of b.reductions) {
     parts.push(`reduced on ${l.date}${l.note ? ` (${l.note})` : ''} in ${l.accountName} ${signed(l.amount, l.currency)}`);
@@ -1034,6 +1068,8 @@ function summaryData(b: BudgetSummary) {
     currency: l.currency,
     inMain: l.inMain,
     note: l.note,
+    incomeId: l.incomeId,
+    income: l.incomeName,
   });
   return {
     currency: b.main,
@@ -1681,13 +1717,13 @@ const addBudgetExtra = defineTool({
   title: 'Add extra budget',
   description: [
     "Adds extra money to the budget of a month in the finances of `user`, recorded as a dated addition on top of the original budget (the initial amount stays as it was and month_summary reports both). Use it when the person says they need to add more money to this month's budget, for example \"add 5,000 to the budget for the medical expense\".",
-    `Apart from \`user\`, only \`amount\` is required. Defaults: the person's default account (the amount is in the currency of that account) and today's date in ${TIMEZONE}; the month is the one of the date. Pass \`note\` with the reason. It fails in a closed month and for a gold account.`,
+    `Apart from \`user\`, only \`amount\` is required. Defaults: the person's default account (the amount is in the currency of that account) and today's date in ${TIMEZONE}; the month is the one of the date. Pass \`note\` with the reason, and \`income\` only when the person says which income it is taken from (an income into the same account). It fails in a closed month and for a gold account.`,
     "The answer states the budget summary of the month: initial, added, new total, spent and remaining. Each call adds one more extra: do not repeat it for the same one. It does not move any money between accounts; the budget is a plan.",
   ].join(' '),
   schema: addBudgetExtraArgs,
   readOnly: false,
   idempotent: false,
-  async run({ amount, account: named, note, date: givenDate }, ctx) {
+  async run({ amount, account: named, note, date: givenDate, income: incomeName }, ctx) {
     const { db, now, user } = ctx;
     if (givenDate) await assertReachable(ctx, givenDate);
     const before = await loadState(db, user.id);
@@ -1695,16 +1731,26 @@ const addBudgetExtra = defineTool({
     const account = await resolveAccount(ctx, named);
     if (!isMoneyAccount(account)) throw goldAccountError(account.name);
     const date = givenDate ?? clampToMonth(todayISO(now), m.key);
-    await addBudgetEntry(db, user.id, m.key, { accountId: account.id, amount, date, note: note ?? '', kind: 'adjust' }, now);
+    const income = incomeName === undefined ? null : findBudgetIncome(before, incomeName, account.id, m.key, user.name);
+    await addBudgetEntry(db, user.id, m.key, { accountId: account.id, amount, date, note: note ?? '', kind: 'adjust', incomeId: income?.id ?? null }, now);
 
     const after = await afterWrite(ctx, (state) => ({ state, summary: budgetSummary(state, m.key) }));
     const added = money(amount, account.currency);
-    const sentences = [`Extra budget recorded for ${user.name}: +${added} from ${account.name}${note ? ` (${note})` : ''} on ${date} (${label(m.key)}).`];
+    const sentences = [`Extra budget recorded for ${user.name}: +${added} from ${account.name}${income ? `, income "${income.desc || income.id}"` : ''}${note ? ` (${note})` : ''} on ${date} (${label(m.key)}).`];
     if (after) sentences.push(`Budget summary of ${label(m.key)}: ${summaryText(after.summary)}.`);
     return {
       text: sentences.join(' '),
       data: {
-        entry: { accountId: account.id, account: account.name, amount, currency: account.currency, date, note: note ?? '' },
+        entry: {
+          accountId: account.id,
+          account: account.name,
+          amount,
+          currency: account.currency,
+          date,
+          note: note ?? '',
+          incomeId: income?.id ?? null,
+          income: income ? income.desc : null,
+        },
         month: { key: m.key, label: label(m.key) },
         budgetSummary: after ? summaryData(after.summary) : null,
       },
