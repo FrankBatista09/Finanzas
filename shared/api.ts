@@ -289,6 +289,8 @@ export interface BudgetEntryCreate {
   /** Por defecto 'adjust'. El sobrante ('leftover') no se escribe a mano: POST /api/months/:key/leftover. */
   kind?: 'initial' | 'adjust';
   note?: string;
+  /** Un ingreso del usuario, de la misma cuenta que el movimiento. null o ausente = ninguno en particular. */
+  incomeId?: string | null;
 }
 
 /** Cuerpo opcional de POST /api/months/:key/close. Solo cuenta si el cierre crea el mes siguiente. */

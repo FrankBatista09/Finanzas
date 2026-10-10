@@ -237,12 +237,12 @@ interface CardRowProps {
 
 /**
  * La fila de la tarjeta de crédito, al pie de «Gastos mensuales» en todos los meses. Su total (saldo anterior + otros
- * cargos + lo cargado este mes) va en las columnas de importes; el monto es el de «otros cargos», que se escribe aquí.
+ * cargos + lo cargado este mes) va en las columnas de importes; el monto es ese mismo total (los «otros cargos» se editan en el desglose).
  * Su casilla está marcada solo con todo pagado; con un pago parcial queda a medias y la fila dice cuánto falta. Pulsarla
  * siempre abre el diálogo: allí se paga lo que falta o se quita algún pago. El nombre abre el desglose del mes.
  */
 function CardRow({ card, readOnly, accountName, onPay, onDetails }: CardRowProps) {
-  const { inBoth, actions } = useFinanzas();
+  const { inBoth } = useFinanzas();
   const s = useStrings(MES);
   const started = card.payments.length > 0;
   const paid = started && isFullyPaid(card.remainder);
@@ -274,9 +274,8 @@ function CardRow({ card, readOnly, accountName, onPay, onDetails }: CardRowProps
       <Td kind="center" tone="faint">
         —
       </Td>
-      <Td kind="edit">
-        <CellNumber value={card.other} onCommit={(other) => actions.setCardOther(card.card.id, other)} readOnly={readOnly} minWidth={AMOUNT_W} label={s('cardOther', named)} />
-      </Td>
+      {/* What is owed in total; the "other charges" part is edited in the details dialog. */}
+      <Td kind="num">{f2(card.total)}</Td>
       <Td kind="mono">{cur}</Td>
       <Td kind="center" tone="faint">
         —

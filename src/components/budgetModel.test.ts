@@ -531,7 +531,7 @@ describe('extra budget dialog: defaults and what it sends', () => {
 
   it('only a positive amount, an account and a date inside the month can be confirmed', () => {
     const base = newExtraForm('2026-10', '2026-10-09', monthCalc(seedState(), '2026-10').budgetParts, [{ id: 'dr' }]);
-    expect(base).toEqual({ accountId: 'dr', amount: '', note: '', date: '2026-10-09' });
+    expect(base).toEqual({ accountId: 'dr', incomeId: '', amount: '', note: '', date: '2026-10-09' });
     expect(extraProblem(base, '2026-10')).toBe('amount');
     for (const amount of ['0', '-5', 'abc']) expect(extraProblem({ ...base, amount }, '2026-10')).toBe('amount');
     expect(extraProblem({ ...base, amount: '5', date: '2026-11-01' }, '2026-10')).toBe('date');
@@ -542,6 +542,7 @@ describe('extra budget dialog: defaults and what it sends', () => {
       date: '2026-10-09',
       note: 'Medical',
       kind: 'adjust',
+      incomeId: null,
     });
     expect(extraInput({ ...base, amount: '0' }, '2026-10')).toBeNull();
   });

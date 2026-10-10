@@ -279,6 +279,9 @@ function BudgetHistory({ id }: { id: string }) {
                   </Td>
                   <Td>
                     {t(r.kindKey)}
+                    {r.incomeName !== undefined && (
+                      <span className={styles.historyNote}>{t('budgetFromIncome', { income: r.incomeName || t('extraIncomeNoDesc') })}</span>
+                    )}
                     {r.note && <span className={styles.historyNote}>{r.note}</span>}
                   </Td>
                   <Td tone="soft">{r.account}</Td>

@@ -3,11 +3,11 @@
 // shared/calc.ts; aquí solo se decide qué se ve y qué se manda. Sin React, para probarlo en Node.
 
 import type { CloseRequest } from '../../shared/api';
-import { budgetHistory, budgetOverruns, monthCalc } from '../../shared/calc';
-import type { BudgetHistoryRow, BudgetPart, BudgetSummary, Leftover } from '../../shared/calc';
+import { budgetHistory, budgetOverruns, incomeBudgetUse, isMoneyIncome, monthCalc } from '../../shared/calc';
+import type { Balances, BudgetHistoryRow, BudgetPart, BudgetSummary, Leftover } from '../../shared/calc';
 import { f2, parseAmount } from '../../shared/format';
 import { firstDay, inMonth, isISODate, monthOf, nextKey } from '../../shared/month';
-import type { AppState, Currency, ISODate, MonthKey } from '../../shared/types';
+import type { AppState, Currency, Income, ISODate, MonthKey } from '../../shared/types';
 import type { CoreKey } from '../i18n';
 import { isLocalEntry } from '../store';
 
@@ -84,6 +84,8 @@ export interface BudgetHistoryView {
   total: string;
   /** La nota del movimiento, la descripción del ingreso o la vía del envío; '' si no hay. */
   note: string;
+  /** The income an entry was taken from (its description, '' when it has none); absent without a link. */
+  incomeName?: string;
   /**
    * Se puede quitar con ×: un movimiento del registro (no un ingreso ni un envío, que se quitan o se desmarcan en
    * su propia tabla) de un mes abierto y que ya tiene su id del servidor.
@@ -107,6 +109,7 @@ export function budgetHistoryRows(state: AppState, key: MonthKey): BudgetHistory
     negative: r.amount < 0,
     total: f2(r.total),
     note: r.note,
+    ...(r.incomeId !== null && { incomeName: r.incomeName ?? '' }),
     deletable: open && r.kind !== 'income' && r.kind !== 'transfer' && !isLocalEntry(r.id),
   }));
 }
@@ -192,6 +195,8 @@ export function closeRequest(form: CloseBudgetForm, fields: readonly CloseBudget
 
 export interface ExtraForm {
   accountId: string;
+  /** The income it is taken from; '' = none in particular. */
+  incomeId: string;
   /** Text of the amount field; '' until typed. */
   amount: string;
   note: string;
@@ -216,7 +221,7 @@ export function extraDefaultAccount(parts: readonly BudgetPart[], accounts: read
 }
 
 export function newExtraForm(key: MonthKey, today: ISODate, parts: readonly BudgetPart[], accounts: readonly { id: string }[]): ExtraForm {
-  return { accountId: extraDefaultAccount(parts, accounts), amount: '', note: '', date: extraDefaultDate(key, today) };
+  return { accountId: extraDefaultAccount(parts, accounts), incomeId: '', amount: '', note: '', date: extraDefaultDate(key, today) };
 }
 
 /** The amount typed, or null when it is not a number > 0. */
@@ -236,10 +241,88 @@ export function extraProblem(form: ExtraForm, key: MonthKey): 'account' | 'amoun
 }
 
 /** The log entry the dialog adds: always a positive 'adjust', which the history shows as an extra. */
-export function extraInput(form: ExtraForm, key: MonthKey): { accountId: string; amount: number; date: ISODate; note: string; kind: 'adjust' } | null {
+export function extraInput(
+  form: ExtraForm,
+  key: MonthKey,
+): { accountId: string; amount: number; date: ISODate; note: string; kind: 'adjust'; incomeId: string | null } | null {
   const amount = extraAmount(form.amount);
   if (extraProblem(form, key) !== null || amount === null) return null;
-  return { accountId: form.accountId, amount, date: form.date, note: form.note.trim(), kind: 'adjust' };
+  return { accountId: form.accountId, amount, date: form.date, note: form.note.trim(), kind: 'adjust', incomeId: form.incomeId || null };
+}
+
+/** An income the extra can be taken from, in the account's currency. */
+export interface ExtraIncomeOption {
+  id: string;
+  desc: string;
+  date: ISODate;
+  /** As earned: amount and currency of the income itself. */
+  amount: string;
+  currency: string;
+  /** Still free to take, in the account's currency (0 when the income already adds its whole amount). */
+  available: number;
+  /** true: it has "Adds to budget", so the whole of it is already counted. */
+  whole: boolean;
+}
+
+/** The incomes of the viewed month that are in `accountId`, oldest first: the ones an extra can say it comes from. */
+export function extraIncomeOptions(state: AppState, key: MonthKey, accountId: string): ExtraIncomeOption[] {
+  return state.incomes
+    .filter(isMoneyIncome)
+    .filter((i) => i.accountId === accountId && inMonth(i.date, key))
+    .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0))
+    .flatMap((i) => {
+      const use = incomeBudgetUse(state, i);
+      return use ? [{ id: i.id, desc: i.desc, date: i.date, amount: f2(i.amount), currency: i.cur, available: use.available, whole: use.whole }] : [];
+    });
+}
+
+/** What the account holds in the viewed month, never below 0 (a negative balance has nothing to spend); null if unknown. */
+export function accountAvailable(balances: Balances, accountId: string): number | null {
+  const hit = balances.accounts.find((b) => b.account.id === accountId);
+  return hit ? Math.max(0, hit.balance) : null;
+}
+
+/**
+ * The amount the dialog proposes once an income is chosen: what is left of the income, capped by what the account
+ * holds. null when there is nothing to propose (no income, or nothing left).
+ */
+export function extraDefaultAmount(incomeAvailable: number | null, accountAvail: number | null): number | null {
+  if (incomeAvailable === null) return null;
+  const cap = accountAvail === null ? incomeAvailable : Math.min(incomeAvailable, accountAvail);
+  const amount = fieldAmount(cap);
+  return amount > 0 ? amount : null;
+}
+
+/** true when `amount` is more than `limit` by at least a cent. */
+const exceeds = (amount: number, limit: number) => Math.round((amount - limit) * 100) > 0;
+
+export interface ExtraWarnings {
+  /** What is left of the income when the typed amount is more than that; null when it fits or no income is chosen. */
+  income: number | null;
+  /** What the account holds when the typed amount is more than that; null when it fits. */
+  account: number | null;
+}
+
+/** The soft warnings of the dialog: they never block the confirm button. */
+export function extraWarnings(amount: number | null, incomeAvailable: number | null, accountAvail: number | null): ExtraWarnings {
+  if (amount === null) return { income: null, account: null };
+  return {
+    income: incomeAvailable !== null && exceeds(amount, incomeAvailable) ? incomeAvailable : null,
+    account: accountAvail !== null && exceeds(amount, accountAvail) ? accountAvail : null,
+  };
+}
+
+/**
+ * For an income with "Adds to budget": what its account holds (never below 0) when that is less than what the
+ * income adds, in the account's currency; null when the account covers it or the income does not add to the budget.
+ * Informative only: the budget math does not change.
+ */
+export function incomeBudgetShortfall(state: AppState, balances: Balances, income: Income): { available: number; currency: Currency } | null {
+  if (!income.budget || !isMoneyIncome(income)) return null;
+  const use = incomeBudgetUse(state, income);
+  const hit = balances.accounts.find((b) => b.account.id === income.accountId);
+  if (!use || !hit || hit.account.currency === 'XAU') return null;
+  return exceeds(use.amount, Math.max(0, hit.balance)) ? { available: Math.max(0, hit.balance), currency: hit.account.currency } : null;
 }
 
 // ── Month budget summary ─────────────────────────────────────────────────────
@@ -255,6 +338,8 @@ export interface SummaryRow {
   note: string;
   /** Account name of an addition or reduction. */
   account: string | null;
+  /** Description of the income an addition was taken from; null without one. */
+  income: string | null;
   /** Main currency, two decimals; signed for reductions and a negative leftover. */
   amount: string;
   /** Same figure in the second currency; null when there is none or the line has no such figure. */
@@ -277,6 +362,7 @@ export function summaryRows(b: BudgetSummary, compact = false): SummaryRow[] {
     date: null,
     note: '',
     account: null,
+    income: null,
     original: null,
     strong: false,
     ...r,
@@ -297,6 +383,7 @@ export function summaryRows(b: BudgetSummary, compact = false): SummaryRow[] {
         date: dayMonth(l.date),
         note: l.note,
         account: l.accountName,
+        income: l.incomeId === null ? null : (l.incomeName ?? ''),
         original: l.currency === b.main ? null : `${f2(l.amount)} ${l.currency}`,
       },
       l.inMain,

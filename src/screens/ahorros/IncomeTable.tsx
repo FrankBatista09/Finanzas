@@ -1,14 +1,17 @@
 import { useState } from 'react';
 import { CURRENCIES, GOLD_UNIT, isGold, MAX_LEN } from '../../../shared/constants';
-import type { ISODate } from '../../../shared/types';
+import { f2 } from '../../../shared/format';
+import type { Income, ISODate } from '../../../shared/types';
 import { useI18n, useStrings } from '../../i18n';
 import { useFinanzas } from '../../store';
 import type { AddRowControl } from '../../ui';
 import { AddButton, AddRow, CellCheckbox, CellDate, CellNumber, CellSelect, CellText, DeleteButton, SheetTable, Td, Th } from '../../ui';
+import { incomeBudgetShortfall } from '../../components/budgetModel';
 import { Converted, FallbackNote } from './Converted';
 import { RateCell } from './RateCell';
 import { afterIncomeAdd, autoRate, incomeDraftInput, resolveIncomeDraft } from './model';
 import type { IncomeDraft, IncomeItemView } from './model';
+import styles from './IncomeTable.module.css';
 import { AHORROS } from './strings';
 
 export interface IncomeTableProps {
@@ -45,10 +48,11 @@ export interface IncomeTableProps {
  * editan y eliminan aunque el mes seleccionado esté cerrado.
  */
 export function IncomeTable({ label, rows, empty, date, adding, readOnly = false, compact = false, gold = false, onAdded }: IncomeTableProps) {
-  const { main, accountOptions: moneyOptions, incomeAccountOptions, actions } = useFinanzas();
+  const { state, balances, main, accountOptions: moneyOptions, incomeAccountOptions, actions } = useFinanzas();
   const accountOptions = gold ? incomeAccountOptions : moneyOptions;
   const { t } = useI18n();
   const s = useStrings(AHORROS);
+  const byId = new Map(state.incomes.map((i) => [i.id, i]));
 
   return (
     <>
@@ -99,7 +103,7 @@ export function IncomeTable({ label, rows, empty, date, adding, readOnly = false
                     value={r.accountId}
                     options={accountOptions(r.accountId)}
                     onCommit={(accountId) => actions.patchIncome(r.id, { accountId })}
-                    disabled={readOnly}
+                    disabled={readOnly || r.linked === true}
                     minWidth={compact ? 108 : undefined}
                     label={t('account')}
                   />
@@ -135,13 +139,17 @@ export function IncomeTable({ label, rows, empty, date, adding, readOnly = false
                   />
                 )}
                 {!compact && <Converted value={r.main} note={r.mainNote} />}
-                <Td kind="center">
-                  <CellCheckbox
-                    checked={r.budget}
-                    onCommit={(budget) => actions.patchIncome(r.id, { budget })}
-                    disabled={readOnly || grams}
-                    label={s('incomeBudgetOf', named)}
-                  />
+                <Td kind="center" title={r.budgetTaken ? t('incomeTakenTitle', { ...r.budgetTaken }) : undefined}>
+                  <span className={styles.budgetCell}>
+                    <CellCheckbox
+                      checked={r.budget}
+                      onCommit={(budget) => actions.patchIncome(r.id, { budget })}
+                      disabled={readOnly || grams}
+                      label={s('incomeBudgetOf', named)}
+                    />
+                    {r.budgetTaken && <TakenMark text={t('incomeTakenTitle', { ...r.budgetTaken })} />}
+                    <ShortfallMark shortfall={byId.has(r.id) ? incomeBudgetShortfall(state, balances, byId.get(r.id)!) : null} />
+                  </span>
                 </Td>
                 {!compact && (
                   <Td kind="center">
@@ -154,7 +162,14 @@ export function IncomeTable({ label, rows, empty, date, adding, readOnly = false
                   </Td>
                 )}
                 <Td kind="action">
-                  {!readOnly && <DeleteButton compact onClick={() => actions.removeIncome(r.id)} label={s('deleteIncome', named)} />}
+                  {!readOnly &&
+                    (r.linked ? (
+                      <span className={styles.linked} title={t('incomeLinkedTitle')} aria-label={t('incomeLinkedTitle')} role="img">
+                        ⛓
+                      </span>
+                    ) : (
+                      <DeleteButton compact onClick={() => actions.removeIncome(r.id)} label={s('deleteIncome', named)} />
+                    ))}
                 </Td>
               </tr>
             );
@@ -169,13 +184,15 @@ export function IncomeTable({ label, rows, empty, date, adding, readOnly = false
 
 /** Fila de agregar. El borrador vive aquí para que escribir en ella no repinte la lista. */
 function IncomeAddRow({ empty, date, adding, compact, gold, onAdded }: Pick<IncomeTableProps, 'empty' | 'date' | 'adding' | 'compact' | 'gold' | 'onAdded'>) {
-  const { state, main, accountOptions: moneyOptions, incomeAccountOptions, actions } = useFinanzas();
+  const { state, balances, main, accountOptions: moneyOptions, incomeAccountOptions, actions } = useFinanzas();
   const accountOptions = gold ? incomeAccountOptions : moneyOptions;
   const { t } = useI18n();
   const s = useStrings(AHORROS);
   const [draft, setDraft] = useState(empty);
   const shown = resolveIncomeDraft(draft, state, date, gold);
   const grams = isGold(shown.cur);
+  // The draft as an income, only to ask the same question the saved rows ask.
+  const asIncome: Income = { id: '', date: shown.date, desc: shown.desc, accountId: shown.accountId, amount: shown.amount, cur: shown.cur, budget: shown.budget, rate: shown.rate };
 
   const add = () => {
     const input = incomeDraftInput(draft, state, date, gold);
@@ -239,7 +256,10 @@ function IncomeAddRow({ empty, date, adding, compact, gold, onAdded }: Pick<Inco
       {/* La columna de la cifra convertida queda vacía: todavía no hay ingreso que convertir. */}
       {!compact && <Td />}
       <Td kind="center">
-        <CellCheckbox checked={shown.budget} onCommit={(budget) => setDraft((d) => ({ ...d, budget }))} disabled={grams} label={s('newIncomeBudget')} />
+        <span className={styles.budgetCell}>
+          <CellCheckbox checked={shown.budget} onCommit={(budget) => setDraft((d) => ({ ...d, budget }))} disabled={grams} label={s('newIncomeBudget')} />
+          <ShortfallMark shortfall={incomeBudgetShortfall(state, balances, asIncome)} />
+        </span>
       </Td>
       {!compact && (
         <Td kind="center">
@@ -251,5 +271,26 @@ function IncomeAddRow({ empty, date, adding, compact, gold, onAdded }: Pick<Inco
         <AddButton aria-label={t('addIncome')} />
       </Td>
     </AddRow>
+  );
+}
+
+/** A muted dot: part of this income was taken for the budget by hand; the figures are in its tooltip. */
+function TakenMark({ text }: { text: string }) {
+  return (
+    <span className={styles.taken} title={text} aria-label={text} role="img">
+      ◐
+    </span>
+  );
+}
+
+/** Soft warning next to "Adds to budget": the account holds less than the income adds. It never blocks anything. */
+function ShortfallMark({ shortfall }: { shortfall: { available: number; currency: string } | null }) {
+  const { t } = useI18n();
+  if (!shortfall) return null;
+  const text = t('incomeShortTitle', { amount: f2(shortfall.available), currency: shortfall.currency });
+  return (
+    <span className={styles.shortfall} title={text} aria-label={text} role="img">
+      ⚠
+    </span>
   );
 }

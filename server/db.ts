@@ -145,6 +145,7 @@ interface BudgetLogRow {
   amount: number;
   kind: BudgetEntryKind;
   note: string;
+  income_id: string | null;
 }
 
 interface RateRow {
@@ -412,7 +413,16 @@ function toMonths(months: MonthRow[], parts: MonthParts): Record<MonthKey, Month
   // Un orden fijo, el mismo se lea como se lea.
   for (const month of Object.values(byKey)) month.cards?.sort((a, b) => (a.cardId < b.cardId ? -1 : a.cardId > b.cardId ? 1 : 0));
   for (const r of parts.budgetLog) {
-    byKey[r.month_key]?.budgetLog.push({ id: r.id, date: r.date, accountId: r.account_id, amount: r.amount, kind: r.kind, note: r.note });
+    byKey[r.month_key]?.budgetLog.push({
+      id: r.id,
+      date: r.date,
+      accountId: r.account_id,
+      amount: r.amount,
+      kind: r.kind,
+      note: r.note,
+      // Only present when linked: an entry without an income reads exactly as it always did.
+      ...(r.income_id !== null && { incomeId: r.income_id }),
+    });
   }
   // Las partes por cuenta no se guardan: son la suma del registro, hecha al leer.
   for (const month of Object.values(byKey)) month.budgets = budgetsFromLog(month.budgetLog);
@@ -446,7 +456,7 @@ const MONTH_INSERT = ['user_id', 'key', 'closed', 'closed_at'];
 const CREDIT_CARD_INSERT = ['user_id', 'id', 'name', 'bank', 'last4', 'currency', 'credit_limit', 'cutoff_day', 'due_day', 'active', 'sort'];
 const MONTH_CARD_INSERT = ['user_id', 'month_key', 'card_id', 'other'];
 const CARD_PAYMENT_INSERT = ['user_id', 'id', 'month_key', 'card_id', 'date', 'account_id', 'amount', 'sort'];
-const BUDGET_LOG_INSERT = ['user_id', 'id', 'month_key', 'date', 'account_id', 'amount', 'kind', 'note'];
+const BUDGET_LOG_INSERT = ['user_id', 'id', 'month_key', 'date', 'account_id', 'amount', 'kind', 'note', 'income_id'];
 const RATE_INSERT = ['user_id', 'month_key', 'from_currency', 'to_currency', 'date', 'rate'];
 const FIXED_INSERT = ['user_id', 'id', 'month_key', 'name', 'day', 'amount', 'currency', 'paid', 'account_id', 'sort', 'on_card', 'card_id'];
 const TRANSFER_INSERT = ['user_id', 'id', 'month_key', 'date', 'via', 'from_account_id', 'to_account_id', 'amount', 'rate', 'budget', 'fee'];
@@ -1232,10 +1242,21 @@ function outsideMonth(field: string, key: MonthKey): ApiError {
   return validationError(invalidData(`${field}: must be a date in ${key}`));
 }
 
+/** Why an income cannot back a budget entry of `accountId` (400), or null when it can. */
+async function budgetIncomeError(db: D1Database, userId: string, incomeId: string, accountId: string): Promise<ApiError | null> {
+  const income = await db
+    .prepare('SELECT account_id FROM incomes WHERE user_id = ? AND id = ?')
+    .bind(userId, incomeId)
+    .first<{ account_id: string }>();
+  if (!income) return validationError(invalidData(`incomeId: unknown income "${incomeId.slice(0, 64)}"`));
+  if (income.account_id !== accountId) return validationError(invalidData('incomeId: that income is in a different account than the budget entry'));
+  return null;
+}
+
 /**
  * Añade un movimiento al registro del presupuesto del mes: suma (o resta) `amount` a la parte de esa cuenta.
  * Sin fecha lleva la de hoy, llevada al mes; con fecha, tiene que caer dentro del mes (400). 'leftover' no se
- * escribe por aquí (addLeftover).
+ * escribe por aquí (addLeftover). `incomeId` tiene que ser un ingreso del usuario en la misma cuenta (400).
  */
 export async function addBudgetEntry(
   db: D1Database,
@@ -1245,23 +1266,42 @@ export async function addBudgetEntry(
   now: Date = new Date(),
 ): Promise<Month> {
   if (input.date !== undefined && !inMonth(input.date, key)) throw outsideMonth('date', key);
+  const incomeId = input.incomeId ?? null;
+  // The link is checked inside the INSERT too, so an income deleted or moved meanwhile cannot slip through.
   let results: D1Result<unknown>[];
   try {
     results = await db.batch([
       db
         .prepare(
-          `INSERT INTO month_budget_log (user_id, id, month_key, date, account_id, amount, kind, note)
-           SELECT m.user_id, ?3, m.key, ?4, a.id, ?6, ?7, ?8
+          `INSERT INTO month_budget_log (user_id, id, month_key, date, account_id, amount, kind, note, income_id)
+           SELECT m.user_id, ?3, m.key, ?4, a.id, ?6, ?7, ?8, ?9
            FROM months m JOIN accounts a ON a.user_id = m.user_id AND a.id = ?5 ${moneyOnly('a')}
-           WHERE m.user_id = ?1 AND m.key = ?2 AND m.closed = 0 RETURNING id`,
+           WHERE m.user_id = ?1 AND m.key = ?2 AND m.closed = 0
+             AND (?9 IS NULL OR EXISTS (SELECT 1 FROM incomes i WHERE i.user_id = ?1 AND i.id = ?9 AND i.account_id = ?5))
+           RETURNING id`,
         )
-        .bind(userId, key, input.id ?? newId(), input.date ?? entryDate(key, now), input.accountId, input.amount, input.kind ?? 'adjust', input.note ?? ''),
+        .bind(
+          userId,
+          key,
+          input.id ?? newId(),
+          input.date ?? entryDate(key, now),
+          input.accountId,
+          input.amount,
+          input.kind ?? 'adjust',
+          input.note ?? '',
+          incomeId,
+        ),
       ...monthStatements(db, userId, key),
     ]);
   } catch (err) {
     throw isUniqueViolation(err) ? duplicateId() : err;
   }
-  if (rows(results[0]).length === 0) throw await createError(db, userId, key, [input.accountId]);
+  if (rows(results[0]).length === 0) {
+    // The account and the month come first; a bad income is reported only when they are fine.
+    const problem = await createError(db, userId, key, [input.accountId]);
+    if (incomeId === null || problem.code !== 'conflict') throw problem;
+    throw (await budgetIncomeError(db, userId, incomeId, input.accountId)) ?? problem;
+  }
   return writtenMonth(results, key);
 }
 
@@ -1465,7 +1505,7 @@ function initialBudgetStatements(db: D1Database, userId: string, key: MonthKey, 
     BUDGET_LOG_INSERT,
     Object.entries(budgets)
       .filter(([, amount]) => amount !== 0)
-      .map(([accountId, amount]) => [userId, newId(), key, firstDay(key), accountId, amount, 'initial', '']),
+      .map(([accountId, amount]) => [userId, newId(), key, firstDay(key), accountId, amount, 'initial', '', null]),
   );
 }
 
@@ -2133,6 +2173,9 @@ const INCOME_PATCH = {
 } as const;
 const NO_INCOME = 'Income not found.';
 
+/** Budget entries that point to the income (?1 user, ?2 income). */
+const INCOME_LINKED = 'EXISTS (SELECT 1 FROM month_budget_log WHERE user_id = ?1 AND income_id = ?2)';
+
 /**
  * Condición de un ingreso sobre su cuenta `a`: gramos de oro (XAU) si y solo si la cuenta es de oro, y un
  * ingreso a una cuenta de oro nunca sube el presupuesto. `cur` y `budget` son las expresiones SQL de esos dos datos.
@@ -2207,14 +2250,19 @@ export async function patchIncome(db: D1Database, userId: string, id: string, pa
          WHERE user_id = ? AND id = ?
            AND EXISTS (SELECT 1 FROM accounts a WHERE a.user_id = incomes.user_id AND a.id = COALESCE(?, incomes.account_id)
                        AND ${incomeFits('COALESCE(?, incomes.currency)', 'COALESCE(?, incomes.budget)')})
+           AND (? IS NULL OR ? = incomes.account_id OR NOT ${INCOME_LINKED.replace('?1', 'incomes.user_id').replace('?2', 'incomes.id')})
          RETURNING *`,
       )
-      .bind(...sets.values, userId, id, patch.accountId ?? null, patch.cur ?? null, budget);
+      .bind(...sets.values, userId, id, patch.accountId ?? null, patch.cur ?? null, budget, patch.accountId ?? null, patch.accountId ?? null);
   }
   const row = await stmt.first<IncomeRow>();
   if (row) return toIncome(row);
   const current = await db.prepare('SELECT * FROM incomes WHERE user_id = ? AND id = ?').bind(userId, id).first<IncomeRow>();
   if (!current) throw notFoundError(NO_INCOME);
+  if (patch.accountId !== undefined && patch.accountId !== current.account_id) {
+    const linked = await db.prepare(`SELECT ${INCOME_LINKED} AS linked`).bind(userId, id).first<{ linked: number }>();
+    if (linked?.linked) throw conflictError('The income is in use: budget entries were taken from it, so it cannot move to another account.');
+  }
   // El ingreso existe: lo único que pudo frenar la escritura es su cuenta.
   throw (
     (await incomeAccountError(db, userId, patch.accountId ?? current.account_id, patch.cur ?? current.currency, patch.budget ?? current.budget === 1)) ??
@@ -2222,9 +2270,16 @@ export async function patchIncome(db: D1Database, userId: string, id: string, pa
   );
 }
 
+/** An income that budget entries were taken from cannot go: deleting it would leave them pointing at nothing. */
 export async function deleteIncome(db: D1Database, userId: string, id: string): Promise<void> {
-  const row = await db.prepare('DELETE FROM incomes WHERE user_id = ? AND id = ? RETURNING id').bind(userId, id).first();
-  if (!row) throw notFoundError(NO_INCOME);
+  const row = await db
+    .prepare(`DELETE FROM incomes WHERE user_id = ?1 AND id = ?2 AND NOT ${INCOME_LINKED} RETURNING id`)
+    .bind(userId, id)
+    .first();
+  if (row) return;
+  const exists = await db.prepare('SELECT 1 AS found FROM incomes WHERE user_id = ? AND id = ?').bind(userId, id).first();
+  if (!exists) throw notFoundError(NO_INCOME);
+  throw conflictError('The income is in use: budget entries were taken from it. Remove those entries from the budget history first.');
 }
 
 // ── Metas ────────────────────────────────────────────────────────────────────
@@ -2449,6 +2504,7 @@ function dataStatements(db: D1Database, userId: string, state: UserData, stamp: 
   const months = Object.keys(state.months)
     .sort()
     .map((k) => state.months[k]!);
+  const incomeAccount = new Map(state.incomes.map((i) => [i.id, i.accountId]));
   return [
     // Un Excel importado no trae tarjetas: se conservan (credit_cards no se borra) y solo se reescribe lo que cuelga de los meses.
     ...DATA_TABLES.filter((table) => !(keepCards && table === 'credit_cards')).map((table) => db.prepare(`DELETE FROM ${table} WHERE user_id = ?`).bind(userId)),
@@ -2500,7 +2556,18 @@ function dataStatements(db: D1Database, userId: string, state: UserData, stamp: 
       BUDGET_LOG_INSERT,
       // La base exige la fecha dentro del mes: una que venga de fuera se lleva a él en vez de tumbar toda la carga.
       months.flatMap((m) =>
-        m.budgetLog.map((e) => [userId, e.id, m.key, clampToMonth(e.date || firstDay(m.key), m.key), e.accountId, e.amount, e.kind, e.note ?? '']),
+        m.budgetLog.map((e) => [
+          userId,
+          e.id,
+          m.key,
+          clampToMonth(e.date || firstDay(m.key), m.key),
+          e.accountId,
+          e.amount,
+          e.kind,
+          e.note ?? '',
+          // The link survives only if its income came along in the same account.
+          e.incomeId && incomeAccount.get(e.incomeId) === e.accountId ? e.incomeId : null,
+        ]),
       ),
     ),
     ...insertMany(

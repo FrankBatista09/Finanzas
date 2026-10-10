@@ -704,7 +704,7 @@ export interface GoalInput extends Partial<GoalPlan> {
 }
 
 /** Un movimiento del presupuesto escrito a mano. Sin fecha: la que se pase como "hoy", llevada al mes. */
-export type BudgetEntryInput = Pick<BudgetEntryCreate, 'accountId' | 'amount' | 'date' | 'kind' | 'note'>;
+export type BudgetEntryInput = Pick<BudgetEntryCreate, 'accountId' | 'amount' | 'date' | 'kind' | 'note' | 'incomeId'>;
 
 /** Concepto, monto > 0 y una cuenta que exista. Queda al final de la lista, sin pagar. */
 export function newFixed(state: AppState, monthKey: MonthKey, input: FixedInput, id: string): FixedExpense | null {
@@ -991,7 +991,10 @@ export function newBudgetEntry(state: AppState, key: MonthKey, input: BudgetEntr
   const note = (input.note ?? '').trim();
   const valid = Number.isFinite(input.amount) && input.amount !== 0 && isISODate(date) && inMonth(date, key) && note.length <= MAX_LEN.desc;
   if (!openMonth(state, key) || !hasMoneyAccount(state, input.accountId) || !valid) return null;
-  return { id, date, accountId: input.accountId, amount: input.amount, kind: input.kind ?? 'adjust', note };
+  // The server rejects an income of another account or one that does not exist; the same check keeps the local row honest.
+  const income = input.incomeId ? state.incomes.find((i) => i.id === input.incomeId) : undefined;
+  if (input.incomeId && income?.accountId !== input.accountId) return null;
+  return { id, date, accountId: input.accountId, amount: input.amount, kind: input.kind ?? 'adjust', note, ...(input.incomeId && { incomeId: input.incomeId }) };
 }
 
 /** El movimiento de ese id en el registro de un mes abierto; null si no está, si el mes está cerrado o si aún no tiene id del servidor. */

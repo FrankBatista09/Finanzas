@@ -1,0 +1,24 @@
+/* The "Adds to budget" cell: the checkbox plus, when they apply, the taken-by-hand dot and the shortfall warning. */
+.budgetCell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.taken {
+  color: var(--text-muted);
+  font-size: var(--fs-meta);
+  cursor: help;
+}
+
+.shortfall {
+  color: var(--error);
+  font-size: var(--fs-meta);
+  cursor: help;
+}
+
+.linked {
+  color: var(--text-muted);
+  cursor: help;
+}

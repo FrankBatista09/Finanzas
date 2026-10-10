@@ -1,0 +1,12 @@
+.help {
+  margin: 4px 0 0;
+  font-size: var(--fs-meta);
+  color: var(--text-muted);
+}
+
+/* Soft warning: it explains, it never blocks the confirm button. */
+.warn {
+  margin: 4px 0 0;
+  font-size: var(--fs-meta);
+  color: var(--error);
+}

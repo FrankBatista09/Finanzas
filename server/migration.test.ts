@@ -125,10 +125,10 @@ describe('migración 0002 sobre una base con datos de 0001', () => {
     applyMigrations(db, LATER);
     const log = dump(db, 'month_budget_log', 'user_id, month_key, account_id');
     expect(log.map(({ id: _id, ...row }) => row)).toEqual([
-      { user_id: 'eda', month_key: '2026-10', date: '2026-10-01', account_id: 'tr', amount: 9000, kind: 'initial', note: '' },
-      { user_id: 'frank', month_key: '2026-09', date: '2026-09-01', account_id: 'dr', amount: 65000, kind: 'initial', note: '' },
-      { user_id: 'frank', month_key: '2026-10', date: '2026-10-01', account_id: 'dr', amount: 70000, kind: 'initial', note: '' },
-      { user_id: 'frank', month_key: '2026-10', date: '2026-10-01', account_id: 'us', amount: 150.5, kind: 'initial', note: '' },
+      { user_id: 'eda', month_key: '2026-10', date: '2026-10-01', account_id: 'tr', amount: 9000, kind: 'initial', note: '', income_id: null },
+      { user_id: 'frank', month_key: '2026-09', date: '2026-09-01', account_id: 'dr', amount: 65000, kind: 'initial', note: '', income_id: null },
+      { user_id: 'frank', month_key: '2026-10', date: '2026-10-01', account_id: 'dr', amount: 70000, kind: 'initial', note: '', income_id: null },
+      { user_id: 'frank', month_key: '2026-10', date: '2026-10-01', account_id: 'us', amount: 150.5, kind: 'initial', note: '', income_id: null },
     ]);
     // Ids válidos para la API y distintos entre sí.
     const ids = log.map((row) => String(row.id));

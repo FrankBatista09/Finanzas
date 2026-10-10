@@ -532,9 +532,9 @@ describe('mes cerrado · September 2026', () => {
     expect(boxes).toHaveLength(11 + 1 + 2 + 1);
     expect(boxes.every((b) => 'disabled' in b)).toBe(true);
     expect(boxes.filter((b) => 'checked' in b)).toHaveLength(11);
-    // 11 fijos × (concepto, día, monto) + los otros cargos de la tarjeta + 2 envíos × (fecha, vía, monto, tasa, comisión) + 1 ingreso × (fecha, descripción, monto)
+    // 11 fijos × (concepto, día, monto) (el monto de la tarjeta es texto: su total) + 2 envíos × (fecha, vía, monto, tasa, comisión) + 1 ingreso × (fecha, descripción, monto)
     // + 10 transacciones × (fecha, descripción, lugar, monto, notas). Las tasas del mes van como texto.
-    expect(fields).toHaveLength(11 * 3 + 1 + 2 * 5 + 1 * 3 + 10 * 5);
+    expect(fields).toHaveLength(11 * 3 + 2 * 5 + 1 * 3 + 10 * 5);
     expect(fields.every((f) => 'readOnly' in f)).toBe(true);
     const selects = els(html, 'select');
     // 11 fijos × (moneda, pagar con, cuenta) + 2 envíos × (origen, destino) + 1 ingreso × (cuenta, moneda) + 10 × (categoría, método, moneda, cuenta).
@@ -1698,7 +1698,9 @@ describe('tarjetas de crédito', () => {
     const fixed = section(html, 'Fixed monthly expenses', 'By category');
     expect(text(fixed)).toContain('Visa from card');
     expect(fixed).toContain('aria-label="Paid: Visa"');
-    expect(fixed).toContain('aria-label="Other charges on Visa"');
+    // The Amount cell shows the total owed (here 12,000.00), not an input for "other charges".
+    expect(fixed).not.toContain('aria-label="Other charges on Visa"');
+    expect(text(fixed)).toContain('Visa from card — 12,000.00 DOP');
   });
 
   it('por debajo del 10 % el aviso es tranquilo; con día de pago, dice cuándo; en un mes que no es el último, no hay aviso', () => {

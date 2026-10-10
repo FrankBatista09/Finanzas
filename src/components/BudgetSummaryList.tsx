@@ -22,6 +22,7 @@ export function BudgetSummaryList({ summary, compact = false }: { summary: Budge
             <span className={styles.label}>
               {r.date && <span className={styles.date}>{r.date} · </span>}
               {t(r.labelKey)}
+              {r.income !== null && <span className={styles.note}> · {t('budgetFromIncome', { income: r.income || t('extraIncomeNoDesc') })}</span>}
               {r.note && <span className={styles.note}> · {r.note}</span>}
               {r.account && <span className={styles.soft}> · {r.account}</span>}
               {r.original && <span className={styles.soft}> ({r.original})</span>}
