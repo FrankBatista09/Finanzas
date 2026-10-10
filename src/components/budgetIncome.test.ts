@@ -9,6 +9,7 @@ import {
   extraInput,
   extraWarnings,
   incomeBudgetShortfall,
+  incomeShortfalls,
   newExtraForm,
   summaryRows,
 } from './budgetModel';
@@ -80,5 +81,44 @@ describe('incomeBudgetShortfall', () => {
     expect(incomeBudgetShortfall(s, rich, income)).toBeNull();
     const negative = { ...b, accounts: b.accounts.map((a) => (a.account.id === 'us' ? { ...a, balance: -20 } : a)) };
     expect(incomeBudgetShortfall(s, negative, income)).toEqual({ available: 0, currency: 'USD' });
+  });
+});
+
+describe('incomeShortfalls', () => {
+  const withBalance = (s: ReturnType<typeof seedState>, id: string, balance: number) => {
+    const b = balances(s, '2026-10');
+    return { ...b, accounts: b.accounts.map((a) => (a.account.id === id ? { ...a, balance } : a)) };
+  };
+
+  it('lists an "Adds to budget" income whose account is empty, with 0 available', () => {
+    const s = seedState();
+    const income = s.incomes[2]!;
+    income.budget = true;
+    const list = incomeShortfalls(s, withBalance(s, 'us', 0), [income]);
+    expect(list).toHaveLength(1);
+    expect(list[0]).toMatchObject({ id: income.id, desc: income.desc, available: 0, amount: 5800, currency: 'USD' });
+    expect(list[0]!.accountName).toBeTruthy();
+  });
+
+  it('keeps what is left when the account holds some but not enough', () => {
+    const s = seedState();
+    s.incomes[2]!.budget = true;
+    expect(incomeShortfalls(s, withBalance(s, 'us', 1200), [s.incomes[2]!])[0]).toMatchObject({ available: 1200, amount: 5800 });
+  });
+
+  it('skips unticked incomes and accounts that hold enough', () => {
+    const s = seedState();
+    const income = s.incomes[2]!;
+    expect(incomeShortfalls(s, withBalance(s, 'us', 0), [income])).toEqual([]);
+    income.budget = true;
+    expect(incomeShortfalls(s, withBalance(s, 'us', 9000), [income])).toEqual([]);
+  });
+
+  it('ignores gold accounts', () => {
+    const s = seedState();
+    const gold = s.accounts.find((a) => a.currency === 'XAU');
+    if (!gold) return;
+    const income = { ...s.incomes[2]!, accountId: gold.id, budget: true };
+    expect(incomeShortfalls(s, withBalance(s, gold.id, 0), [income])).toEqual([]);
   });
 });

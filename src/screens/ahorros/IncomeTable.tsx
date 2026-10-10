@@ -1,12 +1,14 @@
 import { useState } from 'react';
 import { CURRENCIES, GOLD_UNIT, isGold, MAX_LEN } from '../../../shared/constants';
 import { f2 } from '../../../shared/format';
-import type { Income, ISODate } from '../../../shared/types';
+import type { Balances } from '../../../shared/calc';
+import type { AppState, Income, ISODate } from '../../../shared/types';
+import type { IncomeShortfall } from '../../components/budgetModel';
 import { useI18n, useStrings } from '../../i18n';
 import { useFinanzas } from '../../store';
 import type { AddRowControl } from '../../ui';
 import { AddButton, AddRow, CellCheckbox, CellDate, CellNumber, CellSelect, CellText, DeleteButton, SheetTable, Td, Th } from '../../ui';
-import { incomeBudgetShortfall } from '../../components/budgetModel';
+import { incomeShortfalls } from '../../components/budgetModel';
 import { Converted, FallbackNote } from './Converted';
 import { RateCell } from './RateCell';
 import { afterIncomeAdd, autoRate, incomeDraftInput, resolveIncomeDraft } from './model';
@@ -53,6 +55,12 @@ export function IncomeTable({ label, rows, empty, date, adding, readOnly = false
   const { t } = useI18n();
   const s = useStrings(AHORROS);
   const byId = new Map(state.incomes.map((i) => [i.id, i]));
+  const shortfalls = incomeShortfalls(
+    state,
+    balances,
+    rows.flatMap((r) => byId.get(r.id) ?? []),
+  );
+  const shortById = new Map(shortfalls.map((f) => [f.id, f]));
 
   return (
     <>
@@ -148,7 +156,7 @@ export function IncomeTable({ label, rows, empty, date, adding, readOnly = false
                       label={s('incomeBudgetOf', named)}
                     />
                     {r.budgetTaken && <TakenMark text={t('incomeTakenTitle', { ...r.budgetTaken })} />}
-                    <ShortfallMark shortfall={byId.has(r.id) ? incomeBudgetShortfall(state, balances, byId.get(r.id)!) : null} />
+                    <ShortfallMark text={shortById.has(r.id) ? shortfallText(s, shortById.get(r.id)!) : null} />
                   </span>
                 </Td>
                 {!compact && (
@@ -178,6 +186,23 @@ export function IncomeTable({ label, rows, empty, date, adding, readOnly = false
       </SheetTable>
       {/* El asterisco que explica va en la columna convertida: sin ella no hay nada que explicar. */}
       <FallbackNote show={!compact && rows.some((r) => r.mainNote.fallback)} />
+      {shortfalls.length > 0 && (
+        <ul className={styles.shortList} aria-label={s('shortListLabel')}>
+          {shortfalls.map((f) => (
+            <li key={f.id} className={styles.shortItem}>
+              <span className={styles.shortText} role="status">
+                <span aria-hidden="true">⚠ </span>
+                {shortfallText(s, f)} {s('shortAdvice')}
+              </span>
+              {!readOnly && (
+                <button type="button" className={styles.shortRemove} onClick={() => actions.patchIncome(f.id, { budget: false })} aria-label={s('shortRemoveOf', { description: f.desc })}>
+                  {s('shortRemove')}
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
     </>
   );
 }
@@ -258,7 +283,7 @@ function IncomeAddRow({ empty, date, adding, compact, gold, onAdded }: Pick<Inco
       <Td kind="center">
         <span className={styles.budgetCell}>
           <CellCheckbox checked={shown.budget} onCommit={(budget) => setDraft((d) => ({ ...d, budget }))} disabled={grams} label={s('newIncomeBudget')} />
-          <ShortfallMark shortfall={incomeBudgetShortfall(state, balances, asIncome)} />
+          <ShortfallMark text={addShortText(s, state, balances, asIncome)} />
         </span>
       </Td>
       {!compact && (
@@ -283,11 +308,23 @@ function TakenMark({ text }: { text: string }) {
   );
 }
 
+type Strings = (key: 'shortLine' | 'shortLineNone', values: Record<string, string>) => string;
+
+/** The sentence of one warning line, without the advice: used by the line and by the tooltip of the row mark. */
+function shortfallText(s: Strings, f: IncomeShortfall) {
+  const values = { description: f.desc || '—', account: f.accountName, available: f2(f.available), amount: f2(f.amount), cur: f.currency };
+  return s(f.available > 0 ? 'shortLine' : 'shortLineNone', values);
+}
+
+/** Only the add row: the draft is not saved, so it gets the mark and its tooltip but no line below the table. */
+function addShortText(s: Strings, state: AppState, balances: Balances, draft: Income) {
+  const [f] = incomeShortfalls(state, balances, [draft]);
+  return f ? shortfallText(s, f) : null;
+}
+
 /** Soft warning next to "Adds to budget": the account holds less than the income adds. It never blocks anything. */
-function ShortfallMark({ shortfall }: { shortfall: { available: number; currency: string } | null }) {
-  const { t } = useI18n();
-  if (!shortfall) return null;
-  const text = t('incomeShortTitle', { amount: f2(shortfall.available), currency: shortfall.currency });
+function ShortfallMark({ text }: { text: string | null }) {
+  if (!text) return null;
   return (
     <span className={styles.shortfall} title={text} aria-label={text} role="img">
       ⚠

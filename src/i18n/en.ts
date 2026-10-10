@@ -158,7 +158,6 @@ export const en = {
   incomeLinkedTitle: 'Budget entries were taken from this income: remove them from the budget history first',
   budgetFromIncome: 'from {income}',
   incomeTakenTitle: '{taken} of {amount} {currency} in the budget',
-  incomeShortTitle: 'The account only has {amount} {currency} available, so this adds more to the budget than it holds',
   budgetSummary: 'Month summary',
   summaryInitial: 'Initial budget',
   summaryLeftover: 'Leftover from last month',

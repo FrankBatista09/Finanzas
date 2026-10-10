@@ -325,6 +325,30 @@ export function incomeBudgetShortfall(state: AppState, balances: Balances, incom
   return exceeds(use.amount, Math.max(0, hit.balance)) ? { available: Math.max(0, hit.balance), currency: hit.account.currency } : null;
 }
 
+export interface IncomeShortfall {
+  id: string;
+  desc: string;
+  accountName: string;
+  /** What the account holds (never below 0), in the account's currency. */
+  available: number;
+  /** What the income adds to the budget, in the account's currency. */
+  amount: number;
+  currency: Currency;
+}
+
+/** The incomes (of those given) that add more to the budget than their account holds, for the visible warning list. */
+export function incomeShortfalls(state: AppState, balances: Balances, incomes: readonly Income[]): IncomeShortfall[] {
+  const out: IncomeShortfall[] = [];
+  for (const income of incomes) {
+    const short = incomeBudgetShortfall(state, balances, income);
+    const use = short && incomeBudgetUse(state, income);
+    const hit = short && balances.accounts.find((b) => b.account.id === income.accountId);
+    if (!short || !use || !hit) continue;
+    out.push({ id: income.id, desc: income.desc, accountName: hit.account.name, available: short.available, amount: use.amount, currency: short.currency });
+  }
+  return out;
+}
+
 // ── Month budget summary ─────────────────────────────────────────────────────
 
 export type SummaryRowKind = 'initial' | 'leftover' | 'income' | 'transfer' | 'addition' | 'reduction' | 'added' | 'total' | 'spent' | 'remaining';
