@@ -160,7 +160,6 @@ export const tr: Shape<typeof en> = {
   incomeLinkedTitle: 'Bu gelirden bütçe kayıtları alındı: önce bütçe geçmişinden kaldırın',
   budgetFromIncome: '{income} gelirinden',
   incomeTakenTitle: 'Bütçede {taken} / {amount} {currency}',
-  incomeShortTitle: 'Hesapta yalnızca {amount} {currency} kullanılabilir; bu nedenle bütçeye hesabın tuttuğundan fazlasını ekliyor',
   budgetSummary: 'Ay özeti',
   summaryInitial: 'Başlangıç bütçesi',
   summaryLeftover: 'Geçen aydan kalan',

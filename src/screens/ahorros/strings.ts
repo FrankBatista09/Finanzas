@@ -58,6 +58,12 @@ export const AHORROS = defineStrings({
     incomeRecurringOf: 'Recurring: income of {date}, {amount} {cur}',
     newIncomeRecurring: 'The new income repeats every month',
     incomeMonth: 'Income month',
+    shortLine: '{description}: {account} has {available} {cur} left, so nothing remains of this income, yet it adds {amount} {cur} to the budget.',
+    shortLineNone: '{description}: {account} has no money left, so nothing remains of this income, yet it adds {amount} {cur} to the budget.',
+    shortAdvice: 'Untick "Adds to budget" or use "+ Extra budget" with only the amount that remains.',
+    shortRemove: 'Remove from budget',
+    shortListLabel: 'Incomes that add more to the budget than the account holds',
+    shortRemoveOf: 'Remove {description} from the budget',
 
     // ── Aportes ──────────────────────────────────────────────────────────────
     contribsTitle: 'Contributions',
@@ -121,6 +127,12 @@ export const AHORROS = defineStrings({
     incomeRecurringOf: 'Recurrente: ingreso del {date}, {amount} {cur}',
     newIncomeRecurring: 'El ingreso nuevo se repite cada mes',
     incomeMonth: 'Mes de los ingresos',
+    shortLine: '{description}: {account} solo tiene {available} {cur} disponible, así que de este ingreso solo queda eso, pero aun así suma {amount} {cur} al presupuesto.',
+    shortLineNone: '{description}: {account} no tiene dinero disponible, así que de este ingreso no queda nada, pero aun así suma {amount} {cur} al presupuesto.',
+    shortAdvice: 'Desmarca «Suma al presupuesto» o usa «+ Presupuesto extra» solo con lo que queda.',
+    shortRemove: 'Quitar del presupuesto',
+    shortListLabel: 'Ingresos que suman al presupuesto más de lo que tiene la cuenta',
+    shortRemoveOf: 'Quitar {description} del presupuesto',
 
     contribsTitle: 'Aportes',
     inGoal: 'En la meta',
@@ -183,6 +195,12 @@ export const AHORROS = defineStrings({
     incomeRecurringOf: 'Düzenli: {date} geliri, {amount} {cur}',
     newIncomeRecurring: 'Yeni gelir her ay tekrarlanır',
     incomeMonth: 'Gelir ayı',
+    shortLine: '{description}: {account} hesabında yalnızca {available} {cur} kaldı; bu gelirden yalnızca o kadar kaldı, yine de bütçeye {amount} {cur} ekliyor.',
+    shortLineNone: '{description}: {account} hesabında para kalmadı; bu gelirden hiçbir şey kalmadı, yine de bütçeye {amount} {cur} ekliyor.',
+    shortAdvice: '"Bütçeye eklenir" işaretini kaldırın veya "+ Ek bütçe"yi yalnızca kalan tutarla kullanın.',
+    shortRemove: 'Bütçeden çıkar',
+    shortListLabel: 'Bütçeye hesabın tuttuğundan fazlasını ekleyen gelirler',
+    shortRemoveOf: '{description} gelirini bütçeden çıkar',
 
     contribsTitle: 'Katkılar',
     inGoal: 'Hedefte',

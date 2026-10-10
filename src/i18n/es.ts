@@ -159,7 +159,6 @@ export const es: Shape<typeof en> = {
   incomeLinkedTitle: 'Hay movimientos del presupuesto tomados de este ingreso: quítalos primero del historial del presupuesto',
   budgetFromIncome: 'del ingreso {income}',
   incomeTakenTitle: '{taken} de {amount} {currency} en el presupuesto',
-  incomeShortTitle: 'La cuenta solo tiene {amount} {currency} disponible, así que esto suma al presupuesto más de lo que tiene',
   budgetSummary: 'Resumen del mes',
   summaryInitial: 'Presupuesto inicial',
   summaryLeftover: 'Sobrante del mes pasado',
