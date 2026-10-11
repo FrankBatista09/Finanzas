@@ -97,7 +97,7 @@ export function RatesCard() {
                 </Td>
                 <Td kind="action">
                   {typed && !readOnly && (
-                    <DeleteButton compact onClick={() => actions.removeMonthRate(r.from, r.to, r.date)} label={s('deleteRateSince', names)} />
+                    <DeleteButton compact kind="kindRate" item={`${names.date} · 1 ${r.from} = ${showRate(r.rate)} ${r.to}`} onConfirm={() => actions.removeMonthRate(r.from, r.to, r.date)} label={s('deleteRateSince', names)} />
                   )}
                 </Td>
               </tr>

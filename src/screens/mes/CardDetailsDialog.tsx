@@ -97,7 +97,7 @@ export function CardDetailsDialog({ cardId, onClose, onPay }: Props) {
                   <span className={styles.itemDate}>{p.date}</span>
                   <span className={styles.value}>
                     {money(p.amount)}
-                    {!readOnly && <DeleteButton compact label={s('payCardRemove', { amount: f2(p.amount), currency: cur, account, date: p.date })} onClick={() => actions.removeCardPayment(cardId, p.id)} />}
+                    {!readOnly && <DeleteButton compact kind="kindPayment" item={`${p.date} · ${account} · ${f2(p.amount)} ${cur}`} label={s('payCardRemove', { amount: f2(p.amount), currency: cur, account, date: p.date })} onConfirm={() => actions.removeCardPayment(cardId, p.id)} />}
                   </span>
                 </li>
               );

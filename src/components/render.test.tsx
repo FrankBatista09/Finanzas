@@ -1438,7 +1438,7 @@ describe('primitivas de tabla', () => {
                 <CellNumber value={1137.3} label="Amount" />
               </Td>
               <Td kind="action">
-                <DeleteButton label="Delete Netflix" />
+                <DeleteButton kind="kindExpense" onConfirm={() => {}} label="Delete Netflix" />
               </Td>
             </Tr>
             <AddRow onAdd={() => true}>
@@ -1534,7 +1534,7 @@ describe('primitivas de tabla', () => {
     const html = renderToStaticMarkup(
       <>
         <AddButton />
-        <DeleteButton />
+        <DeleteButton kind="kindExpense" onConfirm={() => {}} />
       </>,
     );
     expect(html).toContain('>Add</button>');

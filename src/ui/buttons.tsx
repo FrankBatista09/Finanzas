@@ -1,8 +1,10 @@
-import { useContext } from 'react';
+import { useContext, useRef } from 'react';
 import type { ButtonHTMLAttributes, MouseEvent, ReactNode } from 'react';
 import { useI18n } from '../i18n';
 import { AddRowContext } from './addRowContext';
 import styles from './buttons.module.css';
+import { useConfirmDelete } from './confirmDelete';
+import type { DeleteKind } from './confirmDelete';
 import { cx } from './cx';
 
 export interface AddButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'type'> {
@@ -28,26 +30,40 @@ export function AddButton({ children, className, onClick, ...rest }: AddButtonPr
   );
 }
 
-export interface DeleteButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'type' | 'children' | 'title'> {
+export interface DeleteButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'type' | 'children' | 'title' | 'onClick'> {
   /** Nombre accesible, ya traducido; conviene decir qué se elimina (t('deleteNamed', { name })). Por defecto "Delete". */
   label?: string;
   /** Padding 4px 6px en vez de 4px 8px (tablas de envíos y aportes). */
   compact?: boolean;
+  /** What is deleted, for the question "Delete {kind}?". */
+  kind: DeleteKind;
+  /** Short description shown in the question ("Netflix · 1,137.00 DOP"). */
+  item?: string;
+  /** Runs only after the user confirms. */
+  onConfirm: () => void;
 }
 
-/** La × de la última columna. */
-export function DeleteButton({ label, compact, className, ...rest }: DeleteButtonProps) {
+/** La × de la última columna. Pregunta antes de eliminar: solo "Delete" en el diálogo llama a onConfirm. */
+export function DeleteButton({ label, compact, className, kind, item = '', onConfirm, ...rest }: DeleteButtonProps) {
   const { t } = useI18n();
+  const ref = useRef<HTMLButtonElement>(null);
+  const confirm = useConfirmDelete(onConfirm);
   return (
-    <button
-      {...rest}
-      type="button"
-      title={t('delete')}
-      aria-label={label ?? t('delete')}
-      className={cx(styles.delete, compact && styles.compact, className)}
-    >
-      ×
-    </button>
+    <>
+      <button
+        {...rest}
+        ref={ref}
+        type="button"
+        title={t('delete')}
+        aria-label={label ?? t('delete')}
+        className={cx(styles.delete, compact && styles.compact, className)}
+        // Safari does not focus a button on click: the dialog gives the focus back to this one when it closes.
+        onClick={() => (ref.current?.focus(), confirm.request(item))}
+      >
+        ×
+      </button>
+      {confirm.dialog(kind)}
+    </>
   );
 }
 

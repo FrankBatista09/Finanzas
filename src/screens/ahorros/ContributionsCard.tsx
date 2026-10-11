@@ -91,7 +91,9 @@ export function ContributionsCard() {
               <Td kind="action">
                 <DeleteButton
                   compact
-                  onClick={() => actions.removeContribution(r.id)}
+                  kind="kindContribution"
+                  item={`${r.goal} · ${r.amountText} ${r.cur}`}
+                  onConfirm={() => actions.removeContribution(r.id)}
                   label={s('deleteContrib', { date: r.date, goal: r.goal, amount: r.amountText, cur: r.cur })}
                 />
               </Td>

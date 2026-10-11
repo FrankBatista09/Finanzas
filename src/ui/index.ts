@@ -10,7 +10,7 @@
 //     <Td kind="edit"><CellNumber value={f.amount} onCommit={(amount) => actions.patchFixed(f.id, { amount })} readOnly={readOnly} label={t('amount')} /></Td>
 //     <Td kind="edit"><CellSelect value={f.cur} options={CURRENCIES} onCommit={(cur) => actions.patchFixed(f.id, { cur })} disabled={readOnly} mono label={t('currency')} /></Td>
 //     <Td kind="num" nowrap>{f2(dop)}</Td>
-//     <Td kind="action">{!readOnly && <DeleteButton onClick={() => actions.removeFixed(f.id)} label={t('deleteNamed', { name: f.name })} />}</Td>
+//     <Td kind="action">{!readOnly && <DeleteButton kind="kindExpense" item={`${f.name} · ${f2(f.amount)} ${f.cur}`} onConfirm={() => actions.removeFixed(f.id)} label={t('deleteNamed', { name: f.name })} />}</Td>
 //   </Tr>
 //
 // Fila de agregar (el borrador vive en el estado de la pantalla; 0 = monto vacío; Enter o el botón llaman a onAdd).
@@ -33,6 +33,8 @@ export { addRowKeyAction, AddRowsOpenContext } from './addRowContext';
 export type { AddRowControl } from './addRowContext';
 export { AddButton, DeleteButton, ExpandButton } from './buttons';
 export type { AddButtonProps, DeleteButtonProps } from './buttons';
+export { ConfirmDeleteDialog, useConfirmDelete } from './confirmDelete';
+export type { DeleteKind } from './confirmDelete';
 export { Card, CardHeader, CardNote, Stack } from './Card';
 export type { CardHeaderProps, CardProps } from './Card';
 export { CellCheckbox, CellDate, CellNumber, CellSelect, CellText, NumberField } from './cells';

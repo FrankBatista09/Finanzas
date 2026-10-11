@@ -394,7 +394,7 @@ const FixedRow = memo(function FixedRow({ row: f, inMain, inSecond, accounts, ca
           {f2(inSecond)}
         </Td>
       )}
-      <Td kind="action">{!readOnly && <DeleteButton onClick={() => actions.removeFixed(f.id)} label={t('deleteNamed', named)} />}</Td>
+      <Td kind="action">{!readOnly && <DeleteButton kind="kindExpense" item={`${f.name} · ${f2(f.amount)} ${f.cur}`} onConfirm={() => actions.removeFixed(f.id)} label={t('deleteNamed', named)} />}</Td>
     </Tr>
   );
 });

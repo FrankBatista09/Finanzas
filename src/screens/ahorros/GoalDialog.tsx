@@ -3,7 +3,7 @@ import { CURRENCIES, MAX_LEN } from '../../../shared/constants';
 import type { Goal } from '../../../shared/types';
 import { useI18n, useStrings } from '../../i18n';
 import { useFinanzas } from '../../store';
-import { CheckField, Dialog, DialogButton, DialogFields, Field, Input, MonthPicker, Select } from '../../ui';
+import { CheckField, Dialog, DialogButton, DialogFields, Field, Input, MonthPicker, Select, useConfirmDelete } from '../../ui';
 import styles from './GoalDialog.module.css';
 import { formToInput, goalFormErrors, goalToForm, newGoalForm, planSummary, setCur, setEnd, setMonthly, setStart, setTarget } from './goalForm';
 import { wholeAmount } from './model';
@@ -52,9 +52,9 @@ export function GoalDialog({ goal, onClose }: GoalDialogProps) {
     else setTried(true);
   };
 
-  const remove = () => {
+  const confirmRemove = useConfirmDelete(() => {
     if (goal && actions.removeGoal(goal.id)) onClose();
-  };
+  });
 
   return (
     <Dialog
@@ -67,7 +67,7 @@ export function GoalDialog({ goal, onClose }: GoalDialogProps) {
           {goal && (
             <div className={styles.remove}>
               {/* Una meta con aportes no se puede eliminar (el servidor respondería 409): el botón lo dice en vez de fallar. */}
-              <DialogButton variant="danger" onClick={remove} disabled={contribCount > 0} aria-describedby={contribCount > 0 ? `${id}-blocked` : undefined}>
+              <DialogButton variant="danger" onClick={() => confirmRemove.request(goal.name)} disabled={contribCount > 0} aria-describedby={contribCount > 0 ? `${id}-blocked` : undefined}>
                 {s('deleteGoal')}
               </DialogButton>
               {contribCount > 0 && (
@@ -77,6 +77,7 @@ export function GoalDialog({ goal, onClose }: GoalDialogProps) {
               )}
             </div>
           )}
+          {confirmRemove.dialog('kindGoal')}
           {/* Juntos, para que en una pantalla estrecha bajen los dos a la vez y no quede "Save" solo en otra línea. */}
           <div className={styles.actions}>
             <DialogButton variant="quiet" onClick={onClose}>

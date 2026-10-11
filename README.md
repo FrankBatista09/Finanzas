@@ -10,6 +10,7 @@ App web de finanzas personales para quien cobra y gasta en más de una moneda (D
 - **Excel**: descarga un resumen del histórico del usuario en un `.xlsx` (una hoja por mes + ahorros + Config), en su idioma, y lo vuelve a cargar. El libro conserva el diseño original (USD y DOP, dos cuentas): ver [Excel](#excel).
 - **Claude**: un servidor MCP y un endpoint de ingesta para registrar gastos, ingresos y envíos desde un chat («gasté 850 en Uber hoy con tarjeta»).
 - **Usuarios y ajustes**: selector de usuario en la barra superior y un panel de ajustes con el idioma (inglés, español o turco), la moneda principal, la segunda moneda, la cuenta por defecto y tres colores. Todo se guarda por usuario.
+- **Confirmar antes de eliminar**: toda × de la interfaz (gastos, transacciones, envíos, ingresos, tasas, movimientos del presupuesto, aportes, pagos de tarjeta, cuentas) y los botones «Delete» de metas y tarjetas preguntan primero «Delete …?» en un diálogo con el nombre y el monto; solo «Delete» elimina (Esc y «Cancel» no). Se hace una vez, en `DeleteButton` y `useConfirmDelete` (`src/ui/confirmDelete.tsx`); no toca la API.
 
 Se despliega en Cloudflare: **Pages** (frontend), **Pages Functions** (API y MCP) y **D1** (base de datos). El proyecto de Pages se llama `fe-finance`. La especificación de diseño y el prototipo de referencia (de la versión 1, de un solo usuario y en español) están en `design_handoff/`.
 

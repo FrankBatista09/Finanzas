@@ -329,7 +329,7 @@ const TransferRow = memo(function TransferRow({ row: tr, fromCur, toCur, fromOpt
         />
       </Td>
       <Td kind="action">
-        {!readOnly && <DeleteButton compact onClick={() => actions.removeTransfer(tr.id)} label={s('deleteTransfer', { date: shortDate(tr.date) })} />}
+        {!readOnly && <DeleteButton compact kind="kindTransfer" item={`${named.name} · ${f2(tr.amount)} ${fromCur ?? ''}`.trim()} onConfirm={() => actions.removeTransfer(tr.id)} label={s('deleteTransfer', { date: shortDate(tr.date) })} />}
       </Td>
     </tr>
   );
