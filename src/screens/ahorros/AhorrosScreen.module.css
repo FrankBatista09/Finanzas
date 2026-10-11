@@ -258,3 +258,43 @@
   opacity: 0.4;
   cursor: default;
 }
+
+/* The "From income" line under a contribution with a source account: a row of its own, so the narrow account
+   column does not have to hold it. Two classes on the joined row beat the add row's own border rule. */
+.joined.joined > td {
+  border-bottom-color: transparent;
+}
+
+.incomeRow > td {
+  padding: 0;
+}
+
+.incomeRowAdd {
+  background: var(--add-row);
+}
+
+.incomeLine {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 12px;
+  padding: 0 10px 2px 22px;
+  font-size: var(--fs-meta);
+}
+
+.incomeLabel {
+  color: var(--text-muted);
+}
+
+.incomeSelect {
+  flex: 0 1 360px;
+  min-width: 200px;
+}
+
+.incomeHint {
+  color: var(--text-muted);
+}
+
+.incomeWarn {
+  color: var(--error);
+}

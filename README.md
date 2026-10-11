@@ -177,7 +177,7 @@ En «Savings», cada tarjeta tiene «Edit» y al final está «Add goal». Una m
 - **Sin plan** (aportes variables): solo acumula lo que se le aporta.
 - **Con plan**: ahorro mensual (en la moneda de la meta), mes de inicio y mes objetivo, los tres juntos. El monto objetivo no se guarda: es `ahorro mensual × meses`, contando los dos extremos. En el formulario se escribe el objetivo o el mensual y el otro se calcula.
 
-La moneda de la meta se elige en el formulario (por defecto, la principal); si se cambia después, los montos escritos se quedan como están y lo ahorrado se vuelve a convertir. Los aportes se editan en su fila (fecha, meta, monto y moneda). Una meta con aportes no se puede eliminar hasta borrar o mover sus aportes. Los nombres no se repiten dentro de un usuario (sin distinguir mayúsculas) y no se traducen.
+La moneda de la meta se elige en el formulario (por defecto, la principal); si se cambia después, los montos escritos se quedan como están y lo ahorrado se vuelve a convertir. Los aportes se editan en su fila (fecha, meta, monto y moneda). Un aporte con cuenta de origen dice además de qué ingreso de esa cuenta sale («From income», `contributions.income_id`, migración `0013`; opcional: por defecto «Not from a specific income»): lo que queda de ese ingreso (`incomeBudgetUse`: monto − extras del presupuesto − aportes) baja en el diálogo «Extra budget», en el punto ◐ de la tabla de ingresos y en el aviso de un ingreso con «Adds to budget» que ya fue a metas. Un ingreso con aportes (o con movimientos del presupuesto) no se elimina ni cambia de cuenta (`409`); si un aporte cambia de cuenta sin decir ingreso, pierde el vínculo. Una meta con aportes no se puede eliminar hasta borrar o mover sus aportes. Los nombres no se repiten dentro de un usuario (sin distinguir mayúsculas) y no se traducen.
 
 ## API
 
@@ -193,7 +193,7 @@ El contrato completo (rutas, cuerpos y reglas) está en el comentario inicial de
 - **`DELETE /api/months/:key`**: elimina el mes con todo lo suyo.
 - **`/api/incomes`** (`GET`, `POST`, `PATCH /:id`, `DELETE /:id`): ingresos. A una cuenta de oro le entran gramos: `cur` tiene que ser `XAU` (y solo ahí) y `budget` no puede ser `true`.
 - Una cuenta de oro (`currency: "XAU"`) en un cuerpo que es de dinero (presupuesto, gasto fijo, transacción, envío, cuenta por defecto) responde `400 validation` (`"<nombre>" is a gold account (grams): …`).
-- **`/api/fixed`**, **`/api/transactions`**: llevan `accountId` (si falta al crear, la cuenta por defecto). **`/api/transfers`**: `fromAccountId`, `toAccountId`, `amount` y `rate` opcional (si falta, la del mes para ese par). Envíos y aportes (**`/api/contributions`**) también se editan con `PATCH`.
+- **`/api/fixed`**, **`/api/transactions`**: llevan `accountId` (si falta al crear, la cuenta por defecto). **`/api/transfers`**: `fromAccountId`, `toAccountId`, `amount` y `rate` opcional (si falta, la del mes para ese par). Envíos y aportes (**`/api/contributions`**) también se editan con `PATCH`. Un aporte acepta `incomeId` (null lo quita): tiene que ser un ingreso del usuario en la misma cuenta que su `accountId`, y sin `accountId` no vale (`400`).
 - **`/api/goals`**: crear, editar y eliminar metas, con su moneda (`cur`; por defecto la principal). Un plan a medias responde `400`; un nombre repetido o eliminar una meta con aportes, `409 conflict`.
 - Una cuenta que no existe, en cualquier cuerpo, responde `400 validation` (`Unknown account "<id>".`).
 - Los errores tienen siempre la forma `{ "error": { "code", "message" } }`, con el mensaje en inglés.

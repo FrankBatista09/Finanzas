@@ -980,6 +980,27 @@ describe('applyImportToState · metas y aportes', () => {
     expect(applyImportToState(before, { months: [], goals: [], contribs: null }, ids()).contribs).toBe(before.contribs);
   });
 
+  it('un aporte que ya existía igual conserva su tasa, su cuenta y su ingreso; uno nuevo nace sin ellos', () => {
+    const before = base();
+    before.contribs = [
+      { id: 'old', goalId: 'turkey', date: '2026-10-01', amount: 100, cur: 'USD', rate: null, accountId: 'us', incomeId: 'seed-in-3' },
+    ];
+    const state = applyImportToState(
+      before,
+      {
+        months: [],
+        goals: null,
+        contribs: [
+          { date: '2026-10-01', goalName: 'Trip to Turkey', amount: 100, cur: 'USD' },
+          { date: '2026-10-02', goalName: 'Trip to Turkey', amount: 50, cur: 'USD' },
+        ],
+      },
+      ids(),
+    );
+    expect(state.contribs[0]).toMatchObject({ accountId: 'us', incomeId: 'seed-in-3' });
+    expect(state.contribs[1]).toEqual({ id: expect.any(String), goalId: 'turkey', date: '2026-10-02', amount: 50, cur: 'USD', rate: null, accountId: null });
+  });
+
   it('las metas se buscan por nombre exacto y, si no, sin distinguir mayúsculas; con nombres repetidos gana la primera', () => {
     const before = base();
     before.goals.push(goal('car-2', 'CAR', { sort: 6 }), goal('car-3', 'Car', { sort: 7 }));

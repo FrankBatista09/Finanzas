@@ -272,6 +272,7 @@ interface ContributionRow {
   currency: Currency;
   rate: number | null;
   account_id: string | null;
+  income_id: string | null;
 }
 
 interface SettingRow {
@@ -374,7 +375,17 @@ function toGoal(r: GoalRow): Goal {
 }
 
 function toContribution(r: ContributionRow): Contribution {
-  return { id: r.id, goalId: r.goal_id, date: r.date, amount: r.amount, cur: r.currency, rate: r.rate ?? null, accountId: r.account_id ?? null };
+  return {
+    id: r.id,
+    goalId: r.goal_id,
+    date: r.date,
+    amount: r.amount,
+    cur: r.currency,
+    rate: r.rate ?? null,
+    accountId: r.account_id ?? null,
+    // Left out when unlinked, like BudgetEntry.incomeId.
+    ...(r.income_id && { incomeId: r.income_id }),
+  };
 }
 
 /** Las filas que cuelgan de los meses, de uno o de todos. */
@@ -480,7 +491,7 @@ const TX_INSERT = [
 const OUTSIDE_INSERT = ['user_id', 'id', 'month_key', 'date', 'name', 'description', 'account_id', 'amount', 'currency', 'sort'];
 const INCOME_INSERT = ['user_id', 'id', 'date', 'description', 'account_id', 'amount', 'currency', 'budget', 'rate', 'recurring'];
 const GOAL_INSERT = ['user_id', 'id', 'name', 'currency', 'monthly', 'start_month', 'end_month', 'approx_currency', 'sort'];
-const CONTRIBUTION_INSERT = ['user_id', 'id', 'goal_id', 'date', 'amount', 'currency', 'rate', 'account_id'];
+const CONTRIBUTION_INSERT = ['user_id', 'id', 'goal_id', 'date', 'amount', 'currency', 'rate', 'account_id', 'income_id'];
 
 export function newId(): string {
   return crypto.randomUUID();
@@ -2173,8 +2184,9 @@ const INCOME_PATCH = {
 } as const;
 const NO_INCOME = 'Income not found.';
 
-/** Budget entries that point to the income (?1 user, ?2 income). */
-const INCOME_LINKED = 'EXISTS (SELECT 1 FROM month_budget_log WHERE user_id = ?1 AND income_id = ?2)';
+/** Budget entries or contributions that point to the income (?1 user, ?2 income). */
+const INCOME_LINKED =
+  '(EXISTS (SELECT 1 FROM month_budget_log WHERE user_id = ?1 AND income_id = ?2) OR EXISTS (SELECT 1 FROM contributions WHERE user_id = ?1 AND income_id = ?2))';
 
 /**
  * Condición de un ingreso sobre su cuenta `a`: gramos de oro (XAU) si y solo si la cuenta es de oro, y un
@@ -2250,7 +2262,7 @@ export async function patchIncome(db: D1Database, userId: string, id: string, pa
          WHERE user_id = ? AND id = ?
            AND EXISTS (SELECT 1 FROM accounts a WHERE a.user_id = incomes.user_id AND a.id = COALESCE(?, incomes.account_id)
                        AND ${incomeFits('COALESCE(?, incomes.currency)', 'COALESCE(?, incomes.budget)')})
-           AND (? IS NULL OR ? = incomes.account_id OR NOT ${INCOME_LINKED.replace('?1', 'incomes.user_id').replace('?2', 'incomes.id')})
+           AND (? IS NULL OR ? = incomes.account_id OR NOT ${INCOME_LINKED.replaceAll('?1', 'incomes.user_id').replaceAll('?2', 'incomes.id')})
          RETURNING *`,
       )
       .bind(...sets.values, userId, id, patch.accountId ?? null, patch.cur ?? null, budget, patch.accountId ?? null, patch.accountId ?? null);
@@ -2261,7 +2273,7 @@ export async function patchIncome(db: D1Database, userId: string, id: string, pa
   if (!current) throw notFoundError(NO_INCOME);
   if (patch.accountId !== undefined && patch.accountId !== current.account_id) {
     const linked = await db.prepare(`SELECT ${INCOME_LINKED} AS linked`).bind(userId, id).first<{ linked: number }>();
-    if (linked?.linked) throw conflictError('The income is in use: budget entries were taken from it, so it cannot move to another account.');
+    if (linked?.linked) throw conflictError('The income is in use: budget entries or goal contributions were taken from it, so it cannot move to another account.');
   }
   // El ingreso existe: lo único que pudo frenar la escritura es su cuenta.
   throw (
@@ -2279,7 +2291,7 @@ export async function deleteIncome(db: D1Database, userId: string, id: string): 
   if (row) return;
   const exists = await db.prepare('SELECT 1 AS found FROM incomes WHERE user_id = ? AND id = ?').bind(userId, id).first();
   if (!exists) throw notFoundError(NO_INCOME);
-  throw conflictError('The income is in use: budget entries were taken from it. Remove those entries from the budget history first.');
+  throw conflictError('The income is in use: budget entries or goal contributions were taken from it. Remove those entries or contributions first.');
 }
 
 // ── Metas ────────────────────────────────────────────────────────────────────
@@ -2392,7 +2404,15 @@ export async function deleteGoal(db: D1Database, userId: string, id: string): Pr
 // ── Aportes ──────────────────────────────────────────────────────────────────
 // Son un apartado, no un movimiento: no llevan cuenta y no cambian ningún saldo.
 
-const CONTRIBUTION_PATCH = { goalId: 'goal_id', date: 'date', amount: 'amount', cur: 'currency', rate: 'rate', accountId: 'account_id' } as const;
+const CONTRIBUTION_PATCH = {
+  goalId: 'goal_id',
+  date: 'date',
+  amount: 'amount',
+  cur: 'currency',
+  rate: 'rate',
+  accountId: 'account_id',
+  incomeId: 'income_id',
+} as const;
 const NO_CONTRIBUTION = 'Contribution not found.';
 
 export async function listContributions(db: D1Database, userId: string): Promise<Contribution[]> {
@@ -2403,21 +2423,45 @@ export async function listContributions(db: D1Database, userId: string): Promise
   return res.results.map(toContribution);
 }
 
+/** Why `incomeId` cannot back a contribution taken from `accountId` (400), or null when it can. */
+async function contributionIncomeError(db: D1Database, userId: string, incomeId: string, accountId: string | null): Promise<ApiError | null> {
+  if (!accountId) return validationError(invalidData('incomeId: an income can only be given together with the account it is in (accountId)'));
+  const income = await db
+    .prepare('SELECT account_id FROM incomes WHERE user_id = ? AND id = ?')
+    .bind(userId, incomeId)
+    .first<{ account_id: string }>();
+  if (!income) return validationError(invalidData(`incomeId: unknown income "${incomeId.slice(0, 64)}"`));
+  if (income.account_id !== accountId) return validationError(invalidData('incomeId: that income is in a different account than the contribution'));
+  return null;
+}
+
 export async function createContribution(db: D1Database, userId: string, input: ContributionCreate): Promise<Contribution> {
   // La cuenta de origen: del usuario y de dinero (una de oro, o una que no existe, es 400).
   const bad = input.accountId ? await accountError(db, userId, [input.accountId]) : null;
   if (bad) throw bad;
+  const incomeId = input.incomeId ?? null;
+  if (incomeId !== null) {
+    const problem = await contributionIncomeError(db, userId, incomeId, input.accountId ?? null);
+    if (problem) throw problem;
+  }
   // La fila sale de las metas del usuario: una meta de otro usuario es como una que no existe.
   const row = await firstOrConflict<ContributionRow>(
     db
       .prepare(
-        `INSERT INTO contributions (user_id, id, goal_id, date, amount, currency, rate, account_id)
-         SELECT g.user_id, ?2, g.id, ?4, ?5, ?6, ?7, ?8 FROM goals g WHERE g.user_id = ?1 AND g.id = ?3
+        `INSERT INTO contributions (user_id, id, goal_id, date, amount, currency, rate, account_id, income_id)
+         SELECT g.user_id, ?2, g.id, ?4, ?5, ?6, ?7, ?8, ?9 FROM goals g
+         WHERE g.user_id = ?1 AND g.id = ?3
+           AND (?9 IS NULL OR EXISTS (SELECT 1 FROM incomes i WHERE i.user_id = ?1 AND i.id = ?9 AND i.account_id = ?8))
          RETURNING *`,
       )
-      .bind(userId, input.id ?? newId(), input.goalId, input.date, input.amount, input.cur, input.rate ?? null, input.accountId ?? null),
+      .bind(userId, input.id ?? newId(), input.goalId, input.date, input.amount, input.cur, input.rate ?? null, input.accountId ?? null, incomeId),
   );
-  if (!row) throw notFoundError(NO_GOAL);
+  if (!row) {
+    // The goal comes first; an income that vanished after the check above is reported as a conflict.
+    const goal = await db.prepare('SELECT 1 AS found FROM goals WHERE user_id = ? AND id = ?').bind(userId, input.goalId).first();
+    if (!goal) throw notFoundError(NO_GOAL);
+    throw conflictError('The income changed while the contribution was being saved. Try again.');
+  }
   return toContribution(row);
 }
 
@@ -2429,27 +2473,57 @@ export async function patchContribution(
 ): Promise<Contribution> {
   const bad = patch.accountId ? await accountError(db, userId, [patch.accountId]) : null;
   if (bad) throw bad;
-  const sets = setClause<ContributionPatch>(CONTRIBUTION_PATCH, patch);
+  // The income has to be in the account the contribution ends up with, so both are judged on the resulting row.
+  // Changing the account without saying the income drops the link: the old income is no longer in that account.
+  let changes = patch;
+  let income: { id: string; account: string } | null = null;
+  if (patch.accountId !== undefined || patch.incomeId !== undefined) {
+    const current = await db
+      .prepare('SELECT account_id, income_id FROM contributions WHERE user_id = ? AND id = ?')
+      .bind(userId, id)
+      .first<{ account_id: string | null; income_id: string | null }>();
+    if (!current) throw notFoundError(NO_CONTRIBUTION);
+    const account = patch.accountId !== undefined ? patch.accountId : current.account_id;
+    let incomeId = patch.incomeId !== undefined ? patch.incomeId : current.income_id;
+    if (patch.incomeId === undefined && incomeId !== null && account !== current.account_id) {
+      incomeId = null;
+      changes = { ...patch, incomeId: null };
+    }
+    if (incomeId !== null) {
+      const problem = await contributionIncomeError(db, userId, incomeId, account);
+      if (problem) throw problem;
+      income = { id: incomeId, account: account! };
+    }
+  }
+  const sets = setClause<ContributionPatch>(CONTRIBUTION_PATCH, changes);
+  // Re-checks the income inside the write, so one deleted or moved meanwhile cannot slip through.
+  const incomeGuard = income ? ' AND EXISTS (SELECT 1 FROM incomes WHERE user_id = ? AND id = ? AND account_id = ?)' : '';
+  const guardValues = income ? [userId, income.id, income.account] : [];
   let stmt: D1PreparedStatement;
   if (sets.columns.length === 0) {
     stmt = db.prepare('SELECT * FROM contributions WHERE user_id = ? AND id = ?').bind(userId, id);
   } else if (patch.goalId === undefined) {
     stmt = db
-      .prepare(`UPDATE contributions SET ${sets.sql} WHERE user_id = ? AND id = ? RETURNING *`)
-      .bind(...sets.values, userId, id);
+      .prepare(`UPDATE contributions SET ${sets.sql} WHERE user_id = ? AND id = ?${incomeGuard} RETURNING *`)
+      .bind(...sets.values, userId, id, ...guardValues);
   } else {
     // La meta de destino tiene que existir y ser del usuario (se comprueba en la misma sentencia, antes que la clave foránea).
     stmt = db
       .prepare(
         `UPDATE contributions SET ${sets.sql}
-         WHERE user_id = ? AND id = ? AND EXISTS (SELECT 1 FROM goals WHERE user_id = ? AND id = ?) RETURNING *`,
+         WHERE user_id = ? AND id = ? AND EXISTS (SELECT 1 FROM goals WHERE user_id = ? AND id = ?)${incomeGuard} RETURNING *`,
       )
-      .bind(...sets.values, userId, id, userId, patch.goalId);
+      .bind(...sets.values, userId, id, userId, patch.goalId, ...guardValues);
   }
   const row = await stmt.first<ContributionRow>();
   if (row) return toContribution(row);
   const exists = await db.prepare('SELECT 1 AS found FROM contributions WHERE user_id = ? AND id = ?').bind(userId, id).first();
-  throw notFoundError(exists ? NO_GOAL : NO_CONTRIBUTION);
+  if (!exists) throw notFoundError(NO_CONTRIBUTION);
+  if (income) {
+    const goal = patch.goalId === undefined ? true : await db.prepare('SELECT 1 AS found FROM goals WHERE user_id = ? AND id = ?').bind(userId, patch.goalId).first();
+    if (goal) throw (await contributionIncomeError(db, userId, income.id, income.account)) ?? conflictError('The income changed while the contribution was being saved. Try again.');
+  }
+  throw notFoundError(NO_GOAL);
 }
 
 export async function deleteContribution(db: D1Database, userId: string, id: string): Promise<void> {
@@ -2630,7 +2704,18 @@ function dataStatements(db: D1Database, userId: string, state: UserData, stamp: 
       db,
       'contributions',
       CONTRIBUTION_INSERT,
-      state.contribs.map((c) => [userId, c.id, c.goalId, c.date, c.amount, c.cur, c.rate ?? null, c.accountId ?? null]),
+      state.contribs.map((c) => [
+        userId,
+        c.id,
+        c.goalId,
+        c.date,
+        c.amount,
+        c.cur,
+        c.rate ?? null,
+        c.accountId ?? null,
+        // As with budget entries: the link survives only if its income came along in the contribution's account.
+        c.incomeId && c.accountId && incomeAccount.get(c.incomeId) === c.accountId ? c.incomeId : null,
+      ]),
     ),
   ];
 }

@@ -464,6 +464,7 @@ export const contributionCreateSchema = z.strictObject({
   cur: currency(),
   rate: positive().nullable().optional(),
   accountId: id().nullable().optional(),
+  incomeId: id().nullable().optional(),
 }) satisfies z.ZodType<ContributionCreate>;
 
 export const contributionPatchSchema = z.strictObject({
@@ -473,6 +474,7 @@ export const contributionPatchSchema = z.strictObject({
   cur: currency().optional(),
   rate: positive().nullable().optional(),
   accountId: id().nullable().optional(),
+  incomeId: id().nullable().optional(),
 }) satisfies z.ZodType<ContributionPatch>;
 
 // ── Registro desde Claude ────────────────────────────────────────────────────

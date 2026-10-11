@@ -5,6 +5,8 @@ import type { AppState, Contribution, Income, Language } from '../../../shared/t
 import {
   afterAdd,
   afterIncomeAdd,
+  contributionIncomeHint,
+  contributionIncomeOptions,
   contributionRows,
   draftInput,
   EMPTY_DRAFT,
@@ -24,6 +26,7 @@ import {
   resolveDraft,
   resolveIncomeDraft,
   wholeAmount,
+  withAccount,
 } from './model';
 import type { ContributionDraft, IncomeDraft } from './model';
 
@@ -771,6 +774,7 @@ describe('aportes', () => {
       rate: null,
       rateAuto: 58.76,
       accountId: '',
+      incomeId: '',
       inGoal: '3,000.00 USD',
       goalNote: NO_NOTE,
       main: '176,280.00', // 3,000 × 58.76
@@ -809,6 +813,7 @@ describe('aportes', () => {
         rate: null,
         rateAuto: null,
         accountId: '',
+        incomeId: '',
         inGoal: '100.00 USD',
         goalNote: NO_NOTE,
         main: '5,876.00',
@@ -924,8 +929,26 @@ describe('fila de agregar un aporte', () => {
 
   it('después de agregar solo se limpia el monto', () => {
     const d = draft({ date: '2026-09-15', goalId: 'personal', amount: 2500, cur: 'DOP' });
-    expect(afterAdd(d)).toEqual({ date: '2026-09-15', goalId: 'personal', amount: 0, cur: 'DOP', rate: null, accountId: null });
+    expect(afterAdd(d)).toEqual({ date: '2026-09-15', goalId: 'personal', amount: 0, cur: 'DOP', rate: null, accountId: null, incomeId: null });
     expect(afterAdd(draft({ amount: 10 }))).toEqual(EMPTY_DRAFT);
+  });
+
+  it('con una cuenta de origen el ingreso es opcional: sin ingreso se agrega igual', () => {
+    expect(draftInput(draft({ amount: 100, accountId: 'us' }), goals, TODAY)).toEqual({
+      goalId: 'emergency', date: TODAY, amount: 100, cur: 'USD', rate: null, accountId: 'us',
+    });
+    expect(draftInput(draft({ amount: 100, accountId: 'us', incomeId: '' }), goals, TODAY)).toEqual({
+      goalId: 'emergency', date: TODAY, amount: 100, cur: 'USD', rate: null, accountId: 'us',
+    });
+    expect(draftInput(draft({ amount: 100, accountId: 'us', incomeId: 'seed-in-3' }), goals, TODAY)).toMatchObject({ accountId: 'us', incomeId: 'seed-in-3' });
+    // A stale income without an account is not sent.
+    expect(draftInput(draft({ amount: 100, incomeId: 'seed-in-3' }), goals, TODAY)).not.toHaveProperty('incomeId');
+  });
+
+  it('cambiar la cuenta de origen limpia el ingreso', () => {
+    const d = withAccount(draft({ accountId: 'us', incomeId: 'seed-in-3' }), 'dr');
+    expect([d.accountId, d.incomeId]).toEqual(['dr', null]);
+    expect(withAccount(d, null).incomeId).toBeNull();
   });
 
   it('el aporte que sale del borrador es el que entra en el historial', () => {
@@ -943,5 +966,32 @@ describe('fila de agregar un aporte', () => {
       main: '176,280.00',
     });
     expect(goalCards(s, 'en')[2]).toMatchObject({ saved: '12,000.00', plan: '12 contributions left · 2,750 USD per month to get there' });
+  });
+});
+
+describe('ingreso de un aporte', () => {
+  it('lista los ingresos de la cuenta, el más reciente primero, con descripción, fecha y monto', () => {
+    const s = seedState();
+    expect(contributionIncomeOptions(s, 'us')).toEqual([
+      { value: 'seed-in-3', label: 'Salary · 2026-10-01 · 5,800.00 USD' },
+      { value: 'seed-in-2', label: 'Salary · 2026-09-01 · 5,800.00 USD' },
+      { value: 'seed-in-1', label: 'Salary · 2026-08-01 · 5,800.00 USD' },
+    ]);
+    expect(contributionIncomeOptions(s, 'dr')).toEqual([]);
+    expect(contributionIncomeOptions(s, 'dr', 'gone')).toEqual([{ value: 'gone', label: '—' }]);
+  });
+
+  it('cuánto queda del ingreso y si el aporte pasa de eso (en la moneda de la cuenta)', () => {
+    const s = seedState();
+    s.contribs.push({ id: 'x', goalId: 'turkey', date: '2026-10-05', amount: 5000, cur: 'USD', rate: null, accountId: 'us', incomeId: 'seed-in-3' });
+    // 800 left; a new 900 USD contribution passes it, 800 does not.
+    const draft = { amount: 900, cur: 'USD' as const, date: '2026-10-06' };
+    expect(contributionIncomeHint(s, 'seed-in-3', draft)).toEqual({ left: 800, currency: 'USD', before: 800, over: true });
+    expect(contributionIncomeHint(s, 'seed-in-3', { ...draft, amount: 800 })!.over).toBe(false);
+    // 58,760 DOP are 1,000 USD at the month rate.
+    expect(contributionIncomeHint(s, 'seed-in-3', { amount: 58760, cur: 'DOP', date: '2026-10-06' })!.over).toBe(true);
+    // The registered row itself: what was left before it is 5,800, so 5,000 does not pass it.
+    expect(contributionIncomeHint(s, 'seed-in-3', s.contribs.at(-1)!, 'x')).toEqual({ left: 800, currency: 'USD', before: 5800, over: false });
+    expect(contributionIncomeHint(s, 'unknown', draft)).toBeNull();
   });
 });

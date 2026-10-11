@@ -922,7 +922,7 @@ export function budgetHistory(state: AppState, key: MonthKey): BudgetHistoryRow[
   });
 }
 
-/** How much of one income goes to the budget, in the currency of its account. */
+/** How much of one income goes to the budget or to goals, in the currency of its account. */
 export interface IncomeBudgetUse {
   /** The income itself, converted to its account's currency at the rate of its date. */
   amount: number;
@@ -930,8 +930,12 @@ export interface IncomeBudgetUse {
   whole: boolean;
   /** The positive budget entries linked to it (BudgetEntry.incomeId), over every month. */
   taken: number;
-  /** What can still be taken from it: 0 when `whole`, otherwise amount - taken (never below 0). */
+  /** The contributions to goals linked to it (Contribution.incomeId), in its account's currency. They are not budget. */
+  contributed: number;
+  /** What can still be taken from it: 0 when `whole`, otherwise amount - taken - contributed (never below 0). */
   available: number;
+  /** amount - taken - contributed (never below 0) whatever the flag: what no goal or manual extra has claimed yet. */
+  left: number;
 }
 
 /** null for an income into a gold account: the budget is money only. */
@@ -944,7 +948,12 @@ export function incomeBudgetUse(state: AppState, income: Income): IncomeBudgetUs
     for (const e of m.budgetLog) if (e.incomeId === income.id && e.amount > 0) taken += e.amount;
   }
   taken = tidy(taken);
-  return { amount, whole: income.budget, taken, available: income.budget ? 0 : Math.max(0, tidy(amount - taken)) };
+  // Each contribution goes through the same conversion as everywhere else (its own rate, else the one of its date).
+  const contributed = tidy(
+    state.contribs.filter((c) => c.incomeId === income.id).reduce((a, c) => a + contribIn(state, c, account.currency), 0),
+  );
+  const left = Math.max(0, tidy(amount - taken - contributed));
+  return { amount, whole: income.budget, taken, contributed, available: income.budget ? 0 : left, left };
 }
 
 export interface Leftover {

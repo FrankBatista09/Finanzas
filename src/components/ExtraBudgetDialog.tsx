@@ -84,6 +84,9 @@ export function ExtraBudgetDialog({ onClose }: { onClose: () => void }) {
           />
           {income && !income.whole && <p className={styles.help}>{t('extraIncomeLeft', { amount: f2(income.available), currency })}</p>}
           {income?.whole && <p className={styles.help}>{t('extraIncomeWhole')}</p>}
+          {income && income.contributed > 0 && (
+            <p className={styles.help}>{t('extraIncomeGoals', { amount: f2(income.contributed), currency })}</p>
+          )}
         </Field>
         <Field label={`${t('amount')}${account ? ` (${account.currency})` : ''}`} htmlFor={`${id}-amount`}>
           <Input

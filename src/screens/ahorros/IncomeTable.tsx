@@ -147,7 +147,7 @@ export function IncomeTable({ label, rows, empty, date, adding, readOnly = false
                   />
                 )}
                 {!compact && <Converted value={r.main} note={r.mainNote} />}
-                <Td kind="center" title={r.budgetTaken ? t('incomeTakenTitle', { ...r.budgetTaken }) : undefined}>
+                <Td kind="center" title={takenText(t, s, r) || undefined}>
                   <span className={styles.budgetCell}>
                     <CellCheckbox
                       checked={r.budget}
@@ -155,7 +155,7 @@ export function IncomeTable({ label, rows, empty, date, adding, readOnly = false
                       disabled={readOnly || grams}
                       label={s('incomeBudgetOf', named)}
                     />
-                    {r.budgetTaken && <TakenMark text={t('incomeTakenTitle', { ...r.budgetTaken })} />}
+                    {takenText(t, s, r) && <TakenMark text={takenText(t, s, r)} />}
                     <ShortfallMark text={shortById.has(r.id) ? shortfallText(s, shortById.get(r.id)!) : null} />
                   </span>
                 </Td>
@@ -308,12 +308,33 @@ function TakenMark({ text }: { text: string }) {
   );
 }
 
-type Strings = (key: 'shortLine' | 'shortLineNone', values: Record<string, string>) => string;
+type Strings = (key: 'shortLine' | 'shortLineNone' | 'shortLineGoals' | 'shortLineGoalsSome', values: Record<string, string>) => string;
 
 /** The sentence of one warning line, without the advice: used by the line and by the tooltip of the row mark. */
 function shortfallText(s: Strings, f: IncomeShortfall) {
-  const values = { description: f.desc || '—', account: f.accountName, available: f2(f.available), amount: f2(f.amount), cur: f.currency };
+  const values = {
+    description: f.desc || '—',
+    account: f.accountName,
+    available: f2(f.available),
+    amount: f2(f.amount),
+    cur: f.currency,
+    contributed: f2(f.contributed),
+    goals: f.goals.join(', '),
+  };
+  if (f.reason === 'goals') return s(f.available > 0 ? 'shortLineGoalsSome' : 'shortLineGoals', values);
   return s(f.available > 0 ? 'shortLine' : 'shortLineNone', values);
+}
+
+/** The tooltip of the ◐ dot: what went to the budget by hand and what went to goals; '' when neither. */
+function takenText(
+  t: (key: 'incomeTakenTitle', values: Record<string, string>) => string,
+  s: (key: 'goalsTakenTitle', values: Record<string, string>) => string,
+  r: Pick<IncomeItemView, 'budgetTaken' | 'goalsTaken'>,
+) {
+  const parts: string[] = [];
+  if (r.budgetTaken) parts.push(t('incomeTakenTitle', { ...r.budgetTaken }));
+  if (r.goalsTaken) parts.push(s('goalsTakenTitle', { contributed: r.goalsTaken.contributed, amount: r.goalsTaken.amount, cur: r.goalsTaken.currency }));
+  return parts.join('. ');
 }
 
 /** Only the add row: the draft is not saved, so it gets the mark and its tooltip but no line below the table. */

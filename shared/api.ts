@@ -466,8 +466,10 @@ export interface ContributionCreate {
   rate?: number | null;
   /** Cuenta de dinero de la que sale (Contribution.accountId); null o ausente = ninguna. */
   accountId?: string | null;
+  /** Ingreso del que sale (Contribution.incomeId): en la misma cuenta que `accountId` (400 si no); null o ausente = ninguno. */
+  incomeId?: string | null;
 }
-export type ContributionPatch = Partial<Pick<Contribution, 'goalId' | 'date' | 'amount' | 'cur' | 'rate' | 'accountId'>>;
+export type ContributionPatch = Partial<Pick<Contribution, 'goalId' | 'date' | 'amount' | 'cur' | 'rate' | 'accountId' | 'incomeId'>>;
 
 /**
  * Lo que Claude manda al registrar un gasto. Solo `description` y `amount` son obligatorios

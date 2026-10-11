@@ -266,7 +266,7 @@ function importedSavings(
   /** Lo que el archivo dice de cada meta, por id; de las que no nombra no hay nada y se quedan como estén. */
   const fromFile = new Map<string, ImportGoal>();
   for (const g of payload.goals ?? []) fromFile.set(goalNamed(g.name).id, g);
-  // El libro no trae la tasa propia ni la cuenta de origen de un aporte: un aporte que ya existía igual (meta, fecha,
+  // El libro no trae la tasa propia, la cuenta de origen ni el ingreso de un aporte: un aporte que ya existía igual (meta, fecha,
   // monto y moneda) las conserva; uno nuevo nace sin ellas. Cada aporte existente se usa una sola vez.
   const unclaimed = [...base.contribs];
   const contribs: Contribution[] | null =
@@ -276,7 +276,7 @@ function importedSavings(
       const goalId = goalNamed(c.goalName).id;
       const at = unclaimed.findIndex((o) => o.goalId === goalId && o.date === c.date && o.amount === c.amount && o.cur === c.cur);
       const same = at >= 0 ? unclaimed.splice(at, 1)[0] : undefined;
-      return { id: newId(), goalId, date: c.date, amount: c.amount, cur: c.cur, rate: same?.rate ?? null, accountId: same?.accountId ?? null };
+      return { id: newId(), goalId, date: c.date, amount: c.amount, cur: c.cur, rate: same?.rate ?? null, accountId: same?.accountId ?? null, ...(same?.incomeId && { incomeId: same.incomeId }) };
     });
 
   const withPlan = (goal: Goal): Goal => {
