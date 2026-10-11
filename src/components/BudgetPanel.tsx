@@ -84,7 +84,9 @@ export function BudgetPanel() {
                       {!readOnly && fromLog !== 0 && (
                         <DeleteButton
                           compact
-                          onClick={() => actions.setBudgetPart(account.id, amount - fromLog)}
+                          kind="kindBudgetEntry"
+                          item={`${account.name} · ${f2(fromLog)} ${account.currency}`}
+                          onConfirm={() => actions.setBudgetPart(account.id, amount - fromLog)}
                           label={t('removeFromBudget', { name: account.name })}
                         />
                       )}
@@ -295,7 +297,9 @@ function BudgetHistory({ id }: { id: string }) {
                     {r.deletable && (
                       <DeleteButton
                         compact
-                        onClick={() => actions.removeBudgetEntry(r.id)}
+                        kind="kindBudgetEntry"
+                        item={`${r.date.slice(8)}/${r.date.slice(5, 7)} · ${t(r.kindKey)} · ${r.amount} ${r.currency}`}
+                        onConfirm={() => actions.removeBudgetEntry(r.id)}
                         label={t('deleteBudgetEntry', { kind: t(r.kindKey), date: `${r.date.slice(8)}/${r.date.slice(5, 7)}`, amount: r.amount, currency: r.currency })}
                       />
                     )}

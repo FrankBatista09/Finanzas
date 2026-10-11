@@ -7,7 +7,7 @@ import type { AccountCurrency, Currency } from '../../shared/types';
 import { useI18n } from '../i18n';
 import { canHideAccount, canRemoveAccount, useFinanzas } from '../store';
 import { ringShades } from '../theme';
-import { AddButton, AddRow, AddRowButton, CellNumber, CellSelect, CellText, cx, SheetTable, Td, DeleteButton, useAddRow } from '../ui';
+import { AddButton, AddRow, AddRowButton, CellNumber, CellSelect, CellText, cx, SheetTable, Td, DeleteButton, useAddRow, useConfirmDelete } from '../ui';
 import { Donut, DonutCenter, LegendRow } from './Donut';
 import styles from './SummaryPanel.module.css';
 
@@ -154,7 +154,7 @@ function AccountsTable({ rows }: { rows: readonly AccountBalance[] }) {
                 )}
                 {/* Una cuenta que nada usa se puede eliminar directamente; con movimientos solo se oculta. */}
                 {canRemoveAccount(state, account.id) && (
-                  <DeleteButton compact onClick={() => actions.removeAccount(account.id)} label={t('deleteNamed', { name: account.name })} />
+                  <DeleteButton compact kind="kindAccount" item={account.name} onConfirm={() => actions.removeAccount(account.id)} label={t('deleteNamed', { name: account.name })} />
                 )}
               </Td>
             </tr>
@@ -278,19 +278,31 @@ function HiddenAccounts({ rows }: { rows: readonly AccountBalance[] }) {
               </button>
               {/* Una cuenta con movimientos no se elimina (el servidor respondería 409): se queda oculta. */}
               {canRemoveAccount(state, account.id) && (
-                <button
-                  type="button"
-                  className={cx(styles.link, styles.linkDanger)}
-                  onClick={() => actions.removeAccount(account.id)}
-                  aria-label={t('deleteNamed', { name: account.name })}
-                >
-                  {t('deleteAccount')}
-                </button>
+                <HiddenDelete name={account.name} onConfirm={() => actions.removeAccount(account.id)} />
               )}
             </li>
           ))}
         </ul>
       )}
     </div>
+  );
+}
+
+/** The "Delete account" link of a hidden account: asks before removing it. */
+function HiddenDelete({ name, onConfirm }: { name: string; onConfirm: () => void }) {
+  const { t } = useI18n();
+  const confirm = useConfirmDelete(onConfirm);
+  return (
+    <>
+      <button
+        type="button"
+        className={cx(styles.link, styles.linkDanger)}
+        onClick={() => confirm.request(name)}
+        aria-label={t('deleteNamed', { name })}
+      >
+        {t('deleteAccount')}
+      </button>
+      {confirm.dialog('kindAccount')}
+    </>
   );
 }

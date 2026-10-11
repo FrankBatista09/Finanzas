@@ -233,7 +233,7 @@ const OutsideRow = memo(function OutsideRow({ row, inMain, inSecond, accounts, r
             >
               ↖
             </button>
-            <DeleteButton onClick={() => actions.removeOutside(row.id)} label={t('deleteNamed', named)} />
+            <DeleteButton kind="kindOutsideExpense" item={`${row.name} · ${f2(row.amount)} ${row.cur}`} onConfirm={() => actions.removeOutside(row.id)} label={t('deleteNamed', named)} />
           </>
         )}
       </Td>

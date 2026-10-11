@@ -66,7 +66,7 @@ export function PayCardDialog({ cardId, onClose }: { cardId: string; onClose: ()
                 <span className={styles.paymentInfo}>
                   {p.date} · {account} · {f2(p.amount)} {main}
                 </span>
-                <DeleteButton compact label={s('payCardRemove', { amount: f2(p.amount), currency: main, account, date: p.date })} onClick={() => actions.removeCardPayment(cardId, p.id)} />
+                <DeleteButton compact kind="kindPayment" item={`${p.date} · ${account} · ${f2(p.amount)} ${main}`} label={s('payCardRemove', { amount: f2(p.amount), currency: main, account, date: p.date })} onConfirm={() => actions.removeCardPayment(cardId, p.id)} />
               </li>
             );
           })}

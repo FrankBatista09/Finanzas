@@ -396,7 +396,7 @@ const TxRow = memo(function TxRow({ row: tx, inMain, inSecond, accounts, cards, 
             >
               ↘
             </button>
-            <DeleteButton onClick={() => actions.removeTx(tx.id)} label={t('deleteNamed', named)} />
+            <DeleteButton kind="kindTransaction" item={`${tx.desc} · ${f2(tx.amount)} ${tx.cur}`} onConfirm={() => actions.removeTx(tx.id)} label={t('deleteNamed', named)} />
           </>
         )}
       </Td>

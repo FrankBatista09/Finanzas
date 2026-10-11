@@ -176,7 +176,7 @@ export function IncomeTable({ label, rows, empty, date, adding, readOnly = false
                         ⛓
                       </span>
                     ) : (
-                      <DeleteButton compact onClick={() => actions.removeIncome(r.id)} label={s('deleteIncome', named)} />
+                      <DeleteButton compact kind="kindIncome" item={`${r.desc || r.date} · ${named.amount} ${named.cur}`} onConfirm={() => actions.removeIncome(r.id)} label={s('deleteIncome', named)} />
                     ))}
                 </Td>
               </tr>

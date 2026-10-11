@@ -3,7 +3,7 @@ import { CURRENCIES, MAX_LEN } from '../../../shared/constants';
 import type { CreditCard } from '../../../shared/types';
 import { useI18n, useStrings } from '../../i18n';
 import { cardInUse, useFinanzas } from '../../store';
-import { CheckField, Dialog, DialogButton, DialogFields, Field, Input, Select } from '../../ui';
+import { CheckField, Dialog, DialogButton, DialogFields, Field, Input, Select, useConfirmDelete } from '../../ui';
 import { cardFormErrors, cardToForm, formToInput, newCardForm } from './cardForm';
 import styles from './CardDialog.module.css';
 import { MES } from './strings';
@@ -38,9 +38,9 @@ export function CardDialog({ card, onClose }: { card: CreditCard | null; onClose
     else setTried(true);
   };
 
-  const remove = () => {
+  const confirmRemove = useConfirmDelete(() => {
     if (card && actions.removeCard(card.id)) onClose();
-  };
+  });
 
   const field = (key: 'bank' | 'last4' | 'limit' | 'cutoffDay' | 'dueDay') => ({
     value: form[key],
@@ -58,7 +58,7 @@ export function CardDialog({ card, onClose }: { card: CreditCard | null; onClose
         <>
           {card && (
             <div className={styles.remove}>
-              <DialogButton variant="danger" onClick={remove} disabled={used} aria-describedby={used ? `${id}-blocked` : undefined}>
+              <DialogButton variant="danger" onClick={() => confirmRemove.request(card.name)} disabled={used} aria-describedby={used ? `${id}-blocked` : undefined}>
                 {s('deleteCard')}
               </DialogButton>
               {used && (
@@ -68,6 +68,7 @@ export function CardDialog({ card, onClose }: { card: CreditCard | null; onClose
               )}
             </div>
           )}
+          {confirmRemove.dialog('kindCreditCard')}
           <div className={styles.actions}>
             <DialogButton variant="quiet" onClick={onClose}>
               {t('cancel')}
