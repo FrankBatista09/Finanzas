@@ -5,7 +5,7 @@ import { deviceMemory, resolveUser } from './session';
 const USERS = parseUsers('frank:Frank,eda:Eda');
 const [frank, eda] = USERS as [(typeof USERS)[number], (typeof USERS)[number]];
 
-/** Un localStorage de mentira. */
+/** A fake localStorage. */
 function fakeStorage(initial: Record<string, string> = {}) {
   const data = new Map(Object.entries(initial));
   return {
@@ -16,41 +16,41 @@ function fakeStorage(initial: Record<string, string> = {}) {
 }
 
 describe('resolveUser', () => {
-  it('manda ?user= si nombra a un usuario configurado', () => {
+  it('?user= wins if it names a configured user', () => {
     expect(resolveUser(USERS, 'eda', null)).toBe(eda);
     expect(resolveUser(USERS, 'eda', 'frank')).toBe(eda);
     expect(resolveUser(USERS, 'frank', 'eda')).toBe(frank);
   });
 
-  it('sin ?user=, el último usado en este dispositivo', () => {
+  it('without ?user=, the last one used on this device', () => {
     expect(resolveUser(USERS, null, 'eda')).toBe(eda);
   });
 
-  it('sin nada, el primero de la lista', () => {
+  it('with nothing, the first one in the list', () => {
     expect(resolveUser(USERS, null, null)).toBe(frank);
   });
 
-  it('un id que no está configurado se ignora, venga de donde venga', () => {
+  it('an id that is not configured is ignored, wherever it comes from', () => {
     expect(resolveUser(USERS, 'pedro', null)).toBe(frank);
     expect(resolveUser(USERS, 'pedro', 'eda')).toBe(eda);
     expect(resolveUser(USERS, null, 'pedro')).toBe(frank);
     expect(resolveUser(USERS, 'pedro', 'juan')).toBe(frank);
-    // El id distingue mayúsculas: 'Eda' no es 'eda'.
+    // The id is case-sensitive: 'Eda' is not 'eda'.
     expect(resolveUser(USERS, 'Eda', null)).toBe(frank);
   });
 
-  it('con un solo usuario es siempre ese', () => {
+  it('with a single user it is always that one', () => {
     const [me] = parseUsers('');
     expect(resolveUser([me!], 'eda', 'frank')).toBe(me);
   });
 
-  it('sin usuarios, null', () => {
+  it('without users, null', () => {
     expect(resolveUser([], 'eda', 'eda')).toBeNull();
   });
 });
 
 describe('deviceMemory', () => {
-  it('recuerda el último usuario y el último idioma', () => {
+  it('remembers the last user and the last language', () => {
     const storage = fakeStorage();
     const device = deviceMemory(storage);
     expect(device.user()).toBeNull();
@@ -61,20 +61,20 @@ describe('deviceMemory', () => {
     expect(device.user()).toBe('eda');
     expect(device.language()).toBe('tr');
 
-    // Otra visita, mismo dispositivo.
+    // Another visit, same device.
     const later = deviceMemory(storage);
     expect(later.user()).toBe('eda');
     expect(later.language()).toBe('tr');
     expect([...storage.data.keys()].sort()).toEqual(['fe-finance:language', 'fe-finance:user']);
   });
 
-  it('lo guardado que no vale se ignora', () => {
+  it('stored values that are not valid are ignored', () => {
     const device = deviceMemory(fakeStorage({ 'fe-finance:language': 'fr', 'fe-finance:user': 'No Válido' }));
     expect(device.language()).toBeNull();
     expect(device.user()).toBeNull();
   });
 
-  it('sin almacenamiento no falla: simplemente no recuerda', () => {
+  it('without storage it does not fail: it remembers nothing', () => {
     const device = deviceMemory(null);
     expect(() => device.rememberUser('eda')).not.toThrow();
     expect(() => device.rememberLanguage('es')).not.toThrow();
@@ -82,7 +82,7 @@ describe('deviceMemory', () => {
     expect(device.language()).toBeNull();
   });
 
-  it('un almacenamiento que lanza (modo privado, cuota llena) tampoco rompe nada', () => {
+  it('a storage that throws (private mode, quota full) does not break anything either', () => {
     const device = deviceMemory({
       getItem: () => {
         throw new DOMException('denied', 'SecurityError');

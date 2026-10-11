@@ -1,4 +1,4 @@
-// Gastos fuera de presupuesto (Month.outside) y partes del presupuesto pasadas: lo que cuentan y lo que no.
+// Outside-budget expenses (Month.outside) and overrun budget parts: what they count toward and what they do not.
 
 import { describe, expect, it } from 'vitest';
 import { balances, budgetOverruns, monthCalc, outsideOf, outsideSummary, rateFor } from './calc';
@@ -26,32 +26,32 @@ function withOutside(...rows: OutsideExpense[]): AppState {
 
 const balanceOf = (state: AppState, id: string) => balances(state, KEY).accounts.find((a) => a.account.id === id)!.balance;
 
-describe('gastos fuera de presupuesto', () => {
-  it('restan del saldo de su cuenta, en su moneda', () => {
+describe('outside-budget expenses', () => {
+  it('they subtract from the balance of their account, in its currency', () => {
     const base = seedState();
     const state = withOutside(row({ amount: 1000 }));
     expect(balanceOf(state, 'dr')).toBeCloseTo(balanceOf(base, 'dr') - 1000, 8);
     expect(balanceOf(state, 'us')).toBe(balanceOf(base, 'us'));
   });
 
-  it('en otra moneda restan convertidos con la tasa vigente en su fecha, no con la última del mes', () => {
-    // Una tasa posterior (día 20) no puede cambiar un gasto del día 7.
+  it('in another currency they subtract converted with the rate in effect on their date, not with the last one of the month', () => {
+    // A later rate (day 20) cannot change an expense from day 7.
     const later = (s: AppState): AppState => ({
       ...s,
       months: { ...s.months, [KEY]: { ...s.months[KEY]!, rates: [...s.months[KEY]!.rates, { from: 'USD', to: 'DOP', rate: 70, date: '2026-10-20' }] } },
     });
     const base = later(seedState());
-    // 100 USD pagados desde la cuenta en DOP: la tasa del 7 de octubre, no otra.
+    // 100 USD paid from the DOP account: the October 7 rate, not any other.
     const state = later(withOutside(row({ amount: 100, cur: 'USD', date: '2026-10-07' })));
     const rate = rateFor(state, KEY, 'USD', 'DOP', '2026-10-07').rate;
     expect(rate).not.toBe(70);
     expect(balanceOf(state, 'dr')).toBeCloseTo(balanceOf(base, 'dr') - 100 * rate, 6);
-    // Y 5,876 DOP desde la cuenta en USD.
+    // And 5,876 DOP from the USD account.
     const back = later(withOutside(row({ amount: 5876, cur: 'DOP', accountId: 'us' })));
     expect(balanceOf(back, 'us')).toBeCloseTo(balanceOf(base, 'us') - 5876 * rateFor(back, KEY, 'DOP', 'USD', '2026-10-07').rate, 6);
   });
 
-  it('bajan el dinero total, pero no son parte del presupuesto: ni usado, ni disponible, ni categorías, ni conteo', () => {
+  it('they lower total money, but are not part of the budget: not used, not available, not categories, not the count', () => {
     const base = seedState();
     const state = withOutside(row({ amount: 5000 }), row({ id: 'o2', amount: 20, cur: 'USD', accountId: 'us' }));
     const [a, b] = [monthCalc(base, KEY), monthCalc(state, KEY)];
@@ -65,13 +65,13 @@ describe('gastos fuera de presupuesto', () => {
     expect(balances(state, KEY).totalMain).toBeLessThan(balances(base, KEY).totalMain);
   });
 
-  it('un mes posterior ve el gasto de uno anterior en sus saldos; uno anterior no ve el de uno posterior', () => {
+  it('a later month sees the expense of an earlier one in its balances; an earlier one does not see that of a later one', () => {
     const state = withOutside(row({ amount: 1000 }));
     const base = seedState();
     expect(balances(state, '2026-09').accounts.map((x) => x.balance)).toEqual(balances(base, '2026-09').accounts.map((x) => x.balance));
   });
 
-  it('outsideSummary cuenta y suma en la moneda principal, cada uno con la tasa de su fecha', () => {
+  it('outsideSummary counts and adds up in the main currency, each one with the rate of its date', () => {
     const state = withOutside(row({ amount: 1000 }), row({ id: 'o2', amount: 10, cur: 'USD', accountId: 'us' }));
     const rate = rateFor(state, KEY, 'USD', 'DOP', '2026-10-07').rate;
     const s = outsideSummary(state, KEY);
@@ -84,10 +84,10 @@ describe('gastos fuera de presupuesto', () => {
 });
 
 describe('budgetOverruns', () => {
-  it('solo las partes en negativo, con lo que se pasan', () => {
+  it('only the parts in the negative, with how much they are over', () => {
     const state = seedState();
     const month = state.months[KEY]!;
-    // Un envío que mueve más presupuesto del que tiene la cuenta de origen la deja en negativo.
+    // A transfer that moves more budget than the origin account has leaves it in the negative.
     const withTransfer: AppState = {
       ...state,
       months: {
@@ -102,7 +102,7 @@ describe('budgetOverruns', () => {
     expect(over.map((o) => [o.account.id, o.over])).toEqual([['us', -us.amount]]);
   });
 
-  it('ninguna si ninguna parte es negativa', () => {
+  it('none if no part is negative', () => {
     expect(budgetOverruns(monthCalc(seedState(), KEY).budgetParts)).toEqual([]);
   });
 });

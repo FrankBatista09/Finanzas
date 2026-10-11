@@ -1,5 +1,5 @@
-/* Campos de formulario (diálogo de metas, panel de ajustes): etiqueta encima y control con borde, con el mismo
-   foco que las celdas. */
+/* Form fields (goals dialog, settings panel): label above and a bordered control, with the same focus as the
+   cells. */
 
 .field {
   display: flex;
@@ -27,7 +27,7 @@
   outline: none;
 }
 
-/* Borde más anillo interior de 1px: los mismos 2px de acento que el foco de una celda. */
+/* Border plus a 1px inner ring: the same 2px of accent as a cell's focus. */
 .control:focus {
   border-color: var(--accent);
   box-shadow: inset 0 0 0 1px var(--accent);
@@ -46,14 +46,14 @@ select.control:disabled {
   cursor: default;
 }
 
-/* Cifras: derecha y monoespaciado, como las celdas numéricas. */
+/* Figures: right-aligned and monospaced, like the numeric cells. */
 .mono {
   text-align: right;
   font: var(--fs-num) var(--font-mono);
   font-variant-numeric: tabular-nums;
 }
 
-/* Lista de códigos (monedas). */
+/* Code select (currencies). */
 .selectMono {
   font: var(--fs-meta) var(--font-mono);
 }
@@ -80,7 +80,7 @@ select.control:disabled {
   outline-offset: 1px;
 }
 
-/* Mes y año, uno al lado del otro; el mes se lleva el ancho que sobre. */
+/* Month and year, side by side; the month takes whatever width is left over. */
 .monthPicker {
   display: flex;
   gap: var(--gap-8);

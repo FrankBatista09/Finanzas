@@ -1,7 +1,7 @@
-// Autenticación de la API.
-//   · /api/ingest/* y /mcp : Authorization: Bearer <API_TOKEN> (lo usa Claude; quedan fuera de Cloudflare Access).
-//   · resto de /api/*      : Cloudflare Access delante del sitio. Si ACCESS_TEAM_DOMAIN y ACCESS_AUD están
-//                            configurados se valida además su JWT aquí; si no, se deja pasar (desarrollo local).
+// API authentication.
+//   · /api/ingest/* and /mcp : Authorization: Bearer <API_TOKEN> (used by Claude; they stay outside Cloudflare Access).
+//   · rest of /api/*         : Cloudflare Access in front of the site. If ACCESS_TEAM_DOMAIN and ACCESS_AUD are
+//                              configured, its JWT is also validated here; if not, requests are let through (local development).
 
 import type { Context, MiddlewareHandler } from 'hono';
 import type { ApiErrorCode } from '../shared/api';
@@ -11,7 +11,7 @@ import { errorBody } from './errors';
 export type AuthEnv = {
   Bindings: Env;
   Variables: {
-    /** true cuando la petición ya se autenticó con el Bearer (no pasa además por Access). */
+    /** true when the request was already authenticated with the Bearer (it does not go through Access as well). */
     bearer?: boolean;
   };
 };
@@ -35,8 +35,8 @@ async function sha256(text: string): Promise<Uint8Array> {
 }
 
 /**
- * Compara en tiempo constante: se comparan los SHA-256 (misma longitud siempre) byte a byte y sin salir
- * en la primera diferencia, para que el tiempo de respuesta no revele cuánto del token es correcto.
+ * Compares in constant time: the SHA-256 digests (always the same length) are compared byte by byte, without exiting
+ * at the first difference, so the response time does not reveal how much of the token is correct.
  */
 async function safeEqual(a: string, b: string): Promise<boolean> {
   const [da, db] = await Promise.all([sha256(a), sha256(b)]);
@@ -45,7 +45,7 @@ async function safeEqual(a: string, b: string): Promise<boolean> {
   return diff === 0;
 }
 
-/** true solo si la petición trae `Authorization: Bearer <API_TOKEN>`. Sin API_TOKEN configurado, siempre false. */
+/** true only if the request carries `Authorization: Bearer <API_TOKEN>`. With no API_TOKEN configured, always false. */
 export async function checkBearer(request: Request, env: Pick<Env, 'API_TOKEN'>): Promise<boolean> {
   const expected = env.API_TOKEN;
   if (!expected) return false;
@@ -64,11 +64,11 @@ export const requireBearer: MiddlewareHandler<AuthEnv> = async (c, next) => {
 
 // ── Cloudflare Access ────────────────────────────────────────────────────────
 
-/** Las claves de firma de Access rotan cada pocas semanas; una hora de caché es de sobra. */
+/** Access signing keys rotate every few weeks; a one-hour cache is plenty. */
 const JWKS_TTL_MS = 60 * 60 * 1000;
-/** Un `kid` desconocido fuerza a volver a pedir las claves, pero no más de una vez por minuto (evita que tokens basura provoquen una petición cada uno). */
+/** An unknown `kid` forces the keys to be fetched again, but no more than once a minute (keeps junk tokens from causing one request each). */
 const JWKS_REFETCH_MIN_MS = 60 * 1000;
-/** Margen para el desfase de relojes al comprobar exp y nbf. */
+/** Leeway for clock skew when checking exp and nbf. */
 const LEEWAY_S = 60;
 
 const RS256 = { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' } as const;
@@ -80,7 +80,7 @@ interface Jwks {
 
 const jwksCache = new Map<string, Jwks>();
 
-/** Vacía la caché de claves (para las pruebas). */
+/** Empties the key cache (for the tests). */
 export function clearAccessKeyCache(): void {
   jwksCache.clear();
 }
@@ -93,11 +93,11 @@ async function fetchJwks(team: string, now: number): Promise<Jwks> {
   for (const jwk of Array.isArray(body.keys) ? (body.keys as Record<string, unknown>[]) : []) {
     if (!jwk || jwk.kty !== 'RSA' || typeof jwk.kid !== 'string' || typeof jwk.n !== 'string' || typeof jwk.e !== 'string') continue;
     try {
-      // Solo n y e: el uso y el algoritmo los fija este código, no lo que diga el documento.
+      // Only n and e: the use and the algorithm are set by this code, not by whatever the document says.
       const key = await crypto.subtle.importKey('jwk', { kty: 'RSA', n: jwk.n, e: jwk.e }, RS256, false, ['verify']);
       keys.set(jwk.kid, key);
     } catch {
-      // Una clave ilegible no invalida las demás.
+      // One unreadable key does not invalidate the others.
     }
   }
   return { keys, fetchedAt: now };
@@ -112,7 +112,7 @@ async function signingKey(team: string, kid: string, now: number): Promise<Crypt
       jwks = await fetchJwks(team, now);
       jwksCache.set(team, jwks);
     } catch (err) {
-      // Si Access no responde y hay claves en caché, se sigue con ellas; sin caché no hay forma de validar.
+      // If Access does not respond and keys are cached, they keep being used; without a cache there is no way to validate.
       if (!jwks) throw err;
     }
   }
@@ -136,7 +136,7 @@ function base64UrlJson(part: string): Record<string, unknown> | null {
   }
 }
 
-/** 'https://Equipo.cloudflareaccess.com/' → 'equipo.cloudflareaccess.com'; null si no es un nombre de host. */
+/** 'https://Team.cloudflareaccess.com/' → 'team.cloudflareaccess.com'; null if it is not a host name. */
 function teamHost(value: string): string | null {
   const host = value.trim().replace(/^https?:\/\//i, '').replace(/\/+$/, '').toLowerCase();
   return /^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$/.test(host) ? host : null;
@@ -144,19 +144,19 @@ function teamHost(value: string): string | null {
 
 export type AccessVerdict =
   | { ok: true; claims: Record<string, unknown> }
-  /** 401: no hay identidad válida (token ilegible, firma mala, caducado). 403: la hay, pero no es para esta aplicación. */
+  /** 401: no valid identity (unreadable token, bad signature, expired). 403: there is one, but not for this application. */
   | { ok: false; status: 401 | 403; reason: string };
 
 export interface AccessConfig {
-  /** 'tu-equipo.cloudflareaccess.com' */
+  /** 'your-team.cloudflareaccess.com' */
   teamDomain: string;
   /** Application Audience (AUD) Tag */
   aud: string;
 }
 
 /**
- * Valida un JWT de Cloudflare Access: firma RS256 con las claves públicas del equipo, exp y nbf (con margen),
- * iss = https://<equipo> y aud que contenga el AUD de la aplicación. Lanza si no se pueden obtener las claves.
+ * Validates a Cloudflare Access JWT: RS256 signature with the team's public keys, exp and nbf (with leeway),
+ * iss = https://<team> and an aud that contains the application's AUD. Throws if the keys cannot be fetched.
  */
 export async function verifyAccessJwt(token: string, config: AccessConfig, now: number = Date.now()): Promise<AccessVerdict> {
   const fail = (status: 401 | 403, reason: string): AccessVerdict => ({ ok: false, status, reason });
@@ -167,7 +167,7 @@ export async function verifyAccessJwt(token: string, config: AccessConfig, now: 
   if (parts.length !== 3) return fail(401, 'formato');
   const [h, p, s] = parts as [string, string, string];
   const header = base64UrlJson(h);
-  // Solo RS256: nunca se acepta el algoritmo que proponga el token ("none", HS256…).
+  // RS256 only: the algorithm the token proposes ("none", HS256…) is never accepted.
   if (!header || header.alg !== 'RS256' || typeof header.kid !== 'string') return fail(401, 'cabecera');
 
   const key = await signingKey(team, header.kid, now);
@@ -182,7 +182,7 @@ export async function verifyAccessJwt(token: string, config: AccessConfig, now: 
   const valid = await crypto.subtle.verify(RS256.name, key, signature, encoder.encode(`${h}.${p}`));
   if (!valid) return fail(401, 'firma');
 
-  // A partir de aquí el contenido es de Access; antes no se confía en nada de lo que diga.
+  // From here on the payload comes from Access; before this point nothing it says is trusted.
   const claims = base64UrlJson(p);
   if (!claims) return fail(401, 'contenido');
   const seconds = now / 1000;
@@ -195,9 +195,9 @@ export async function verifyAccessJwt(token: string, config: AccessConfig, now: 
 }
 
 /**
- * Exige el JWT de Access (cabecera Cf-Access-Jwt-Assertion) cuando la validación está configurada.
- * Con una sola de las dos variables puesta se considera un error de configuración y se rechaza todo (500),
- * en vez de dejar la API abierta sin que nadie lo note.
+ * Requires the Access JWT (Cf-Access-Jwt-Assertion header) when validation is configured.
+ * With only one of the two variables set, it is treated as a configuration error and everything is rejected (500),
+ * instead of leaving the API open without anyone noticing.
  */
 export const accessAuth: MiddlewareHandler<AuthEnv> = async (c, next) => {
   const teamDomain = c.env.ACCESS_TEAM_DOMAIN?.trim();

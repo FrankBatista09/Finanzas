@@ -12,7 +12,7 @@ import { carouselIndex } from './cardCarousel';
 import styles from './CreditCardsCard.module.css';
 import { MES } from './strings';
 
-/** '2026-10-13' → 'Oct 13' / '13 oct' / '13 Eki', en el idioma del usuario. */
+/** '2026-10-13' → 'Oct 13' / '13 oct' / '13 Eki', in the user's language. */
 function dayLabel(date: string, lang: string): string {
   return new Intl.DateTimeFormat(lang, { day: 'numeric', month: 'short', timeZone: 'UTC' }).format(new Date(`${date}T00:00:00Z`));
 }
@@ -22,7 +22,7 @@ function monoNumbers(text: string, className: string) {
   return text.split(/(\d[\d.,]*)/).map((part, i) => (i % 2 === 1 ? <span key={i} className={className}>{part}</span> : <Fragment key={i}>{part}</Fragment>));
 }
 
-/** How much to pay before the cutoff to end it under 10 %, or that it already is. Shared with the card details dialog. */
+/** How much to pay before the cutoff to end it under 10 %, or that it already is. Shared with the credit card details dialog. */
 export function PayHint({ card, hint, lang }: { card: CreditCard; hint: CardHint; lang: string }) {
   const s = useStrings(MES);
   const cutoff = dayLabel(hint.nextCutoff, lang);
@@ -34,22 +34,22 @@ export function PayHint({ card, hint, lang }: { card: CreditCard; hint: CardHint
 }
 
 /**
- * "Credit cards": the user's cards. Each one shows what is owed (for the month being viewed), how much of that is the
- * limit, and, when the limit and cutoff are known, how much to pay before the cutoff to close below 10 %. One card is
- * shown at a time; with more than one, arrows (or the keyboard ones) move between them. Cards do not belong to a
- * month: they can be created and edited even when the month is closed.
+ * "Credit cards": the user's credit cards. Each one shows what is owed (for the month being viewed), how much of that
+ * is the limit, and, when the limit and cutoff are known, how much to pay before the cutoff to close below 10 %. One
+ * credit card is shown at a time; with more than one, arrows (or the keyboard ones) move between them. Credit cards do
+ * not belong to a month: they can be created and edited even when the month is closed.
  */
 export function CreditCardsCard({ className }: { className?: string }) {
   const { state, actions } = useFinanzas();
   const s = useStrings(MES);
   const cards = [...state.cards].sort((a, b) => a.sort - b.sort);
   const [dialog, setDialog] = useState<CreditCard | 'new' | null>(null);
-  // La tarjeta que no se pudo apagar por deber algo: el aviso va en su lugar hasta que se toque otra cosa.
+  // The credit card that could not be turned off because something is owed on it: the warning goes in its place until something else is touched.
   const [refused, setRefused] = useState<string | null>(null);
   const ids = cards.map((c) => c.id);
   const [index, setIndex] = useState(0);
   const [seenIds, setSeenIds] = useState(ids);
-  // Adjusting state while rendering (instead of in an effect) avoids a frame showing the wrong card.
+  // Adjusting state while rendering (instead of in an effect) avoids a frame showing the wrong credit card.
   let shown = index;
   if (ids.length !== seenIds.length || ids.some((id, i) => id !== seenIds[i])) {
     shown = carouselIndex(seenIds, ids, index);
@@ -136,7 +136,7 @@ function CardItem({ card, refused, onToggle, onEdit }: CardItemProps) {
   const s = useStrings(MES);
   const remainder = cardCalc(state, monthKey, card.id).remainder;
   const util = cardUtilization(card, remainder);
-  // El aviso solo tiene sentido en el último mes: en uno anterior lo que se debe ya no es lo de hoy.
+  // The notice only makes sense in the latest month: in an earlier one what is owed is no longer today's amount.
   const hint = latestMonth ? cardHint(card, remainder, today) : null;
   const pct = util === null ? null : (util * 100).toFixed(1);
   const over = util !== null && util >= 0.1;

@@ -1,10 +1,10 @@
-// Idiomas del libro de Excel. Todo texto que termina dentro del .xlsx y depende del idioma sale de un
-// ExcelLocale: etiquetas, nombres de hojas, de tablas y de columnas, meses, valores Sí/No y los trozos de
-// texto de las fórmulas. El generador (export.ts) no lleva textos propios: la estructura del libro, sus
-// estilos y sus fórmulas son los mismos en los tres idiomas.
+// Languages of the Excel workbook. Every text that ends up inside the .xlsx and depends on the language comes
+// from an ExcelLocale: labels, names of sheets, tables and columns, months, Yes/No values and the pieces of
+// text of the formulas. The generator (export.ts) carries no texts of its own: the workbook's structure, its
+// styles and its formulas are the same in the three languages.
 //
-// EXCEL_ES son, tal cual, los textos del exportador original del diseño: con él la salida sigue siendo
-// idéntica byte a byte a la del script de referencia (export.test.ts). Cambiar un texto ahí rompe esa prueba.
+// EXCEL_ES holds, unchanged, the texts of the design's original exporter: with it the output is still
+// byte-for-byte identical to the reference script's (export.test.ts). Changing a text there breaks that test.
 
 import type { Language } from '../types';
 import { EXCEL_EN } from './locale-en';
@@ -12,41 +12,41 @@ import { EXCEL_ES } from './locale-es';
 import { EXCEL_TR } from './locale-tr';
 
 /**
- * Texto de una fórmula con una expresión en medio: [antes, después]. Con dos expresiones son tres trozos, y
- * así. El orden de las expresiones es fijo; un trozo vacío no se escribe.
- * Español: ['Faltan ', ' aportes · ', ' USD por mes para llegar'] → "Faltan "&$R$6&" aportes · "&…
+ * Text of a formula with an expression in the middle: [before, after]. With two expressions it is three pieces,
+ * and so on. The order of the expressions is fixed; an empty piece is not written.
+ * Spanish: ['Faltan ', ' aportes · ', ' USD por mes para llegar'] → "Faltan "&$R$6&" aportes · "&…
  */
 export type Phrase1 = readonly [before: string, after: string];
 export type Phrase2 = readonly [before: string, between: string, after: string];
 export type Phrase3 = readonly [before: string, first: string, second: string, after: string];
 
 export interface ExcelLocale {
-  /** Idioma al que se traducen las categorías y los métodos guardados (shared/i18n.ts). */
+  /** Language the stored categories and methods are translated into (shared/i18n.ts). */
   readonly lang: Language;
   /**
-   * Nombres de los meses. Dan nombre a las hojas de mes ("Octubre 2026"), a la columna Mes de los aportes y
-   * a las listas CHOOSE de las fórmulas; INDIRECT localiza cada hoja por ese nombre.
+   * Month names. They name the month sheets ("October 2026"), the Month column of the contributions and
+   * the CHOOSE lists of the formulas; INDIRECT locates each sheet by that name.
    */
   readonly months: readonly string[];
   /**
-   * Listas de la hoja Config (desplegables del historial): las diez categorías y los tres métodos del diseño
-   * original, no las listas de hoy (CATS, METHODS). Las filas sí llevan cualquier valor de hoy, traducido.
+   * Lists of the Config sheet (the history's dropdowns): the ten categories and the three methods of the
+   * original design, not today's lists (CATS, METHODS). The rows do carry any of today's values, translated.
    */
   readonly cats: readonly string[];
   readonly methods: readonly string[];
-  /** Valores de la columna "Pagado". Van en una lista "a,b" y dentro de fórmulas: sin comas. */
+  /** Values of the "Paid" column. They go in an "a,b" list and inside formulas: no commas. */
   readonly yes: string;
   readonly no: string;
-  /** Texto de la banda oscura de las hojas de mes y de ahorros. */
+  /** Text of the dark band of the month and savings sheets. */
   readonly brand: string;
-  /** Título de la columna oculta de cálculos. */
+  /** Title of the hidden calculations column. */
   readonly calc: string;
-  /** La hoja de ajustes se llama "Config" en todos los idiomas (CONFIG_SHEET en export.ts). */
+  /** The settings sheet is called "Config" in every language (CONFIG_SHEET in export.ts). */
   readonly sheets: { readonly savings: string };
   /**
-   * Nombres de tabla: solo letras ASCII, dígitos y guion bajo (Excel no admite espacios ni signos, y así
-   * tampoco dependen de cómo trate cada programa las letras turcas). Los de las tablas del mes son prefijos:
-   * el generador les añade "_AAAA_MM".
+   * Table names: only ASCII letters, digits and underscores (Excel does not allow spaces or symbols, and this
+   * way they do not depend on how each program handles Turkish letters either). The month tables' names are
+   * prefixes: the generator appends "_YYYY_MM" to them.
    */
   readonly tables: {
     readonly fixed: string;
@@ -55,8 +55,8 @@ export interface ExcelLocale {
     readonly contribs: string;
   };
   /**
-   * Encabezados de las tablas. Son también los nombres de columna de las referencias estructuradas
-   * (Aportes[Meta]), así que no pueden llevar corchetes, '#' ni comillas simples.
+   * Table headers. They are also the column names of the structured references
+   * (Contributions[Goal]), so they cannot contain brackets, '#' or single quotes.
    */
   readonly cols: {
     readonly paid: string;
@@ -75,7 +75,7 @@ export interface ExcelLocale {
     readonly month: string;
     readonly goal: string;
   };
-  /** Hoja de un mes. */
+  /** A month's sheet. */
   readonly month: {
     readonly rate: string;
     readonly hint: string;
@@ -94,33 +94,33 @@ export interface ExcelLocale {
     readonly available: string;
     readonly availableAfter: string;
     readonly usedUSD: string;
-    /** [porcentaje usado del presupuesto] */
+    /** [percentage of the budget used] */
     readonly pctUsed: Phrase1;
-    /** Centro de la dona, sobre el monto usado. */
+    /** Center of the donut, above the used amount. */
     readonly used: string;
-    /** Centro de la dona, bajo el monto usado: [presupuesto]. */
+    /** Center of the donut, below the used amount: [budget]. */
     readonly ofBudget: Phrase1;
     readonly fixedTitle: string;
-    /** [pagados] [gastos] [total en DOP] */
+    /** [paid] [expenses] [total in DOP] */
     readonly fixedMeta: Phrase3;
     readonly byCategory: string;
-    /** Primera fila de "Por categoría". */
+    /** First row of "By category". */
     readonly fixedCategory: string;
     readonly transfersTitle: string;
-    /** [tasa promedio] */
+    /** [average rate] */
     readonly average: Phrase1;
     readonly txTitle: string;
-    /** [número de transacciones] [total en DOP] */
+    /** [number of transactions] [total in DOP] */
     readonly txMeta: Phrase2;
   };
-  /** Dibujo de la dona: idioma de sus textos (atributo lang) y nombres del gráfico, sus cajas de texto y su serie. */
+  /** Donut drawing: language of its texts (lang attribute) and names of the chart, its text boxes and its series. */
   readonly drawing: {
     readonly lang: string;
     readonly frame: string;
     readonly center: string;
     readonly series: string;
   };
-  /** Hoja de ahorros. */
+  /** Savings sheet. */
   readonly savings: {
     readonly currentMonth: string;
     readonly totalMoney: string;
@@ -128,35 +128,35 @@ export interface ExcelLocale {
     readonly used: string;
     readonly available: string;
     readonly rate: string;
-    /** Subtítulo de una meta sin plan. */
+    /** Subtitle of a goal with no plan. */
     readonly variable: string;
-    /** [número de aportes] */
+    /** [number of contributions] */
     readonly contribCount: Phrase1;
-    /** [aporte mensual] */
+    /** [monthly contribution] */
     readonly perMonth: Phrase1;
-    /** [aportes que faltan] [USD por mes] */
+    /** [contributions left] [USD per month] */
     readonly remaining: Phrase2;
-    /** [porcentaje] [monto objetivo] */
+    /** [percentage] [target amount] */
     readonly pctOfTarget: Phrase2;
-    /** [mes] [año] */
+    /** [month] [year] */
     readonly target: Phrase2;
     /**
-     * Función de Excel que se aplica al nombre del mes dentro de esa frase: en español los meses van en
-     * minúscula ("Meta: octubre 2027"); en inglés y en turco, con mayúscula inicial.
+     * Excel function applied to the month name inside that phrase: in Spanish the months go in
+     * lower case ("Meta: octubre 2027"); in English and in Turkish, with an initial capital.
      */
     readonly monthCase: 'LOWER' | 'PROPER';
-    /** Etiquetas de los tres datos editables de una meta con plan (celdas estrechas: textos cortos). */
+    /** Labels of the three editable values of a goal with a plan (narrow cells: short texts). */
     readonly monthly: string;
     readonly start: string;
     readonly end: string;
     readonly incomeTitle: string;
-    /** Encabezados de "Ingresos por mes", columnas B a G. */
+    /** Headers of "Income by month", columns B to G. */
     readonly incomeCols: readonly [string, string, string, string, string, string];
     readonly contribsTitle: string;
-    /** [total en USD] */
+    /** [total in USD] */
     readonly total: Phrase1;
   };
-  /** Hoja Config. */
+  /** Config sheet. */
   readonly config: {
     readonly title: string;
     readonly settings: string;
@@ -172,7 +172,7 @@ export { EXCEL_EN, EXCEL_ES, EXCEL_TR };
 
 export const EXCEL_LOCALES: Readonly<Record<Language, ExcelLocale>> = { en: EXCEL_EN, es: EXCEL_ES, tr: EXCEL_TR };
 
-/** Textos del libro para el idioma del usuario; inglés si el idioma no se reconoce. */
+/** Workbook texts for the user's language; English if the language is not recognized. */
 export function excelLocale(lang: Language): ExcelLocale {
   return EXCEL_LOCALES[lang] ?? EXCEL_EN;
 }

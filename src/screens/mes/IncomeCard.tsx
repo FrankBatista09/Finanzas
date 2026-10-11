@@ -7,11 +7,11 @@ import { EMPTY_MONTH_INCOME, incomeItems } from '../ahorros/model';
 import { MES } from './strings';
 
 /**
- * "Income" del mes: el dinero recibido fuera de los envíos (un pago, un regalo, un reembolso) con fecha en el mes
- * seleccionado. Es la misma tabla de Savings, con otra costumbre: lo que se agrega aquí entra a la cuenta y además
- * sube el presupuesto de este mes, salvo que se desmarque su casilla. Con el mes cerrado la tarjeta es de solo
- * lectura, como el resto de la hoja: la API sí admitiría el cambio (un ingreso no pertenece a un mes) y desde
- * Savings se puede hacer, pero aquí movería el presupuesto de un mes que se ve cerrado.
+ * The month's "Income": the money received outside transfers (a payment, a gift, a refund) dated in the selected
+ * month. It is the same table as in Savings, with a different default: what is added here goes into the account and
+ * also raises this month's budget, unless its checkbox is unchecked. With the month closed the card is read-only,
+ * like the rest of the sheet: the API would accept the change (an income does not belong to a month) and it can be
+ * done from Savings, but here it would move the budget of a month that looks closed.
  */
 export function IncomeCard() {
   const { state, monthKey, calc, main, draftDate, readOnly } = useFinanzas();

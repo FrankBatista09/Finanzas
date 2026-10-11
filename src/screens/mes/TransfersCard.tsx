@@ -43,10 +43,11 @@ import { MES } from './strings';
 import styles from './TransfersCard.module.css';
 
 /**
- * "Envíos": el dinero que pasa de una cuenta a otra en el mes. Sale de la cuenta de origen en su moneda y entra a
- * la de destino multiplicado por la tasa del envío. Con la casilla "Moves budget", el presupuesto del mes se mueve
- * con él: baja en la parte de la cuenta de origen y sube en la de destino. La comisión (lo que cobra el servicio,
- * de la cuenta de origen y en su moneda) va bajo la tasa. Las filas se editan como las de las demás tablas.
+ * "Transfers": the money that goes from one account to another during the month. It leaves the origin account in its
+ * currency and enters the destination account multiplied by the transfer's rate. With the "Moves budget" checkbox, the
+ * month's budget moves with it: it goes down in the origin account's part and up in the destination's. The fee (what
+ * the service charges, from the origin account and in its currency) goes under the rate. Rows are edited like those
+ * of the other tables.
  */
 export function TransfersCard() {
   const { state, monthKey, month, accounts, visibleAccounts, defaultAccount, accountOptions, rateOf, readOnly, draftDate, actions } = useFinanzas();
@@ -55,12 +56,12 @@ export function TransfersCard() {
   const [draft, setDraft] = useState(newTransferDraft);
   const adding = useAddRow(() => setDraft(newTransferDraft()));
   const vias = useMemo(() => viaSuggestions(state.months, monthKey), [state.months, monthKey]);
-  // La misma lista de cuentas visibles mientras no cambien las cuentas (ver FixedCard).
+  // The same list of visible accounts as long as the accounts do not change (see FixedCard).
   const visible = useMemo(() => accountOptions(), [state.accounts]);
   const currencies = useMemo(() => new Map(state.accounts.filter(isMoneyAccount).map((a) => [a.id, a.currency])), [state.accounts]);
 
-  // Las cuentas y la tasa del borrador se resuelven con lo que hay ahora: sin tocar, siguen a la cuenta por
-  // defecto y a la tasa vigente en la fecha del borrador (la que le pondría el servidor a un envío sin tasa).
+  // The draft's accounts and rate are resolved with what exists now: untouched, they follow the default
+  // account and the rate in effect on the draft's date (the one the server would give a transfer with no rate).
   const date = draft.date ?? draftDate;
   const ctx: TransferContext = {
     accounts,
@@ -85,7 +86,7 @@ export function TransfersCard() {
     <ExpandableCard title={s('transfersTitle')} className={styles.fit}>
       <CardHeader title={s('transfersTitle')} action={!readOnly && <AddRowButton control={adding}>{s('addTransfer')}</AddRowButton>} />
       <CardNote>{s('transfersNote')}</CardNote>
-      {/* Media tarjeta: origen y destino comparten columna, lo recibido va bajo el monto y la comisión bajo la tasa, para caber sin scroll. */}
+      {/* Half card: origin and destination share a column, the received amount goes under the amount and the fee under the rate, to fit without scrolling. */}
       <SheetTable minWidth={520} label={s('transfersTitle')}>
         <thead>
           <tr>
@@ -127,7 +128,7 @@ export function TransfersCard() {
                 />
               </Td>
               <Td kind="edit">
-                {/* Texto libre con sugerencias. Vacío no se queda: el placeholder avisa de la vía que se usará. */}
+                {/* Free text with suggestions. It does not stay empty: the placeholder shows which via will be used. */}
                 <CellText
                   value={draft.via}
                   onCommit={(via) => setDraft((d) => ({ ...d, via }))}
@@ -139,7 +140,7 @@ export function TransfersCard() {
                 />
               </Td>
               <Td kind="edit">
-                {/* Elegir la cuenta del otro lado invierte el envío: las dos nunca son la misma. */}
+                {/* Picking the account on the other side reverses the transfer: the two are never the same. */}
                 <div className={styles.route}>
                   <span className={styles.origin}>
                     <CellSelect
@@ -177,7 +178,7 @@ export function TransfersCard() {
                 {draft.amount > 0 && sides.to && <Received amount={transferReceived({ amount: draft.amount, rate: rate.rate })} cur={sides.to.currency} />}
               </Td>
               <Td kind="edit">
-                {/* La tasa del mes para las monedas de las dos cuentas, hasta que el usuario escriba la suya. */}
+                {/* The month rate for the currencies of the two accounts, until the user types their own. */}
                 <RateCell
                   value={rate.rate}
                   onCommit={(value) => setDraft((d) => typeTransferRate(d, value))}
@@ -185,7 +186,7 @@ export function TransfersCard() {
                   minWidth={68}
                   label={s('newTransferRate')}
                 />
-                {/* Sin tocar, la comisión del último envío por esa vía: cada servicio suele cobrar lo mismo. */}
+                {/* Untouched, the fee of the last transfer through that via: each service usually charges the same. */}
                 <Fee value={transferFee(draft, ctx)} onCommit={(fee) => setDraft((d) => ({ ...d, fee }))} commitOn="change" label={s('newTransferFee')} />
               </Td>
               <Td kind="center">
@@ -202,7 +203,7 @@ export function TransfersCard() {
   );
 }
 
-/** Lo que entra a la cuenta de destino (monto × tasa), como segunda línea atenuada bajo el monto: "= 9,600.00 TRY". */
+/** What enters the destination account (amount × rate), as a dimmed second line under the amount: "= 9,600.00 TRY". */
 function Received({ amount, cur }: { amount: number; cur: Currency | undefined }) {
   const { t } = useI18n();
   return (
@@ -213,8 +214,8 @@ function Received({ amount, cur }: { amount: number; cur: Currency | undefined }
 }
 
 /**
- * La comisión del envío, como segunda línea bajo la tasa: un rótulo atenuado y su campo, en la moneda de la cuenta
- * de origen (la misma del monto). Vacío es "sin comisión".
+ * The transfer's fee, as a second line under the rate: a dimmed label and its field, in the origin account's
+ * currency (the same as the amount's). Empty means "no fee".
  */
 function Fee({ value, onCommit, readOnly, commitOn, label }: { value: number; onCommit: (fee: number) => void; readOnly?: boolean; commitOn: CommitOn; label: string }) {
   const { t } = useI18n();
@@ -228,7 +229,7 @@ function Fee({ value, onCommit, readOnly, commitOn, label }: { value: number; on
 
 interface TransferRowProps {
   row: Transfer;
-  /** Monedas de las cuentas de origen y de destino; undefined si la cuenta ya no existe. */
+  /** Currencies of the origin and destination accounts; undefined if the account no longer exists. */
   fromCur: Currency | undefined;
   toCur: Currency | undefined;
   fromOptions: readonly AccountOption[];
@@ -238,12 +239,12 @@ interface TransferRowProps {
   actions: Actions;
 }
 
-/** memo: al editar una celda solo se vuelve a pintar su fila. */
+/** memo: editing a cell re-renders only its row. */
 const TransferRow = memo(function TransferRow({ row: tr, fromCur, toCur, fromOptions, toOptions, vias, readOnly, actions }: TransferRowProps) {
   const s = useStrings(MES);
-  // Vía y fecha del envío, para las etiquetas de sus celdas ("Rate of Remitly 02/10").
+  // The transfer's via and date, for the labels of its cells ("Rate of Remitly 02/10").
   const named = { name: transferName(tr) };
-  // Entre cuentas de la misma moneda la tasa es 1 y no se escribe.
+  // Between accounts of the same currency the rate is 1 and is not typed.
   const sameCurrency = fromCur !== undefined && fromCur === toCur;
   const pick = (side: 'from' | 'to', id: string) => actions.patchTransfer(tr.id, swapSides(tr, side, id));
   return (
@@ -296,7 +297,7 @@ const TransferRow = memo(function TransferRow({ row: tr, fromCur, toCur, fromOpt
         </div>
       </Td>
       <Td kind="edit">
-        {/* El monto sale en la moneda de la cuenta de origen: su código va al lado, dentro de la celda. */}
+        {/* The amount leaves in the origin account's currency: its code goes next to it, inside the cell. */}
         <div className={styles.withCode}>
           <CellNumber
             value={tr.amount}
@@ -329,7 +330,7 @@ const TransferRow = memo(function TransferRow({ row: tr, fromCur, toCur, fromOpt
         />
       </Td>
       <Td kind="action">
-        {!readOnly && <DeleteButton compact onClick={() => actions.removeTransfer(tr.id)} label={s('deleteTransfer', { date: shortDate(tr.date) })} />}
+        {!readOnly && <DeleteButton compact kind="kindTransfer" item={`${named.name} · ${f2(tr.amount)} ${fromCur ?? ''}`.trim()} onConfirm={() => actions.removeTransfer(tr.id)} label={s('deleteTransfer', { date: shortDate(tr.date) })} />}
       </Td>
     </tr>
   );

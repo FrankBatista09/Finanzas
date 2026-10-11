@@ -10,17 +10,17 @@ import { Donut, DonutCenter, LegendRow } from './Donut';
 import styles from './SummaryPanel.module.css';
 
 /**
- * Panel resumen de la hoja "Mes": el presupuesto repartido por cuenta (con el sobrante del mes anterior y la
- * historia de cómo fue cambiando), la dona de presupuesto y la lista con lo usado y lo disponible. Todas las cifras
- * salen de shared/calc.ts, en la moneda principal.
+ * Summary panel of the "Month" sheet: the budget split by account (with the leftover from the previous month and the
+ * history of how it changed), the budget donut and the list with what is used and what is available. All figures
+ * come from shared/calc.ts, in the main currency.
  */
 export function BudgetPanel() {
   const { monthKey, calc, main, second, readOnly, actions, visibleAccounts } = useFinanzas();
   const { goToSheet } = useShell();
   const { t, label } = useI18n();
-  // Que una cuenta exista en Savings no la mete en el presupuesto: aquí solo salen las que tienen parte este mes,
-  // y las demás se suman con la fila de abajo. También sale la que un envío con "Moves budget" deja en cero o en
-  // negativo: es la cuenta de la que salió el presupuesto.
+  // Existing in Savings does not put an account in the budget: only the ones with a part this month show here,
+  // and the rest are added with the row below. The one a transfer with "Moves budget" leaves at zero or negative
+  // also shows: it is the account the budget came out of.
   const parts = calc.budgetParts.filter((p) => p.amount !== 0 || p.fromLog !== 0 || p.fromTransfers !== 0);
   const free = visibleAccounts.filter((a) => !parts.some((p) => p.account.id === a.id));
   const NEW = '__new__';
@@ -30,7 +30,7 @@ export function BudgetPanel() {
     setPick('');
     setAmount(0);
   });
-  // El historial se despliega para un mes: al cambiar de mes vuelve a estar plegado.
+  // The history is expanded for one month: on switching months it is collapsed again.
   const [historyFor, setHistoryFor] = useState<string | null>(null);
   const historyOpen = historyFor === monthKey;
   const [extraOpen, setExtraOpen] = useState(false);
@@ -60,11 +60,11 @@ export function BudgetPanel() {
               </div>
             )}
           </div>
-          {/* key: al cambiar de mes los campos se montan de nuevo y no arrastran un borrador a medias. */}
+          {/* key: on switching months the fields mount again and do not carry over a half-typed draft. */}
           <div className={styles.accounts} key={monthKey}>
             <SheetTable label={t('budget')}>
               <tbody>
-                {/* Una fila por cuenta con parte este mes (también una oculta que aún la tenga): suman el total de arriba. */}
+                {/* One row per account with a part this month (also a hidden one that still has one): they add up to the total above. */}
                 {parts.map(({ account, amount, fromLog }) => (
                   <tr key={account.id}>
                     <Td tone="soft">{account.name}</Td>
@@ -80,11 +80,13 @@ export function BudgetPanel() {
                       {account.currency}
                     </Td>
                     <Td kind="action" last>
-                      {/* La × deja en cero lo que suma el registro; lo que le ponen los ingresos y los envíos no se quita desde aquí. */}
+                      {/* The × zeroes what the budget log adds; what incomes and transfers put into it is not removed from here. */}
                       {!readOnly && fromLog !== 0 && (
                         <DeleteButton
                           compact
-                          onClick={() => actions.setBudgetPart(account.id, amount - fromLog)}
+                          kind="kindBudgetEntry"
+                          item={`${account.name} · ${f2(fromLog)} ${account.currency}`}
+                          onConfirm={() => actions.setBudgetPart(account.id, amount - fromLog)}
                           label={t('removeFromBudget', { name: account.name })}
                         />
                       )}
@@ -102,7 +104,7 @@ export function BudgetPanel() {
                           label={t('budgetAccount')}
                         />
                       ) : (
-                        // Sin cuentas libres un select de una sola opción no dispararía nada: va un botón a Savings.
+                        // With no free accounts a single-option select would fire nothing: a button to Savings goes here.
                         <button type="button" className={styles.link} style={{ padding: '7px 10px' }} onClick={() => goToSheet('ahorros')}>
                           {t('newAccountOption')}
                         </button>
@@ -122,7 +124,7 @@ export function BudgetPanel() {
               </tbody>
             </SheetTable>
           </div>
-          {/* Una parte en negativo (un envío que movió más presupuesto del que tenía) se avisa por escrito, además del rojo. */}
+          {/* A negative part (a transfer that moved more budget than it had) gets a written warning, on top of the red. */}
           {overruns.length > 0 && (
             <ul className={styles.overrun}>
               {overruns.map((o) => (
@@ -157,7 +159,7 @@ export function BudgetPanel() {
         </div>
 
         <div className={cx(styles.cell, styles.ringCell)}>
-          {/* El orden de los anillos importa: fondo, pendientes, fijos pagados y, encima, transacciones. */}
+          {/* The order of the rings matters: background, pending, paid fixed expenses and, on top, transactions. */}
           <Donut
             label={t('budgetUsedOf', { used: f0(calc.used), budget: f0(calc.budget), currency: main })}
             rings={[
@@ -180,7 +182,7 @@ export function BudgetPanel() {
 
         <div className={cx(styles.cell, styles.budget)}>
           <div className={cx(styles.label, styles.budgetTitle)}>{label(monthKey)}</div>
-          {/* El presupuesto planeado ya no se escribe aquí: es la suma de las partes por cuenta de la primera tarjeta. */}
+          {/* The planned budget is no longer typed here: it is the sum of the per-account parts of the first card. */}
           <div className={styles.row}>
             <span>{t('plannedBudget')}</span>
             <span className={cx(styles.mono, styles.strong)}>{f2(calc.budget)}</span>
@@ -207,7 +209,7 @@ export function BudgetPanel() {
           )}
         </div>
       </section>
-      {/* Debajo del panel y a todo el ancho: sus seis columnas no caben en la celda del presupuesto. */}
+      {/* Below the panel and full width: its six columns do not fit in the budget cell. */}
       {historyOpen && <BudgetHistory id={historyId} />}
       {extraOpen && !readOnly && <ExtraBudgetDialog onClose={() => setExtraOpen(false)} />}
     </>
@@ -215,8 +217,8 @@ export function BudgetPanel() {
 }
 
 /**
- * "Leftover from last month": lo que sobró del mes anterior (su disponible), siempre a la vista. Mientras no se
- * haya sumado al presupuesto de este mes lleva el botón para hacerlo, una sola vez; en un mes cerrado, solo la cifra.
+ * "Leftover from last month": what was left over from the previous month (its available), always in view. Until it
+ * is added to this month's budget it carries the button to do so, once only; in a closed month, only the figure.
  */
 function BudgetLeftover() {
   const { leftover, main, readOnly, actions } = useFinanzas();
@@ -242,10 +244,11 @@ function BudgetLeftover() {
 }
 
 /**
- * "Budget history" (plegado al entrar; lo abre el control de la celda del presupuesto): cómo llegó el presupuesto
- * a lo que es (el inicial, los ajustes, el sobrante, los ingresos que lo suben y los envíos que lo mueven de una
- * cuenta a otra, en dos filas: lo que sale de una y lo que entra a la otra), por fecha y con el total acumulado. Un movimiento del registro se quita con × mientras el mes esté abierto; un ingreso se quita o se
- * desmarca en la tarjeta de ingresos.
+ * "Budget history" (collapsed on entry; the control in the budget cell opens it): how the budget got to what it is
+ * (the initial, the adjustments, the leftover, the incomes that raise it and the transfers that move it from one
+ * account to another, in two rows: what leaves one and what enters the other), by date and with the running total.
+ * A budget log movement is removed with × while the month is open; an income is removed or unchecked in the
+ * income card.
  */
 function BudgetHistory({ id }: { id: string }) {
   const { state, monthKey, main, actions } = useFinanzas();
@@ -295,7 +298,9 @@ function BudgetHistory({ id }: { id: string }) {
                     {r.deletable && (
                       <DeleteButton
                         compact
-                        onClick={() => actions.removeBudgetEntry(r.id)}
+                        kind="kindBudgetEntry"
+                        item={`${r.date.slice(8)}/${r.date.slice(5, 7)} · ${t(r.kindKey)} · ${r.amount} ${r.currency}`}
+                        onConfirm={() => actions.removeBudgetEntry(r.id)}
                         label={t('deleteBudgetEntry', { kind: t(r.kindKey), date: `${r.date.slice(8)}/${r.date.slice(5, 7)}`, amount: r.amount, currency: r.currency })}
                       />
                     )}

@@ -4,7 +4,7 @@ import { useFinanzas } from '../../store';
 import styles from './CloseBox.module.css';
 import { MES } from './strings';
 
-/** Caja punteada para cerrar el mes. El botón solo abre el modal de confirmación, que vive en App. */
+/** Dashed box for closing the month. The button only opens the confirmation dialog, which lives in App. */
 export function CloseBox() {
   const { monthKey, actions } = useFinanzas();
   const { t, label } = useI18n();

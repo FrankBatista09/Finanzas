@@ -29,7 +29,7 @@ function stateWith(): AppState {
 }
 
 describe('cardItems', () => {
-  it('lists the ticked expenses of the card first, then its credit card transactions by date, and nothing else', () => {
+  it('lists the checked fixed expenses of the credit card first, then its credit card transactions by date, and nothing else', () => {
     const items = cardItems(stateWith(), OCT, 'card');
     expect(items.map((i) => [i.kind, i.name, i.date])).toEqual([
       ['fixed', 'Netflix', null],

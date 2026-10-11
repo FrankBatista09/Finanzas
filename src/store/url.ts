@@ -1,6 +1,6 @@
-// Estado en la URL: ?user=eda (de quién son los datos), ?month=2026-10 (mes seleccionado) y ?sheet=savings
-// (la hoja del mes es la de por defecto y no se escribe). Los nombres de los parámetros no se traducen.
-// Funciones puras; el hook que las conecta con history está en useUrlState.ts.
+// State in the URL: ?user=eda (whose data it is), ?month=2026-10 (selected month) and ?sheet=savings
+// (the Month sheet is the default one and is not written). The parameter names are not translated.
+// Pure functions; the hook that connects them to history is in useUrlState.ts.
 
 import { currentKey } from '../../shared/calc';
 import { isMonthKey } from '../../shared/month';
@@ -10,25 +10,25 @@ import { isUserId } from '../../shared/users';
 export type Sheet = 'mes' | 'ahorros';
 
 export interface UrlState {
-  /** null = sin usuario en la URL: se sigue el último usado en este dispositivo (session.ts resolveUser). */
+  /** null = no user in the URL: follow the last one used on this device (session.ts resolveUser). */
   user: string | null;
-  /** null = sin mes en la URL: se sigue el mes en curso. */
+  /** null = no month in the URL: follow the current month. */
   mes: MonthKey | null;
   hoja: Sheet;
 }
 
 export const DEFAULT_SHEET: Sheet = 'mes';
 
-/** Valor de ?sheet= para cada hoja (la de por defecto no llega a escribirse). */
+/** Value of ?sheet= for each sheet (the default one never gets written). */
 const SHEET_PARAM: Record<Sheet, string> = { mes: 'month', ahorros: 'savings' };
 
-/** Lee `location.search`. Lo que no se reconoce cae en los valores por defecto. */
+/** Reads `location.search`. Anything not recognized falls back to the default values. */
 export function parseUrl(search: string): UrlState {
   const params = new URLSearchParams(search);
   const user = params.get('user');
   const month = params.get('month');
   return {
-    // Aquí solo se mira la forma del id; si es un usuario configurado se sabe al llegar la sesión.
+    // Only the shape of the id is checked here; whether it is a configured user is known once the session arrives.
     user: isUserId(user) ? user : null,
     mes: isMonthKey(month) ? month : null,
     hoja: params.get('sheet') === SHEET_PARAM.ahorros ? 'ahorros' : DEFAULT_SHEET,
@@ -36,8 +36,8 @@ export function parseUrl(search: string): UrlState {
 }
 
 /**
- * Devuelve el `search` ('' o '?…') para ese estado. Conserva los parámetros ajenos que hubiera en `current`
- * y deja `user`, `month` y `sheet` al principio, en ese orden.
+ * Returns the `search` ('' or '?…') for that state. Keeps any foreign parameters found in `current`
+ * and puts `user`, `month` and `sheet` first, in that order.
  */
 export function buildSearch(next: UrlState, current = ''): string {
   const rest = new URLSearchParams(current);
@@ -53,7 +53,7 @@ export function buildSearch(next: UrlState, current = ''): string {
   return s ? `?${s}` : '';
 }
 
-/** Mes a mostrar: el pedido si existe; si falta o no existe, el mes en curso. null solo si no hay ningún mes. */
+/** Month to show: the requested one if it exists; if missing or not found, the current month. null only with no months. */
 export function resolveMonth(requested: MonthKey | null, state: AppState): MonthKey | null {
   if (requested && state.months[requested]) return requested;
   return currentKey(state);

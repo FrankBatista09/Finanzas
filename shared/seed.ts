@@ -1,7 +1,7 @@
-// Datos de ejemplo (3 meses: ago y sep cerrados, oct en curso). Son los gastos, envíos y aportes del prototipo
-// del diseño, llevados al modelo de cuentas: el sueldo entra a la US account, los envíos lo pasan a la DR account
-// y casi todo se paga desde la DR account. Se usan en las pruebas y en /api/dev/seed.
-// Los ids son deterministas para que las pruebas sean estables.
+// Sample data (3 months: Aug and Sep closed, Oct current). These are the expenses, transfers and contributions of the
+// design prototype, brought into the accounts model: the salary comes into the US account, the transfers move it to the
+// DR account and almost everything is paid from the DR account. They are used in the tests and in /api/dev/seed.
+// The ids are deterministic so that the tests are stable.
 
 import { DEFAULT_GOALS, DEFAULT_RATE } from './constants';
 import { budgetsFromLog } from './calc';
@@ -27,7 +27,7 @@ export const SEED_ACCOUNTS: readonly Account[] = [
   { id: 'dr', name: 'DR account', currency: 'DOP', opening: 60000, hidden: false, sort: 1 },
 ];
 
-/** La meta con plan del diseño: 15 meses × 3,000 USD = 45,000 USD. */
+/** The design's goal with a plan: 15 months × 3,000 USD = 45,000 USD. */
 export const SEED_PLANNED_GOAL: Goal = {
   id: 'turkey',
   name: 'Trip to Turkey',
@@ -59,7 +59,7 @@ const FIX: FixRow[] = [
 
 const d = (k: MonthKey, n: number) => `${k}-${String(n).padStart(2, '0')}`;
 
-// Lo que se cobra en USD sale de la US account; el resto, de la DR account.
+// What is billed in USD comes out of the US account; the rest, out of the DR account.
 function fixed(k: MonthKey, paid: true | string[], over: Record<string, number> = {}): FixedExpense[] {
   return FIX.map(([name, day, amount, cur], i) => ({
     id: `seed-fx-${k}-${i + 1}`,
@@ -102,7 +102,7 @@ function tr(k: MonthKey, rows: TrRow[]): Transfer[] {
     toAccountId: 'dr',
     amount: usd,
     rate,
-    // Ninguno mueve presupuesto ni lleva comisión: las cifras de ejemplo (70,000 en octubre) salen solo del registro.
+    // None of them moves budget or carries a fee: the sample figures (70,000 in October) come only from the log.
     budget: false,
     fee: 0,
   }));
@@ -110,7 +110,7 @@ function tr(k: MonthKey, rows: TrRow[]): Transfer[] {
 
 type LogRow = [day: number, amount: number, kind: BudgetEntry['kind'], note?: string];
 
-/** El presupuesto del diseño (70,000 DOP) sale entero de la DR account. */
+/** The design's budget (70,000 DOP) comes entirely out of the DR account. */
 const FLAT_BUDGET: LogRow[] = [[1, 70000, 'initial']];
 
 function month(
@@ -132,8 +132,8 @@ function month(
 }
 
 /**
- * Deja el presupuesto de un mes en esas partes (cuenta → monto), como un movimiento 'initial' por cuenta con
- * fecha del primer día. Sustituye su registro. Para armar estados de prueba sin escribir el registro a mano.
+ * Sets a month's budget to those parts (account → amount), as one 'initial' movement per account dated
+ * on the first day. It replaces its log. For building test states without writing the log by hand.
  */
 export function setBudgets(month: Month, budgets: Record<string, number>): void {
   month.budgetLog = Object.entries(budgets).map(([accountId, amount]) => ({
@@ -187,7 +187,7 @@ export function seedState(): AppState {
     contribs,
     cards: [],
     months: {
-      // Agosto y septiembre no tienen tasa escrita: sale del promedio ponderado de sus envíos.
+      // August and September have no typed rate: it comes from the weighted average of their transfers.
       '2026-08': month('2026-08', true, [], {
         fixed: fixed('2026-08', true, { Electricity: 1290.4 }),
         transfers: tr('2026-08', [
@@ -226,9 +226,9 @@ export function seedState(): AppState {
           [28, 'Gas', 'Shell', 'Transport', 'Debit card', 1900],
         ]),
       }),
-      // Octubre tiene la tasa escrita a mano dos veces: el día 1 y, vuelta a confirmar, el día 6. Las dos valen
-      // 58.76 a propósito: el libro de Excel solo conoce una tasa por mes y los datos de ejemplo tienen que dar
-      // en él las mismas cifras que en la app (shared/excel/export-libreoffice.test.ts).
+      // October has the rate typed by hand twice: on day 1 and, confirmed again, on day 6. Both are
+      // 58.76 on purpose: the Excel workbook only knows one rate per month and the sample data has to yield
+      // the same figures in it as in the app (shared/excel/export-libreoffice.test.ts).
       '2026-10': month(
         '2026-10',
         false,
@@ -249,7 +249,7 @@ export function seedState(): AppState {
           [7, 'Coffee', 'Starbucks Ágora', 'Food', 'Debit card', 385],
         ]),
         },
-        // El mes arrancó con 65,000 y el día 5 se subió 5,000: los mismos 70,000 del diseño, con su historia.
+        // The month started with 65,000 and on day 5 it was raised by 5,000: the same 70,000 of the design, with its history.
         [
           [1, 65000, 'initial'],
           [5, 5000, 'adjust', 'Car repair'],

@@ -1,4 +1,4 @@
-// Lógica pura del diálogo «Pagar la tarjeta de crédito».
+// Pure logic of the "Pay credit card" dialog.
 
 import { describe, expect, it } from 'vitest';
 import { seedState } from '../../../shared/seed';
@@ -14,17 +14,17 @@ const owing = (other: number): AppState => {
 };
 
 describe('payForm', () => {
-  it('propone pagar todo, con dos decimales, desde la cuenta por defecto', () => {
+  it('proposes paying everything, with two decimals, from the default account', () => {
     expect(payForm(owing(1234.5), OCT, 'card')).toEqual({ amount: '1234.50', accountId: 'dr' });
   });
 
-  it('propone pagar solo lo que falta', () => {
+  it('proposes paying only what is left', () => {
     const s = owing(1000);
     s.months[OCT] = { ...s.months[OCT]!, cards: [{ cardId: 'card', other: 1000, payments: [{ id: 'p', date: '2026-10-05', accountId: 'dr', amount: 400 }] }] };
     expect(payForm(s, OCT, 'card').amount).toBe('600.00');
   });
 
-  it('propone la cuenta del último pago de la tarjeta', () => {
+  it('proposes the account of the last payment on the credit card', () => {
     const s = owing(100);
     s.months['2026-09'] = { ...s.months['2026-09']!, cards: [{ cardId: 'card', other: 5, payments: [{ id: 'p', date: '2026-09-30', accountId: 'us', amount: 5 }] }] };
     expect(payForm(s, OCT, 'card').accountId).toBe('us');
@@ -32,7 +32,7 @@ describe('payForm', () => {
 });
 
 describe('payAmount', () => {
-  it('> 0 y como mucho el total; el total redondeado cuenta como el total', () => {
+  it('> 0 and at most the total; the rounded total counts as the total', () => {
     expect(payAmount('500', 1000)).toBe(500);
     expect(payAmount('1000', 1000)).toBe(1000);
     expect(payAmount('1000.01', 1000)).toBeNull();
@@ -45,7 +45,7 @@ describe('payAmount', () => {
 });
 
 describe('payRest', () => {
-  it('lo que quedará por pagar; con un monto que no vale, todo lo que falta', () => {
+  it('what will be left to pay; with an invalid amount, everything that is left', () => {
     expect(payRest('400', 1000)).toBe(600);
     expect(payRest('1000', 1000)).toBe(0);
     expect(payRest('2000', 1000)).toBe(1000);
@@ -54,7 +54,7 @@ describe('payRest', () => {
 });
 
 describe('isFullyPaid', () => {
-  it('con menos de medio centavo por pagar está pagada', () => {
+  it('with less than half a cent left to pay it is paid', () => {
     expect(isFullyPaid(0)).toBe(true);
     expect(isFullyPaid(0.004)).toBe(true);
     expect(isFullyPaid(0.01)).toBe(false);

@@ -33,11 +33,11 @@ import { MES } from './strings';
 import styles from './TransactionsCard.module.css';
 
 /**
- * "Historial de transacciones": la fila para agregar arriba (la abre el botón de la cabecera) y, debajo, las
- * transacciones de la más reciente a la más antigua, cada una con la cuenta de la que sale y su importe en la
- * moneda principal y en la segunda. Entre ellas van las comisiones de los envíos del mes: cuentan como una
- * transacción más (en el número y en el total de la cabecera), pero no son filas guardadas: salen del envío, así
- * que aquí solo se leen.
+ * "Transaction history": the add row at the top (the header button opens it) and, below, the
+ * transactions from the most recent to the oldest, each with the account it comes out of and its amount in the
+ * main currency and in the second one. Among them go the fees of the month's transfers: they count as one
+ * more transaction (in the count and in the total of the header), but they are not stored rows: they come from the
+ * transfer, so here they are read-only.
  */
 export function TransactionsCard({ outside }: { outside: OutsideAdding }) {
   const { state, monthKey, month, calc, main, second, inBoth, accounts, defaultAccount, accountOptions, readOnly, draftDate, actions } = useFinanzas();
@@ -45,14 +45,14 @@ export function TransactionsCard({ outside }: { outside: OutsideAdding }) {
   const s = useStrings(MES);
   const [draft, setDraft] = useState(newTxDraft);
   const adding = useAddRow(() => setDraft(newTxDraft()));
-  // La misma lista de cuentas visibles mientras no cambien las cuentas (ver FixedCard).
+  // The same list of visible accounts as long as the accounts do not change (see FixedCard).
   const visible = useMemo(() => accountOptions(), [state.accounts]);
   const ctx = { accounts, defaultAccount, main };
   const draftAccountId = draftAccount(draft, ctx)?.id ?? '';
-  // El enlace de "fuera de presupuesto" solo abre la fila (nunca la cierra), va aparte del botón de su tarjeta y solo
-  // se ve mientras esa tarjeta no existe: con ella a la vista, su propia cabecera tiene el botón.
+  // The "outside budget" link only opens the row (it never closes it), is separate from its card's button and only
+  // shows while that card does not exist: with the card in view, its own header has the button.
   const outsideLink = useRef<HTMLButtonElement>(null);
-  // La tarjeta a la que va una transacción de crédito que no dice cuál: la primera activa.
+  // The credit card a credit transaction goes to when it does not say which: the first active one.
   const firstCard = defaultCardId(state);
 
   const add = () => {
@@ -168,7 +168,7 @@ export function TransactionsCard({ outside }: { outside: OutsideAdding }) {
                 />
               </Td>
               <Td kind="edit">
-                {/* Mientras no se toque, la moneda es la de la cuenta elegida. */}
+                {/* Until it is touched, the currency is that of the chosen account. */}
                 <CellSelect
                   value={draftCurrency(draft, ctx)}
                   options={CURRENCIES}
@@ -187,7 +187,7 @@ export function TransactionsCard({ outside }: { outside: OutsideAdding }) {
                   label={s('newTxAccount')}
                 />
               </Td>
-              {/* Las notas ocupan las dos columnas calculadas, y el botón la de notas y la de eliminar. */}
+              {/* The notes span the two computed columns, and the button the notes column and the delete column. */}
               <Td kind="edit" colSpan={second ? 2 : 1}>
                 <CellText
                   value={draft.notes}
@@ -207,7 +207,7 @@ export function TransactionsCard({ outside }: { outside: OutsideAdding }) {
               const money = inBoth(r.fee.amount, r.fee.cur, undefined, r.fee.date);
               return <FeeRow key={r.key} fee={r.fee} inMain={money.main} inSecond={money.second} />;
             }
-            // Cada transacción, con la tasa vigente en su fecha.
+            // Each transaction, with the rate in effect on its date.
             const money = inBoth(r.tx.amount, r.tx.cur, undefined, r.tx.date);
             return (
               <TxRow
@@ -230,8 +230,8 @@ export function TransactionsCard({ outside }: { outside: OutsideAdding }) {
 }
 
 /**
- * La comisión de un envío en el historial: mismas columnas que una transacción, pero en texto, sin campos ni ×.
- * No es una fila guardada: se cambia (o se quita) en el envío, y la etiqueta junto al nombre lo dice.
+ * A transfer's fee in the history: same columns as a transaction, but as text, with no fields or ×.
+ * It is not a stored row: it is changed (or removed) on the transfer, and the tag next to the name says so.
  */
 function FeeRow({ fee, inMain, inSecond }: { fee: TransferFee; inMain: number; inSecond: number | null }) {
   const { catLabel } = useI18n();
@@ -241,7 +241,7 @@ function FeeRow({ fee, inMain, inSecond }: { fee: TransferFee; inMain: number; i
   return (
     <tr className={styles.feeRow}>
       <Td kind="edit">
-        {/* El mismo campo de fecha que las demás filas, de solo lectura: así sale en el mismo formato. */}
+        {/* The same date field as the other rows, read-only: that way it shows in the same format. */}
         <CellDate value={fee.date} readOnly tone="soft" label={s('dateOf', { name })} />
       </Td>
       <Td nowrap>
@@ -276,23 +276,23 @@ function FeeRow({ fee, inMain, inSecond }: { fee: TransferFee; inMain: number; i
 
 interface TxRowProps {
   row: Transaction;
-  /** El importe en la moneda principal y en la segunda, con las tasas del mes. */
+  /** The amount in the main currency and in the second one, with the month rates. */
   inMain: number;
   inSecond: number | null;
-  /** Opciones del selector de cuenta (rows.ts rowAccountOptions). */
+  /** Options of the account select (rows.ts rowAccountOptions). */
   accounts: readonly AccountOption[];
-  /** Las tarjetas y la primera activa (a la que va una transacción de crédito que no dice cuál). */
+  /** The credit cards and the first active one (the one a credit transaction goes to when it does not say which). */
   cards: readonly CreditCard[];
   firstCard: string | null;
   readOnly: boolean;
   actions: Actions;
 }
 
-/** memo: al editar una celda solo se vuelve a pintar su fila; las demás conservan su identidad en la caché. */
+/** memo: editing a cell re-renders only its row; the others keep their identity in the cache. */
 const TxRow = memo(function TxRow({ row: tx, inMain, inSecond, accounts, cards, firstCard, readOnly, actions }: TxRowProps) {
   const { t, catLabel, methodLabel } = useI18n();
   const s = useStrings(MES);
-  // La descripción de la transacción, para las etiquetas de sus celdas ("Amount of Coffee").
+  // The transaction's description, for the labels of its cells ("Amount of Coffee").
   const named = { name: tx.desc };
   return (
     <tr>
@@ -320,7 +320,7 @@ const TxRow = memo(function TxRow({ row: tx, inMain, inSecond, accounts, cards, 
         />
       </Td>
       <Td kind="edit">
-        {/* Se guarda el nombre canónico y se ve el del idioma; un valor de fuera de la lista se conserva como opción. */}
+        {/* The canonical name is stored and the language's name is shown; a value from outside the list is kept as an option. */}
         <CellSelect
           value={tx.cat}
           options={labelled(optionsWith(CATS, tx.cat), catLabel)}
@@ -396,7 +396,7 @@ const TxRow = memo(function TxRow({ row: tx, inMain, inSecond, accounts, cards, 
             >
               ↘
             </button>
-            <DeleteButton onClick={() => actions.removeTx(tx.id)} label={t('deleteNamed', named)} />
+            <DeleteButton kind="kindTransaction" item={`${tx.desc} · ${f2(tx.amount)} ${tx.cur}`} onConfirm={() => actions.removeTx(tx.id)} label={t('deleteNamed', named)} />
           </>
         )}
       </Td>

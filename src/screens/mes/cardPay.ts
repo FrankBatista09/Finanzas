@@ -1,30 +1,30 @@
-// Lógica pura del diálogo «Pagar la tarjeta de crédito»: qué propone al abrirse y cuándo se puede confirmar.
-// Sin React ni textos. El dinero (lo que falta por pagar) lo calcula shared/calc.ts cardCalc.
+// Pure logic of the "Pay credit card" dialog: what it proposes when it opens and when it can be confirmed.
+// No React and no UI text. The money (what is left to pay) is computed by shared/calc.ts cardCalc.
 
 import { cardAccountFor, cardCalc } from '../../../shared/calc';
 import type { AppState, MonthKey } from '../../../shared/types';
 import { snapToTotal } from '../../store';
 
-/** Lo que el diálogo deja escribir: el monto como texto (un campo a medio escribir no es un número) y la cuenta. */
+/** What the dialog lets the user type: the amount as text (a half-typed field is not a number) and the account. */
 export interface PayForm {
   amount: string;
   accountId: string;
 }
 
-/** Con menos de medio centavo por pagar, la tarjeta está pagada del todo. */
+/** With less than half a cent left to pay, the credit card is fully paid. */
 export const isFullyPaid = (left: number): boolean => left < 0.005;
 
 /**
- * Lo que propone al abrirse: pagar todo lo que falta (con dos decimales) desde la cuenta del último pago de esa
- * tarjeta o, si nunca se pagó, la cuenta por defecto. Sin ninguna cuenta de dinero, la cuenta queda vacía.
+ * What it proposes when it opens: paying everything that is left (with two decimals) from the account of that credit
+ * card's last payment or, if it was never paid, the default account. With no money account, the account stays empty.
  */
 export function payForm(state: AppState, key: MonthKey, cardId: string): PayForm {
   return { amount: Math.max(0, cardCalc(state, key, cardId).remainder).toFixed(2), accountId: cardAccountFor(state, key, cardId)?.id ?? '' };
 }
 
 /**
- * El monto a pagar: un número > 0 y no mayor que lo que falta. Escribir lo que falta redondeado cuenta como eso
- * mismo, para no dejar un resto de céntimos. null si el campo no vale (la confirmación queda apagada).
+ * The amount to pay: a number > 0 and no greater than what is left. Typing what is left, rounded, counts as exactly
+ * that, so no remainder of cents is left behind. null if the field is invalid (the confirmation stays disabled).
  */
 export function payAmount(text: string, left: number): number | null {
   const n = text.trim() === '' ? NaN : Number(text);
@@ -33,7 +33,7 @@ export function payAmount(text: string, left: number): number | null {
   return amount <= left ? amount : null;
 }
 
-/** Lo que quedará por pagar con ese monto; con un monto inválido, todo lo que falta. */
+/** What will be left to pay with that amount; with an invalid amount, everything that is left. */
 export function payRest(text: string, left: number): number {
   const amount = payAmount(text, left);
   return amount === null ? left : left - amount;

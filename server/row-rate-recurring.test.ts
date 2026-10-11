@@ -1,5 +1,5 @@
-// Tasa propia y cuenta de origen de un aporte, e ingresos recurrentes, por la API y el repositorio.
-// Datos de ejemplo de octubre de 2026 (seedState): cuentas us (USD) y dr (DOP), metas emergency, personal y turkey.
+// Own rate and origin account of a contribution, and recurring incomes, through the API and the repository.
+// Sample data for October 2026 (seedState): accounts us (USD) and dr (DOP), goals emergency, personal and turkey.
 
 import { describe, expect, it } from 'vitest';
 import type { StateResponse } from '../shared/api';
@@ -19,8 +19,8 @@ async function seeded() {
 
 const income = { date: '2026-10-09', desc: 'PayPal', accountId: 'dr', amount: 100, cur: 'USD' };
 
-describe('API: tasa propia en ingresos y aportes', () => {
-  it('rate > 0 se guarda, cambia las cifras del mes y null la quita; 0, negativa o no numérica es 400', async () => {
+describe('API: own rate on incomes and contributions', () => {
+  it('rate > 0 is stored, changes the month figures and null removes it; 0, negative or non-numeric is 400', async () => {
     const { api } = await seeded();
     const base = incomeInMonth((await api.get<StateResponse>('/api/state')).body.state, '2026-10');
     const created = await api.post<Income>('/api/incomes', { ...income, rate: 61.5 });
@@ -42,8 +42,8 @@ describe('API: tasa propia en ingresos y aportes', () => {
   });
 });
 
-describe('API: cuenta de la que sale un aporte', () => {
-  it('se guarda y se quita con null; una cuenta desconocida o de oro es 400; y la cuenta en uso no se borra', async () => {
+describe('API: account a contribution comes out of', () => {
+  it('it is stored, and removed with null; an unknown or gold account is 400; and the account in use cannot be deleted', async () => {
     const { api } = await seeded();
     expect((await api.post<Account>('/api/accounts', { id: 'gold', name: 'Gold', currency: 'XAU', opening: 5 })).status).toBe(201);
     const body = { goalId: 'emergency', date: '2026-10-09', amount: 10, cur: 'USD' };
@@ -59,11 +59,11 @@ describe('API: cuenta de la que sale un aporte', () => {
     expect((await api.patch(`/api/contributions/${ok.body.id}`, { accountId: 'gold' })).status).toBe(400);
     expect((await api.patch(`/api/contributions/${ok.body.id}`, { accountId: 'nope' })).status).toBe(400);
 
-    // Un aporte la usa: no se puede borrar (409), solo ocultar.
+    // A contribution uses it: it cannot be deleted (409), only hidden.
     expect((await api.del('/api/accounts/us')).status).toBe(409);
     const cleared = await api.patch<Contribution>(`/api/contributions/${ok.body.id}`, { accountId: null });
     expect(cleared.body.accountId).toBeNull();
-    // Sin el aporte (y sin otros movimientos) vuelve a ser borrable: la cuenta nueva no tiene nada.
+    // Without the contribution (and with no other movements) it can be deleted again: the new account has nothing.
     const fresh = await api.post<Account>('/api/accounts', { name: 'Fresh', currency: 'USD' });
     const used = await api.post<Contribution>('/api/contributions', { ...body, accountId: fresh.body.id });
     expect((await api.del(`/api/accounts/${fresh.body.id}`)).status).toBe(409);
@@ -71,7 +71,7 @@ describe('API: cuenta de la que sale un aporte', () => {
     expect((await api.del(`/api/accounts/${fresh.body.id}`)).status).toBe(200);
   });
 
-  it('el aporte baja el saldo de la cuenta en el estado que lee el servidor', async () => {
+  it('the contribution lowers the account balance in the state the server reads', async () => {
     const { api } = await seeded();
     const before = balances((await api.get<StateResponse>('/api/state')).body.state, '2026-10').accounts.find((a) => a.account.id === 'us')!.balance;
     await api.post('/api/contributions', { goalId: 'emergency', date: '2026-10-09', amount: 25, cur: 'USD', accountId: 'us' });
@@ -80,10 +80,10 @@ describe('API: cuenta de la que sale un aporte', () => {
   });
 });
 
-describe('ingresos recurrentes al crearse un mes', () => {
+describe('recurring incomes when a month is created', () => {
   const nov = async (db: D1Database) => (await listIncomes(db, F)).filter((i) => i.date.startsWith('2026-11'));
 
-  it('copia solo los recurrentes del mes anterior: mismos datos, recurrente, sin tasa propia y con el día recortado', async () => {
+  it('copies only the recurring ones from the previous month: same data, recurring, with no own rate and with the day clamped', async () => {
     const { db } = await seeded();
     await ensureMonth(db, F, '2027-01');
     await createIncome(db, F, { date: '2027-01-31', desc: 'Salary', accountId: 'dr', amount: 1000, cur: 'USD', budget: true, rate: 60, recurring: true });
@@ -93,17 +93,17 @@ describe('ingresos recurrentes al crearse un mes', () => {
     expect(feb.map(({ id: _id, ...i }) => i)).toEqual([
       { date: '2027-02-28', desc: 'Salary', accountId: 'dr', amount: 1000, cur: 'USD', budget: true, rate: null, recurring: true },
     ]);
-    // La cadena sigue: marzo recibe el de febrero, con su día 28 (no vuelve al 31).
+    // The chain goes on: March gets February's, with its day 28 (it does not go back to the 31st).
     await ensureMonth(db, F, '2027-03');
     const mar = (await listIncomes(db, F)).filter((i) => i.date.startsWith('2027-03'));
     expect(mar.map((i) => [i.date, i.recurring])).toEqual([['2027-03-28', true]]);
   });
 
-  it('una sola vez por mes: abrir el mes otra vez, cerrar dos veces o tener ya uno igual no duplica', async () => {
+  it('only once per month: opening the month again, closing twice or already having an identical one does not duplicate', async () => {
     const { db } = await seeded();
     await patchIncome(db, F, 'seed-in-3', { recurring: true });
     await createIncome(db, F, { date: '2026-10-20', desc: 'Rent', accountId: 'dr', amount: 300, cur: 'DOP', recurring: true });
-    // Ya hay en noviembre un ingreso igual al de Rent (aunque no sea recurrente): ese no se copia.
+    // November already has an income identical to the Rent one (even though it is not recurring): that one is not copied.
     await createIncome(db, F, { date: '2026-11-03', desc: 'Rent', accountId: 'dr', amount: 300, cur: 'DOP' });
     await closeMonth(db, F, '2026-10');
     expect((await nov(db)).map((i) => [i.desc, i.date, i.recurring]).sort()).toEqual([
@@ -116,7 +116,7 @@ describe('ingresos recurrentes al crearse un mes', () => {
     expect(incomeInMonth(await loadState(db, F), '2026-11')).toBeGreaterThan(0);
   });
 
-  it('desmarcar "recurrente" solo afecta a las copias futuras; el oro se copia sin presupuesto', async () => {
+  it('unchecking "Recurring" only affects future copies; gold is copied without budget', async () => {
     const { api, db } = await seeded();
     await api.post('/api/accounts', { id: 'gold', name: 'Gold', currency: 'XAU', opening: 0 });
     await createIncome(db, F, { date: '2026-10-12', desc: 'Grams', accountId: 'gold', amount: 2.5, cur: 'XAU', recurring: true });

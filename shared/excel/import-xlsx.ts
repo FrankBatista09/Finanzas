@@ -1,10 +1,10 @@
-// Abre un .xlsx (zip + SpreadsheetML) y devuelve los valores de las celdas de las hojas pedidas.
-// Sustituye a SheetJS, que el prototipo cargaba desde un CDN. Solo lee lo que el importador usa:
-// nombres de hoja, valores (no estilos ni fórmulas) y el sistema de fechas del libro.
+// Opens an .xlsx (zip + SpreadsheetML) and returns the cell values of the requested sheets.
+// It replaces SheetJS, which the prototype loaded from a CDN. It reads only what the importer uses:
+// sheet names, values (no styles or formulas) and the workbook's date system.
 //
-// Tiene que entender lo que escriben Excel, Numbers y LibreOffice al guardar, no solo nuestro exportador:
-// entradas comprimidas, hojas cuyo archivo no sigue el orden de las pestañas, cadenas compartidas con
-// formato, cadenas en línea, celdas sin referencia, etc.
+// It has to understand what Excel, Numbers and LibreOffice write when saving, not only our exporter:
+// compressed entries, sheets whose file does not follow the tab order, shared strings with
+// formatting, inline strings, cells without a reference, etc.
 
 import { unzipSync } from 'fflate';
 import { ImportError } from './import-error';
@@ -12,20 +12,20 @@ import { decodeOoxmlEscapes, XmlScanner } from './import-xml';
 
 export type CellValue = string | number | boolean;
 
-/** Límites de una hoja de Excel (XFD1048576). Lo que caiga fuera se ignora. */
+/** Limits of an Excel sheet (XFD1048576). Anything that falls outside is ignored. */
 const MAX_COLS = 16384;
 const MAX_ROWS = 1048576;
 
 /**
- * Tope de XML descomprimido por lectura. Un libro real son unos pocos MB (una hoja con 5,000 transacciones
- * ronda los 3 MB); más que esto es un archivo corrupto o hostil, y en un Worker agotaría la memoria.
+ * Cap on uncompressed XML per read. A real workbook is a few MB (a sheet with 5,000 transactions
+ * is around 3 MB); more than this is a corrupt or hostile file, and in a Worker it would exhaust memory.
  */
 const MAX_XML_BYTES = 64 * 1024 * 1024;
 
 const ROOT_RELS = '_rels/.rels';
 const DEFAULT_WORKBOOK = 'xl/workbook.xml';
 
-// Los mensajes van en inglés, como los de la API; el código (import-error.ts) es lo que permite traducirlos.
+// The messages are in English, like the API's; the code (import-error.ts) is what makes them translatable.
 const notXlsx = (cause?: unknown) =>
   new ImportError('The file is not a valid .xlsx.', cause === undefined ? { code: 'not_xlsx' } : { code: 'not_xlsx', cause });
 
@@ -39,20 +39,20 @@ function colIndex(letters: string): number {
   return n - 1;
 }
 
-/** Celdas con valor de una hoja. Las vacías (sin valor, cadena vacía, error o fórmula sin calcular) no existen. */
+/** A sheet's cells with a value. Empty ones (no value, empty string, error or uncalculated formula) do not exist. */
 export class SheetCells {
-  /** Última fila con algún valor (0 si la hoja está vacía). */
+  /** Last row with any value (0 if the sheet is empty). */
   maxRow = 0;
   private readonly values = new Map<number, CellValue>();
 
-  /** `col` desde 0, `row` desde 1. */
+  /** `col` from 0, `row` from 1. */
   set(col: number, row: number, value: CellValue): void {
     if (col < 0 || col >= MAX_COLS || row < 1 || row > MAX_ROWS) return;
     this.values.set(row * MAX_COLS + col, value);
     if (row > this.maxRow) this.maxRow = row;
   }
 
-  /** Valor de la celda, p. ej. `get('C', 8)`; undefined si está vacía. */
+  /** The cell's value, e.g. `get('C', 8)`; undefined if it is empty. */
   get(col: string, row: number): CellValue | undefined {
     return this.values.get(row * MAX_COLS + colIndex(col));
   }
@@ -64,25 +64,25 @@ export interface XlsxSheet {
 }
 
 export interface XlsxBook {
-  /** true si los seriales de fecha cuentan desde 1904 (libros que vienen de Excel para Mac antiguo). */
+  /** true if date serials count from 1904 (workbooks that come from old Excel for Mac). */
   date1904: boolean;
-  /** Las hojas pedidas, en el orden de las pestañas. */
+  /** The requested sheets, in tab order. */
   sheets: XlsxSheet[];
 }
 
-/** Los nombres de parte de OPC no distinguen mayúsculas; algún generador escribe '\' en vez de '/'. */
+/** OPC part names are case-insensitive; some generators write '\' instead of '/'. */
 function partKey(path: string): string {
   return path.replace(/\\/g, '/').replace(/^\/+/, '').toLowerCase();
 }
 
-/** Resuelve el Target de una relación: absoluto ('/xl/worksheets/sheet1.xml') o relativo a la parte que lo declara. */
+/** Resolves a relationship Target: absolute ('/xl/worksheets/sheet1.xml') or relative to the part that declares it. */
 function resolveTarget(baseDir: string, target: string): string {
   let t = target;
   if (t.indexOf('%') >= 0) {
     try {
       t = decodeURI(t);
     } catch {
-      // Un '%' suelto no es un escape: se deja el texto como está.
+      // A stray '%' is not an escape: the text is left as is.
     }
   }
   const out: string[] = [];
@@ -105,13 +105,13 @@ function relsOf(path: string): string {
 }
 
 function decodeXml(bytes: Uint8Array): string {
-  // OPC admite UTF-8 y UTF-16; en la práctica todos escriben UTF-8. TextDecoder quita el BOM.
+  // OPC allows UTF-8 and UTF-16; in practice everyone writes UTF-8. TextDecoder strips the BOM.
   const utf16 =
     bytes[0] === 0xff && bytes[1] === 0xfe ? 'utf-16le' : bytes[0] === 0xfe && bytes[1] === 0xff ? 'utf-16be' : null;
   return new TextDecoder(utf16 ?? 'utf-8').decode(bytes);
 }
 
-/** Descomprime solo las partes pedidas (el resto del zip —gráficos, estilos, imágenes— ni se toca). */
+/** Decompresses only the requested parts (the rest of the zip—charts, styles, images—is not even touched). */
 function unzipParts(bytes: Uint8Array, paths: readonly string[]): Map<string, string> {
   const wanted = new Set(paths.map(partKey));
   let files: Record<string, Uint8Array>;
@@ -120,7 +120,7 @@ function unzipParts(bytes: Uint8Array, paths: readonly string[]): Map<string, st
     files = unzipSync(bytes, {
       filter: (file) => {
         if (!wanted.has(partKey(file.name))) return false;
-        // fflate reserva el tamaño declarado antes de inflar: se corta aquí para no pedir gigas de memoria.
+        // fflate allocates the declared size before inflating: it is cut off here to avoid requesting gigs of memory.
         total += file.originalSize;
         if (!(total <= MAX_XML_BYTES)) throw new ImportError('The file is too large to import.', { code: 'too_large' });
         return true;
@@ -146,14 +146,14 @@ function parseRels(xml: string): Map<string, Relationship> {
   while (sc.next()) {
     if (sc.name !== 'Relationship' || sc.kind === 'close') continue;
     const a = sc.attrs();
-    // Las relaciones externas (vínculos a otros archivos) no son partes del paquete.
+    // External relationships (links to other files) are not parts of the package.
     if (a.Id === undefined || a.Target === undefined || a.TargetMode === 'External') continue;
     out.set(a.Id, { type: a.Type ?? '', target: a.Target });
   }
   return out;
 }
 
-/** Compara por el final del tipo: así valen tanto los libros normales como los "Strict Open XML" (otra URL base). */
+/** Compares by the end of the type, so both regular workbooks and "Strict Open XML" ones (another base URL) match. */
 function isType(rel: Relationship, kind: string): boolean {
   return rel.type.endsWith(`/${kind}`);
 }
@@ -177,7 +177,7 @@ function parseWorkbook(xml: string): WorkbookInfo {
       info.date1904 = v === '1' || v === 'true';
     } else if (inSheets && sc.name === 'sheet') {
       const a = sc.attrs();
-      // El id de la relación va en otro espacio de nombres; el prefijo suele ser 'r' pero es libre.
+      // The relationship id lives in another namespace; the prefix is usually 'r' but can be anything.
       let rid = a['r:id'];
       if (rid === undefined) for (const k in a) if (k.endsWith(':id')) rid = a[k];
       if (a.name !== undefined && rid !== undefined) info.sheets.push({ name: a.name, rid });
@@ -187,8 +187,8 @@ function parseWorkbook(xml: string): WorkbookInfo {
 }
 
 /**
- * Texto de un <si> (cadena compartida) o <is> (cadena en línea): une los <t>, vengan sueltos o en
- * tramos con formato <r>, y descarta la guía fonética <rPh> (lectura en japonés, no es parte del texto).
+ * Text of an <si> (shared string) or <is> (inline string): joins the <t> elements, whether they come on their own
+ * or in formatted runs <r>, and drops the phonetic guide <rPh> (Japanese reading, not part of the text).
  */
 function readRichText(sc: XmlScanner, end: string): string {
   let out = '';
@@ -220,10 +220,10 @@ function parseSheet(xml: string, sst: readonly string[]): SheetCells {
   const cells = new SheetCells();
   const sc = new XmlScanner(xml);
   let inData = false;
-  // Posición implícita: una fila o celda sin atributo r va justo después de la anterior.
+  // Implicit position: a row or cell without an r attribute goes right after the previous one.
   let row = 0;
   let col = -1;
-  // Celda <c> abierta, a la espera de su </c>.
+  // Open <c> cell, waiting for its </c>.
   let open = false;
   let type = '';
   let cellRow = 0;
@@ -237,7 +237,7 @@ function parseSheet(xml: string, sst: readonly string[]): SheetCells {
     let value: CellValue | undefined;
     switch (type) {
       case 's': {
-        // Índice en sharedStrings.xml. (Number('') es 0: un <v> vacío no debe leerse como la primera cadena.)
+        // Index into sharedStrings.xml. (Number('') is 0: an empty <v> must not be read as the first string.)
         const t = v?.trim();
         value = t ? sst[Number(t)] : undefined;
         break;
@@ -246,11 +246,11 @@ function parseSheet(xml: string, sst: readonly string[]): SheetCells {
         value = inline ?? (v === undefined ? undefined : decodeOoxmlEscapes(v));
         break;
       case 'str':
-        // Resultado de texto de una fórmula.
+        // Text result of a formula.
         value = v === undefined ? undefined : decodeOoxmlEscapes(v);
         break;
       case 'd':
-        // Fecha ISO 8601 (libros "Strict"); se entrega como texto y el importador la interpreta.
+        // ISO 8601 date ("Strict" workbooks); it is returned as text and the importer interprets it.
         value = v?.trim();
         break;
       case 'b': {
@@ -259,10 +259,10 @@ function parseSheet(xml: string, sst: readonly string[]): SheetCells {
         break;
       }
       case 'e':
-        // #N/A, #DIV/0!…: para importar es una celda vacía.
+        // #N/A, #DIV/0!…: for import purposes it is an empty cell.
         break;
       default: {
-        // Número (t="n" o sin tipo). Una fórmula sin valor en caché —las que escribe nuestro exportador— no trae <v>.
+        // Number (t="n" or no type). A formula with no cached value—the kind our exporter writes—has no <v>.
         const t = v?.trim();
         if (t !== undefined && t !== '') {
           const n = Number(t);
@@ -296,7 +296,7 @@ function parseSheet(xml: string, sst: readonly string[]): SheetCells {
       cellCol = col + 1;
       const ref = a.r;
       if (ref !== undefined) {
-        // "AB12" → columna y fila, sin regex ni subcadenas (se ejecuta una vez por celda).
+        // "AB12" → column and row, without regex or substrings (it runs once per cell).
         let i = 0;
         let c = 0;
         for (; i < ref.length; i++) {
@@ -335,20 +335,20 @@ function parseSheet(xml: string, sst: readonly string[]): SheetCells {
 }
 
 /**
- * Lee el libro y devuelve las hojas de cálculo cuyo nombre acepta `wanted`.
- * Lanza ImportError si los bytes no son un zip o el zip no es un libro de Excel.
+ * Reads the workbook and returns the worksheets whose name `wanted` accepts.
+ * Throws ImportError if the bytes are not a zip or the zip is not an Excel workbook.
  */
 export function readXlsx(bytes: Uint8Array, wanted: (sheetName: string) => boolean): XlsxBook {
   if (bytes.length >= 4 && bytes[0] === 0xd0 && bytes[1] === 0xcf && bytes[2] === 0x11 && bytes[3] === 0xe0) {
-    // Contenedor OLE: el formato binario antiguo, o un .xlsx cifrado con contraseña.
+    // OLE container: the old binary format, or a password-encrypted .xlsx.
     throw new ImportError('The file is an old .xls or is password-protected. Save it as .xlsx without a password.', {
       code: 'old_format',
     });
   }
-  // 22 bytes es el zip más pequeño posible (solo el registro de fin del directorio).
+  // 22 bytes is the smallest possible zip (only the end-of-directory record).
   if (bytes.length < 22) throw notXlsx();
 
-  // La ubicación del libro la dan las relaciones raíz; casi siempre es xl/workbook.xml, que se pide de una vez.
+  // The root relationships give the workbook's location; it is almost always xl/workbook.xml, requested right away.
   const first = unzipParts(bytes, [ROOT_RELS, DEFAULT_WORKBOOK, relsOf(DEFAULT_WORKBOOK)]);
   let wbPath = DEFAULT_WORKBOOK;
   const rootRels = first.get(partKey(ROOT_RELS));
@@ -370,13 +370,13 @@ export function readXlsx(bytes: Uint8Array, wanted: (sheetName: string) => boole
   const rels = wbRels === undefined ? new Map<string, Relationship>() : parseRels(wbRels);
   const baseDir = dirOf(wbPath);
 
-  // La hoja se localiza por su relación, nunca por su posición: sheet1.xml no tiene por qué ser la primera pestaña.
+  // The sheet is located by its relationship, never by its position: sheet1.xml does not have to be the first tab.
   const picked: { name: string; path: string }[] = [];
   for (const sheet of info.sheets) {
     if (!wanted(sheet.name)) continue;
     const rel = rels.get(sheet.rid);
     if (rel === undefined) throw missingSheet(sheet.name);
-    // Una hoja de gráfico o de macros no tiene celdas.
+    // A chart sheet or a macro sheet has no cells.
     if (!isType(rel, 'worksheet')) continue;
     picked.push({ name: sheet.name, path: resolveTarget(baseDir, rel.target) });
   }

@@ -7,13 +7,13 @@ import { GoalDialog } from './GoalDialog';
 import { goalCards } from './model';
 import { AHORROS } from './strings';
 
-/** El diálogo de metas: cerrado (null), para una meta nueva ('new') o editando la de ese id. */
+/** The goal dialog: closed (null), for a new goal ('new') or editing the one with that id. */
 type Open = null | 'new' | { id: string };
 
 /**
- * Una tarjeta por meta: lo ahorrado en la moneda de la meta (y su equivalente "≈" en la moneda que eligió la meta
- * —por defecto, la principal—, a la tasa del mes en curso, salvo que sea la misma) y, si la meta tiene objetivo, cuánto falta para llegar. Cada una se edita desde su cabecera y,
- * después de la última, la tarjeta punteada crea una nueva.
+ * One card per goal: what is saved in the goal's currency (and its "≈" equivalent in the currency the goal chose
+ * — by default, the main one — at the current month's rate, unless it is the same) and, if the goal has a target, how much is left to get there. Each one is edited from its header and,
+ * after the last one, the dashed card creates a new one.
  */
 export function GoalCards() {
   const { state } = useFinanzas();
@@ -22,7 +22,7 @@ export function GoalCards() {
   const [open, setOpen] = useState<Open>(null);
   const cards = goalCards(state, lang);
   const close = () => setOpen(null);
-  // Si la meta que se editaba deja de existir (se recargaron los datos), el diálogo desaparece con ella.
+  // If the goal being edited stops existing (the data was reloaded), the dialog goes away with it.
   const editing = open !== null && open !== 'new' ? state.goals.find((g) => g.id === open.id) : undefined;
 
   return (

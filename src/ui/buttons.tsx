@@ -1,18 +1,20 @@
-import { useContext } from 'react';
+import { useContext, useRef } from 'react';
 import type { ButtonHTMLAttributes, MouseEvent, ReactNode } from 'react';
 import { useI18n } from '../i18n';
 import { AddRowContext } from './addRowContext';
 import styles from './buttons.module.css';
+import { useConfirmDelete } from './confirmDelete';
+import type { DeleteKind } from './confirmDelete';
 import { cx } from './cx';
 
 export interface AddButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'type'> {
-  /** Por defecto "Add", en el idioma actual. */
+  /** By default "Add", in the current language. */
   children?: ReactNode;
 }
 
 /**
- * Botón verde de las filas de agregar. Dentro de un <AddRow> ejecuta el onAdd de la fila: no hay que pasarle onClick
- * (si se le pasa, se usa ese y el de la fila no se llama).
+ * Green button of the add rows. Inside an <AddRow> it runs the row's onAdd: there is no need to pass it onClick
+ * (if one is passed, that one is used and the row's is not called).
  */
 export function AddButton({ children, className, onClick, ...rest }: AddButtonProps) {
   const { t } = useI18n();
@@ -28,26 +30,40 @@ export function AddButton({ children, className, onClick, ...rest }: AddButtonPr
   );
 }
 
-export interface DeleteButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'type' | 'children' | 'title'> {
-  /** Nombre accesible, ya traducido; conviene decir qué se elimina (t('deleteNamed', { name })). Por defecto "Delete". */
+export interface DeleteButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'type' | 'children' | 'title' | 'onClick'> {
+  /** Accessible name, already translated; it is best to say what is deleted (t('deleteNamed', { name })). By default "Delete". */
   label?: string;
-  /** Padding 4px 6px en vez de 4px 8px (tablas de envíos y aportes). */
+  /** Padding 4px 6px instead of 4px 8px (transfers and contributions tables). */
   compact?: boolean;
+  /** What is deleted, for the question "Delete {kind}?". */
+  kind: DeleteKind;
+  /** Short description shown in the question ("Netflix · 1,137.00 DOP"). */
+  item?: string;
+  /** Runs only after the user confirms. */
+  onConfirm: () => void;
 }
 
-/** La × de la última columna. */
-export function DeleteButton({ label, compact, className, ...rest }: DeleteButtonProps) {
+/** The × in the last column. It asks before deleting: only "Delete" in the dialog calls onConfirm. */
+export function DeleteButton({ label, compact, className, kind, item = '', onConfirm, ...rest }: DeleteButtonProps) {
   const { t } = useI18n();
+  const ref = useRef<HTMLButtonElement>(null);
+  const confirm = useConfirmDelete(onConfirm);
   return (
-    <button
-      {...rest}
-      type="button"
-      title={t('delete')}
-      aria-label={label ?? t('delete')}
-      className={cx(styles.delete, compact && styles.compact, className)}
-    >
-      ×
-    </button>
+    <>
+      <button
+        {...rest}
+        ref={ref}
+        type="button"
+        title={t('delete')}
+        aria-label={label ?? t('delete')}
+        className={cx(styles.delete, compact && styles.compact, className)}
+        // Safari does not focus a button on click: the dialog gives the focus back to this one when it closes.
+        onClick={() => (ref.current?.focus(), confirm.request(item))}
+      >
+        ×
+      </button>
+      {confirm.dialog(kind)}
+    </>
   );
 }
 

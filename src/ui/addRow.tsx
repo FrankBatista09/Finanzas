@@ -1,7 +1,7 @@
-// La fila de agregar a petición: ninguna tabla enseña ya una fila vacía con sus placeholders. En su lugar hay un
-// botón "+ Add …" (en la cabecera de la tarjeta o junto al marco de la tabla); al pulsarlo aparece la fila con el
-// foco en su primer campo. Enter o su botón "Add" guardan y la dejan abierta para la siguiente; Esc o el mismo
-// botón de arriba (que pasa a decir "Cancel") la cierran y descartan lo escrito.
+// The on-demand add row: no table shows an empty row with its placeholders anymore. Instead there is a
+// "+ Add …" button (in the card's header or next to the table's frame); pressing it shows the row with the
+// focus on its first field. Enter or its "Add" button saves and leaves it open for the next one; Esc or the same
+// button at the top (which now says "Cancel") closes it and discards what was typed.
 //
 //   const adding = useAddRow(() => setDraft(EMPTY));
 //   <CardHeader title="…" action={!readOnly && <AddRowButton control={adding}>{s('addFixed')}</AddRowButton>} />
@@ -16,7 +16,7 @@ import type { AddRowControl } from './addRowContext';
 import styles from './buttons.module.css';
 import { cx } from './cx';
 
-/** El estado de una fila de agregar. `onDiscard` limpia el borrador cuando la fila se cierra sin guardar. */
+/** The state of an add row. `onDiscard` clears the draft when the row is closed without saving. */
 export function useAddRow(onDiscard?: () => void): AddRowControl {
   const [open, setOpen] = useState(useContext(AddRowsOpenContext));
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -26,7 +26,7 @@ export function useAddRow(onDiscard?: () => void): AddRowControl {
     hide: () => {
       setOpen(false);
       onDiscard?.();
-      // El campo con el foco desaparece con la fila: el foco vuelve al botón que la abrió.
+      // The focused field disappears with the row: the focus goes back to the button that opened it.
       buttonRef.current?.focus();
     },
     buttonRef,
@@ -35,14 +35,14 @@ export function useAddRow(onDiscard?: () => void): AddRowControl {
 
 export interface AddRowButtonProps {
   control: AddRowControl;
-  /** Qué se agrega, ya traducido: "Add transfer". El "+" lo pone el botón. */
+  /** What is added, already translated: "Add transfer". The button adds the "+". */
   children: ReactNode;
-  /** 'link': texto sin caja, para las tablas pequeñas con marco propio (cuentas, partes del presupuesto). */
+  /** 'link': text without a box, for the small tables with their own frame (accounts, budget parts). */
   variant?: 'button' | 'link';
   className?: string;
 }
 
-/** El botón que abre la fila de agregar; con la fila abierta es su "Cancel". */
+/** The button that opens the add row; with the row open it is its "Cancel". */
 export function AddRowButton({ control, children, variant = 'button', className }: AddRowButtonProps) {
   const { t } = useI18n();
   return (

@@ -1,4 +1,4 @@
-// Gastos fuera de presupuesto en los reductores: alta, edición, baja, los dos "mover" y la cuenta en uso.
+// Outside-budget expenses in the reducers: add, edit, remove, the two "move" actions and the account in use.
 
 import { describe, expect, it } from 'vitest';
 import { balances, monthCalc } from '../../shared/calc';
@@ -32,7 +32,7 @@ const out = (state: AppState) => state.months[OCT]!.outside ?? [];
 const bal = (s: AppState, id: string) => balances(s, OCT).accounts.find((a) => a.account.id === id)!.balance;
 
 describe('newOutside', () => {
-  it('nombre, fecha válida, monto > 0 y una cuenta de dinero; la moneda por defecto es la de la cuenta', () => {
+  it('name, valid date, amount > 0 and a money account; the default currency is the account currency', () => {
     const s = seedState();
     expect(newOutside(s, OCT, input, 'o1')).toEqual({ id: 'o1', monthKey: OCT, date: '2026-10-07', name: 'Car repair', desc: '', accountId: 'dr', amount: 1000, cur: 'DOP' });
     expect(newOutside(s, OCT, { ...input, accountId: 'us', desc: ' x ' }, 'o1')).toMatchObject({ accountId: 'us', cur: 'USD', desc: 'x' });
@@ -41,14 +41,14 @@ describe('newOutside', () => {
       expect(newOutside(s, OCT, { ...input, ...bad }, 'o1'), JSON.stringify(bad)).toBeNull();
     }
     expect(newOutside(s, '2030-01', input, 'o1')).toBeNull();
-    // Una cuenta de oro no paga gastos.
+    // A gold account does not pay expenses.
     const gold = { ...s, accounts: [...s.accounts, { id: 'gold', name: 'Gold', currency: 'XAU' as const, opening: 5, hidden: false, sort: 9 }] };
     expect(newOutside(gold, OCT, { ...input, accountId: 'gold' }, 'o1')).toBeNull();
   });
 });
 
-describe('outside/add, patch y remove', () => {
-  it('agrega (sin duplicar), edita y quita; el saldo lo sigue y lo usado no se mueve', () => {
+describe('outside/add, patch and remove', () => {
+  it('adds (without duplicating), edits and removes; the balance follows it and the used amount does not move', () => {
     const s0 = frozen();
     const row = newOutside(s0, OCT, input, 'o1')!;
     const add: Action = { type: 'outside/add', row };
@@ -64,17 +64,17 @@ describe('outside/add, patch y remove', () => {
     expect(reduce(s2, { type: 'outside/remove', id: 'ghost' })).toBe(s2);
   });
 
-  it('es una edición de celda (se agrupa y se retrasa) y su fila es la suya', () => {
+  it('is a cell edit (it is grouped and delayed) and its row is its own', () => {
     const patch: Action = { type: 'outside/patch', id: 'o1', patch: { amount: 3 } };
     expect(isPatch(patch)).toBe(true);
     expect(targetOf(patch)).toBe('outside:o1');
   });
 });
 
-describe('mover', () => {
+describe('move', () => {
   const tx = () => seedState().months[OCT]!.tx.find((t) => t.desc === 'Coffee')!;
 
-  it('tx/moveOutside: la transacción deja el historial y aparece fuera de presupuesto en un solo paso; es idempotente', () => {
+  it('tx/moveOutside: the transaction leaves the history and shows up outside budget in a single step; it is idempotent', () => {
     const s0 = frozen();
     const t = tx();
     const row = outsideFromTx(t, 'o9');
@@ -83,22 +83,22 @@ describe('mover', () => {
     const s1 = reduce(s0, action);
     expect(s1.months[OCT]!.tx.some((x) => x.id === t.id)).toBe(false);
     expect(out(s1)).toEqual([row]);
-    // Aplicarla otra vez (un refetch ya la trajo) no duplica ni resucita nada.
+    // Applying it again (a refetch already brought it) neither duplicates nor resurrects anything.
     expect(reduce(s1, action)).toBe(s1);
-    // El dinero total no cambia: sigue restando; lo usado baja.
+    // The total money does not change: it still subtracts; the used amount goes down.
     expect(bal(s1, 'dr')).toBeCloseTo(bal(s0, 'dr'), 8);
     expect(bal(s1, 'us')).toBeCloseTo(bal(s0, 'us'), 8);
     expect(monthCalc(s1, OCT).txCount).toBe(monthCalc(s0, OCT).txCount - 1);
     expect(targetOf(action)).toBe(`tx:${t.id}`);
   });
 
-  it('una transacción que ya no está no deja un gasto huérfano', () => {
+  it('a transaction that is no longer there does not leave an orphan expense', () => {
     const s0 = frozen();
     const t = tx();
     expect(reduce(s0, { type: 'tx/moveOutside', id: 'ghost', row: outsideFromTx(t, 'o9') })).toBe(s0);
   });
 
-  it('outside/moveToBudget: vuelve como Other / Transfer, sin lugar, con la descripción en las notas', () => {
+  it('outside/moveToBudget: it comes back as Other / Transfer, with no place, with the description in the notes', () => {
     const s0 = frozen();
     const row: OutsideExpense = { id: 'o1', monthKey: OCT, date: '2026-10-05', name: 'Repair', desc: 'radiator', accountId: 'us', amount: 20, cur: 'USD' };
     const s1 = reduce(s0, { type: 'outside/add', row });
@@ -115,8 +115,8 @@ describe('mover', () => {
   });
 });
 
-describe('cuenta en uso', () => {
-  it('una cuenta con un gasto fuera de presupuesto no se puede eliminar', () => {
+describe('account in use', () => {
+  it('an account with an outside-budget expense cannot be deleted', () => {
     const s = seedState();
     const extra = { ...s, accounts: [...s.accounts, { id: 'x', name: 'Extra', currency: 'DOP' as const, opening: 0, hidden: false, sort: 5 }] };
     expect(canRemoveAccount(extra, 'x')).toBe(true);

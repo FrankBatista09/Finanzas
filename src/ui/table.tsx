@@ -1,4 +1,4 @@
-// Marcado de tabla del prototipo: <table> real con th scope="col". Las pantallas escriben thead/tbody a mano.
+// Table markup from the prototype: a real <table> with th scope="col". The screens write thead/tbody by hand.
 
 import { useEffect, useRef } from 'react';
 import type { HTMLAttributes, KeyboardEvent, ReactNode, TdHTMLAttributes, ThHTMLAttributes } from 'react';
@@ -14,12 +14,12 @@ type Align = 'left' | 'right' | 'center';
 
 const alignClass = (align: Align | undefined) => (align === 'right' ? styles.right : align === 'center' ? styles.alignCenter : undefined);
 
-// ── Tabla ────────────────────────────────────────────────────────────────────
+// ── Table ────────────────────────────────────────────────────────────────────
 
 export interface SheetTableProps {
-  /** Ancho mínimo en px; por debajo aparece el scroll horizontal (980 en el historial). */
+  /** Minimum width in px; below it the horizontal scroll appears (980 in the history). */
   minWidth?: number;
-  /** Nombre accesible de la tabla. */
+  /** Accessible name of the table. */
   label?: string;
   className?: string;
   /** Extra class for the scroll wrapper (e.g. to let it shrink and scroll vertically inside a height-capped card). */
@@ -27,7 +27,7 @@ export interface SheetTableProps {
   children: ReactNode;
 }
 
-/** <table> dentro de su contenedor con scroll horizontal. */
+/** <table> inside its horizontally scrolling container. */
 export function SheetTable({ minWidth, label, className, scrollClassName, children }: SheetTableProps) {
   const expanded = useExpanded();
   return (
@@ -39,15 +39,15 @@ export function SheetTable({ minWidth, label, className, scrollClassName, childr
   );
 }
 
-// ── Encabezado ───────────────────────────────────────────────────────────────
+// ── Header ───────────────────────────────────────────────────────────────────
 
 export interface ThProps extends Omit<ThHTMLAttributes<HTMLTableCellElement>, 'align' | 'width'> {
   align?: Align;
-  /** Ancho en px del contenido, como en el prototipo (el padding se suma). */
+  /** Content width in px, as in the prototype (the padding is added on top). */
   width?: number;
-  /** Última columna con título: sin borde derecho. */
+  /** Last titled column: no right border. */
   last?: boolean;
-  /** Columna sin título (la de eliminar): sin padding ni borde derecho. */
+  /** Untitled column (the delete one): no padding and no right border. */
   blank?: boolean;
   /** The column that absorbs the table's surplus width (the others keep their content size). Expanded, all columns share it as before. */
   elastic?: boolean;
@@ -70,16 +70,16 @@ export function Th({ align, width, last, blank, elastic, className, style, child
   );
 }
 
-// ── Celda ────────────────────────────────────────────────────────────────────
+// ── Cell ─────────────────────────────────────────────────────────────────────
 
 /**
- * text    texto con padding de celda (por defecto)
- * num     cifra calculada: derecha, JetBrains Mono 12.5px
- * mono    texto en JetBrains Mono 12px (fecha corta, moneda)
- * edit    sin padding: dentro va un editor Cell*
- * center  centrado sin padding: casilla "Pagado" o el "+" de la fila de agregar
- * action  última columna: botón de eliminar (sin borde derecho)
- * add     celda del botón "Add" (sin borde derecho; suele llevar colSpan)
+ * text    text with cell padding (default)
+ * num     computed figure: right-aligned, JetBrains Mono 12.5px
+ * mono    text in JetBrains Mono 12px (short date, currency)
+ * edit    no padding: a Cell* editor goes inside
+ * center  centered with no padding: "Paid" checkbox or the "+" of the add row
+ * action  last column: delete button (no right border)
+ * add     cell of the "Add" button (no right border; usually takes a colSpan)
  */
 export type TdKind = 'text' | 'num' | 'mono' | 'edit' | 'center' | 'action' | 'add';
 
@@ -88,9 +88,9 @@ export interface TdProps extends Omit<TdHTMLAttributes<HTMLTableCellElement>, 'a
   align?: Align;
   tone?: Tone;
   nowrap?: boolean;
-  /** Peso 500 (la columna DOP del historial). */
+  /** Weight 500 (the DOP column of the history). */
   medium?: boolean;
-  /** Última columna: sin borde derecho. */
+  /** Last column: no right border. */
   last?: boolean;
 }
 
@@ -116,10 +116,10 @@ export function Td({ kind = 'text', align, tone, nowrap, medium, last, className
   );
 }
 
-// ── Filas ────────────────────────────────────────────────────────────────────
+// ── Rows ─────────────────────────────────────────────────────────────────────
 
 export interface TrProps extends HTMLAttributes<HTMLTableRowElement> {
-  /** Gasto fijo sin pagar: fondo #fbfaf5. */
+  /** Unpaid fixed expense: background #fbfaf5. */
   unpaid?: boolean;
 }
 
@@ -133,21 +133,21 @@ export function Tr({ unpaid, className, children, ...rest }: TrProps) {
 
 export interface AddRowProps extends Omit<HTMLAttributes<HTMLTableRowElement>, 'onKeyDown'> {
   /**
-   * Agrega la fila con el borrador actual. Devuelve false si no se agregó (faltan datos): el foco se queda donde está.
-   * La llaman Enter en cualquier input de la fila y el <AddButton /> que haya dentro.
+   * Adds the row with the current draft. Returns false if it was not added (data is missing): the focus stays where it is.
+   * It is called by Enter in any input of the row and by any <AddButton /> inside it.
    */
   onAdd: () => boolean | void;
   /**
-   * La fila se abre a petición (useAddRow + <AddRowButton>): cerrada no se pinta; al abrirla el foco va a su primer
-   * campo y Esc la cierra. Sin él, la fila está siempre a la vista.
+   * The row opens on demand (useAddRow + <AddRowButton>): closed, it is not rendered; on opening, the focus goes to its
+   * first field and Esc closes it. Without a control, the row is always in view.
    */
   control?: AddRowControl;
 }
 
 /**
- * El campo en el que se empieza a escribir una fila nueva: el primero que no sea la fecha (ya trae la de hoy) ni
- * una casilla. Un campo con sugerencias (la vía de un envío) conserva su valor de una fila a la siguiente, así
- * que tampoco es lo que toca escribir: se salta, salvo que no haya otro. Sin campos de texto, la primera lista.
+ * The field where typing a new row starts: the first one that is neither the date (it already holds today's) nor
+ * a checkbox. A field with suggestions (the via of a transfer) keeps its value from one row to the next, so
+ * it is not what needs typing either: it is skipped, unless there is no other. With no text fields, the first select.
  */
 function firstField(row: HTMLTableRowElement | null): HTMLElement | null {
   const typed = 'input:not([type="date"]):not([type="checkbox"])';
@@ -156,9 +156,9 @@ function firstField(row: HTMLTableRowElement | null): HTMLElement | null {
   );
 }
 
-/** Fila para agregar: fondo #f9f8f3 y borde inferior #e3e1d8 en sus celdas. */
+/** Add row: background #f9f8f3 and bottom border #e3e1d8 on its cells. */
 export function AddRow({ control, ...rest }: AddRowProps) {
-  // Cerrada no hay fila. Abrirla la monta de nuevo: de ahí que el foco inicial vaya en un efecto de montaje.
+  // Closed, there is no row. Opening it mounts it again: hence the initial focus goes in a mount effect.
   if (control && !control.open) return null;
   return <OpenAddRow control={control} {...rest} />;
 }
@@ -166,7 +166,7 @@ export function AddRow({ control, ...rest }: AddRowProps) {
 function OpenAddRow({ onAdd, control, className, children, ...rest }: AddRowProps) {
   const ref = useRef<HTMLTableRowElement>(null);
 
-  // Solo las filas que se abren a petición piden el foco: es la respuesta al clic en "+ Add …".
+  // Only rows that open on demand ask for the focus: it is the response to the click on "+ Add …".
   const closable = control !== undefined;
   useEffect(() => {
     if (closable) firstField(ref.current)?.focus();
@@ -175,8 +175,8 @@ function OpenAddRow({ onAdd, control, className, children, ...rest }: AddRowProp
   const api: AddRowApi = {
     submit() {
       if (onAdd() === false) return;
-      // Soltar el foco descarta el borrador local de la celda (la pantalla acaba de limpiar el suyo);
-      // después se deja el cursor en el primer campo, listo para la siguiente fila.
+      // Dropping the focus discards the cell's local draft (the screen has just cleared its own);
+      // then the cursor is left in the first field, ready for the next row.
       const active = document.activeElement;
       if (active instanceof HTMLElement) active.blur();
       firstField(ref.current)?.focus();

@@ -1,18 +1,18 @@
-// Cola de guardado con retraso. Cada edición de celda reinicia el temporizador de su (fila, campo); cuando vence
-// cualquiera de los de una fila se envía la fila entera, con todo lo que tuviera pendiente, en un solo payload.
-// Así seguir escribiendo en un campo no aplaza indefinidamente el guardado de otro, y una fila nunca
-// genera dos peticiones a la vez.
+// Save queue with a delay. Each cell edit restarts the timer of its (row, field); when any of a row's timers
+// expires the whole row is sent, with everything it had pending, in a single payload.
+// That way, continuing to type in one field does not postpone another field's save indefinitely, and a row never
+// produces two requests at once.
 //
-// No sabe nada de HTTP ni de React: solo junta, espera y entrega.
+// It knows nothing about HTTP or React: it only gathers, waits and delivers.
 
 type Timer = ReturnType<typeof setTimeout>;
 
 export interface SaveQueueOptions<P> {
-  /** Milisegundos de espera por (fila, campo). */
+  /** Milliseconds to wait per (row, field). */
   delay: number;
-  /** Funde lo pendiente de una fila con una edición posterior. */
+  /** Merges what a row has pending with a later edit. */
   merge: (prev: P, next: P) => P;
-  /** Recibe el payload de una fila cuando toca enviarlo. */
+  /** Receives a row's payload when it is time to send it. */
   send: (key: string, payload: P) => void;
 }
 
@@ -30,8 +30,8 @@ export class SaveQueue<P> {
   }
 
   /**
-   * Encola una edición de la fila `key` que toca los campos `fields`.
-   * Con `immediate` no espera: sale en el acto, junto con lo que la fila tuviera pendiente.
+   * Queues an edit of row `key` that touches the fields `fields`.
+   * With `immediate` it does not wait: it goes out at once, together with whatever the row had pending.
    */
   push(key: string, fields: readonly string[], payload: P, immediate = false): void {
     const row = this.rows.get(key);
@@ -55,7 +55,7 @@ export class SaveQueue<P> {
     this.rows.set(key, { payload: merged, timers });
   }
 
-  /** Envía ya lo pendiente de una fila, o de todas (en el orden en que empezaron a esperar). */
+  /** Sends right away what one row has pending, or what all of them have (in the order they started waiting). */
   flush(key?: string): void {
     const keys = key === undefined ? [...this.rows.keys()] : [key];
     for (const k of keys) {
@@ -64,12 +64,12 @@ export class SaveQueue<P> {
     }
   }
 
-  /** Descarta lo pendiente de una fila sin enviarlo (la fila se eliminó). Devuelve true si había algo. */
+  /** Discards what a row has pending without sending it (the row was deleted). Returns true if there was anything. */
   drop(key: string): boolean {
     return this.take(key) !== undefined;
   }
 
-  /** Payloads que siguen esperando, sin enviarlos. */
+  /** Payloads still waiting, without sending them. */
   pending(): P[] {
     return [...this.rows.values()].map((r) => r.payload);
   }

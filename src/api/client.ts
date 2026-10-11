@@ -1,9 +1,9 @@
-// Cliente HTTP tipado: una función por ruta de shared/api.ts. No guarda estado ni reintenta;
-// de eso se ocupa la capa de datos (src/store).
+// Typed HTTP client: one function per route in shared/api.ts. It keeps no state and does not retry;
+// the data layer (src/store) takes care of that.
 //
-// Los datos son de un usuario, así que casi todas las rutas se piden a través de `api.forUser(id)`: lo que devuelve
-// manda la cabecera X-User con ese id en cada llamada, sin excepción. Quien guarda una referencia a ese objeto
-// (la capa de datos de cada usuario) no puede acabar escribiendo en los datos de otro.
+// The data belongs to a user, so almost every route is requested through `api.forUser(id)`: what it returns
+// sends the X-User header with that id on every call, without exception. Whoever keeps a reference to that object
+// (each user's data layer) cannot end up writing to another user's data.
 
 import type {
   AccountCreate,
@@ -64,8 +64,8 @@ import type {
 import { USER_HEADER } from '../../shared/users';
 
 /**
- * La API respondió con un estado no-2xx (o con un cuerpo que no se pudo leer). `message` es el texto del servidor,
- * siempre en inglés: al usuario se le enseña la frase de su idioma para `code` (src/store/util.ts describeError).
+ * The API answered with a non-2xx status (or with a body that could not be read). `message` is the server's text,
+ * always in English: the user is shown the phrase for `code` in their language (src/store/util.ts describeError).
  */
 export class ApiError extends Error {
   readonly status: number;
@@ -79,7 +79,7 @@ export class ApiError extends Error {
   }
 }
 
-/** No hubo respuesta HTTP: sin red, servidor caído, o la sesión de Access expiró y el navegador bloqueó la redirección. */
+/** There was no HTTP response: no network, server down, or the Access session expired and the browser blocked the redirect. */
 export class NetworkError extends Error {
   constructor(cause?: unknown) {
     super('Could not reach the server.', { cause });
@@ -87,14 +87,14 @@ export class NetworkError extends Error {
   }
 }
 
-/** true si la petición se canceló con un AbortSignal (no es un fallo: nadie espera ya la respuesta). */
+/** true if the request was canceled with an AbortSignal (not a failure: nobody is waiting for the response anymore). */
 export function isAbortError(e: unknown): boolean {
   return typeof e === 'object' && e !== null && (e as { name?: unknown }).name === 'AbortError';
 }
 
 export interface RequestOptions {
   signal?: AbortSignal;
-  /** Deja que la petición termine aunque la página se esté cerrando (guardado en pagehide). */
+  /** Lets the request finish even if the page is closing (save on pagehide). */
   keepalive?: boolean;
 }
 
@@ -110,7 +110,7 @@ function isErrorBody(v: unknown): v is ApiErrorBody {
   return typeof message === 'string' && (ERROR_CODES as readonly unknown[]).includes(code);
 }
 
-/** Código de respaldo cuando el cuerpo del error no es el de la API (p. ej. una página de error del proxy). */
+/** Fallback code when the error body is not the API's (e.g. a proxy error page). */
 function codeForStatus(status: number): ApiErrorCode {
   if (status === 401) return 'unauthorized';
   if (status === 403) return 'forbidden';
@@ -134,9 +134,9 @@ async function toApiError(res: Response): Promise<ApiError> {
 export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
 
 interface Call {
-  /** Se serializa como JSON. */
+  /** Serialized as JSON. */
   json?: unknown;
-  /** Cuerpo crudo (el .xlsx de la importación). */
+  /** Raw body (the .xlsx of the import). */
   body?: Blob;
   headers?: Record<string, string>;
   opts?: RequestOptions;
@@ -178,77 +178,77 @@ export function createApiClient(fetchImpl: FetchLike = (input, init) => fetch(in
     }
   }
 
-  /** Las rutas de datos, todas con la cabecera X-User de ese usuario. */
+  /** The data routes, all with that user's X-User header. */
   function forUser(userId: string) {
     const asUser = (call: Call = {}): Call => ({ ...call, headers: { ...call.headers, [USER_HEADER]: userId } });
     const json = <T>(method: string, path: string, call?: Call) => request<T>(method, path, asUser(call));
 
     return {
-      /** El usuario al que pertenece todo lo que pide este objeto. */
+      /** The user who owns everything this object requests. */
       userId,
 
-      // ── Estado y ajustes ──────────────────────────────────────────────────
+      // ── State and settings ────────────────────────────────────────────────
       getState: (opts?: RequestOptions) => json<StateResponse>('GET', '/api/state', { opts }),
       patchSettings: (update: SettingsUpdate, opts?: RequestOptions) =>
         json<SettingsResponse>('PATCH', '/api/settings', { json: update, opts }),
 
-      // ── Cuentas ───────────────────────────────────────────────────────────
+      // ── Accounts ──────────────────────────────────────────────────────────
       listAccounts: (opts?: RequestOptions) => json<Account[]>('GET', '/api/accounts', { opts }),
       createAccount: (body: AccountCreate, opts?: RequestOptions) => json<Account>('POST', '/api/accounts', { json: body, opts }),
       patchAccount: (id: string, patch: AccountPatch, opts?: RequestOptions) =>
         json<Account>('PATCH', `/api/accounts/${seg(id)}`, { json: patch, opts }),
       deleteAccount: (id: string, opts?: RequestOptions) => json<OkResponse>('DELETE', `/api/accounts/${seg(id)}`, { opts }),
 
-      // ── Tarjetas de crédito ───────────────────────────────────────────────
+      // ── Credit cards ──────────────────────────────────────────────────────
       listCreditCards: (opts?: RequestOptions) => json<CreditCard[]>('GET', '/api/credit-cards', { opts }),
       createCreditCard: (body: CreditCardCreate, opts?: RequestOptions) => json<CreditCard>('POST', '/api/credit-cards', { json: body, opts }),
       patchCreditCard: (id: string, patch: CreditCardPatch, opts?: RequestOptions) =>
         json<CreditCard>('PATCH', `/api/credit-cards/${seg(id)}`, { json: patch, opts }),
       deleteCreditCard: (id: string, opts?: RequestOptions) => json<OkResponse>('DELETE', `/api/credit-cards/${seg(id)}`, { opts }),
 
-      // ── Meses ─────────────────────────────────────────────────────────────
+      // ── Months ────────────────────────────────────────────────────────────
       listMonths: (opts?: RequestOptions) => json<MonthSummary[]>('GET', '/api/months', { opts }),
       getMonth: (key: MonthKey, opts?: RequestOptions) => json<Month>('GET', `/api/months/${seg(key)}`, { opts }),
-      /** Fija la parte del presupuesto de cada cuenta que venga: el servidor añade al registro la diferencia. */
+      /** Sets the budget part of each account that comes in: the server adds the difference to the log. */
       patchMonth: (key: MonthKey, patch: MonthPatch, opts?: RequestOptions) =>
         json<Month>('PATCH', `/api/months/${seg(key)}`, { json: patch, opts }),
-      /** Añade un movimiento al registro del presupuesto del mes. */
+      /** Adds a movement to the month's budget log. */
       addBudgetEntry: (key: MonthKey, body: BudgetEntryCreate, opts?: RequestOptions) =>
         json<Month>('POST', `/api/months/${seg(key)}/budget-log`, { json: body, opts }),
       deleteBudgetEntry: (key: MonthKey, id: string, opts?: RequestOptions) =>
         json<Month>('DELETE', `/api/months/${seg(key)}/budget-log/${seg(id)}`, { opts }),
-      /** Suma a ese mes lo que sobró del anterior (409 si ya lo tiene). */
+      /** Adds to that month what was left over from the previous one (409 if it already has it). */
       addLeftover: (key: MonthKey, opts?: RequestOptions) => json<Month>('POST', `/api/months/${seg(key)}/leftover`, { opts }),
-      /** Los «otros cargos» de una tarjeta de crédito en el mes. */
+      /** A credit card's "Other charges" in the month. */
       setCardOther: (key: MonthKey, cardId: string, body: CardOtherUpdate, opts?: RequestOptions) =>
         json<Month>('PATCH', `/api/months/${seg(key)}/cards/${seg(cardId)}/other`, { json: body, opts }),
-      /** Añade un pago de una tarjeta en el mes (el importe no puede pasar de lo que falta; 400 si pasa). */
+      /** Adds a credit card payment in the month (the amount cannot exceed what is left; 400 if it does). */
       payCard: (key: MonthKey, cardId: string, body: CardPayRequest, opts?: RequestOptions) =>
         json<Month>('POST', `/api/months/${seg(key)}/cards/${seg(cardId)}/pay`, { json: body, opts }),
       unpayCard: (key: MonthKey, cardId: string, opts?: RequestOptions) =>
         json<Month>('DELETE', `/api/months/${seg(key)}/cards/${seg(cardId)}/pay`, { opts }),
       removeCardPayment: (key: MonthKey, cardId: string, paymentId: string, opts?: RequestOptions) =>
         json<Month>('DELETE', `/api/months/${seg(key)}/cards/${seg(cardId)}/pay/${seg(paymentId)}`, { opts }),
-      /** Escribe la tasa de un par desde una fecha del mes (una por par y fecha: sustituye a la de esa fecha, en el sentido que fuera). */
+      /** Writes a pair's rate from a date in the month (one per pair and date: it replaces that date's rate, whichever direction it was in). */
       putMonthRate: (key: MonthKey, rate: MonthRate, opts?: RequestOptions) =>
         json<Month>('PUT', `/api/months/${seg(key)}/rates`, { json: rate, opts }),
-      /** Quita la tasa de ese par y esa fecha. La fecha no es un dato personal: va en la consulta porque así la pide la ruta. */
+      /** Removes the rate for that pair and date. The date is not personal data: it goes in the query because the route asks for it that way. */
       deleteMonthRate: (key: MonthKey, from: Currency, to: Currency, date: ISODate, opts?: RequestOptions) =>
         json<Month>('DELETE', `/api/months/${seg(key)}/rates/${seg(from)}/${seg(to)}?date=${seg(date)}`, { opts }),
-      /** Sin `request` no se manda cuerpo: el mes siguiente arranca con las partes del que se cierra. */
+      /** Without `request` no body is sent: the next month starts with the parts of the one being closed. */
       closeMonth: (key: MonthKey, request?: CloseRequest, opts?: RequestOptions) =>
         json<CloseResponse>('POST', `/api/months/${seg(key)}/close`, { json: request, opts }),
       reopenMonth: (key: MonthKey, opts?: RequestOptions) => json<Month>('POST', `/api/months/${seg(key)}/reopen`, { opts }),
-      /** Borra el mes con todo lo suyo (gastos, transacciones, envíos, presupuesto y tasas), esté abierto o cerrado. */
+      /** Deletes the month with everything in it (expenses, transactions, transfers, budget and rates), open or closed. */
       deleteMonth: (key: MonthKey, opts?: RequestOptions) => json<OkResponse>('DELETE', `/api/months/${seg(key)}`, { opts }),
 
-      // ── Gastos fijos ──────────────────────────────────────────────────────
+      // ── Fixed expenses ────────────────────────────────────────────────────
       createFixed: (body: FixedCreate, opts?: RequestOptions) => json<FixedExpense>('POST', '/api/fixed', { json: body, opts }),
       patchFixed: (id: string, patch: FixedPatch, opts?: RequestOptions) =>
         json<FixedExpense>('PATCH', `/api/fixed/${seg(id)}`, { json: patch, opts }),
       deleteFixed: (id: string, opts?: RequestOptions) => json<OkResponse>('DELETE', `/api/fixed/${seg(id)}`, { opts }),
 
-      // ── Transacciones ─────────────────────────────────────────────────────
+      // ── Transactions ──────────────────────────────────────────────────────
       createTransaction: (body: TxCreate, opts?: RequestOptions) => json<Transaction>('POST', '/api/transactions', { json: body, opts }),
       patchTransaction: (id: string, patch: TxPatch, opts?: RequestOptions) =>
         json<Transaction>('PATCH', `/api/transactions/${seg(id)}`, { json: patch, opts }),
@@ -256,7 +256,7 @@ export function createApiClient(fetchImpl: FetchLike = (input, init) => fetch(in
       moveTransactionOutside: (id: string, body: MoveOutsideRequest, opts?: RequestOptions) =>
         json<OutsideExpense>('POST', `/api/transactions/${seg(id)}/move-outside`, { json: body, opts }),
 
-      // ── Fuera de presupuesto ──────────────────────────────────────────────
+      // ── Outside budget ────────────────────────────────────────────────────
       createOutside: (body: OutsideCreate, opts?: RequestOptions) => json<OutsideExpense>('POST', '/api/outside-expenses', { json: body, opts }),
       patchOutside: (id: string, patch: OutsidePatch, opts?: RequestOptions) =>
         json<OutsideExpense>('PATCH', `/api/outside-expenses/${seg(id)}`, { json: patch, opts }),
@@ -264,26 +264,26 @@ export function createApiClient(fetchImpl: FetchLike = (input, init) => fetch(in
       moveOutsideToBudget: (id: string, body: MoveToBudgetRequest, opts?: RequestOptions) =>
         json<Transaction>('POST', `/api/outside-expenses/${seg(id)}/move-to-budget`, { json: body, opts }),
 
-      // ── Envíos ────────────────────────────────────────────────────────────
+      // ── Transfers ─────────────────────────────────────────────────────────
       createTransfer: (body: TransferCreate, opts?: RequestOptions) => json<Transfer>('POST', '/api/transfers', { json: body, opts }),
       patchTransfer: (id: string, patch: TransferPatch, opts?: RequestOptions) =>
         json<Transfer>('PATCH', `/api/transfers/${seg(id)}`, { json: patch, opts }),
       deleteTransfer: (id: string, opts?: RequestOptions) => json<OkResponse>('DELETE', `/api/transfers/${seg(id)}`, { opts }),
 
-      // ── Ingresos ──────────────────────────────────────────────────────────
+      // ── Income ────────────────────────────────────────────────────────────
       listIncomes: (opts?: RequestOptions) => json<Income[]>('GET', '/api/incomes', { opts }),
       createIncome: (body: IncomeCreate, opts?: RequestOptions) => json<Income>('POST', '/api/incomes', { json: body, opts }),
       patchIncome: (id: string, patch: IncomePatch, opts?: RequestOptions) =>
         json<Income>('PATCH', `/api/incomes/${seg(id)}`, { json: patch, opts }),
       deleteIncome: (id: string, opts?: RequestOptions) => json<OkResponse>('DELETE', `/api/incomes/${seg(id)}`, { opts }),
 
-      // ── Metas ─────────────────────────────────────────────────────────────
+      // ── Goals ─────────────────────────────────────────────────────────────
       listGoals: (opts?: RequestOptions) => json<Goal[]>('GET', '/api/goals', { opts }),
       createGoal: (body: GoalCreate, opts?: RequestOptions) => json<Goal>('POST', '/api/goals', { json: body, opts }),
       patchGoal: (id: string, patch: GoalPatch, opts?: RequestOptions) => json<Goal>('PATCH', `/api/goals/${seg(id)}`, { json: patch, opts }),
       deleteGoal: (id: string, opts?: RequestOptions) => json<OkResponse>('DELETE', `/api/goals/${seg(id)}`, { opts }),
 
-      // ── Aportes ───────────────────────────────────────────────────────────
+      // ── Contributions ─────────────────────────────────────────────────────
       listContributions: (opts?: RequestOptions) => json<Contribution[]>('GET', '/api/contributions', { opts }),
       createContribution: (body: ContributionCreate, opts?: RequestOptions) =>
         json<Contribution>('POST', '/api/contributions', { json: body, opts }),
@@ -292,30 +292,30 @@ export function createApiClient(fetchImpl: FetchLike = (input, init) => fetch(in
       deleteContribution: (id: string, opts?: RequestOptions) => json<OkResponse>('DELETE', `/api/contributions/${seg(id)}`, { opts }),
 
       // ── Excel ─────────────────────────────────────────────────────────────
-      /** Devuelve el libro como Blob; el nombre de archivo lo pone quien lo descarga. */
+      /** Returns the workbook as a Blob; the file name is set by whoever downloads it. */
       exportExcel: async (opts?: RequestOptions): Promise<Blob> => {
         const res = await send('GET', '/api/export.xlsx', asUser({ headers: { Accept: XLSX_MIME }, opts }));
         return res.blob();
       },
-      /** Manda el .xlsx tal cual, con su tipo de contenido; el servidor lo lee y hace upsert. */
+      /** Sends the .xlsx as is, with its content type; the server reads it and upserts. */
       importExcel: (file: Blob, opts?: RequestOptions) =>
         json<ImportResponse>('POST', '/api/import', { body: file, headers: { 'Content-Type': file.type || XLSX_MIME }, opts }),
-      /** Variante JSON de la importación (un libro ya leído con shared/excel/import.ts). */
+      /** JSON variant of the import (a workbook already read with shared/excel/import.ts). */
       importPayload: (payload: ImportPayload, opts?: RequestOptions) => json<ImportResponse>('POST', '/api/import', { json: payload, opts }),
 
-      // ── Desarrollo (solo si SessionResponse.devTools) ─────────────────────
+      // ── Development (only if SessionResponse.devTools) ────────────────────
       devSeed: (opts?: RequestOptions) => json<OkResponse>('POST', '/api/dev/seed', { opts }),
       devReset: (opts?: RequestOptions) => json<OkResponse>('POST', '/api/dev/reset', { opts }),
     };
   }
 
   return {
-    /** Usuarios configurados y si hay utilidades de desarrollo. La única ruta de la web que no lleva X-User. */
+    /** Configured users and whether there are development tools. The only route of the web app that carries no X-User. */
     getSession: (opts?: RequestOptions) => request<SessionResponse>('GET', '/api/session', { opts }),
 
     forUser,
 
-    // ── Ingesta (la usa Claude; requiere el Bearer, que la web no tiene, y el usuario va en el cuerpo) ─────
+    // ── Ingest (used by Claude; requires the Bearer, which the web app does not have, and the user goes in the body) ─────
     ingestTransaction: (body: IngestTransaction, token: string, opts?: RequestOptions) =>
       request<IngestResponse>('POST', '/api/ingest/transaction', { json: body, headers: { Authorization: `Bearer ${token}` }, opts }),
   };
@@ -323,8 +323,8 @@ export function createApiClient(fetchImpl: FetchLike = (input, init) => fetch(in
 
 export type ApiClient = ReturnType<typeof createApiClient>;
 
-/** Las rutas de datos de un usuario (api.forUser(id)). */
+/** A user's data routes (api.forUser(id)). */
 export type UserApi = ReturnType<ApiClient['forUser']>;
 
-/** Cliente de la app: mismas rutas relativas en desarrollo (proxy de Vite) y en producción (Pages Functions). */
+/** The app's client: same relative routes in development (Vite proxy) and in production (Pages Functions). */
 export const api: ApiClient = createApiClient();

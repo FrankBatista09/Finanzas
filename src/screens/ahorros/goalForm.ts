@@ -1,9 +1,9 @@
-// Lógica del formulario de una meta (GoalDialog): los campos enlazados, la validación y el paso de ida y vuelta
-// entre la meta guardada y lo que se ve en el diálogo. Sin React, para probarlo en Node.
+// Logic of a goal's form (GoalDialog): the linked fields, the validation and the round trip
+// between the saved goal and what the dialog shows. No React, so it can be tested in Node.
 //
-// La meta guarda su moneda, el ahorro mensual y los dos meses; el monto objetivo no se guarda: es mensual × meses,
-// ambos incluidos (shared/types.ts Goal). En el formulario se puede escribir cualquiera de los dos montos y el otro
-// se calcula. Los dos montos van en la moneda de la meta: cambiarla no los toca.
+// The goal stores its currency, the monthly saving and the two months; the target amount is not stored: it is
+// monthly × months, both included (shared/types.ts Goal). In the form either of the two amounts can be typed and the
+// other is calculated. Both amounts are in the goal's currency: changing it does not touch them.
 
 import { MAX_LEN } from '../../../shared/constants';
 import { parseAmount } from '../../../shared/format';
@@ -14,27 +14,27 @@ import type { GoalPlan } from '../../store';
 
 export interface GoalForm {
   name: string;
-  /** Moneda de la meta: en ella van el objetivo, el ahorro mensual y lo ahorrado. */
+  /** Goal currency: the target, the monthly saving and the amount saved are in it. */
   cur: Currency;
-  /** El selector "Show equivalent in": la moneda de la línea "≈" de la tarjeta. Arranca en la principal del usuario. */
+  /** The "Show equivalent in" select: the currency of the card's "≈" line. It starts on the user's main one. */
   approxCur: Currency;
-  /** La casilla "This goal has a target". Al desmarcarla los campos del plan se conservan, por si se vuelve a marcar. */
+  /** The "This goal has a target" checkbox. Unchecking it keeps the plan fields, in case it is checked again. */
   planned: boolean;
   start: MonthKey;
   end: MonthKey;
-  /** Texto del campo "Target amount (CUR)". */
+  /** Text of the "Target amount (CUR)" field. */
   target: string;
-  /** Texto del campo "Monthly saving (CUR)". */
+  /** Text of the "Monthly saving (CUR)" field. */
   monthly: string;
   /**
-   * El ahorro mensual exacto que hay detrás de los dos textos, que van redondeados a centavos; null mientras no
-   * haya un monto mayor que 0. Es lo que se guarda: 10,000 en 12 meses son 833.333… al mes, no los 833.33 que se
-   * ven (que darían 9,999.96 al volver a abrir la meta).
+   * The exact monthly saving behind the two texts, which are rounded to cents; null while there is no
+   * amount greater than 0. It is what gets saved: 10,000 over 12 months is 833.333… a month, not the 833.33 that is
+   * shown (which would give 9,999.96 when the goal is opened again).
    */
   exact: number | null;
 }
 
-/** Una meta nueva con objetivo propone este plazo: el mes objetivo cae doce meses después del de inicio. */
+/** A new goal with a target proposes this term: the target month falls twelve months after the start month. */
 export const DEFAULT_MONTHS_AHEAD = 12;
 
 /** '2026-10' + 12 → '2027-10'. */
@@ -44,33 +44,33 @@ export function addMonths(key: MonthKey, n: number): MonthKey {
   return `${Math.floor(i / 12)}-${String((i % 12) + 1).padStart(2, '0')}`;
 }
 
-/** Un monto como valor de un <input type="number">: redondeado a centavos y sin separadores ('10000', '833.33'). */
+/** An amount as the value of an <input type="number">: rounded to cents and with no separators ('10000', '833.33'). */
 export function amountText(n: number): string {
   return String(Math.round(n * 100) / 100);
 }
 
-/** El monto escrito en un campo, o null si está vacío o no es mayor que 0. */
+/** The amount typed in a field, or null if it is empty or not greater than 0. */
 function amountOf(text: string): number | null {
   const n = parseAmount(text);
   return n > 0 ? n : null;
 }
 
-/** Meses del plan, ambos incluidos; 0 si el mes objetivo queda antes del de inicio. */
+/** Months of the plan, both included; 0 if the target month falls before the start month. */
 export function planMonths(form: Pick<GoalForm, 'start' | 'end'>): number {
   return isMonthKey(form.start) && isMonthKey(form.end) && form.start <= form.end ? monthSpan(form.start, form.end) : 0;
 }
 
-// ── De la meta al formulario ─────────────────────────────────────────────────
+// ── From the goal to the form ────────────────────────────────────────────────
 
-/** Formulario de una meta nueva, en la moneda principal del usuario: sin objetivo; si se marca la casilla, el plan empieza este mes. */
+/** Form of a new goal, in the user's main currency: no target; if the checkbox is checked, the plan starts this month. */
 export function newGoalForm(today: ISODate, cur: Currency, approxCur: Currency = cur): GoalForm {
   const start = monthOf(today);
   return { name: '', cur, approxCur, planned: false, start, end: addMonths(start, DEFAULT_MONTHS_AHEAD), target: '', monthly: '', exact: null };
 }
 
 /**
- * Formulario para editar una meta. El mensual exacto se conserva: guardar sin tocar nada no cambia la meta.
- * `main` es la moneda principal del usuario: es la que enseña el selector "≈" de una meta que no eligió ninguna.
+ * Form for editing a goal. The exact monthly amount is kept: saving without touching anything does not change the goal.
+ * `main` is the user's main currency: it is the one the "≈" select shows for a goal that chose none.
  */
 export function goalToForm(goal: Goal, today: ISODate, main: Currency = goal.cur): GoalForm {
   const blank = { ...newGoalForm(today, goal.cur, goal.approxCur ?? main), name: goal.name };
@@ -88,9 +88,9 @@ export function goalToForm(goal: Goal, today: ISODate, main: Currency = goal.cur
   };
 }
 
-// ── Campos enlazados ─────────────────────────────────────────────────────────
+// ── Linked fields ────────────────────────────────────────────────────────────
 
-/** Manda el objetivo: mensual = objetivo / meses. Sin objetivo o sin meses válidos, el mensual queda vacío. */
+/** The target leads: monthly = target / months. With no target or no valid months, the monthly amount stays empty. */
 function fromTarget(form: GoalForm): GoalForm {
   const months = planMonths(form);
   const target = amountOf(form.target);
@@ -99,26 +99,26 @@ function fromTarget(form: GoalForm): GoalForm {
   return { ...form, monthly: amountText(exact), exact };
 }
 
-/** Manda el mensual: objetivo = mensual × meses. Sin meses válidos el objetivo no se puede calcular y queda vacío. */
+/** The monthly amount leads: target = monthly × months. With no valid months the target cannot be calculated and stays empty. */
 function fromMonthly(form: GoalForm): GoalForm {
   const months = planMonths(form);
   const exact = amountOf(form.monthly);
   return { ...form, exact, target: exact !== null && months ? amountText(exact * months) : '' };
 }
 
-/** Se escribió el monto objetivo: se recalcula el ahorro mensual. */
+/** The target amount was typed: the monthly saving is recalculated. */
 export function setTarget(form: GoalForm, target: string): GoalForm {
   return fromTarget({ ...form, target });
 }
 
-/** Se escribió el ahorro mensual: se recalcula el monto objetivo. */
+/** The monthly saving was typed: the target amount is recalculated. */
 export function setMonthly(form: GoalForm, monthly: string): GoalForm {
   return fromMonthly({ ...form, monthly });
 }
 
 /**
- * Cambió un mes: el objetivo se queda y se recalcula el mensual. Si no hay objetivo a la vista (se escribió el
- * mensual mientras los meses no cuadraban), se parte del mensual.
+ * A month changed: the target stays and the monthly amount is recalculated. If no target is showing (the monthly
+ * amount was typed while the months did not add up), it starts from the monthly amount.
  */
 function withMonths(form: GoalForm): GoalForm {
   if (amountOf(form.target) !== null) return fromTarget(form);
@@ -133,32 +133,32 @@ export function setEnd(form: GoalForm, end: MonthKey): GoalForm {
   return withMonths({ ...form, end });
 }
 
-/** Se eligió otra moneda: los montos escritos se quedan tal cual, ahora en esa moneda. */
+/** Another currency was chosen: the typed amounts stay as they are, now in that currency. */
 export function setCur(form: GoalForm, cur: Currency): GoalForm {
   return { ...form, cur };
 }
 
-/** La línea de resumen bajo los campos del plan ("15 months · 3,000 USD / month"); null si aún no hay plan que resumir. */
+/** The summary line under the plan fields ("15 months · 3,000 USD / month"); null if there is no plan to summarize yet. */
 export function planSummary(form: GoalForm): { months: number; monthly: number; cur: Currency } | null {
   const months = planMonths(form);
   return form.planned && months && form.exact !== null ? { months, monthly: form.exact, cur: form.cur } : null;
 }
 
-// ── Validación y guardado ────────────────────────────────────────────────────
+// ── Validation and saving ────────────────────────────────────────────────────
 
 /**
- * name       falta el nombre
- * nameTaken  otra meta ya se llama así (sin distinguir mayúsculas)
- * amount     con objetivo, falta un monto mayor que 0
- * months     con objetivo, el mes objetivo queda antes del de inicio
+ * name       the name is missing
+ * nameTaken  another goal already has that name (ignoring case)
+ * amount     with a target, an amount greater than 0 is missing
+ * months     with a target, the target month falls before the start month
  */
 export type GoalFormError = 'name' | 'nameTaken' | 'amount' | 'months';
 
 const fold = (name: string) => name.trim().normalize('NFC').toLowerCase();
 
 /**
- * Lo que impide guardar; vacío si el formulario es válido. `editingId` es la meta que se edita (null si es nueva),
- * para no contarla como "otra" con su mismo nombre.
+ * What prevents saving; empty if the form is valid. `editingId` is the goal being edited (null if it is new),
+ * so it is not counted as "another" one with the same name.
  */
 export function goalFormErrors(form: GoalForm, goals: readonly Pick<Goal, 'id' | 'name'>[], editingId: string | null): GoalFormError[] {
   const errors: GoalFormError[] = [];
@@ -173,10 +173,10 @@ export function goalFormErrors(form: GoalForm, goals: readonly Pick<Goal, 'id' |
 }
 
 /**
- * Lo que se guarda (actions.addGoal / patchGoal): el nombre sin espacios sobrantes, la moneda, la moneda "≈" y el
- * plan con sus tres valores, o los tres en null si la meta es de aportes variables. Solo tiene sentido con el
- * formulario ya validado. La moneda "≈" igual a la principal (`main`) se guarda como null: así sigue a la
- * principal si el usuario la cambia después.
+ * What gets saved (actions.addGoal / patchGoal): the name without extra spaces, the currency, the "≈" currency and the
+ * plan with its three values, or all three as null if the goal has variable contributions. It only makes sense with the
+ * form already validated. A "≈" currency equal to the main one (`main`) is saved as null: that way it follows the
+ * main one if the user changes it later.
  */
 export function formToInput(form: GoalForm, main: Currency): { name: string; cur: Currency; approxCur: Currency | null } & GoalPlan {
   const base = { name: form.name.trim(), cur: form.cur, approxCur: form.approxCur === main ? null : form.approxCur };

@@ -1,10 +1,10 @@
-// El idioma en React. Sale, por este orden, de:
-//   1. <I18nProvider lang>: FinanzasProvider lo pone con el idioma del usuario o, antes de tener sus datos,
-//      con el último usado en el dispositivo (pantallas de carga y de error).
-//   2. El estado que haya en FinanzasContext (state.language): una pantalla montada suelta en una prueba, solo
-//      con su FinanzasContext, sale en el idioma de ese estado sin tener que envolverla en nada.
-//   3. Inglés.
-// En la app los dos primeros coinciden siempre: con datos cargados, el proveedor lleva state.language.
+// The language in React. It comes, in this order, from:
+//   1. <I18nProvider lang>: FinanzasProvider sets it to the user's language or, before it has their data,
+//      to the last one used on the device (loading and error screens).
+//   2. Whatever state is in FinanzasContext (state.language): a screen mounted on its own in a test, with only
+//      its FinanzasContext, renders in that state's language without having to wrap it in anything.
+//   3. English.
+// In the app the first two always match: with data loaded, the provider carries state.language.
 
 import { createContext, useContext } from 'react';
 import type { ReactNode } from 'react';
@@ -29,14 +29,14 @@ function useLanguage(): Language {
 }
 
 /**
- * El idioma actual y sus ayudantes: `t` (textos comunes), `lang`, `label` (meses), `catLabel`, `methodLabel`,
- * `fixedCategory`, `monthNames` y `rateHint` (de dónde salió una tasa). El objeto es estable mientras no cambie el idioma.
+ * The current language and its helpers: `t` (common strings), `lang`, `label` (months), `catLabel`, `methodLabel`,
+ * `fixedCategory`, `monthNames` and `rateHint` (where a rate came from). The object is stable until the language changes.
  */
 export function useI18n(): I18n {
   return createI18n(useLanguage());
 }
 
-/** El traductor de los textos propios de una pantalla (los que declaró con defineStrings) en el idioma actual. */
+/** The translator of a screen's own strings (the ones it declared with defineStrings) in the current language. */
 export function useStrings<D extends Dict>(strings: Strings<D>): Translator<D> {
   return translator(strings, useLanguage());
 }

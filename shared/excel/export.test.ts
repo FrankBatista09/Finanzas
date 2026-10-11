@@ -1,12 +1,12 @@
-// Pruebas "golden" del port: para los mismos datos, buildFinanzasXlsx tiene que devolver exactamente los
-// mismos bytes que el exportador original del prototipo (tests/reference-export.ts lo ejecuta en un vm).
-// reference.test.ts ancla ese exportador a los libros de design_handoff/referencia/.
+// "Golden" tests for the port: for the same data, buildFinanzasXlsx has to return exactly the same bytes
+// as the prototype's original exporter (tests/reference-export.ts runs it in a vm).
+// reference.test.ts anchors that exporter to the workbooks in design_handoff/referencia/.
 //
-// El original solo sabe hacer el libro en español con las tres metas del diseño, así que todo aquí va con
-// EXCEL_ES, datos en español (la entrada congelada tests/export-data-es.json) y esas metas (referenceGoals).
-// Los datos no salen del estado de la app: el generador solo conoce ExportData. Lo que el original no puede
-// representar se prueba aparte: los otros idiomas en export-locale.test.ts, otras listas de metas en
-// export-goals.test.ts y el recálculo en una hoja de cálculo real en export-libreoffice.test.ts.
+// The original only knows how to make the workbook in Spanish with the design's three goals, so everything here
+// uses EXCEL_ES, data in Spanish (the frozen input tests/export-data-es.json) and those goals (referenceGoals).
+// The data does not come from the app's state: the generator only knows about ExportData. What the original cannot
+// represent is tested separately: the other languages in export-locale.test.ts, other goal lists in
+// export-goals.test.ts and the recalculation in a real spreadsheet in export-libreoffice.test.ts.
 
 import { readFileSync } from 'node:fs';
 import { strFromU8, unzipSync } from 'fflate';
@@ -28,12 +28,12 @@ const refFile = (name: string) =>
 const V3 = 'Finanzas Personales v3.xlsx';
 const PLANTILLA = 'Plantilla vacia.xlsx';
 
-// ── Comparación ──────────────────────────────────────────────────────────────
+// ── Comparison ───────────────────────────────────────────────────────────────
 
-/** Trozo de `s` alrededor de `i`, para ver la diferencia en contexto. */
+/** Slice of `s` around `i`, to see the difference in context. */
 const around = (s: string, i: number) => JSON.stringify(s.slice(Math.max(0, i - 80), i + 120));
 
-/** Primera diferencia entre dos libros, parte por parte del zip; null si son idénticos byte a byte. */
+/** First difference between two workbooks, zip part by zip part; null if they are identical byte for byte. */
 function firstDiff(actual: Uint8Array, expected: Uint8Array): string | null {
   if (Buffer.compare(actual, expected) === 0) return null;
   let a: Record<string, Uint8Array>;
@@ -79,13 +79,13 @@ function deepFreeze<T>(value: T): T {
   return value;
 }
 
-/** El port con los textos en español, que es lo único que el exportador de referencia sabe generar. */
+/** The port with the Spanish strings, which is all the reference exporter knows how to generate. */
 const buildEs = (data: ExportData, opts: Omit<BuildOptions, 'locale'> = {}) =>
   buildFinanzasXlsx(data, { ...opts, locale: EXCEL_ES });
 
 /**
- * Compara el port (en español) con el exportador de referencia para `data` y devuelve los bytes.
- * El port recibe una copia congelada: si intentara modificar la entrada, la prueba falla.
+ * Compares the port (in Spanish) with the reference exporter for `data` and returns the bytes.
+ * The port gets a frozen copy: if it tried to modify the input, the test fails.
  */
 async function expectGolden(data: ExportData, opts: { currentKey?: string; now?: Date } = {}): Promise<Uint8Array> {
   const expected = await buildWithReference(data, { now: opts.now });
@@ -94,7 +94,7 @@ async function expectGolden(data: ExportData, opts: { currentKey?: string; now?:
   return actual;
 }
 
-// ── Datos ────────────────────────────────────────────────────────────────────
+// ── Data ─────────────────────────────────────────────────────────────────────
 
 const month = (key: string, over: Partial<ExportMonth> = {}): ExportMonth => ({
   key,
@@ -118,7 +118,7 @@ const book = (months: ExportMonth[], over: Partial<ExportData> = {}): ExportData
   ...over,
 });
 
-/** Libro sin meses: el generador hace la plantilla vacía del mes actual. */
+/** Workbook with no months: the generator makes the empty template for the current month. */
 const empty = (): ExportData => book([]);
 
 const fx = (name: string, over: Partial<Fixed> = {}): Fixed => ({ name, day: '', amount: 1000, cur: 'DOP', paid: false, ...over });
@@ -140,8 +140,8 @@ const tx = (date: string, over: Partial<Tx> = {}): Tx => ({
 const contrib = (date: string, goalName: string, amount: number, cur: Currency = 'USD'): Contrib => ({ date, goalName, amount, cur });
 
 /**
- * Datos con la forma que tendrían en el prototipo, donde los inputs guardan texto ('' o '1500')
- * y faltan campos: se saltan los tipos a propósito para probar que el port los trata igual.
+ * Data shaped the way it would be in the prototype, where the inputs store text ('' or '1500')
+ * and fields are missing: the types are bypassed on purpose to test that the port treats them the same.
  */
 const loose = (data: unknown) => data as ExportData;
 
@@ -149,7 +149,7 @@ const range = (n: number) => Array.from({ length: n }, (_, i) => i);
 
 const day = (key: string, n: number) => `${key}-${String(n).padStart(2, '0')}`;
 
-/** `n` meses seguidos a partir de `start`. */
+/** `n` consecutive months starting at `start`. */
 function keysFrom(start: string, n: number): string[] {
   const [y, m] = start.split('-').map(Number) as [number, number];
   return range(n).map((i) => {
@@ -158,67 +158,67 @@ function keysFrom(start: string, n: number): string[] {
   });
 }
 
-/** Los datos de ejemplo del diseño, en español: los del libro Finanzas Personales v3.xlsx. */
+/** The design's sample data, in Spanish: the data in the workbook Finanzas Personales v3.xlsx. */
 const seedData = () => frozenExportData('es');
 
-// ── Pruebas ──────────────────────────────────────────────────────────────────
+// ── Tests ────────────────────────────────────────────────────────────────────
 
-describe('comparación de libros', () => {
-  it('detecta una diferencia y dice en qué parte está', () => {
+describe('workbook comparison', () => {
+  it('detects a difference and says which part it is in', () => {
     const data = seedData();
     const out = buildEs(data);
     expect(firstDiff(out, out.slice())).toBeNull();
-    // La plantilla tiene menos hojas: la primera parte distinta es la lista de partes.
+    // The template has fewer sheets: the first part that differs is the list of parts.
     expect(firstDiff(out, refFile(PLANTILLA))).toMatch(/^\[Content_Types\]\.xml difiere en el carácter \d+/);
 
-    // Un solo carácter distinto en una nota basta.
+    // A single different character in a note is enough.
     data.months[0]!.tx[0]!.notes = 'x';
     expect(firstDiff(buildEs(data), out)).toMatch(/^xl\/worksheets\/sheet1\.xml difiere/);
     data.months[0]!.tx[0]!.notes = '';
     data.defaultRate = 58.77;
     expect(firstDiff(buildEs(data), out)).toMatch(/^xl\/worksheets\/sheet5\.xml difiere/);
-    // El idioma es parte de la salida: el mismo libro en inglés (el idioma por defecto) ya no es el de referencia.
+    // Language is part of the output: the same workbook in English (the default language) is no longer the reference.
     data.defaultRate = 58.76;
     expect(firstDiff(buildEs(data), out)).toBeNull();
     expect(firstDiff(buildFinanzasXlsx(data), out)).toMatch(/^xl\/worksheets\/sheet1\.xml difiere/);
   });
 });
 
-describe('buildFinanzasXlsx · libros de referencia', () => {
-  it('datos de ejemplo → Finanzas Personales v3.xlsx', async () => {
+describe('buildFinanzasXlsx · reference workbooks', () => {
+  it('sample data → Finanzas Personales v3.xlsx', async () => {
     const out = await expectGolden(seedData());
     expectSameBytes(out, refFile(V3));
   });
 
-  it('sin meses → Plantilla vacia.xlsx (currentKey 2026-10)', async () => {
+  it('no months → Plantilla vacia.xlsx (currentKey 2026-10)', async () => {
     const out = await expectGolden(empty(), { currentKey: '2026-10', now: new Date(2026, 9, 7) });
     expectSameBytes(out, refFile(PLANTILLA));
   });
 
-  it('sin meses: la plantilla es la del mes indicado', async () => {
+  it('no months: the template is the one for the given month', async () => {
     await expectGolden(empty(), { currentKey: '2027-01', now: new Date(2027, 0, 15) });
     await expectGolden(empty(), { currentKey: '2025-12', now: new Date(2025, 11, 31) });
   });
 
-  it('un solo mes vacío equivale a la plantilla vacía de ese mes', async () => {
+  it('a single empty month is equivalent to the empty template for that month', async () => {
     const out = await expectGolden(book([emptyMonth('2026-10')]));
     expectSameBytes(out, refFile(PLANTILLA));
   });
 });
 
-describe('buildFinanzasXlsx · mes actual por defecto', () => {
+describe('buildFinanzasXlsx · current month by default', () => {
   afterEach(() => {
     vi.useRealTimers();
   });
 
-  it('sin currentKey usa el mes actual en la zona horaria del usuario, no en UTC', () => {
+  it("without currentKey it uses the current month in the user's time zone, not in UTC", () => {
     vi.useFakeTimers({ toFake: ['Date'] });
-    // 1 de noviembre a las 02:30 UTC: en Santo Domingo (UTC-4) todavía es 31 de octubre.
+    // November 1 at 02:30 UTC: in Santo Domingo (UTC-4) it is still October 31.
     vi.setSystemTime(new Date('2026-11-01T02:30:00Z'));
     const data = empty();
     expectSameBytes(buildEs(data), refFile(PLANTILLA));
     expectSameBytes(buildEs(data, {}), buildEs(data, { currentKey: '2026-10' }));
-    // Lo mismo sin indicar idioma (inglés).
+    // The same without specifying a language (English).
     expectSameBytes(buildFinanzasXlsx(data), buildFinanzasXlsx(data, { currentKey: '2026-10' }));
 
     vi.setSystemTime(new Date('2026-11-01T04:00:00Z'));
@@ -226,15 +226,15 @@ describe('buildFinanzasXlsx · mes actual por defecto', () => {
     expectSameBytes(buildFinanzasXlsx(data), buildFinanzasXlsx(data, { currentKey: '2026-11' }));
   });
 
-  it('currentKey no se usa si hay meses', () => {
+  it('currentKey is not used if there are months', () => {
     const data = seedData();
     expectSameBytes(buildEs(data, { currentKey: '2030-01' }), refFile(V3));
   });
 });
 
-describe('buildFinanzasXlsx · disposición de la hoja del mes', () => {
-  // [fijos, envíos]: 12 fijos y 3 envíos caben en las filas mínimas (15 y 5); a partir de ahí las tablas
-  // crecen y el historial baja. Con 16 fijos y 3 envíos las dos tarjetas terminan en la misma fila.
+describe('buildFinanzasXlsx · month sheet layout', () => {
+  // [fixed expenses, transfers]: 12 fixed expenses and 3 transfers fit in the minimum rows (15 and 5); beyond that the
+  // tables grow and the history moves down. With 16 fixed expenses and 3 transfers the two cards end on the same row.
   const sizes: [fixed: number, transfers: number][] = [
     [0, 0],
     [12, 3],
@@ -246,7 +246,7 @@ describe('buildFinanzasXlsx · disposición de la hoja del mes', () => {
     [40, 30],
   ];
 
-  it.each(sizes)('%i fijos y %i envíos', async (nFixed, nTransfers) => {
+  it.each(sizes)('%i fixed expenses and %i transfers', async (nFixed, nTransfers) => {
     const key = '2026-10';
     await expectGolden(
       book([
@@ -259,7 +259,7 @@ describe('buildFinanzasXlsx · disposición de la hoja del mes', () => {
     );
   });
 
-  it('más de 15 fijos y más de 5 envíos en varios meses a la vez', async () => {
+  it('more than 15 fixed expenses and more than 5 transfers in several months at once', async () => {
     const months = ['2026-08', '2026-09', '2026-10'].map((key, k) =>
       month(key, {
         fixed: range(16 + 3 * k).map((i) => fx(`Fijo ${i + 1}`, { amount: 1000 + i, paid: i < 5 })),
@@ -270,7 +270,7 @@ describe('buildFinanzasXlsx · disposición de la hoja del mes', () => {
     await expectGolden(book(months));
   });
 
-  it('muchas transacciones', async () => {
+  it('many transactions', async () => {
     const key = '2026-10';
     await expectGolden(
       book([month(key, { tx: range(400).map((i) => tx(day(key, 1 + ((i * 7) % 31)), { desc: `Gasto ${i}`, amount: i + 0.25 })) })]),
@@ -278,8 +278,8 @@ describe('buildFinanzasXlsx · disposición de la hoja del mes', () => {
   });
 });
 
-describe('buildFinanzasXlsx · valores de las celdas', () => {
-  it('fijos y transacciones en USD', async () => {
+describe('buildFinanzasXlsx · cell values', () => {
+  it('fixed expenses and transactions in USD', async () => {
     await expectGolden(
       book([
         month('2026-10', {
@@ -295,7 +295,7 @@ describe('buildFinanzasXlsx · valores de las celdas', () => {
     );
   });
 
-  it('montos y días null', async () => {
+  it('null amounts and days', async () => {
     await expectGolden(
       book([
         month('2026-10', {
@@ -310,7 +310,7 @@ describe('buildFinanzasXlsx · valores de las celdas', () => {
     );
   });
 
-  it("montos y días '' o en texto, como los guardan los inputs del prototipo", async () => {
+  it("amounts and days as '' or as text, the way the prototype's inputs store them", async () => {
     await expectGolden(
       loose(
         book(
@@ -345,14 +345,14 @@ describe('buildFinanzasXlsx · valores de las celdas', () => {
     );
   });
 
-  it('día como número y como texto', async () => {
+  it('day as a number and as text', async () => {
     const days: Fixed['day'][] = [5, '5', '05', 0, '0', 17.5, '17.5', 'quincena', '1 y 15', '', null, -1, '1e2'];
     await expectGolden(
       book([month('2026-10', { fixed: days.map((d, i) => fx(`Fijo ${i + 1}`, { day: d, amount: 100 * (i + 1) })) })]),
     );
   });
 
-  it('números con decimales, negativos, enormes y diminutos', async () => {
+  it('decimal, negative, huge and tiny numbers', async () => {
     const amounts = [0.1 + 0.2, -250.75, 1e21, 1.5e-7, 123456789.123456789, 0, -0, 58.760000000000005, Number.MAX_SAFE_INTEGER];
     await expectGolden(
       book(
@@ -371,7 +371,7 @@ describe('buildFinanzasXlsx · valores de las celdas', () => {
     );
   });
 
-  it('texto con & < > " \' y acentos', async () => {
+  it('text with & < > " \' and accents', async () => {
     const nasty = 'Tom & Jerry <b>"café"</b> \'ñandú\' ÁÉÍÓÚ áéíóú ü ¿? ¡! → ≈ − · € 😀 ]]> &amp; &lt;';
     await expectGolden(
       book(
@@ -391,7 +391,7 @@ describe('buildFinanzasXlsx · valores de las celdas', () => {
     );
   });
 
-  it('cuentas, fijos, envíos y transacciones repetidos comparten los mismos textos', async () => {
+  it('repeated accounts, fixed expenses, transfers and transactions share the same strings', async () => {
     const key = '2026-10';
     await expectGolden(
       book([
@@ -404,8 +404,8 @@ describe('buildFinanzasXlsx · valores de las celdas', () => {
   });
 });
 
-describe('buildFinanzasXlsx · hoja Ahorros', () => {
-  it('aportes en DOP, metas desconocidas y fechas desordenadas', async () => {
+describe('buildFinanzasXlsx · Savings sheet', () => {
+  it('contributions in DOP, unknown goals and out-of-order dates', async () => {
     await expectGolden(
       book([month('2026-09', { transfers: [tr('2026-09-02', { rate: 58.55 })] }), month('2026-10', { transfers: [tr('2026-10-02')] })], {
         contribs: [
@@ -420,7 +420,7 @@ describe('buildFinanzasXlsx · hoja Ahorros', () => {
     );
   });
 
-  it("aportes sin moneda, sin fecha o con monto ''", async () => {
+  it("contributions with no currency, with no date or with amount ''", async () => {
     await expectGolden(
       loose(
         book([month('2026-10')], {
@@ -435,7 +435,7 @@ describe('buildFinanzasXlsx · hoja Ahorros', () => {
     );
   });
 
-  it('muchos aportes', async () => {
+  it('many contributions', async () => {
     const goals = ['Fondo de emergencia', 'Ahorro personal', 'Viaje a Turquía'];
     await expectGolden(
       book([month('2026-10')], {
@@ -444,7 +444,7 @@ describe('buildFinanzasXlsx · hoja Ahorros', () => {
     );
   });
 
-  it('otros parámetros del plan de la meta de Turquía', async () => {
+  it('other plan parameters for the Turkey goal', async () => {
     const months = [month('2026-10')];
     const plans: [monthlyUSD: number, start: string, end: string][] = [
       [3000, '2026-08', '2027-10'],
@@ -460,29 +460,29 @@ describe('buildFinanzasXlsx · hoja Ahorros', () => {
     }
   });
 
-  it('las metas de aportes variables pueden traer el plan como null o sin los campos', async () => {
+  it('variable-contribution goals may come with the plan as null or without the fields', async () => {
     const [emergency, personal, trip] = referenceGoals();
     const months = [month('2026-10')];
     const expected = await expectGolden(book(months));
-    // Lo que el original no distingue tampoco cambia el libro.
+    // What the original does not distinguish does not change the workbook either.
     const bare = loose({ ...book(months), goals: [{ name: emergency!.name }, { name: personal!.name }, trip] });
     expectSameBytes(buildEs(bare), expected);
   });
 
-  it('14 meses o más: la tabla de ingresos crece', async () => {
+  it('14 months or more: the income table grows', async () => {
     for (const n of [3, 4, 14, 15, 30]) {
       await expectGolden(book(keysFrom('2026-01', n).map((key) => month(key, { transfers: [tr(day(key, 2))] }))));
     }
   });
 
-  it('meses salteados y con cambio de año', async () => {
+  it('months with gaps and across a year change', async () => {
     await expectGolden(book(['2025-11', '2026-10', '2028-03'].map((key) => month(key))));
     await expectGolden(book(['2026-12', '2027-01'].map((key) => month(key))));
   });
 });
 
-describe('buildFinanzasXlsx · hoja Config', () => {
-  it('tasa por defecto distinta, null o ausente', async () => {
+describe('buildFinanzasXlsx · Config sheet', () => {
+  it('different, null or missing default rate', async () => {
     const months = [month('2026-10')];
     await expectGolden(book(months, { defaultRate: 60.123 }));
     await expectGolden(loose({ ...book(months), defaultRate: null }));
@@ -490,15 +490,15 @@ describe('buildFinanzasXlsx · hoja Config', () => {
     await expectGolden(loose({ ...book(months), defaultRate: '' }));
   });
 
-  it('listas ausentes: sin months, sin contribs, mes sin accounts', async () => {
+  it('missing lists: no months, no contribs, month without accounts', async () => {
     const goals = referenceGoals();
     await expectGolden(loose({ goals, defaultRate: 58.76 }), { currentKey: '2026-10', now: new Date(2026, 9, 7) });
     await expectGolden(loose({ months: [{ key: '2026-10', budget: 1, incomeUSD: 2, fixed: [], transfers: [], tx: [] }], goals, defaultRate: 58.76 }));
   });
 });
 
-describe('buildFinanzasXlsx · orden', () => {
-  it('meses desordenados: las hojas salen en orden cronológico', async () => {
+describe('buildFinanzasXlsx · order', () => {
+  it('out-of-order months: the sheets come out in chronological order', async () => {
     const data = seedData();
     const [ago, sep, oct] = data.months as [ExportMonth, ExportMonth, ExportMonth];
     for (const months of [[oct, ago, sep], [sep, oct, ago], [oct, sep, ago]]) {
@@ -507,7 +507,7 @@ describe('buildFinanzasXlsx · orden', () => {
     }
   });
 
-  it('transacciones y aportes desordenados o con la misma fecha conservan su orden relativo', async () => {
+  it('transactions and contributions that are out of order or share a date keep their relative order', async () => {
     const key = '2026-10';
     const dates = ['2026-10-07', '2026-10-01', '2026-10-07', '2026-09-30', '2026-10-01', '2026-11-02', '2026-10-07'];
     await expectGolden(
@@ -518,8 +518,8 @@ describe('buildFinanzasXlsx · orden', () => {
   });
 });
 
-describe('buildFinanzasXlsx · estado y efectos', () => {
-  it('dos llamadas seguidas devuelven los mismos bytes', () => {
+describe('buildFinanzasXlsx · state and side effects', () => {
+  it('two calls in a row return the same bytes', () => {
     const data = seedData();
     const first = buildEs(data);
     const second = buildEs(data);
@@ -528,7 +528,7 @@ describe('buildFinanzasXlsx · estado y efectos', () => {
     expectSameBytes(first, refFile(V3));
   });
 
-  it('una exportación no deja restos en la siguiente', async () => {
+  it('one export leaves no trace in the next one', async () => {
     const big = book(
       keysFrom('2025-01', 6).map((key) =>
         month(key, { fixed: range(20).map((i) => fx(`Fijo ${i}`, { cur: 'USD' })), tx: range(40).map((i) => tx(day(key, 1 + (i % 28)), { desc: `Gasto ${i}` })) }),
@@ -537,16 +537,16 @@ describe('buildFinanzasXlsx · estado y efectos', () => {
     );
     await expectGolden(big);
     expectSameBytes(buildEs(empty(), { currentKey: '2026-10' }), refFile(PLANTILLA));
-    // Tampoco entre idiomas: un libro en inglés en medio no cambia los siguientes en español.
+    // Not across languages either: an English workbook in between does not change the following Spanish ones.
     buildFinanzasXlsx(big);
     expectSameBytes(buildEs(seedData()), refFile(V3));
     await expectGolden(big);
     expectSameBytes(buildEs(empty(), { currentKey: '2026-10' }), refFile(PLANTILLA));
   });
 
-  it('no modifica los datos de entrada', () => {
+  it('does not modify the input data', () => {
     const data = seedData();
-    // Desordenados, para que el generador tenga que ordenar meses, transacciones y aportes.
+    // Out of order, so the generator has to sort months, transactions and contributions.
     data.months.reverse();
     data.months.forEach((m) => m.tx.reverse());
     data.contribs.reverse();
@@ -555,7 +555,7 @@ describe('buildFinanzasXlsx · estado y efectos', () => {
     buildFinanzasXlsx(data);
     expect(data).toEqual(before);
 
-    // Ni las opciones ni el idioma (los textos de EXCEL_ES son los de todas las exportaciones en español).
+    // Nor the options or the language (the EXCEL_ES strings are the ones used by every Spanish export).
     const locale = structuredClone(EXCEL_ES);
     const opts = deepFreeze({ currentKey: '2026-10', locale: EXCEL_ES });
     const blank = deepFreeze(empty());
@@ -565,46 +565,46 @@ describe('buildFinanzasXlsx · estado y efectos', () => {
   });
 });
 
-describe('buildFinanzasXlsx · formato de salida', () => {
-  it('devuelve un Uint8Array con un zip legible y las partes en el orden del original', () => {
+describe('buildFinanzasXlsx · output format', () => {
+  it('returns a Uint8Array with a readable zip and the parts in the same order as the original', () => {
     const out = buildEs(seedData());
     expect(out).toBeInstanceOf(Uint8Array);
     expect(out.byteOffset).toBe(0);
     expect(out.buffer.byteLength).toBe(out.length);
-    // Firma de zip: "PK\x03\x04".
+    // Zip signature: "PK\x03\x04".
     expect([...out.subarray(0, 4)]).toEqual([0x50, 0x4b, 0x03, 0x04]);
     const parts = Object.keys(unzipSync(out));
     expect(parts.slice(0, 3)).toEqual(['[Content_Types].xml', '_rels/.rels', 'xl/worksheets/sheet1.xml']);
-    // 3 meses + Ahorros + Config; 3 tablas por mes + Aportes; una dona por mes.
+    // 3 months + Savings + Config; 3 tables per month + Contributions; one donut per month.
     expect(parts.filter((p) => /^xl\/worksheets\/sheet\d+\.xml$/.test(p))).toHaveLength(5);
     expect(parts.filter((p) => p.startsWith('xl/tables/'))).toHaveLength(10);
     expect(parts.filter((p) => /^xl\/charts\/chart\d+\.xml$/.test(p))).toHaveLength(3);
     expect(parts.slice(-4)).toEqual(['xl/styles.xml', 'xl/sharedStrings.xml', 'xl/workbook.xml', 'xl/_rels/workbook.xml.rels']);
   });
 
-  it('tipo del archivo', () => {
+  it('file type', () => {
     expect(XLSX_MIME).toBe('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   });
 
-  it('nombre del archivo: el de la app y, si se indica, el del usuario', () => {
+  it("file name: the app's and, if given, the user's", () => {
     expect(xlsxFilename()).toBe('FE Finance.xlsx');
     expect(xlsxFilename('Frank')).toBe('FE Finance - Frank.xlsx');
     expect(xlsxFilename('Eda')).toBe('FE Finance - Eda.xlsx');
     expect(xlsxFilename('Ayşe Öztürk')).toBe('FE Finance - Ayşe Öztürk.xlsx');
-    // Sin nombre, o con uno que se queda en nada, no hay sufijo.
+    // With no name, or with one that is reduced to nothing, there is no suffix.
     expect(xlsxFilename('')).toBe('FE Finance.xlsx');
     expect(xlsxFilename('   ')).toBe('FE Finance.xlsx');
     expect(xlsxFilename('///')).toBe('FE Finance.xlsx');
-    // Fuera lo que no admite un nombre de archivo: \ / : * ? " < > | y los caracteres de control.
+    // Whatever a file name does not allow is dropped: \ / : * ? " < > | and control characters.
     expect(xlsxFilename('a\\b/c:d*e?f"g<h>i|j')).toBe('FE Finance - abcdefghij.xlsx');
     expect(xlsxFilename('  Frank \t\n Reyes\u0000 ')).toBe('FE Finance - Frank Reyes.xlsx');
     expect(xlsxFilename('../../etc/passwd')).toBe('FE Finance - ....etcpasswd.xlsx');
   });
 });
 
-// ── Datos al azar ────────────────────────────────────────────────────────────
+// ── Random data ──────────────────────────────────────────────────────────────
 
-/** Generador pseudoaleatorio con semilla (mulberry32): las pruebas al azar son repetibles. */
+/** Seeded pseudorandom generator (mulberry32): the random tests are repeatable. */
 function prng(seed: number): () => number {
   let a = seed >>> 0;
   return () => {
@@ -692,7 +692,7 @@ function randomData(seed: number): ExportData {
       amount: amount(),
       cur: cur(),
     })),
-    // El plan siempre es válido (si no, la meta dejaría de tener plan y el original no sabría dibujarla).
+    // The plan is always valid (otherwise the goal would stop having a plan and the original could not draw it).
     goals: referenceGoals(
       pick([
         { monthlyUSD: 3000, start: '2026-08', end: '2027-10' },
@@ -703,8 +703,8 @@ function randomData(seed: number): ExportData {
   });
 }
 
-describe('buildFinanzasXlsx · datos al azar', () => {
-  it.each(range(60).map((i) => i + 1))('semilla %i', async (seed) => {
+describe('buildFinanzasXlsx · random data', () => {
+  it.each(range(60).map((i) => i + 1))('seed %i', async (seed) => {
     await expectGolden(randomData(seed), { currentKey: '2026-10', now: new Date(2026, 9, 7) });
   });
 });

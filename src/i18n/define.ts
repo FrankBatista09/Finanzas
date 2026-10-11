@@ -1,12 +1,12 @@
-// Mecanismo de traducción, sin librería: un diccionario por idioma con las mismas claves, interpolación
-// de {parámetros} y singular/plural. No sabe nada de React (el hook está en useI18n.ts) ni de qué textos hay.
+// Translation mechanism, with no library: one dictionary per language with the same keys, interpolation
+// of {parameters} and singular/plural. It knows nothing about React (the hook is in useI18n.ts) or which strings exist.
 //
-// El diccionario inglés define las claves. Los demás se tipan con su misma forma, así que una clave que falte
-// (o sobre) en español o en turco no compila.
+// The English dictionary defines the keys. The others are typed with the same shape, so a key that is missing
+// (or extra) in Spanish or Turkish does not compile.
 
 import type { Language } from '../../shared/types';
 
-/** Texto con singular y plural. Se elige con el parámetro `count`: `one` si es 1, `other` en el resto. */
+/** String with singular and plural. It is chosen with the `count` parameter: `one` if it is 1, `other` otherwise. */
 export interface Plural {
   one: string;
   other: string;
@@ -15,28 +15,28 @@ export interface Plural {
 export type Entry = string | Plural;
 export type Dict = Readonly<Record<string, Entry>>;
 
-/** La forma de un diccionario: las mismas claves, y plural donde el inglés lo sea. */
+/** The shape of a dictionary: the same keys, and plural wherever the English one is. */
 export type Shape<D extends Dict> = { readonly [K in keyof D]: D[K] extends string ? string : Plural };
 
-/** Los textos de una parte de la app en todos los idiomas. Se crea con defineStrings(). */
+/** The strings of one part of the app in every language. Created with defineStrings(). */
 export type Strings<D extends Dict> = Readonly<Record<Language, Shape<D>>>;
 
-/** Valores que se meten en el texto: "Close {month}" + { month: 'October 2026' }. Los números van ya formateados. */
+/** Values inserted into the string: "Close {month}" + { month: 'October 2026' }. Numbers come already formatted. */
 export type Params = Readonly<Record<string, string | number>>;
 
-/** Las claves con singular y plural: al traducirlas hay que pasar `count`. */
+/** The keys with singular and plural: translating them requires passing `count`. */
 export type PluralKey<D extends Dict> = { [K in keyof D]: D[K] extends string ? never : K }[keyof D];
-/** Las claves de un texto sin plural: se pueden traducir sin parámetros. */
+/** The keys of a string with no plural: they can be translated without parameters. */
 export type PlainKey<D extends Dict> = Exclude<keyof D, PluralKey<D>>;
 
-/** Función de traducción de un diccionario en un idioma. Las claves con plural exigen `count`. */
+/** Translation function of a dictionary in one language. Keys with a plural require `count`. */
 export interface Translator<D extends Dict> {
   (key: PlainKey<D>, params?: Params): string;
   (key: PluralKey<D>, params: Params & { count: number }): string;
 }
 
 /**
- * Declara los textos de una parte de la app. Cada pantalla tiene los suyos en su carpeta:
+ * Declares the strings of one part of the app. Each screen has its own in its folder:
  *
  *   export const MES = defineStrings({
  *     en: { paidOf: '{paid} of {total} paid', txCount: { one: '{count} transaction', other: '{count} transactions' } },
@@ -50,7 +50,7 @@ export function defineStrings<D extends Dict>(
   return dicts as unknown as Strings<D>;
 }
 
-/** Sustituye cada {nombre} por su valor. Un parámetro que no venga se deja tal cual, para que se note. */
+/** Replaces each {name} with its value. A parameter that is not provided is left as is, so that it stands out. */
 export function interpolate(text: string, params: Params): string {
   return text.replace(/\{(\w+)\}/g, (whole, name: string) => (Object.hasOwn(params, name) ? String(params[name]) : whole));
 }
@@ -58,8 +58,8 @@ export function interpolate(text: string, params: Params): string {
 const cache = new WeakMap<object, Map<Language, unknown>>();
 
 /**
- * El traductor de esos textos en ese idioma. Para los mismos argumentos devuelve siempre la misma función,
- * así que se puede usar como dependencia de un efecto o pasar a un componente memorizado.
+ * The translator of those strings in that language. For the same arguments it always returns the same function,
+ * so it can be used as an effect dependency or passed to a memoized component.
  */
 export function translator<D extends Dict>(strings: Strings<D>, lang: Language): Translator<D> {
   let byLang = cache.get(strings);
@@ -70,7 +70,7 @@ export function translator<D extends Dict>(strings: Strings<D>, lang: Language):
   const dict: Readonly<Record<string, Entry>> = strings[lang];
   const fallback: Readonly<Record<string, Entry>> = strings.en;
   const t = (key: string, params?: Params): string => {
-    // Los tipos ya impiden una clave inexistente; el respaldo es para un idioma que llegara sin su diccionario.
+    // The types already rule out a nonexistent key; the fallback is for a language that arrives without its dictionary.
     const entry = dict?.[key] ?? fallback[key];
     if (entry === undefined) return key;
     const text = typeof entry === 'string' ? entry : params?.count === 1 ? entry.one : entry.other;

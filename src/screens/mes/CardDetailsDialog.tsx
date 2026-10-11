@@ -17,9 +17,9 @@ interface Props {
 }
 
 /**
- * The breakdown behind a credit card's row in "Monthly expenses", for the month being viewed: previous balance, other
- * charges (editable while the month is open), everything charged this month item by item, what was paid and what is left.
- * With a limit and a cutoff it also shows the utilization and the same 10 % hint as the "Credit cards" card.
+ * The breakdown behind a credit card's row in "Fixed monthly expenses", for the month being viewed: previous balance,
+ * other charges (editable while the month is open), everything charged this month item by item, what was paid and what
+ * is left. With a limit and a cutoff it also shows the utilization and the same 10 % hint as the "Credit cards" card.
  */
 export function CardDetailsDialog({ cardId, onClose, onPay }: Props) {
   const { state, monthKey, accounts, readOnly, latestMonth, today, actions } = useFinanzas();
@@ -97,7 +97,7 @@ export function CardDetailsDialog({ cardId, onClose, onPay }: Props) {
                   <span className={styles.itemDate}>{p.date}</span>
                   <span className={styles.value}>
                     {money(p.amount)}
-                    {!readOnly && <DeleteButton compact label={s('payCardRemove', { amount: f2(p.amount), currency: cur, account, date: p.date })} onClick={() => actions.removeCardPayment(cardId, p.id)} />}
+                    {!readOnly && <DeleteButton compact kind="kindPayment" item={`${p.date} · ${account} · ${f2(p.amount)} ${cur}`} label={s('payCardRemove', { amount: f2(p.amount), currency: cur, account, date: p.date })} onConfirm={() => actions.removeCardPayment(cardId, p.id)} />}
                   </span>
                 </li>
               );

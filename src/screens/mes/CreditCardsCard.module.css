@@ -1,4 +1,4 @@
-/* «Credit cards»: one card at a time; arrows in the header move between them. */
+/* "Credit cards": one credit card at a time; arrows in the header move between them. */
 .add {
   flex: none;
   padding: 3px 9px;
@@ -34,7 +34,7 @@
 }
 
 .list {
-  /* Room for the tallest card: header line, limit/amount block, bar and a tip that wraps to a few lines. */
+  /* Room for the tallest credit card: header line, limit/amount block, bar and a tip that wraps to a few lines. */
   --card-item-h: 210px;
 }
 
@@ -222,7 +222,7 @@ p.muted,
   background: var(--error);
 }
 
-/* La marca del 10 % del límite. */
+/* The mark at 10 % of the limit. */
 .marker {
   position: absolute;
   left: 10%;

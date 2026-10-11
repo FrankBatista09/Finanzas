@@ -1,6 +1,6 @@
-/* Panel de ajustes: cuelga de la barra superior, a la derecha. Sin sombra (solo el modal la lleva): lo separa
-   del contenido un borde de tinta. Va posicionado respecto a la barra, no al botón, para no salirse de la
-   pantalla cuando la barra se parte en varias filas. */
+/* Settings panel: hangs from the top bar, on the right. No shadow (only the dialog has one): an ink border
+   separates it from the content. It is positioned relative to the bar, not the button, so it does not run off
+   the screen when the bar wraps into several rows. */
 .panel {
   position: absolute;
   top: calc(100% + 6px);
@@ -48,7 +48,7 @@
   gap: var(--gap-6);
 }
 
-/* Un ajuste con su nombre encima: moneda principal, segunda moneda, cuenta por defecto. */
+/* A setting with its name above it: main currency, second currency, default account. */
 .field {
   display: flex;
   flex-direction: column;
@@ -61,7 +61,7 @@
   gap: var(--gap-6);
 }
 
-/* Códigos de moneda. Va después de .choice (más abajo no: misma especificidad) gracias al selector doble. */
+/* Currency codes. It applies after .choice (it is not further down: same specificity) thanks to the double selector. */
 .choice.code {
   font: 500 var(--fs-meta) var(--font-mono);
 }
@@ -82,7 +82,7 @@
   color: var(--text-muted);
 }
 
-/* Opción de una lista corta (idioma, tema). La elegida se marca como la celda seleccionada de una hoja de cálculo. */
+/* Option of a short list (language, theme). The chosen one is marked like the selected cell of a spreadsheet. */
 .choice {
   display: flex;
   align-items: center;
@@ -119,7 +119,7 @@
   white-space: nowrap;
 }
 
-/* Muestra del tema: barra, acento y fondo. */
+/* Theme swatch: bar, accent and background. */
 .chips {
   flex: none;
   display: flex;

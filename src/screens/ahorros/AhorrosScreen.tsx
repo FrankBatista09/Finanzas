@@ -1,6 +1,6 @@
-// Hoja "Savings" (prototipo, líneas 523-621): tarjetas de metas (con su diálogo para crearlas y editarlas),
-// ingresos por mes, aportes y los ingresos uno por uno. Todo sale de useFinanzas(); los textos están en ./strings
-// y las frases se arman en ./model. Arriba de la hoja, el dinero total y las cuentas son del panel resumen (src/components).
+// "Savings" sheet (prototype, lines 523-621): goal cards (with their dialog to create and edit them), income by month,
+// contributions and the incomes one by one. Everything comes from useFinanzas(); the texts are in ./strings and the
+// sentences are built in ./model. Above the sheet, the total money and the accounts belong to the summary panel (src/components).
 
 import { Stack } from '../../ui';
 import styles from './AhorrosScreen.module.css';

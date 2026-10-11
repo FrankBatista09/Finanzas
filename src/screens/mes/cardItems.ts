@@ -1,4 +1,4 @@
-// What a credit card was charged this month, item by item,.
+// What a credit card was charged this month, item by item.
 // Pure, no React and no texts. The money itself comes from shared/calc.ts cardCalc; this lists what adds up to its `charged`.
 
 import { chargedTo, convert, isCardTx, isCharged } from '../../../shared/calc';
@@ -9,7 +9,7 @@ export interface CardItem {
   id: string;
   kind: 'fixed' | 'tx';
   name: string;
-  /** The transaction's date; null for a monthly expense (it has no date of its own). */
+  /** The transaction's date; null for a fixed expense (it has no date of its own). */
   date: ISODate | null;
   /** In its own currency. */
   amount: number;
@@ -18,7 +18,7 @@ export interface CardItem {
   converted: number;
 }
 
-/** The ticked monthly expenses (in sheet order) and then the credit card transactions (oldest first) of `key` charged to the card. */
+/** The checked fixed expenses (in sheet order) and then the credit card transactions (oldest first) of `key` charged to the card. */
 export function cardItems(state: AppState, key: MonthKey, cardId: string): CardItem[] {
   const month = state.months[key];
   const card = state.cards.find((c) => c.id === cardId);

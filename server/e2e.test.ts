@@ -1,11 +1,11 @@
-// De punta a punta, con todas las piezas reales (API + D1 + generador y lector de Excel + MCP) y sin sustituir
-// ninguna: lo que no se podía probar hasta que existieran todas. La base es la de server/d1-node.ts.
+// End to end, with all the real pieces (API + D1 + Excel generator and reader + MCP) and without replacing any
+// of them: what could not be tested until all of them existed. The database is the one from server/d1-node.ts.
 //
-// El libro de Excel conserva el diseño original (dos monedas, dos cuentas, saldos escritos mes a mes) y el
-// estado de la app es otro modelo: entre uno y otro median buildExportData y applyImportToState
-// (shared/excel/data.ts, con sus propias pruebas). Aquí se comprueba el camino completo por la API: que lo que
-// se carga queda guardado como dice ese puente y que lo que se descarga es lo que hay guardado.
-// El libro de referencia del diseño ("Finanzas Personales v3.xlsx") está en español y es de la versión 1.
+// The Excel workbook keeps the original design (two currencies, two accounts, balances typed month by month) and
+// the app's state is a different model: between the two sit buildExportData and applyImportToState
+// (shared/excel/data.ts, with its own tests). Here the whole path through the API is checked: that what is
+// loaded ends up stored as that bridge says, and that what is downloaded is what is stored.
+// The design's reference workbook ("Finanzas Personales v3.xlsx") is in Spanish and comes from version 1.
 
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -25,7 +25,7 @@ import type { Client } from './test-util';
 
 const REFERENCE = new Uint8Array(readFileSync(fileURLToPath(import.meta.resolve('../design_handoff/referencia/Finanzas Personales v3.xlsx'))));
 
-/** Una base recién migrada (sin nada de nadie) con las rutas de desarrollo activas. `api` es Frank; `eda`, Eda. */
+/** A freshly migrated database (nothing of anyone's in it) with the development routes on. `api` is Frank; `eda`, Eda. */
 function fresh() {
   const t = makeEnv({ ALLOW_DEV_RESET: '1' });
   return { ...t, api: client(t.env), eda: client(t.env, EDA.id) };
@@ -50,7 +50,7 @@ async function getState(api: Client): Promise<AppState> {
   return r.body.state;
 }
 
-/** El estado sin lo que una importación asigna por su cuenta: ids, createdAt, source y closedAt. Los aportes, por nombre de meta. */
+/** The state without what an import assigns on its own: ids, createdAt, source and closedAt. The contributions, by goal name. */
 function comparable(state: AppState) {
   const goalName = new Map(state.goals.map((g) => [g.id, g.name]));
   return {
@@ -73,7 +73,7 @@ function comparable(state: AppState) {
   };
 }
 
-/** Las cifras de un estado sin los textos que escribió el usuario: lo que comparten el libro en español y los datos de ejemplo. */
+/** The figures of a state without the texts the user typed: what the Spanish workbook and the sample data share. */
 function figures(state: AppState) {
   const goalName = new Map(state.goals.map((g) => [g.id, g.name]));
   return {
@@ -90,14 +90,14 @@ function figures(state: AppState) {
   };
 }
 
-/** Saldo de cada cuenta al final de `asOf`, redondeado al centavo. */
+/** Balance of each account at the end of `asOf`, rounded to the cent. */
 function monthEnd(state: AppState, asOf: string): [string, number][] {
   return balances(state, asOf).accounts.map((a) => [a.account.id, Math.round(a.balance * 100) / 100]);
 }
 
 /**
- * Dos libros ya leídos dicen lo mismo. Los saldos de las cuentas se comparan al centavo: en el libro son un
- * número calculado (saldo inicial más movimientos) y no tienen por qué coincidir hasta el último decimal.
+ * Two workbooks already read say the same thing. The account balances are compared to the cent: in the workbook they
+ * are a computed number (opening balance plus movements) and need not match down to the last decimal.
  */
 function expectSameBook(actual: ImportPayload, expected: ImportPayload) {
   const withoutBalances = (book: ImportPayload) => ({ ...book, months: book.months.map((m) => ({ ...m, accounts: null })) });
@@ -108,27 +108,27 @@ function expectSameBook(actual: ImportPayload, expected: ImportPayload) {
   });
 }
 
-/** Los datos de ejemplo con las tres metas llamadas como en la versión 1 (en español), que es como las conserva quien viene de ella. */
+/** The sample data with the three goals named as in version 1 (in Spanish), which is how someone coming from it still has them. */
 function seedWithFormerGoalNames(): AppState {
   const former = new Map(LEGACY_GOALS.map(([before, now]) => [now, before]));
   const state = seedState();
   return { ...state, language: 'es', goals: state.goals.map((g) => ({ ...g, name: former.get(g.name) ?? g.name })) };
 }
 
-describe('de punta a punta: Excel', () => {
-  it('POST /api/import con el libro de referencia en una base vacía → GET /api/state trae las cifras de los datos de ejemplo', async () => {
+describe('end to end: Excel', () => {
+  it('POST /api/import with the reference workbook on an empty database → GET /api/state returns the figures of the sample data', async () => {
     const { api, eda } = fresh();
     expect(await importXlsx(api, REFERENCE)).toEqual({ months: ['2026-08', '2026-09', '2026-10'], contributions: 8 });
 
     const state = await getState(api);
-    // Mismos meses, fijos, envíos, transacciones, presupuesto, metas y aportes que los datos de ejemplo (que salen
-    // de ese libro): cada gasto en la cuenta de su moneda, y las tres metas de la versión 1 con su nombre de hoy,
-    // que son justo las metas iniciales más la del viaje. La primera visita ya no tiene nada que crearle.
+    // Same months, fixed expenses, transfers, transactions, budget, goals and contributions as the sample data (which
+    // comes from that workbook): each expense in the account of its currency, and the three version 1 goals with today's
+    // name, which are exactly the initial goals plus the trip one. The first visit has nothing left to create for him.
     expect(figures(state)).toEqual(figures(seedState()));
     expect(state.accounts.map((a) => [a.id, a.name, a.currency])).toEqual(DEFAULT_ACCOUNTS.map((a) => [a.id, a.name, a.currency]));
-    // Los textos del usuario, tal cual (en español); categorías y métodos, con su nombre canónico.
+    // The user's texts, as is (in Spanish); categories and methods, with their canonical name.
     expect(state.months['2026-10']!.tx[0]).toMatchObject({ desc: 'Compra semanal', cat: 'Groceries', method: 'Debit card' });
-    // El ingreso de cada mes es un ingreso en USD el día 1; los saldos del último mes son los del libro.
+    // Each month's income is an income in USD on day 1; the last month's balances are the workbook's.
     expect(state.incomes.map((i) => [i.date, i.desc, i.accountId, i.amount, i.cur])).toEqual(
       ['2026-08-01', '2026-09-01', '2026-10-01'].map((date) => [date, IMPORTED_INCOME, 'us', 5800, 'USD']),
     );
@@ -136,17 +136,17 @@ describe('de punta a punta: Excel', () => {
       ['us', 4320],
       ['dr', 86400],
     ]);
-    // El idioma y las monedas no vienen del libro.
+    // The language and the currencies do not come from the workbook.
     expect([state.language, state.mainCurrency, state.secondCurrency, state.defaultAccountId]).toEqual(['en', 'DOP', 'USD', null]);
 
-    // Lo que sí cambia con una importación.
+    // What does change with an import.
     const months = Object.values(state.months);
     expect(months.flatMap((m) => m.tx).every((t) => t.source === 'import' && t.createdAt !== null)).toBe(true);
     expect(months.map((m) => m.closedAt !== null)).toEqual([true, true, false]);
     const ids = [...months.flatMap((m) => [...m.fixed, ...m.transfers, ...m.tx]), ...state.contribs, ...state.goals, ...state.incomes].map((r) => r.id);
     expect(new Set(ids).size).toBe(ids.length);
 
-    // Y nada de eso es de Eda: ella entra y encuentra una app recién estrenada.
+    // And none of that is Eda's: she visits and finds a brand-new app.
     const hers = await getState(eda);
     expect(hers.goals).toEqual([...DEFAULT_GOALS]);
     expect(hers.accounts).toEqual([...DEFAULT_ACCOUNTS]);
@@ -155,14 +155,14 @@ describe('de punta a punta: Excel', () => {
     expect(Object.values(hers.months).flatMap((m) => [...m.fixed, ...m.transfers, ...m.tx])).toEqual([]);
   });
 
-  it('ese usuario, con la app en español, descarga un libro que dice lo mismo que el de referencia', async () => {
+  it('that user, with the app in Spanish, downloads a workbook that says the same as the reference one', async () => {
     const { api } = fresh();
     await importXlsx(api, REFERENCE);
     expect((await api.patch('/api/settings', { language: 'es' })).status).toBe(200);
     const mine = parseFinanzasXlsx(await exportXlsx(api));
     const reference = parseFinanzasXlsx(REFERENCE);
-    // Todo igual salvo los saldos de los meses anteriores: en el libro de referencia estaban escritos a mano mes a
-    // mes; ahora son un cálculo (lo que había al final de ese mes), y solo el último tiene que coincidir.
+    // All the same except the balances of the earlier months: in the reference workbook they were typed by hand month
+    // by month; now they are a computation (what there was at the end of that month), and only the last has to match.
     const withoutBalances = (book: ImportPayload) => ({ ...book, months: book.months.map((m) => ({ ...m, accounts: null })) });
     expect(withoutBalances(mine)).toEqual(withoutBalances(reference));
     expect(mine.months[2]!.accounts.usd).toBeCloseTo(reference.months[2]!.accounts.usd, 2);
@@ -170,13 +170,13 @@ describe('de punta a punta: Excel', () => {
     expect(reference.months[2]!.accounts).toEqual({ usd: 4320, dop: 86400 });
   });
 
-  it('los datos de ejemplo de la app, vistos en español, dan ese mismo libro salvo los textos que escribió el usuario y los saldos', async () => {
+  it('the sample data of the app, viewed in Spanish, gives that same workbook except for the texts the user typed and the balances', async () => {
     const { api } = fresh();
     expect((await api.post('/api/dev/seed')).status).toBe(200);
     expect((await api.patch('/api/settings', { language: 'es' })).status).toBe(200);
     const mine = parseFinanzasXlsx(await exportXlsx(api));
     const reference = parseFinanzasXlsx(REFERENCE);
-    // Mismas cifras, fechas, categorías y métodos (lo que se traduce); otros nombres y descripciones (lo que no).
+    // Same figures, dates, categories and methods (what is translated); different names and descriptions (what is not).
     const shape = (book: typeof mine) =>
       book.months.map((m) => ({
         key: m.key,
@@ -190,7 +190,7 @@ describe('de punta a punta: Excel', () => {
     expect(shape(mine)).toEqual(shape(reference));
     expect(mine.months[2]!.tx[0]!.desc).toBe('Weekly groceries');
     expect(reference.months[2]!.tx[0]!.desc).toBe('Compra semanal');
-    // Los saldos del libro son los de las cuentas de la app al final de cada mes: los de octubre, 13,482 y 220,641.93.
+    // The workbook's balances are those of the app's accounts at the end of each month: October's, 13,482 and 220,641.93.
     const state = await getState(api);
     expect(mine.months.map((m) => [m.accounts.usd, Math.round(m.accounts.dop * 100) / 100])).toEqual(
       ['2026-08', '2026-09', '2026-10'].map((key) => monthEnd(state, key).map(([, balance]) => balance)),
@@ -198,16 +198,16 @@ describe('de punta a punta: Excel', () => {
     expect(mine.months[2]!.accounts.usd).toBe(13482);
   });
 
-  it('exportar → importar → exportar da el mismo libro', async () => {
+  it('export → import → export gives the same workbook', async () => {
     const source = fresh();
-    // Una cuarta meta, en español, para que el libro no sea uno de la versión 1 (más abajo).
+    // A fourth goal, in Spanish, so that the workbook is not a version 1 one (further down).
     const mine = seedWithFormerGoalNames();
     mine.goals.push({ id: 'carro', name: 'Carro', cur: 'USD', monthly: null, start: null, end: null, approxCur: null, sort: 3 });
     await replaceAll(source.db, FRANK.id, mine);
     const first = await exportXlsx(source.api);
 
-    // En otra base, a otro usuario que también usa la app en español y no tiene nada propio: sus dos cuentas, un
-    // octubre vacío y ninguna meta (borró las iniciales, que si no se conservarían junto a las cuatro del libro).
+    // In another database, into another user who also uses the app in Spanish and has nothing of their own: their two
+    // accounts, an empty October and no goals (the initial ones were deleted, or they would stay with the workbook's four).
     const target = fresh();
     await target.eda.patch('/api/settings', { language: 'es' });
     await resetAll(target.db, EDA.id, '2026-10');
@@ -216,38 +216,38 @@ describe('de punta a punta: Excel', () => {
     expectSameBook(parseFinanzasXlsx(await exportXlsx(target.eda)), parseFinanzasXlsx(first));
     expect((await getState(target.eda)).goals.map((g) => g.name)).toEqual(['Fondo de emergencia', 'Ahorro personal', 'Viaje a Turquía', 'Carro']);
 
-    // Volver a importar encima de lo que ya hay tampoco cambia nada (los meses se sustituyen, no se duplican).
+    // Importing again on top of what is already there changes nothing either (the months are replaced, not duplicated).
     const once = await getState(target.eda);
     await importXlsx(target.eda, first);
     expect(comparable(await getState(target.eda))).toEqual(comparable(once));
   });
 
-  it('quien conserva las tres metas de la versión 1 en español puede volver a cargar su propio libro sin que se le dupliquen', async () => {
+  it('someone who still has the three version 1 goals in Spanish can load their own workbook again without duplicating them', async () => {
     const { api, db } = fresh();
-    // Con solo esas tres metas y en español, su libro es uno de la versión 1: el lector renombra sus metas a las de hoy…
+    // With only those three goals and in Spanish, his workbook is a version 1 one: the reader renames its goals to today's…
     await replaceAll(db, FRANK.id, seedWithFormerGoalNames());
     const before = await getState(api);
     expect(before.goals.map((g) => g.name)).toEqual(['Fondo de emergencia', 'Ahorro personal', 'Viaje a Turquía']);
     const first = await exportXlsx(api);
     expect(parseFinanzasXlsx(first).goals!.map((g) => g.name)).toEqual(['Emergency fund', 'Personal savings', 'Trip to Turkey']);
 
-    // …pero al aplicarlo valen las que él tiene con el nombre de entonces: ni metas nuevas ni aportes movidos.
+    // …but on applying it, the ones he has under the old name are what counts: no new goals, no moved contributions.
     await importXlsx(api, first);
     const after = await getState(api);
     expect(after.goals).toEqual(before.goals);
     expect(comparable(after).contribs).toEqual(comparable(before).contribs);
-    // Y su siguiente libro trae las mismas tres metas con los mismos aportes.
+    // And his next workbook carries the same three goals with the same contributions.
     const [again, original] = [parseFinanzasXlsx(await exportXlsx(api)), parseFinanzasXlsx(first)];
     expect(again.goals).toEqual(original.goals);
     expect(again.contribs).toEqual(original.contribs);
   });
 
-  it('ese mismo libro, en un usuario que tiene las metas con el nombre de hoy, cae en ellas', async () => {
+  it('that same workbook, in a user who has the goals under their current name, lands in them', async () => {
     const { api, eda, db } = fresh();
     await replaceAll(db, FRANK.id, seedWithFormerGoalNames());
     const first = await exportXlsx(api);
 
-    // Eda ya entró alguna vez: tiene las dos metas iniciales.
+    // Eda has visited before: she has the two initial goals.
     const mine = await getState(eda);
     expect(mine.goals.map((g) => g.name)).toEqual(['Emergency fund', 'Personal savings']);
     await importXlsx(eda, first);
@@ -257,13 +257,13 @@ describe('de punta a punta: Excel', () => {
       ['Personal savings', 'USD', null, null, null],
       ['Trip to Turkey', 'USD', 3000, '2026-08', '2027-10'],
     ]);
-    // Las dos que ya tenía son las mismas filas, no otras nuevas con el mismo nombre.
+    // The two she already had are the same rows, not new ones with the same name.
     expect(hers.goals.slice(0, 2).map((g) => g.id)).toEqual(mine.goals.map((g) => g.id));
     const byGoal = (name: string) => hers.contribs.filter((c) => c.goalId === hers.goals.find((g) => g.name === name)!.id).length;
     expect([byGoal('Emergency fund'), byGoal('Personal savings'), byGoal('Trip to Turkey')]).toEqual([3, 2, 3]);
   });
 
-  it('exportar → importar → exportar también da el mismo libro en inglés y en turco', async () => {
+  it('export → import → export also gives the same workbook in English and in Turkish', async () => {
     for (const language of ['en', 'tr'] as const) {
       const source = fresh();
       await source.api.post('/api/dev/seed');
@@ -277,7 +277,7 @@ describe('de punta a punta: Excel', () => {
     }
   });
 
-  it('la variante JSON (lo que manda la web tras leer el archivo en el navegador) deja lo mismo que el .xlsx crudo', async () => {
+  it('the JSON variant (what the web sends after reading the file in the browser) leaves the same as the raw .xlsx', async () => {
     const raw = fresh();
     await importXlsx(raw.api, REFERENCE);
 
@@ -288,13 +288,13 @@ describe('de punta a punta: Excel', () => {
   });
 });
 
-describe('de punta a punta: un Excel editado a mano', () => {
-  it('un monto negativo rechaza el archivo entero, dice dónde está y no cambia nada', async () => {
+describe('end to end: a hand-edited Excel', () => {
+  it('a negative amount rejects the whole file, says where it is and changes nothing', async () => {
     const { api } = fresh();
     await api.post('/api/dev/seed');
     const before = await getState(api);
 
-    // La app nunca guarda montos negativos; solo pueden llegar en un libro retocado en Excel.
+    // The app never stores negative amounts; they can only arrive in a workbook touched up in Excel.
     for (const locale of [undefined, EXCEL_ES]) {
       const edited = seedState();
       edited.months['2026-10']!.tx[3]!.amount = -900;
@@ -304,7 +304,7 @@ describe('de punta a punta: un Excel editado a mano', () => {
         body: buildFinanzasXlsx(buildExportData(edited), locale ? { locale } : {}),
       });
       expect(res.status).toBe(400);
-      // El aviso va en inglés aunque el libro esté en otro idioma.
+      // The notice is in English even if the workbook is in another language.
       expect(await res.json()).toEqual({
         error: { code: 'validation', message: 'Invalid data: months.2.tx.3.amount: cannot be negative' },
       });
@@ -313,19 +313,19 @@ describe('de punta a punta: un Excel editado a mano', () => {
   });
 });
 
-describe('de punta a punta: lo que registra Claude llega a la web y al Excel', () => {
-  /** Mediodía del 7 de octubre de 2026 en Santo Domingo. */
+describe('end to end: what Claude records reaches the web and the Excel', () => {
+  /** Noon on October 7, 2026 in Santo Domingo. */
   const NOW = new Date('2026-10-07T16:00:00Z');
   const AUTH = { Authorization: `Bearer ${TOKEN}`, 'Content-Type': 'application/json' };
 
-  it('add_transaction por /mcp y POST /api/ingest/transaction aparecen en /api/state y en el libro de ese usuario', async () => {
+  it('add_transaction through /mcp and POST /api/ingest/transaction show up in /api/state and in the workbook of that user', async () => {
     const { api, eda, env, db } = fresh();
     await api.post('/api/dev/seed');
     await eda.post('/api/dev/seed');
     const edaBefore = await loadState(db, EDA.id);
     const drBefore = monthEnd(await getState(api), '2026-10')[1]![1];
 
-    // Frank le dicta a Claude en español: la categoría llega como 'Transporte' y se guarda como 'Transport'.
+    // Frank dictates to Claude in Spanish: the category arrives as 'Transporte' and is stored as 'Transport'.
     const mcp = await handleMcp(
       new Request('https://finanzas.example/mcp', {
         method: 'POST',
@@ -346,7 +346,7 @@ describe('de punta a punta: lo que registra Claude llega a la web y al Excel', (
     expect(result.content[0]!.text).toContain('Uber');
     expect(result.content[0]!.text).toContain('850.00 DOP');
 
-    // Y por la API, diciendo de qué cuenta sale por su nombre.
+    // And through the API, saying by name which account it comes out of.
     const ingest = await client(env, null).post(
       '/api/ingest/transaction',
       { user: 'frank', date: '2026-10-06', description: 'Colmado', amount: 12.5, account: 'us account' },
@@ -357,11 +357,11 @@ describe('de punta a punta: lo que registra Claude llega a la web y al Excel', (
     const state = await getState(api);
     const fromClaude = state.months['2026-10']!.tx.filter((t) => t.source === 'claude');
     expect(fromClaude.map((t) => [t.date, t.desc, t.cat, t.method, t.amount, t.cur, t.accountId])).toEqual([
-      // Sin cuenta: la de por defecto de Frank ('dr'), en su moneda.
+      // No account: Frank's default one ('dr'), in its currency.
       ['2026-10-07', 'Uber', 'Transport', 'Debit card', 850, 'DOP', 'dr'],
       ['2026-10-06', 'Colmado', 'Food', 'Debit card', 12.5, 'USD', 'us'],
     ]);
-    // Los dos gastos ya restaron de sus cuentas.
+    // Both expenses have already been subtracted from their accounts.
     expect(monthEnd(state, '2026-10')).toEqual([
       ['us', 13482 - 12.5],
       ['dr', Math.round((drBefore - 850) * 100) / 100],
@@ -373,12 +373,12 @@ describe('de punta a punta: lo que registra Claude llega a la web y al Excel', (
     expect(october.tx).toContainEqual({ date: '2026-10-06', desc: 'Colmado', place: '', cat: 'Food', method: 'Debit card', amount: 12.5, cur: 'USD', notes: '' });
     expect(october.accounts.usd).toBeCloseTo(13482 - 12.5, 2);
 
-    // Nada de eso llegó a las finanzas ni al libro de Eda.
+    // None of that reached Eda's finances or her workbook.
     expect(await loadState(db, EDA.id)).toEqual(edaBefore);
     expect(parseFinanzasXlsx(await exportXlsx(eda)).months.find((m) => m.key === '2026-10')!.tx).toHaveLength(7);
   });
 
-  it('cerrar el mes por la API: el libro gana la hoja del mes siguiente, con los fijos sin pagar', async () => {
+  it('closing the month through the API: the workbook gains the sheet of the next month, with the fixed expenses unpaid', async () => {
     const { api, eda } = fresh();
     await api.post('/api/dev/seed');
     await eda.post('/api/dev/seed');
@@ -396,13 +396,13 @@ describe('de punta a punta: lo que registra Claude llega a la web y al Excel', (
     expect(november.fixed.every((f) => !f.paid)).toBe(true);
     expect(november.tx).toEqual([]);
     expect(november.transfers).toEqual([]);
-    // El presupuesto se copia; el ingreso no: es la suma de los ingresos de noviembre, que todavía no hay.
+    // The budget is copied; the income is not: it is the sum of November's incomes, and there are none yet.
     expect([november.budget, november.incomeUSD]).toEqual([70000, 0]);
-    // Nada se ha movido todavía en noviembre: los saldos son los de octubre.
+    // Nothing has moved yet in November: the balances are October's.
     expect(november.accounts.usd).toBeCloseTo(book.months[2]!.accounts.usd, 2);
     expect(november.accounts.dop).toBeCloseTo(book.months[2]!.accounts.dop, 2);
 
-    // El libro de Eda sigue con sus tres meses.
+    // Eda's workbook still has its three months.
     expect(parseFinanzasXlsx(await exportXlsx(eda)).months.map((m) => m.key)).toEqual(['2026-08', '2026-09', '2026-10']);
   });
 });

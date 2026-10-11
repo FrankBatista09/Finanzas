@@ -1,5 +1,5 @@
-// La API HTTP (Hono sobre Cloudflare Pages Functions). El contrato está en shared/api.ts:
-// rutas, cuerpos, códigos de estado y reglas de escritura salen de ahí.
+// The HTTP API (Hono on Cloudflare Pages Functions). The contract is in shared/api.ts:
+// routes, bodies, status codes and write rules come from there.
 
 import { Hono } from 'hono';
 import type { Context, MiddlewareHandler } from 'hono';
@@ -58,13 +58,13 @@ import * as v from './validate';
 export type AppEnv = {
   Bindings: Env;
   Variables: AuthEnv['Variables'] & {
-    /** El usuario de la cabecera X-User, ya resuelto (requireUser). No existe en /api/session ni en /api/ingest/*. */
+    /** The user from the X-User header, already resolved (requireUser). Not set on /api/session or /api/ingest/*. */
     user?: AppUser;
   };
 };
 type Ctx = Context<AppEnv>;
 
-/** Los cuerpos JSON de la app son de unos cientos de bytes; el tope solo frena abusos. */
+/** The app's JSON bodies are a few hundred bytes; the limit only stops abuse. */
 export const MAX_JSON_BYTES = 1024 * 1024;
 export const MAX_IMPORT_BYTES = 10 * 1024 * 1024;
 
@@ -74,16 +74,16 @@ const ROUTE_NOT_FOUND = 'Route not found.';
 const BODY_TOO_LARGE = 'The request body is too large.';
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
-/** Las únicas rutas sin cabecera X-User: la lista de usuarios para el selector y lo que registra Claude (el usuario va en el cuerpo). */
+/** The only routes without an X-User header: the user list for the select and what Claude records (the user goes in the body). */
 const NO_USER_HEADER = /^\/api\/(?:session$|ingest(?:\/|$))/;
 
 function devEnabled(env: Env): boolean {
   return env.ALLOW_DEV_RESET === '1';
 }
 
-// ── Cuerpo de la petición ────────────────────────────────────────────────────
+// ── Request body ─────────────────────────────────────────────────────────────
 
-/** Lee el cuerpo sin pasar de `maxBytes`; si se excede, 413 con el mensaje `tooLarge`. */
+/** Reads the body without going past `maxBytes`; if it is exceeded, 413 with the `tooLarge` message. */
 async function readBody(req: Request, maxBytes: number, tooLarge: string): Promise<Uint8Array> {
   const bytes = await readLimitedBody(req, maxBytes);
   if (!bytes) throw tooLargeError(tooLarge);
@@ -103,13 +103,13 @@ async function jsonBody<T>(c: Ctx, schema: z.ZodType<T>): Promise<T> {
   return v.parse(schema, parseJson(bytes));
 }
 
-/** Como jsonBody, pero un cuerpo vacío vale {}. */
+/** Like jsonBody, but an empty body counts as {}. */
 async function optionalBody<T extends object>(c: Ctx, schema: z.ZodType<T>): Promise<T> {
   const bytes = await readBody(c.req.raw, MAX_JSON_BYTES, BODY_TOO_LARGE);
   return v.parse(schema, bytes.byteLength === 0 ? {} : parseJson(bytes));
 }
 
-/** Una clave que no tiene forma de mes no puede existir: 404, igual que un mes que falta. */
+/** A key that is not shaped like a month cannot exist: 404, same as a missing month. */
 function monthParam(c: Ctx): MonthKey {
   const key = c.req.param('key') ?? '';
   const shown = key.slice(0, 20);
@@ -121,7 +121,7 @@ function idParam(c: Ctx): string {
   return c.req.param('id') ?? '';
 }
 
-/** El usuario de la petición (de quién son los datos). Solo falta en las rutas de NO_USER_HEADER, que no lo piden. */
+/** The request's user (whose data it is). Only missing on the NO_USER_HEADER routes, which do not ask for it. */
 function userOf(c: Ctx): AppUser {
   const user = c.get('user');
   if (!user) throw new Error(`${c.req.path}: route without a resolved user`);
@@ -132,19 +132,19 @@ const uid = (c: Ctx): string => userOf(c).id;
 
 // ── Middleware ───────────────────────────────────────────────────────────────
 
-/** Nada de la API se guarda en cachés: son datos personales y cambian con cada escritura. */
+/** Nothing from the API is stored in caches: it is personal data and it changes with every write. */
 const noStore: MiddlewareHandler<AppEnv> = async (c, next) => {
   await next();
   c.header('Cache-Control', 'no-store');
 };
 
-/** Todo /api/* va detrás de Access salvo lo que ya se autenticó con el Bearer (/api/ingest/*). */
+/** All of /api/* sits behind Access except what was already authenticated with the Bearer (/api/ingest/*). */
 const accessUnlessBearer: MiddlewareHandler<AppEnv> = (c, next) => (c.get('bearer') ? next() : accessAuth(c, next));
 
 /**
- * La sesión de Access viaja en una cookie: una página de otro sitio podría lanzar escrituras con ella (CSRF).
- * Los navegadores marcan esas peticiones con Sec-Fetch-Site: cross-site y aquí se rechazan.
- * Las peticiones con Bearer (Claude) y las que no vienen de un navegador no llevan esa cabecera.
+ * The Access session travels in a cookie: a page on another site could fire writes with it (CSRF).
+ * Browsers mark those requests with Sec-Fetch-Site: cross-site and they are rejected here.
+ * Requests with the Bearer (Claude) and those that do not come from a browser do not carry that header.
  */
 const sameSiteWrites: MiddlewareHandler<AppEnv> = async (c, next) => {
   if (!SAFE_METHODS.has(c.req.method) && !c.get('bearer') && c.req.header('Sec-Fetch-Site') === 'cross-site') {
@@ -153,22 +153,22 @@ const sameSiteWrites: MiddlewareHandler<AppEnv> = async (c, next) => {
   await next();
 };
 
-/** /api/dev/* solo existe con ALLOW_DEV_RESET=1; sin ella responde como cualquier ruta desconocida. */
+/** /api/dev/* only exists with ALLOW_DEV_RESET=1; without it, it responds like any unknown route. */
 const devOnly: MiddlewareHandler<AppEnv> = async (c, next) => {
   if (!devEnabled(c.env)) throw notFoundError(ROUTE_NOT_FOUND);
   await next();
 };
 
 /**
- * De quién son los datos: la cabecera X-User tiene que nombrar a uno de los usuarios configurados (USERS).
- * No decide quién puede entrar (eso ya lo hizo la autenticación, que va antes); solo elige las finanzas de quién.
+ * Whose data it is: the X-User header has to name one of the configured users (USERS).
+ * It does not decide who can get in (authentication, which runs earlier, already did that); it only picks whose finances.
  */
 const requireUser: MiddlewareHandler<AppEnv> = async (c, next) => {
   if (!NO_USER_HEADER.test(c.req.path)) c.set('user', userFromHeader(configuredUsers(c.env), c.req.header(USER_HEADER)));
   await next();
 };
 
-// ── Errores ──────────────────────────────────────────────────────────────────
+// ── Errors ───────────────────────────────────────────────────────────────────
 
 function fromHttpException(err: HTTPException): ApiError {
   switch (err.status) {
@@ -187,14 +187,14 @@ function fromHttpException(err: HTTPException): ApiError {
 
 function onError(err: Error, c: Ctx): Response {
   const api = err instanceof HTTPException ? fromHttpException(err) : toApiError(err);
-  // Solo lo inesperado va al log (también un USERS mal configurado, con su motivo), y nunca a la respuesta.
+  // Only the unexpected goes to the log (a misconfigured USERS too, with its reason), and never to the response.
   if (api.status === 500) console.error(`[api] ${c.req.method} ${c.req.path}`, err);
   return c.json(errorBody(api.code, api.message), api.status, NO_STORE);
 }
 
 // ── Export ───────────────────────────────────────────────────────────────────
 
-/** Content-Disposition con nombre ASCII de respaldo y filename* (RFC 5987) para el nombre real. */
+/** Content-Disposition with an ASCII fallback name and filename* (RFC 5987) for the real name. */
 function attachment(filename: string): string {
   const ascii = filename.replace(/[^\x20-\x7E]/g, '_').replace(/["\\]/g, '_');
   const encoded = encodeURIComponent(filename).replace(/['()*]/g, (ch) => `%${ch.charCodeAt(0).toString(16).toUpperCase()}`);
@@ -207,33 +207,33 @@ export function createApp(): Hono<AppEnv> {
   const app = new Hono<AppEnv>().basePath('/api');
 
   app.use('*', noStore);
-  // El orden importa: requireBearer marca la petición y accessUnlessBearer solo se salta Access si está marcada.
+  // Order matters: requireBearer marks the request and accessUnlessBearer only skips Access if it is marked.
   app.use('/ingest/*', requireBearer);
   app.use('*', accessUnlessBearer);
   app.use('*', sameSiteWrites);
   app.use('/dev/*', devOnly);
-  // Después de la autenticación: a quien no puede entrar no se le dice qué usuarios hay.
+  // After authentication: whoever cannot get in is not told which users exist.
   app.use('*', requireUser);
 
   app.onError(onError);
   app.notFound((c) => c.json(errorBody('not_found', ROUTE_NOT_FOUND), 404, NO_STORE));
 
-  // Usuarios configurados (para el selector). La única ruta de la web sin X-User.
+  // Configured users (for the select). The web app's only route without X-User.
   app.get('/session', (c) => c.json({ users: configuredUsers(c.env), devTools: devEnabled(c.env) } satisfies SessionResponse));
 
-  // Estado completo del usuario; la primera vez que entra se le crean sus cuentas y metas iniciales y el mes en curso.
+  // The user's full state; on their first visit, their initial accounts and goals and the current month are created.
   app.get('/state', async (c) => {
     const user = userOf(c);
     return c.json({ user, state: await db.openState(c.env.DB, user.id) } satisfies StateResponse);
   });
 
-  // Idioma, colores, monedas y cuenta por defecto
+  // Language, colors, currencies and default account
   app.patch('/settings', async (c) => {
     const update = await jsonBody(c, v.settingsUpdateSchema);
     return c.json((await db.updateSettings(c.env.DB, uid(c), update)) satisfies SettingsResponse);
   });
 
-  // Cuentas
+  // Accounts
   app.get('/accounts', async (c) => c.json((await db.listAccounts(c.env.DB, uid(c))) satisfies Account[]));
 
   app.post('/accounts', async (c) => {
@@ -251,7 +251,7 @@ export function createApp(): Hono<AppEnv> {
     return c.json(OK);
   });
 
-  // Tarjetas de crédito
+  // Credit cards
   app.get('/credit-cards', async (c) => c.json((await db.listCards(c.env.DB, uid(c))) satisfies CreditCard[]));
 
   app.post('/credit-cards', async (c) => {
@@ -269,7 +269,7 @@ export function createApp(): Hono<AppEnv> {
     return c.json(OK);
   });
 
-  // Meses
+  // Months
   app.get('/months', async (c) => c.json((await db.listMonths(c.env.DB, uid(c))) satisfies MonthSummary[]));
 
   app.get('/months/:key', async (c) => {
@@ -285,7 +285,7 @@ export function createApp(): Hono<AppEnv> {
     return c.json((await db.patchMonth(c.env.DB, uid(c), key, patch)) satisfies Month);
   });
 
-  // El cuerpo es opcional: sin él, el mes siguiente arranca con las partes del presupuesto del que se cierra.
+  // The body is optional: without it, the next month starts with the budget parts of the one being closed.
   app.post('/months/:key/close', async (c) => {
     const key = monthParam(c);
     const bytes = await readBody(c.req.raw, MAX_JSON_BYTES, BODY_TOO_LARGE);
@@ -300,7 +300,7 @@ export function createApp(): Hono<AppEnv> {
     return c.json(OK);
   });
 
-  // Registro del presupuesto del mes
+  // The month's budget log
   app.post('/months/:key/budget-log', async (c) => {
     const key = monthParam(c);
     const input = await jsonBody(c, v.budgetEntryCreateSchema);
@@ -311,10 +311,10 @@ export function createApp(): Hono<AppEnv> {
     c.json((await db.deleteBudgetEntry(c.env.DB, uid(c), monthParam(c), idParam(c))) satisfies Month),
   );
 
-  // Suma al mes lo que sobró del anterior
+  // Adds to the month what was left over from the previous one
   app.post('/months/:key/leftover', async (c) => c.json((await db.addLeftover(c.env.DB, uid(c), monthParam(c))) satisfies Month, 201));
 
-  // Tarjetas de crédito del mes: otros cargos, añadir pagos (total o en parte) y quitarlos (todos o uno), por tarjeta
+  // The month's credit cards: other charges, add payments (full or partial) and remove them (all or one), per credit card
   const cardParam = (c: Ctx) => c.req.param('cardId') ?? '';
 
   app.patch('/months/:key/cards/:cardId/other', async (c) => {
@@ -337,7 +337,7 @@ export function createApp(): Hono<AppEnv> {
     c.json((await db.removeCardPayment(c.env.DB, uid(c), monthParam(c), cardParam(c), c.req.param('paymentId') ?? '')) satisfies Month),
   );
 
-  // Tasas escritas a mano: una por par de monedas y fecha
+  // Rates typed by hand: one per currency pair and date
   app.put('/months/:key/rates', async (c) => {
     const key = monthParam(c);
     const rate = await jsonBody(c, v.monthRateSchema);
@@ -350,7 +350,7 @@ export function createApp(): Hono<AppEnv> {
     return c.json((await db.deleteMonthRate(c.env.DB, uid(c), key, pair.from, pair.to, pair.date)) satisfies Month);
   });
 
-  // Gastos fijos
+  // Fixed expenses
   app.post('/fixed', async (c) => {
     const input = await jsonBody(c, v.fixedCreateSchema);
     return c.json((await db.createFixed(c.env.DB, uid(c), input)) satisfies FixedExpense, 201);
@@ -366,7 +366,7 @@ export function createApp(): Hono<AppEnv> {
     return c.json(OK);
   });
 
-  // Transacciones
+  // Transactions
   app.post('/transactions', async (c) => {
     const input = await jsonBody(c, v.txCreateSchema);
     return c.json((await db.createTransaction(c.env.DB, uid(c), input)) satisfies Transaction, 201);
@@ -382,7 +382,7 @@ export function createApp(): Hono<AppEnv> {
     return c.json(OK);
   });
 
-  // Fuera de presupuesto. Los dos "mover" aceptan un cuerpo vacío.
+  // Outside budget. Both "move" routes accept an empty body.
   app.post('/transactions/:id/move-outside', async (c) => {
     const request = await optionalBody(c, v.moveOutsideSchema);
     return c.json((await db.moveTransactionOutside(c.env.DB, uid(c), idParam(c), request.id)) satisfies OutsideExpense, 201);
@@ -408,7 +408,7 @@ export function createApp(): Hono<AppEnv> {
     return c.json((await db.moveOutsideToBudget(c.env.DB, uid(c), idParam(c), request)) satisfies Transaction, 201);
   });
 
-  // Envíos
+  // Transfers
   app.post('/transfers', async (c) => {
     const input = await jsonBody(c, v.transferCreateSchema);
     return c.json((await db.createTransfer(c.env.DB, uid(c), input)) satisfies Transfer, 201);
@@ -424,7 +424,7 @@ export function createApp(): Hono<AppEnv> {
     return c.json(OK);
   });
 
-  // Ingresos
+  // Incomes
   app.get('/incomes', async (c) => c.json((await db.listIncomes(c.env.DB, uid(c))) satisfies Income[]));
 
   app.post('/incomes', async (c) => {
@@ -442,7 +442,7 @@ export function createApp(): Hono<AppEnv> {
     return c.json(OK);
   });
 
-  // Metas
+  // Goals
   app.get('/goals', async (c) => c.json((await db.listGoals(c.env.DB, uid(c))) satisfies Goal[]));
 
   app.post('/goals', async (c) => {
@@ -460,7 +460,7 @@ export function createApp(): Hono<AppEnv> {
     return c.json(OK);
   });
 
-  // Aportes
+  // Contributions
   app.get('/contributions', async (c) => c.json((await db.listContributions(c.env.DB, uid(c))) satisfies Contribution[]));
 
   app.post('/contributions', async (c) => {
@@ -478,8 +478,8 @@ export function createApp(): Hono<AppEnv> {
     return c.json(OK);
   });
 
-  // Excel: el libro del usuario, en su idioma. El libro conserva el diseño original (dos monedas, dos cuentas):
-  // buildExportData proyecta el estado a esa forma y applyImport lo vuelca de vuelta (shared/excel/data.ts).
+  // Excel: the user's workbook, in their language. The workbook keeps the original layout (two currencies, two accounts):
+  // buildExportData projects the state into that shape and applyImport loads it back (shared/excel/data.ts).
   app.get('/export.xlsx', async (c) => {
     const user = userOf(c);
     const state = await db.loadState(c.env.DB, user.id);
@@ -505,29 +505,29 @@ export function createApp(): Hono<AppEnv> {
         raw = parseFinanzasXlsx(bytes);
       } catch (err) {
         if (err instanceof ImportError) throw validationError(err.message);
-        // Un archivo que hace fallar al lector es un archivo malo, no un fallo del servidor.
+        // A file that makes the reader fail is a bad file, not a server failure.
         console.error('[api] import: could not read the .xlsx', err);
         throw validationError('Could not read the file.');
       }
     }
-    // Lo que sale del lector de Excel se valida igual que un JSON: viene de un archivo que no controlamos.
+    // What comes out of the Excel reader is validated the same as JSON: it comes from a file we do not control.
     const payload = v.parse(v.importSchema, raw);
     return c.json((await db.applyImport(c.env.DB, uid(c), payload)) satisfies ImportResponse);
   });
 
-  // Registro desde Claude (Bearer). El usuario va en el cuerpo: lo resuelve ingestTransaction.
+  // Recording from Claude (Bearer). The user goes in the body: ingestTransaction resolves it.
   app.post('/ingest/transaction', async (c) => {
-    // ingestTransaction valida la entrada; aquí solo se comprueba que sea JSON.
+    // ingestTransaction validates the input; the only check here is that it is JSON.
     const bytes = await readBody(c.req.raw, MAX_JSON_BYTES, BODY_TOO_LARGE);
     const input = parseJson(bytes) as IngestTransaction;
     return c.json((await ingestTransaction(c.env.DB, configuredUsers(c.env), input)) satisfies IngestResponse, 201);
   });
 
-  // Desarrollo local (devOnly). Actúan solo sobre el usuario de X-User.
+  // Local development (devOnly). These routes act only on the X-User user.
   app.post('/dev/seed', async (c) => {
     const id = uid(c);
-    // El idioma y los colores del usuario se quedan como estaban; las monedas y la cuenta por defecto son las
-    // de los datos de ejemplo, que van con sus cuentas.
+    // The user's language and colors stay as they were; the currencies and the default account are those
+    // of the sample data, which go with its accounts.
     const { theme, language } = await db.getSettings(c.env.DB, id);
     await db.replaceAll(c.env.DB, id, { ...seedState(), theme, language });
     return c.json(OK);

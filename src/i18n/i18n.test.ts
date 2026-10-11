@@ -14,18 +14,18 @@ const dict = (lang: Language): Record<string, Entry> => CORE[lang];
 const texts = (entry: Entry) => (typeof entry === 'string' ? [entry] : [entry.one, entry.other]);
 const placeholders = (entry: Entry) => [...new Set(texts(entry).flatMap((s) => [...s.matchAll(/\{(\w+)\}/g)].map((m) => m[1]!)))].sort();
 
-describe('diccionarios comunes', () => {
-  it('hay uno por cada idioma de la app', () => {
+describe('common dictionaries', () => {
+  it('there is one for each language of the app', () => {
     expect(Object.keys(CORE).sort()).toEqual([...LANGS].sort());
   });
 
-  it('los tres tienen exactamente las mismas claves', () => {
+  it('all three have exactly the same keys', () => {
     const keys = Object.keys(dict('en')).sort();
     expect(keys.length).toBeGreaterThan(80);
     for (const lang of LANGS) expect(Object.keys(dict(lang)).sort(), lang).toEqual(keys);
   });
 
-  it('ningún texto está vacío ni lleva espacios sobrantes', () => {
+  it('no string is empty or has extra spaces', () => {
     for (const lang of LANGS) {
       for (const [key, entry] of Object.entries(dict(lang))) {
         for (const text of texts(entry)) {
@@ -36,19 +36,19 @@ describe('diccionarios comunes', () => {
     }
   });
 
-  it('cada clave usa los mismos {parámetros} en los tres idiomas', () => {
+  it('each key uses the same {parameters} in all three languages', () => {
     for (const [key, entry] of Object.entries(dict('en'))) {
       for (const lang of LANGS) expect(placeholders(dict(lang)[key]!), `${lang}.${key}`).toEqual(placeholders(entry));
     }
   });
 
-  it('una clave con plural lo es en los tres idiomas', () => {
+  it('a key with a plural has one in all three languages', () => {
     for (const [key, entry] of Object.entries(dict('en'))) {
       for (const lang of LANGS) expect(typeof dict(lang)[key], `${lang}.${key}`).toBe(typeof entry);
     }
   });
 
-  it('el español conserva los textos de la versión 1 y el inglés sigue el glosario', () => {
+  it('Spanish keeps the strings of version 1 and English follows the glossary', () => {
     const es = translator(CORE, 'es');
     expect(es('importExcel')).toBe('Cargar Excel');
     expect(es('subtitleCurrent')).toBe('Mes en curso');
@@ -62,7 +62,7 @@ describe('diccionarios comunes', () => {
     expect(en('saveFailed')).toBe('Could not save. The change was undone.');
   });
 
-  it('el turco usa los términos acordados', () => {
+  it('Turkish uses the agreed terms', () => {
     const tr = translator(CORE, 'tr');
     expect([tr('month'), tr('savings'), tr('subtitleCurrent'), tr('subtitleClosed')]).toEqual(['Ay', 'Birikimler', 'Bu ay', 'Ay özeti']);
     expect([tr('totalMoney'), tr('budget'), tr('account'), tr('balance'), tr('used'), tr('available')]).toEqual([
@@ -81,12 +81,12 @@ describe('diccionarios comunes', () => {
   });
 });
 
-describe('glosario del modelo de cuentas y monedas', () => {
+describe('glossary of the accounts and currencies model', () => {
   const en = translator(CORE, 'en');
   const es = translator(CORE, 'es');
   const tr = translator(CORE, 'tr');
 
-  it('inglés: los términos del glosario, tal cual', () => {
+  it('English: the glossary terms, as is', () => {
     expect([en('budget'), en('accounts'), en('account'), en('addAccount'), en('accountName'), en('openingBalance'), en('balance')]).toEqual([
       'Budget',
       'Accounts',
@@ -110,7 +110,7 @@ describe('glosario del modelo de cuentas y monedas', () => {
     expect([en('deleteMonth'), en('deleteMonthTitle', { month: 'October 2026' }), en('delete')]).toEqual(['Delete month', 'Delete October 2026?', 'Delete']);
   });
 
-  it('el texto de borrar un mes se arma con sus tres cuentas, cada una con su singular y su plural', () => {
+  it('the delete-month text is built from its three counts, each with its singular and its plural', () => {
     const body = (t: typeof en, fixed: number, tx: number, transfers: number) =>
       t('deleteMonthBody', {
         fixed: t('countFixed', { count: fixed }),
@@ -127,7 +127,7 @@ describe('glosario del modelo de cuentas y monedas', () => {
     expect(body(tr, 11, 7, 1)).toBe('Bu ay; 11 aylık gider, 7 işlem ve 1 transfer ile birlikte silinir. Hesap bakiyeleri buna göre değişir. Bu işlem geri alınamaz.');
   });
 
-  it('español y turco: los mismos términos, en su idioma', () => {
+  it('Spanish and Turkish: the same terms, in their language', () => {
     expect([es('budget'), es('accounts'), es('addAccount'), es('openingBalance'), es('balance'), es('hide'), es('show')]).toEqual([
       'Presupuesto',
       'Cuentas',
@@ -165,7 +165,7 @@ describe('glosario del modelo de cuentas y monedas', () => {
     expect(tr('deleteMonthTitle', { month: 'Ekim 2026' })).toBe('Ekim 2026 silinsin mi?');
   });
 
-  it('los códigos de moneda van como parámetro: se ven igual en los tres idiomas', () => {
+  it('currency codes go in as a parameter: they look the same in all three languages', () => {
     expect(en('usedIn', { currency: 'TRY' })).toBe('Used in TRY');
     expect(es('usedIn', { currency: 'TRY' })).toBe('Usado en TRY');
     expect(tr('usedIn', { currency: 'TRY' })).toBe('TRY olarak kullanılan');
@@ -174,7 +174,7 @@ describe('glosario del modelo de cuentas y monedas', () => {
     expect(en('balanceOf', { account: 'US account', currency: 'USD' })).toBe('Balance of US account, in USD');
   });
 
-  it('la nota del Excel dice que es un resumen en USD y DOP', () => {
+  it('the Excel note says it is a summary in USD and DOP', () => {
     for (const t of [en, es, tr]) {
       expect(t('excelNote')).toContain('USD');
       expect(t('excelNote')).toContain('DOP');
@@ -183,26 +183,26 @@ describe('glosario del modelo de cuentas y monedas', () => {
   });
 });
 
-describe('rateHint: de dónde salió una tasa', () => {
+describe('rateHint: where a rate came from', () => {
   const hints = (lang: Language) => {
     const { rateHint } = createI18n(lang);
     const s = seedState();
-    // Octubre: escrita a mano. Agosto: de sus envíos. USD → TRY nunca se ha escrito: valor de respaldo.
+    // October: typed by hand. August: from its transfers. USD → TRY has never been typed: default value.
     const typed = rateHint(rateFor(s, '2026-10', 'USD', 'DOP'), 'USD', 'DOP');
     const transfers = rateHint(rateFor(s, '2026-08', 'USD', 'DOP'), 'USD', 'DOP');
     const fallback = rateHint(rateFor(s, '2026-10', 'USD', 'TRY'), 'USD', 'TRY');
-    // Con USD → DOP y USD → TRY escritas, TRY → DOP sale cruzando por USD. (Otro estado: el de arriba ya se usó
-    // para calcular y no se muta, que shared/calc.ts memoriza las tasas por objeto de estado.)
+    // With USD → DOP and USD → TRY typed, TRY → DOP comes from crossing through USD. (Another state: the one above was
+    // already used to compute and is not mutated, since shared/calc.ts memoizes the rates per state object.)
     const both = seedState();
     both.months['2026-10']!.rates.push({ from: 'USD', to: 'TRY', rate: 40, date: '2026-10-01' });
     const crossed = rateHint(rateFor(both, '2026-10', 'TRY', 'DOP'), 'TRY', 'DOP');
-    // Un mes posterior sin tasa propia sigue con la última escrita, que es de un mes anterior.
+    // A later month with no rate of its own keeps the last typed one, which is from an earlier month.
     const previous = rateHint(rateFor(s, '2027-03', 'USD', 'DOP'), 'USD', 'DOP');
     const same = rateHint(rateFor(s, '2026-10', 'DOP', 'DOP'), 'DOP', 'DOP');
     return { typed, transfers, fallback, crossed, previous, same };
   };
 
-  it('en inglés, las frases del glosario', () => {
+  it('in English, the glossary phrases', () => {
     expect(hints('en')).toEqual({
       typed: 'typed for this month',
       transfers: "from this month's transfers",
@@ -213,7 +213,7 @@ describe('rateHint: de dónde salió una tasa', () => {
     });
   });
 
-  it('en español (el mes, en minúscula dentro de la frase) y en turco', () => {
+  it('in Spanish (the month, in lower case inside the phrase) and in Turkish', () => {
     expect(hints('es')).toEqual({
       typed: 'escrita para este mes',
       transfers: 'de los envíos de este mes',
@@ -233,8 +233,8 @@ describe('rateHint: de dónde salió una tasa', () => {
   });
 });
 
-describe('rateHint con la fecha de la tasa (RateInfo.date)', () => {
-  it('la fecha no cambia la frase: una escrita de este mes, sea del día que sea, es "typed for this month"', () => {
+describe('rateHint with the date of the rate (RateInfo.date)', () => {
+  it('the date does not change the phrase: one typed this month, whatever the day, is "typed for this month"', () => {
     const { rateHint } = createI18n('en');
     const first: RateInfo = { rate: 58.76, source: 'month', monthKey: '2026-10', date: '2026-10-01' };
     const later: RateInfo = { ...first, rate: 60, date: '2026-10-06' };
@@ -242,21 +242,21 @@ describe('rateHint con la fecha de la tasa (RateInfo.date)', () => {
     expect(rateHint(later, 'USD', 'DOP')).toBe('typed for this month');
   });
 
-  it('una escrita en un mes anterior que sigue vigente dice de qué mes es, no el día', () => {
+  it('one typed in an earlier month that is still in effect says which month it is from, not the day', () => {
     const info: RateInfo = { rate: 58.76, source: 'previous', monthKey: '2026-10', date: '2026-10-06' };
     expect(createI18n('en').rateHint(info, 'USD', 'DOP')).toBe('from October 2026');
     expect(createI18n('es').rateHint(info, 'USD', 'DOP')).toBe('de octubre 2026');
     expect(createI18n('tr').rateHint(info, 'USD', 'DOP')).toBe('Ekim 2026 ayından');
-    // Lo que no sale de una escrita no trae fecha.
+    // What does not come from a typed one carries no date.
     const fromTransfers: RateInfo = { rate: 58.57, source: 'previous', monthKey: '2026-09', date: null };
     expect(createI18n('en').rateHint(fromTransfers, 'USD', 'DOP')).toBe('from September 2026');
   });
 
-  it('con los datos de ejemplo: una fila anterior a la primera tasa escrita del mes no la usa', () => {
+  it('with the sample data: a row earlier than the first typed rate of the month does not use it', () => {
     const s = seedState();
     s.months['2026-10']!.rates = [{ from: 'USD', to: 'DOP', rate: 60, date: '2026-10-05' }];
     const { rateHint } = createI18n('en');
-    // El día 3 la escrita del 5 aún no vale y antes nadie escribió ninguna: salen los envíos de octubre.
+    // On the 3rd the one typed for the 5th does not apply yet and nobody typed one before: October's transfers are used.
     const before = rateFor(s, '2026-10', 'USD', 'DOP', '2026-10-03');
     expect(before).toMatchObject({ source: 'transfers', date: null });
     expect(rateHint(before, 'USD', 'DOP')).toBe("from this month's transfers");
@@ -266,8 +266,8 @@ describe('rateHint con la fecha de la tasa (RateInfo.date)', () => {
   });
 });
 
-describe('métodos de pago', () => {
-  it('los cinco, en el orden de la lista y en cada idioma', () => {
+describe('payment methods', () => {
+  it('all five, in the order of the list and in each language', () => {
     expect([...METHODS]).toEqual(['Debit card', 'Credit card', 'Transfer', 'Bank app', 'Cash']);
     const labels = (lang: Language) => METHODS.map((m) => createI18n(lang).methodLabel(m));
     expect(labels('en')).toEqual(['Debit card', 'Credit card', 'Transfer', 'Bank app', 'Cash']);
@@ -275,11 +275,11 @@ describe('métodos de pago', () => {
     expect(labels('tr')).toEqual(['Banka kartı', 'Kredi kartı', 'Havale', 'Banka uygulaması', 'Nakit']);
   });
 
-  it('el método por defecto es la tarjeta de débito', () => {
+  it('the default method is the debit card', () => {
     expect(METHODS[0]).toBe('Debit card');
   });
 
-  it('la tarjeta de antes (Card / Tarjeta / Kart) vale por la de débito al leerla; al mostrarla, una fila vieja sale tal cual', () => {
+  it('the old card method (Card / Tarjeta / Kart) counts as the debit card when read; when displayed, an old row comes out as is', () => {
     expect(['Card', 'tarjeta', ' KART '].map(canonicalMethod)).toEqual(['Debit card', 'Debit card', 'Debit card']);
     expect(['Tarjeta de crédito', 'kredi kartı', 'credit card', 'tarjeta de credito'].map(canonicalMethod)).toEqual(Array(4).fill('Credit card'));
     expect(['Efectivo', 'Nakit', 'cash'].map(canonicalMethod)).toEqual(['Cash', 'Cash', 'Cash']);
@@ -288,24 +288,24 @@ describe('métodos de pago', () => {
   });
 });
 
-describe('presupuesto: sobrante, historial y cierre del mes', () => {
+describe('budget: leftover, history and closing the month', () => {
   const en = translator(CORE, 'en');
   const es = translator(CORE, 'es');
   const tr = translator(CORE, 'tr');
 
-  it('la casilla de un ingreso', () => {
+  it('the checkbox of an income', () => {
     expect([en('addsToBudget'), es('addsToBudget'), tr('addsToBudget')]).toEqual(['Adds to budget', 'Suma al presupuesto', 'Bütçeye eklenir']);
   });
 
-  it('el sobrante del mes anterior', () => {
+  it('the leftover from the previous month', () => {
     expect([en('leftoverFromLast'), en('addToBudget'), en('leftoverAdded')]).toEqual(['Leftover from last month:', 'Add to budget', 'added']);
     expect([es('leftoverFromLast'), es('addToBudget'), es('leftoverAdded')]).toEqual(['Sobrante del mes pasado:', 'Sumar al presupuesto', 'sumado']);
     expect([tr('leftoverFromLast'), tr('addToBudget'), tr('leftoverAdded')]).toEqual(['Geçen aydan kalan:', 'Bütçeye ekle', 'eklendi']);
-    // El botón no dice lo mismo que la casilla de un ingreso ("Adds to budget"), en ningún idioma.
+    // The button does not say the same as the checkbox of an income ("Adds to budget"), in any language.
     for (const t of [en, es, tr]) expect(t('addToBudget')).not.toBe(t('addsToBudget'));
   });
 
-  it('el historial del presupuesto y sus clases de movimiento', () => {
+  it('the budget history and its kinds of movement', () => {
     const kinds = ['budgetKindInitial', 'budgetKindAdjust', 'budgetKindLeftover', 'budgetKindIncome'] as const;
     expect([en('budgetHistory'), en('budgetHistoryEmpty'), en('budgetKind')]).toEqual(['Budget history', 'No budget entries yet.', 'Kind']);
     expect(kinds.map((k) => en(k))).toEqual(['Initial', 'Adjustment', 'Leftover', 'Income']);
@@ -317,7 +317,7 @@ describe('presupuesto: sobrante, historial y cierre del mes', () => {
     expect(kinds.map((k) => es(k))).toEqual(['Inicial', 'Ajuste', 'Sobrante', 'Ingreso']);
     expect([tr('budgetHistory'), tr('budgetHistoryEmpty'), tr('budgetKind')]).toEqual(['Bütçe geçmişi', 'Henüz bütçe hareketi yok.', 'Tür']);
     expect(kinds.map((k) => tr(k))).toEqual(['Başlangıç', 'Düzeltme', 'Devreden', 'Gelir']);
-    // Cada clase se distingue de las demás.
+    // Each kind is distinct from the others.
     for (const t of [en, es, tr]) expect(new Set(kinds.map((k) => t(k))).size).toBe(4);
   });
 
@@ -327,14 +327,14 @@ describe('presupuesto: sobrante, historial y cierre del mes', () => {
     expect([en('budgetSummary'), es('budgetSummary'), tr('budgetSummary')]).toEqual(['Month summary', 'Resumen del mes', 'Ay özeti']);
   });
 
-  it('la × de un movimiento dice cuál quita', () => {
+  it('the × of a movement says which one it removes', () => {
     const entry = { kind: 'Adjustment', date: '2026-10-05', amount: '5,000.00', currency: 'DOP' };
     expect(en('deleteBudgetEntry', entry)).toBe('Delete Adjustment of 2026-10-05: 5,000.00 DOP');
     expect(es('deleteBudgetEntry', { ...entry, kind: 'Ajuste' })).toBe('Eliminar Ajuste del 2026-10-05: 5,000.00 DOP');
     expect(tr('deleteBudgetEntry', { ...entry, kind: 'Düzeltme' })).toBe('Sil: Düzeltme, 2026-10-05, 5,000.00 DOP');
   });
 
-  it('el diálogo de cierre pregunta por el presupuesto del mes siguiente', () => {
+  it('the close dialog asks for the budget of the next month', () => {
     expect(en('closeBudgetIntro', { next: 'November 2026' })).toBe("November 2026's budget starts with these amounts per account:");
     expect(en('closeBudgetOf', { account: 'DR account', currency: 'DOP' })).toBe('Budget from DR account (DOP)');
     expect(en('closeAddLeftover', { amount: '20,850.29', currency: 'DOP', next: 'November 2026' })).toBe(
@@ -353,37 +353,37 @@ describe('presupuesto: sobrante, historial y cierre del mes', () => {
   });
 });
 
-describe('interpolación', () => {
-  it('sustituye cada {parámetro}, las veces que aparezca', () => {
+describe('interpolation', () => {
+  it('replaces each {parameter}, as many times as it appears', () => {
     expect(interpolate('{next} y otra vez {next}', { next: 'Noviembre 2026' })).toBe('Noviembre 2026 y otra vez Noviembre 2026');
     expect(interpolate('{used} of {budget} {currency}', { used: '49,150', budget: 70000, currency: 'DOP' })).toBe('49,150 of 70000 DOP');
   });
 
-  it('un parámetro que no viene se deja a la vista, y uno de más no molesta', () => {
+  it('a parameter that is not provided is left in plain sight, and an extra one does no harm', () => {
     expect(interpolate('Close {month}', {})).toBe('Close {month}');
     expect(interpolate('Close', { month: 'x' })).toBe('Close');
   });
 
-  it('el valor no se vuelve a interpretar', () => {
+  it('the value is not interpreted again', () => {
     expect(interpolate('Loaded: {file}', { file: '{file}.xlsx', other: 'no' })).toBe('Loaded: {file}.xlsx');
     expect(interpolate('{a}', { a: '$& $1' })).toBe('$& $1');
   });
 
-  it('el traductor interpola en el idioma pedido', () => {
+  it('the translator interpolates in the requested language', () => {
     expect(translator(CORE, 'en')('closeMonth', { month: 'October 2026' })).toBe('Close October 2026');
     expect(translator(CORE, 'es')('closeMonth', { month: 'Octubre 2026' })).toBe('Cerrar Octubre 2026');
     expect(translator(CORE, 'en')('devResetConfirm', { name: 'Eda' })).toBe("Start blank? All of Eda's data on the page will be deleted.");
   });
 });
 
-describe('textos propios de una pantalla (defineStrings)', () => {
+describe('strings specific to a screen (defineStrings)', () => {
   const SCREEN = defineStrings({
     en: { title: 'Transaction history', count: { one: '{count} transaction', other: '{count} transactions' } },
     es: { title: 'Historial de transacciones', count: { one: '{count} transacción', other: '{count} transacciones' } },
     tr: { title: 'İşlem geçmişi', count: { one: '{count} işlem', other: '{count} işlem' } },
   });
 
-  it('singular solo con 1; plural con 0 y con todo lo demás', () => {
+  it('singular only with 1; plural with 0 and with everything else', () => {
     const en = translator(SCREEN, 'en');
     expect([0, 1, 2, 7].map((count) => en('count', { count }))).toEqual(['0 transactions', '1 transaction', '2 transactions', '7 transactions']);
     const es = translator(SCREEN, 'es');
@@ -392,33 +392,33 @@ describe('textos propios de una pantalla (defineStrings)', () => {
     expect([1, 7].map((count) => tr('count', { count }))).toEqual(['1 işlem', '7 işlem']);
   });
 
-  it('los textos sin plural se traducen igual', () => {
+  it('strings with no plural are translated the same way', () => {
     expect(LANGS.map((lang) => translator(SCREEN, lang)('title'))).toEqual(['Transaction history', 'Historial de transacciones', 'İşlem geçmişi']);
   });
 
-  it('el traductor de un idioma es siempre la misma función', () => {
+  it('the translator of a language is always the same function', () => {
     expect(translator(SCREEN, 'es')).toBe(translator(SCREEN, 'es'));
     expect(translator(SCREEN, 'es')).not.toBe(translator(SCREEN, 'tr'));
   });
 
-  it('los tipos exigen las mismas claves y la misma forma en cada idioma', () => {
-    // @ts-expect-error falta `title` en turco
+  it('the types require the same keys and the same shape in each language', () => {
+    // @ts-expect-error `title` is missing in Turkish
     defineStrings({ en: { title: 'A' }, es: { title: 'B' }, tr: {} });
-    // @ts-expect-error sobra `extra` en español
+    // @ts-expect-error `extra` is an extra key in Spanish
     defineStrings({ en: { title: 'A' }, es: { title: 'B', extra: 'C' }, tr: { title: 'D' } });
-    // @ts-expect-error `count` es plural en inglés: no puede ser un texto suelto en español
+    // @ts-expect-error `count` is plural in English: it cannot be a plain string in Spanish
     defineStrings({ en: { count: { one: 'a', other: 'b' } }, es: { count: 'c' }, tr: { count: { one: 'd', other: 'e' } } });
     const t = translator(SCREEN, 'en');
-    // @ts-expect-error la clave no existe
+    // @ts-expect-error the key does not exist
     t('nope');
-    // @ts-expect-error una clave con plural exige `count`
+    // @ts-expect-error a key with a plural requires `count`
     t('count');
     expect(t('title')).toBe('Transaction history');
   });
 });
 
 describe('createI18n', () => {
-  it('ata al idioma los meses, las categorías y los métodos', () => {
+  it('binds the months, the categories and the methods to the language', () => {
     const es = createI18n('es');
     expect(es.lang).toBe('es');
     expect(es.label('2026-10')).toBe('Octubre 2026');
@@ -433,12 +433,12 @@ describe('createI18n', () => {
     expect(createI18n('en').label('2026-10')).toBe('October 2026');
   });
 
-  it('un valor fuera de la lista (texto libre, datos importados) se muestra tal cual', () => {
+  it('a value outside the list (free text, imported data) is displayed as is', () => {
     expect(createI18n('tr').catLabel('Mascotas')).toBe('Mascotas');
     expect(createI18n('es').methodLabel('Efectivo')).toBe('Efectivo');
   });
 
-  it('es el mismo objeto para el mismo idioma', () => {
+  it('it is the same object for the same language', () => {
     expect(createI18n('es')).toBe(createI18n('es'));
   });
 });

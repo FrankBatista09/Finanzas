@@ -1,5 +1,5 @@
-// Varias tarjetas de crédito en los reductores: alta, edición y borrado con las reglas del servidor, y las filas nuevas
-// con su tarjeta.
+// Several credit cards in the reducers: adding, editing and deleting with the server's rules, and the new rows
+// with their credit card.
 
 import { describe, expect, it } from 'vitest';
 import { seedState } from '../../shared/seed';
@@ -13,7 +13,7 @@ const withCards = (...cards: CreditCard[]): AppState => ({ ...seedState(), cards
 const apply = (state: AppState, action: Action | null): AppState => (action ? reduce(state, action) : state);
 
 describe('newCard', () => {
-  it('nombre obligatorio y único, días entre 1 y 31, límite > 0, 4 dígitos; la moneda nace en la principal', () => {
+  it('name required and unique, days between 1 and 31, limit > 0, 4 digits; the currency starts as the main one', () => {
     const s = withCards(card());
     expect(newCard(s, { name: '  Master ' }, 'x')).toEqual({ id: 'x', name: 'Master', bank: null, last4: null, cur: 'DOP', limit: null, cutoffDay: null, dueDay: null, active: true, sort: 1 });
     expect(newCard(s, { name: 'Gold', bank: ' Popular ', last4: '1234', cur: 'USD', limit: 60000, cutoffDay: 13, dueDay: 31 }, 'x')).toMatchObject({ bank: 'Popular', last4: '1234', cur: 'USD', limit: 60000, cutoffDay: 13, dueDay: 31 });
@@ -23,8 +23,8 @@ describe('newCard', () => {
   });
 });
 
-describe('editar y borrar', () => {
-  it('guarda lo que cambia; sin cambio, nada; nombre repetido o día fuera de rango, no', () => {
+describe('editing and deleting', () => {
+  it('saves what changes; with no change, nothing; a duplicate name or a day out of range, no', () => {
     const s = withCards(card(), card({ id: 'b', name: 'Master', sort: 1 }));
     const action = cardPatchChange(s, 'a', { limit: 60000, cutoffDay: 13, bank: ' Popular ' });
     expect(action).toEqual({ type: 'creditCard/patch', id: 'a', patch: { limit: 60000, cutoffDay: 13, bank: 'Popular' } });
@@ -33,12 +33,12 @@ describe('editar y borrar', () => {
     expect(cardPatchChange(s, 'a', { name: 'MASTER' })).toBeNull();
     expect(cardPatchChange(s, 'a', { dueDay: 40 })).toBeNull();
     expect(cardPatchChange(s, 'nope', { limit: 1 })).toBeNull();
-    // null borra un dato opcional.
+    // null clears an optional field.
     const timed = withCards(card({ dueDay: 5 }));
     expect(apply(timed, cardPatchChange(timed, 'a', { dueDay: null })).cards[0]!.dueDay).toBeNull();
   });
 
-  it('apagar solo sin deuda ni cargos en el último mes; encender siempre', () => {
+  it('turning off only with no debt or charges in the latest month; turning on always', () => {
     const s = withCards(card());
     expect(canTurnOffCard(s, 'a')).toBe(true);
     expect(apply(s, cardPatchChange(s, 'a', { active: false })).cards[0]!.active).toBe(false);
@@ -51,7 +51,7 @@ describe('editar y borrar', () => {
     expect(cardPatchChange(off, 'a', { active: true })).not.toBeNull();
   });
 
-  it('borrar solo si nada la usa; la moneda de una tarjeta en uso no cambia', () => {
+  it('deleting only if nothing uses it; the currency of a credit card in use does not change', () => {
     const s = withCards(card(), card({ id: 'b', name: 'Master', sort: 1 }));
     expect(canRemoveCard(s, 'b')).toBe(true);
     expect(apply(s, cardRemoval(s, 'b')).cards.map((c) => c.id)).toEqual(['a']);
@@ -59,13 +59,13 @@ describe('editar y borrar', () => {
     expect(cardRemoval(owing, 'b')).toBeNull();
     expect(cardPatchChange(owing, 'b', { cur: 'USD' })).toBeNull();
     expect(cardPatchChange(s, 'b', { cur: 'USD' })).not.toBeNull();
-    // Lo que no nombra tarjeta es de la primera activa: ella no se borra.
+    // Whatever names no credit card belongs to the first active one: that one is not deleted.
     const implicit = apply(s, { type: 'tx/add', row: { id: 't', monthKey: OCT, date: '2026-10-02', desc: 'x', place: '', cat: 'Food', method: 'Credit card', amount: 5, cur: 'DOP', accountId: 'dr', notes: '', source: 'import', createdAt: null } });
     expect(canRemoveCard(implicit, 'a')).toBe(false);
     expect(canRemoveCard(implicit, 'b')).toBe(true);
   });
 
-  it('las acciones son idempotentes', () => {
+  it('the actions are idempotent', () => {
     const s = withCards(card());
     const add: Action = { type: 'creditCard/add', row: card({ id: 'z', name: 'Z', sort: 1 }) };
     const once = reduce(s, add);
@@ -77,8 +77,8 @@ describe('editar y borrar', () => {
   });
 });
 
-describe('filas nuevas con tarjeta', () => {
-  it('un gasto fijo o una transacción de crédito llevan la tarjeta pedida, o la primera activa; sin ninguna, no se agrega', () => {
+describe('new rows with a credit card', () => {
+  it('a fixed expense or a credit transaction carries the requested credit card, or the first active one; with none, it is not added', () => {
     const s = withCards(card(), card({ id: 'b', name: 'Master', sort: 1 }), card({ id: 'c', name: 'Old', sort: 2, active: false }));
     expect(newFixed(s, OCT, { name: 'Gym', amount: 5, cur: 'DOP', onCard: true }, 'f')).toMatchObject({ onCard: true, cardId: 'a' });
     expect(newFixed(s, OCT, { name: 'Gym', amount: 5, cur: 'DOP', onCard: true, cardId: 'b' }, 'f')).toMatchObject({ cardId: 'b' });
@@ -94,7 +94,7 @@ describe('filas nuevas con tarjeta', () => {
     expect(newTx(none, OCT, { ...tx, method: 'Debit card' }, 't')).not.toBeNull();
   });
 
-  it('las ediciones descartan una tarjeta apagada o inexistente y «en tarjeta» sin tarjetas activas', () => {
+  it('edits discard a credit card that is off or does not exist, and "on card" with no active credit cards', () => {
     const s = withCards(card(), card({ id: 'c', name: 'Old', sort: 2, active: false }));
     expect(fixedChange(s, { cardId: 'c' })).toEqual({});
     expect(fixedChange(s, { cardId: 'a', onCard: true })).toEqual({ cardId: 'a', onCard: true });

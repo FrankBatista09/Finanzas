@@ -14,7 +14,7 @@
   background: var(--accent-hover);
 }
 
-/* La × usa la fuente por defecto de los botones del navegador: el prototipo no le pone familia. */
+/* The × uses the browser's default button font: the prototype sets no family for it. */
 .delete {
   border: 0;
   background: transparent;
@@ -24,7 +24,7 @@
   padding: 4px 8px;
 }
 
-/* Tablas estrechas (envíos, aportes). */
+/* Narrow tables (transfers, contributions). */
 .compact {
   padding: 4px 6px;
 }
@@ -33,8 +33,8 @@
   color: var(--error);
 }
 
-/* "+ Add …" de la cabecera de una tarjeta: abre la fila de agregar (y, abierta, es su "Cancel"). Discreto: el
-   botón verde es el de guardar la fila. */
+/* "+ Add …" in a card's header: opens the add row (and, once open, is its "Cancel"). Discreet: the
+   green button is the one that saves the row. */
 .revealButton {
   flex: none;
   padding: 3px 9px;
@@ -51,7 +51,7 @@
   border-color: var(--accent);
 }
 
-/* El mismo control como texto sin caja, para las tablas pequeñas con marco propio. */
+/* The same control as text without a box, for the small tables with their own frame. */
 .reveal {
   align-self: flex-start;
   padding: 0;

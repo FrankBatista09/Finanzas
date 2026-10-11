@@ -1,11 +1,11 @@
-// Zip sin compresión (método "stored"), lo mínimo que necesita un .xlsx.
-// Port de `zip()` en design_handoff/referencia/excel-export.js. No escribe fechas ni atributos:
-// los mismos archivos dan siempre los mismos bytes.
+// Uncompressed zip ("stored" method), the minimum an .xlsx needs.
+// Port of `zip()` in design_handoff/referencia/excel-export.js. It writes no dates or attributes:
+// the same files always give the same bytes.
 
 const CONTENT_TYPES = '[Content_Types].xml';
 const ROOT_RELS = '_rels/.rels';
 
-/** Tabla del CRC-32 (polinomio reflejado 0xEDB88320). */
+/** CRC-32 table (reflected polynomial 0xEDB88320). */
 function crcTable(): Uint32Array {
   const table = new Uint32Array(256);
   for (let n = 0; n < 256; n++) {
@@ -23,8 +23,8 @@ function crc32(table: Uint32Array, bytes: Uint8Array): number {
 }
 
 /**
- * Empaqueta `files` (ruta → contenido de texto, codificado en UTF-8) en un zip.
- * Las entradas van en el orden de inserción, salvo [Content_Types].xml y _rels/.rels, que van primero.
+ * Packs `files` (path → text content, encoded as UTF-8) into a zip.
+ * Entries go in insertion order, except [Content_Types].xml and _rels/.rels, which go first.
  */
 export function zipStored(files: ReadonlyMap<string, string>): Uint8Array<ArrayBuffer> {
   const table = crcTable();
@@ -43,18 +43,18 @@ export function zipStored(files: ReadonlyMap<string, string>): Uint8Array<ArrayB
     const nb = enc.encode(name);
     const c = crc32(table, data);
 
-    // Cabecera local. Los campos que no se escriben (compresión, hora, fecha, extra) quedan en 0.
+    // Local header. The fields that are not written (compression, time, date, extra) stay at 0.
     const h = new DataView(new ArrayBuffer(30));
     h.setUint32(0, 0x04034b50, true);
-    h.setUint16(4, 20, true); // versión necesaria para extraer: 2.0
-    h.setUint16(6, 0x0800, true); // bit 11: nombres en UTF-8
+    h.setUint16(4, 20, true); // version needed to extract: 2.0
+    h.setUint16(6, 0x0800, true); // bit 11: names in UTF-8
     h.setUint32(14, c, true);
     h.setUint32(18, data.length, true);
     h.setUint32(22, data.length, true);
     h.setUint16(26, nb.length, true);
     parts.push(new Uint8Array(h.buffer), nb, data);
 
-    // Entrada del directorio central.
+    // Central directory entry.
     const cd = new DataView(new ArrayBuffer(46));
     cd.setUint32(0, 0x02014b50, true);
     cd.setUint16(4, 20, true);
@@ -78,7 +78,7 @@ export function zipStored(files: ReadonlyMap<string, string>): Uint8Array<ArrayB
   end.setUint32(12, cdSize, true);
   end.setUint32(16, off, true);
 
-  // El original devolvía un Blob con estas partes; aquí se concatenan para no depender de él.
+  // The original returned a Blob with these parts; here they are concatenated so as not to depend on it.
   const out = new Uint8Array(off + cdSize + 22);
   let pos = 0;
   for (const chunk of [...parts, ...central, new Uint8Array(end.buffer)]) {

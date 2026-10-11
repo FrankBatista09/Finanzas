@@ -1,4 +1,4 @@
-// Punto de entrada de la capa de datos para pantallas y componentes.
+// Entry point of the data layer for screens and components.
 
 export { FinanzasContext, ShellContext, useActions, useFinanzas, useShell } from './context';
 export type { Actions, ExcelStatus, Finanzas, MonthDialog, Notice, Shell } from './context';

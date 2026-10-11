@@ -1,13 +1,13 @@
-// Lector mínimo de XML para las partes de un .xlsx. No es un parser general: recorre las etiquetas de
-// izquierda a derecha, sin árbol ni validación, que es todo lo que piden workbook.xml, las relaciones,
-// sharedStrings.xml y las hojas. Cada carácter se visita una sola vez (búsquedas con indexOf, sin regex
-// con retroceso), así que el coste es lineal aunque la hoja tenga miles de filas.
+// Minimal XML reader for the parts of an .xlsx. It is not a general parser: it walks the tags from
+// left to right, with no tree or validation, which is all that workbook.xml, the relationships,
+// sharedStrings.xml and the sheets need. Each character is visited only once (indexOf searches, no
+// backtracking regex), so the cost is linear even if the sheet has thousands of rows.
 
 const NAMED: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'" };
 const ENTITY_RE = /&(#x[0-9a-fA-F]{1,6}|#[0-9]{1,7}|amp|lt|gt|quot|apos);/g;
 const X_ESCAPE_RE = /_x([0-9a-fA-F]{4})_/g;
 
-/** Entidades predefinidas de XML y referencias numéricas (&#233; / &#xE9;). Lo que no reconoce queda igual. */
+/** Predefined XML entities and numeric references (&#233; / &#xE9;). Anything it does not recognize stays as is. */
 export function decodeEntities(s: string): string {
   if (s.indexOf('&') < 0) return s;
   return s.replace(ENTITY_RE, (whole, body: string) => {
@@ -19,16 +19,16 @@ export function decodeEntities(s: string): string {
 }
 
 /**
- * Escapes de OOXML para caracteres que XML no admite en texto: `_x000D_` es un retorno de carro.
- * Un guion bajo literal delante de algo con esa forma se escribe `_x005F_`, y como el reemplazo
- * avanza de izquierda a derecha, `_x005F_x000D_` da el texto "_x000D_" sin volver a decodificarlo.
+ * OOXML escapes for characters that XML does not allow in text: `_x000D_` is a carriage return.
+ * A literal underscore in front of something with that shape is written `_x005F_`, and since the replacement
+ * moves from left to right, `_x005F_x000D_` yields the text "_x000D_" without decoding it again.
  */
 export function decodeOoxmlEscapes(s: string): string {
   if (s.indexOf('_x') < 0) return s;
   return s.replace(X_ESCAPE_RE, (_whole, hex: string) => String.fromCharCode(parseInt(hex, 16)));
 }
 
-/** Posición siguiente al terminador, o el final del documento si no aparece (XML truncado). */
+/** Position right after the terminator, or the end of the document if it does not appear (truncated XML). */
 function after(xml: string, terminator: string, from: number): number {
   const i = xml.indexOf(terminator, from);
   return i < 0 ? xml.length : i + terminator.length;
@@ -39,9 +39,9 @@ export type TagKind = 'open' | 'close' | 'empty';
 export type XmlAttrs = Record<string, string | undefined>;
 
 export class XmlScanner {
-  /** Nombre local de la última etiqueta leída (sin prefijo de espacio de nombres: `x:row` → `row`). */
+  /** Local name of the last tag read (without the namespace prefix: `x:row` → `row`). */
   name = '';
-  /** 'empty' es una etiqueta que se cierra sola (`<c/>`). */
+  /** 'empty' is a self-closing tag (`<c/>`). */
   kind: TagKind = 'open';
 
   private readonly xml: string;
@@ -53,7 +53,7 @@ export class XmlScanner {
     this.xml = xml;
   }
 
-  /** Avanza a la siguiente etiqueta, saltando texto, comentarios, CDATA e instrucciones. false al terminar. */
+  /** Advances to the next tag, skipping text, comments, CDATA and processing instructions. false when done. */
   next(): boolean {
     const xml = this.xml;
     const n = xml.length;
@@ -87,7 +87,7 @@ export class XmlScanner {
     const colon = qname.indexOf(':');
     this.name = colon < 0 ? qname : qname.slice(colon + 1);
 
-    // El '>' que cierra la etiqueta es el primero fuera de comillas: un valor de atributo puede traer '>'.
+    // The '>' that closes the tag is the first one outside quotes: an attribute value can contain '>'.
     this.attrStart = j;
     for (; j < n; j++) {
       const ch = xml.charCodeAt(j);
@@ -108,7 +108,7 @@ export class XmlScanner {
     return true;
   }
 
-  /** Atributos de la última etiqueta. Las claves conservan su prefijo ('r:id'); los valores van decodificados. */
+  /** Attributes of the last tag. Keys keep their prefix ('r:id'); values are decoded. */
   attrs(): XmlAttrs {
     const xml = this.xml;
     const end = this.attrEnd;
@@ -129,7 +129,7 @@ export class XmlScanner {
       while (i < end && xml.charCodeAt(i) <= 32) i++;
       const quote = xml.charCodeAt(i);
       if (quote !== 34 && quote !== 39) {
-        // Valor sin comillas: no es XML válido; se descarta ese atributo.
+        // Unquoted value: it is not valid XML; that attribute is dropped.
         while (i < end && xml.charCodeAt(i) > 32) i++;
         continue;
       }
@@ -142,8 +142,8 @@ export class XmlScanner {
   }
 
   /**
-   * Texto que sigue a la última etiqueta, hasta la próxima (que no se consume). Decodifica entidades,
-   * une secciones CDATA y normaliza los saltos de línea como haría un parser de XML (\r\n → \n).
+   * Text that follows the last tag, up to the next one (which is not consumed). Decodes entities,
+   * joins CDATA sections and normalizes line breaks as an XML parser would (\r\n → \n).
    */
   text(): string {
     const xml = this.xml;

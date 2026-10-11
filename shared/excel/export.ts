@@ -1,9 +1,9 @@
-// Contenido del libro: una hoja por mes + ahorros + Config.
-// Port de design_handoff/referencia/excel-export.js, generalizado en dos cosas: los textos salen de un
-// ExcelLocale (locale.ts) y la hoja de ahorros admite las metas que tenga el usuario (export-goals.ts).
-// Con los textos en español y las tres metas del diseño, la salida sigue siendo idéntica byte a byte a la del
-// script original (export.test.ts lo compara con él), así que fórmulas, estilos y el orden de las operaciones
-// se copian tal cual: cualquier cambio aquí cambia el archivo que recibe el usuario.
+// Workbook contents: one sheet per month + savings + Config.
+// Port of design_handoff/referencia/excel-export.js, generalized in two ways: the texts come from an
+// ExcelLocale (locale.ts) and the savings sheet takes whatever goals the user has (export-goals.ts).
+// With the Spanish texts and the design's three goals, the output is still byte-for-byte identical to the
+// original script's (export.test.ts compares it against that script), so formulas, styles and the order of
+// operations are copied as is: any change here changes the file the user receives.
 
 import { APP_NAME } from '../constants';
 import { catLabel, methodLabel } from '../i18n';
@@ -47,12 +47,12 @@ export type { ExcelLocale } from './locale';
 
 export const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
-/** La hoja de ajustes se llama igual en todos los idiomas; las fórmulas la nombran tal cual (Config!$C$4). */
+/** The settings sheet has the same name in every language; formulas refer to it by that name (Config!$C$4). */
 export const CONFIG_SHEET = 'Config';
 
-/** Nombre del archivo que se descarga: "FE Finance.xlsx", o "FE Finance - Frank.xlsx" con el nombre del usuario. */
+/** Name of the downloaded file: "FE Finance.xlsx", or "FE Finance - Frank.xlsx" with the user's name. */
 export function xlsxFilename(userName?: string): string {
-  // Fuera los caracteres que no admite un nombre de archivo (Windows es el más estricto) y los de control.
+  // Strip the characters a file name does not allow (Windows is the strictest) and the control characters.
   const who = (userName ?? '')
     .replace(/[\\\/:*?"<>|\u0000-\u001f\u007f]/g, '')
     .replace(/\s+/g, ' ')
@@ -61,9 +61,9 @@ export function xlsxFilename(userName?: string): string {
 }
 
 export interface BuildOptions {
-  /** Mes de la plantilla vacía cuando `data.months` viene sin meses. Por defecto, el mes actual. */
+  /** Month of the empty template when `data.months` has no months. Defaults to the current month. */
   currentKey?: MonthKey;
-  /** Idioma del libro. Por defecto, inglés. */
+  /** Workbook language. Defaults to English. */
   locale?: ExcelLocale;
 }
 
@@ -72,20 +72,20 @@ const NS_DRAWING_MAIN = 'http://schemas.openxmlformats.org/drawingml/2006/main';
 const NS_SHEET_DRAWING = 'http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing';
 const CT = 'application/vnd.openxmlformats-officedocument';
 
-/** Texto para un atributo XML: como `esc`, y además las comillas dobles. */
+/** Text for an XML attribute: like `esc`, plus the double quotes. */
 function attr(s: string): string {
   return esc(s).replace(/"/g, '&quot;');
 }
 
-/** Literal de texto de una fórmula: entre comillas, con las comillas de dentro duplicadas. */
+/** Text literal of a formula: in quotes, with the inner quotes doubled. */
 function str(s: string): string {
   return `"${s.replace(/"/g, '""')}"`;
 }
 
 /**
- * Fórmula de texto: los trozos de `parts` (literales) con las expresiones `exprs` intercaladas, unidos con &.
- * Los trozos vacíos no se escriben: la misma frase sirve a los idiomas que ponen el texto delante y a los
- * que lo ponen detrás, sin cambiar el orden de las expresiones.
+ * Text formula: the pieces of `parts` (literals) with the `exprs` expressions interleaved, joined with &.
+ * Empty pieces are not written: the same phrase serves the languages that put the text before and those
+ * that put it after, without changing the order of the expressions.
  */
 function phrase(parts: readonly string[], ...exprs: string[]): string {
   const out: string[] = [];
@@ -97,22 +97,22 @@ function phrase(parts: readonly string[], ...exprs: string[]): string {
 }
 
 /**
- * Criterio de SUMIFS/COUNTIFS que coincide exactamente con el nombre de una meta. Los comodines (* ? ~) se
- * escapan con ~, y a un nombre que empieza por un operador (= < >) se le antepone "=" para que no se lea
- * como una comparación.
+ * SUMIFS/COUNTIFS criterion that matches a goal's name exactly. Wildcards (* ? ~) are
+ * escaped with ~, and a name that starts with an operator (= < >) gets "=" in front so it is not read
+ * as a comparison.
  */
 function criterion(name: string): string {
   const exact = name.replace(/[~*?]/g, '~$&');
   return str(/^[=<>]/.test(exact) ? `=${exact}` : exact);
 }
 
-/** '2026-10' → nombre de la hoja de ese mes ('Octubre 2026'). */
+/** '2026-10' → name of that month's sheet ('October 2026'). */
 function sheetLabel(L: ExcelLocale, key: MonthKey): string {
   const [y, m] = key.split('-');
   return `${L.months[+m - 1]} ${y}`;
 }
 
-/** Columna calculada DOP de una tabla con Monto y Moneda: convierte los montos en USD con la tasa del mes ($T$3). */
+/** Calculated DOP column of a table with Amount and Currency: converts the USD amounts with the month rate ($T$3). */
 function dopColumn(table: string, L: ExcelLocale): TableColumn {
   const amount = TR(table, L.cols.amount);
   return {
@@ -123,7 +123,7 @@ function dopColumn(table: string, L: ExcelLocale): TableColumn {
   };
 }
 
-/** Columna calculada USD: el equivalente en USD de la columna DOP. */
+/** Calculated USD column: the USD equivalent of the DOP column. */
 function usdColumn(table: string): TableColumn {
   return {
     name: 'USD',
@@ -133,7 +133,7 @@ function usdColumn(table: string): TableColumn {
   };
 }
 
-/** Barra de datos dentro de la celda, escalada al mayor valor de "Por categoría". */
+/** Data bar inside the cell, scaled to the largest value of "By category". */
 function categoryBar(sqref: string, color: string, priority: number): ConditionalFormat {
   return {
     sqref,
@@ -141,7 +141,7 @@ function categoryBar(sqref: string, color: string, priority: number): Conditiona
   };
 }
 
-/** Gráfico de dona del presupuesto: los cuatro segmentos son las celdas T4:T7 de la hoja del mes. */
+/** Budget donut chart: the four segments are cells T4:T7 of the month sheet. */
 function donutChartXml(quotedSheet: string, L: ExcelLocale): string {
   const points = [DARK, GREEN, 'C9D3C9', 'EBE9E1']
     .map(
@@ -171,8 +171,8 @@ function donutChartXml(quotedSheet: string, L: ExcelLocale): string {
 }
 
 /**
- * Dibujo de la hoja del mes: la dona centrada en la tarjeta "Presupuesto usado" (E4:I12) y, encima,
- * tres cajas de texto: "USADO", el monto usado (enlazado a T9) y "de N DOP" (enlazado a T10).
+ * Drawing of the month sheet: the donut centered in the "Budget used" card (E4:I12) and, on top of it,
+ * three text boxes: "USED", the amount used (linked to T9) and "of N DOP" (linked to T10).
  */
 function donutDrawingXml(sh: Sheet, cid: number, L: ExcelLocale): string {
   const D = L.drawing;
@@ -195,8 +195,8 @@ function donutDrawingXml(sh: Sheet, cid: number, L: ExcelLocale): string {
       '</xdr:twoCellAnchor>',
     ].join('');
 
-  // Las formas se numeran desde 3 (la 2 es el marco del gráfico). El nombre lleva el número siguiente
-  // al id ("Centro 4" para la forma 3): así salía del original y se conserva.
+  // Shapes are numbered from 3 (2 is the chart frame). The name carries the number after
+  // the id ("Center 4" for shape 3): that is how the original produced it, and it is kept.
   let sid = 3;
   const textBox = (
     link: string,
@@ -210,7 +210,7 @@ function donutDrawingXml(sh: Sheet, cid: number, L: ExcelLocale): string {
     col: string,
   ) => {
     const b = bold ? 1 : 0;
-    // Identificador del campo enlazado: único por gráfico y forma.
+    // Identifier of the linked field: unique per chart and shape.
     const g = `${(10000000 + cid * 1000 + sid).toString(16).toUpperCase().padStart(8, '0')}-1B2C-4D3E-8F4A-5B6C7D8E9F0A`;
     const body = link
       ? `<a:fld id="{${g}}" type="TxLink"><a:rPr lang="${D.lang}" sz="${sz}" b="${b}"><a:solidFill><a:srgbClr val="${col}"/></a:solidFill><a:latin typeface="${bold ? MONO : 'Segoe UI'}"/></a:rPr><a:pPr algn="ctr"/><a:t>${esc(text)}</a:t></a:fld>`
@@ -238,21 +238,21 @@ function donutDrawingXml(sh: Sheet, cid: number, L: ExcelLocale): string {
     `<xdr:wsDr xmlns:xdr="${NS_SHEET_DRAWING}" xmlns:a="${NS_DRAWING_MAIN}">`,
     frame(cx0 - size / 2, cy0 - size / 2, size, size),
     textBox('', L.month.used, cx0 - 60, cy0 - 30, 120, 14, 700, true, MUTED),
-    // El texto guardado de las cajas enlazadas ('0' y vacío) es provisional: Excel lo sustituye por el
-    // valor de la celda al abrir el libro.
+    // The stored text of the linked boxes ('0' and empty) is a placeholder: Excel replaces it with the
+    // cell's value when the workbook opens.
     textBox('$T$9', '0', cx0 - 70, cy0 - 15, 140, 24, 1500, true, INK),
     textBox('$T$10', '', cx0 - 70, cy0 + 10, 140, 16, 800, false, MUTED),
     '</xdr:wsDr>',
   ].join('');
 }
 
-/** Hoja de un mes: resumen, dona, gastos mensuales, por categoría, envíos e historial. */
+/** Sheet of one month: summary, donut, fixed expenses, by category, transfers and history. */
 function monthSheet(book: Workbook, mo: ExportMonth, L: ExcelLocale): Sheet {
   const [y, m] = mo.key.split('-').map(Number);
   const name = sheetLabel(L, mo.key);
   const M = L.month;
   const cols = L.cols;
-  // X: sufijo de las tablas del mes (Fijos_2026_10…). Q: nombre de la hoja entre comillas, para fórmulas.
+  // X: suffix of the month's tables (Fixed_2026_10…). Q: the sheet name in quotes, for formulas.
   const X = `${y}_${String(m).padStart(2, '0')}`;
   const Q = `'${name}'`;
   const sh = new Sheet(book, name);
@@ -260,7 +260,7 @@ function monthSheet(book: Workbook, mo: ExportMonth, L: ExcelLocale): Sheet {
   sh.cols = [2, 16, 22, 16, 15, 14, 12, 8, 13, 12, 18, 3, 11, 10, 10, 8, 12, 2, 2, 14];
   sh.hidden = [19];
 
-  // Las tablas de fijos y de envíos dejan filas en blanco para escribir en Excel; si crecen, el historial baja.
+  // The fixed-expense and transfer tables leave blank rows for typing in Excel; if they grow, the history moves down.
   const fixedN = Math.max(15, mo.fixed.length + 3);
   const envN = Math.max(5, mo.transfers.length + 2);
   const fxEnd = 15 + fixedN;
@@ -287,7 +287,7 @@ function monthSheet(book: Workbook, mo: ExportMonth, L: ExcelLocale): Sheet {
     [hTitle]: 26,
   });
 
-  // Banda superior
+  // Top band
   sh.fill('A1', 'R1', st.band);
   sh.set('B1', L.brand, merge(st.band, { font: { sz: 13, b: true, color: 'F4F3EE' } }));
   sh.set('D1', name, merge(st.band, { font: { sz: 11, color: 'A9ABA3' } }));
@@ -300,7 +300,7 @@ function monthSheet(book: Workbook, mo: ExportMonth, L: ExcelLocale): Sheet {
   sh.mergeR('N1', 'Q1');
   sh.set('B2', M.hint, { font: { sz: 8, i: true, color: MUTED } });
 
-  // Dinero total
+  // Total money
   sh.card('B4', 'D12');
   sh.card('E4', 'I12');
   sh.card('J4', 'Q12');
@@ -330,7 +330,7 @@ function monthSheet(book: Workbook, mo: ExportMonth, L: ExcelLocale): Sheet {
   sh.mergeR('C11', 'D11');
   sh.cf.push(neg('C11', 1));
 
-  // Presupuesto usado: leyenda de la dona
+  // Budget used: donut legend
   sh.set('G4', M.budgetUsed, st.label);
   const legend: [label: string, color: string, ref: string, row: number][] = [
     [M.fixedPaid, DARK, '$T$4', 6],
@@ -344,7 +344,7 @@ function monthSheet(book: Workbook, mo: ExportMonth, L: ExcelLocale): Sheet {
     sh.set(`I${r}`, { f: ref }, { font: { name: MONO, sz: 10 }, numFmt: '#,##0', align: { h: 'right' } });
   }
 
-  // Presupuesto del mes
+  // Month budget
   sh.set('J4', { f: 'UPPER($D$1)' }, st.label);
   type BudgetKind = 'input' | 'used' | 'avail' | 'after' | 'usd';
   const budgetRows: [label: string, value: CellValue, kind: BudgetKind, row: number][] = [
@@ -377,7 +377,7 @@ function monthSheet(book: Workbook, mo: ExportMonth, L: ExcelLocale): Sheet {
   );
   sh.cf.push(neg('O9:O10', 2));
 
-  // Cálculos (columna T, oculta): de aquí leen el resumen, la dona y la hoja Ahorros.
+  // Calculations (column T, hidden): the summary, the donut and the Savings sheet read from here.
   const F = `${L.tables.fixed}_${X}`;
   const E = `${L.tables.transfers}_${X}`;
   const T = `${L.tables.tx}_${X}`;
@@ -393,7 +393,7 @@ function monthSheet(book: Workbook, mo: ExportMonth, L: ExcelLocale): Sheet {
   sh.set('T9', { f: 'FIXED(T8,0)' });
   sh.set('T10', { f: phrase(M.ofBudget, 'FIXED(O6,0)') });
 
-  // Gastos mensuales
+  // Fixed expenses
   sh.card('B14', `K${fxEnd + 1}`);
   sh.set('B14', M.fixedTitle, st.h2);
   sh.set(
@@ -412,7 +412,7 @@ function monthSheet(book: Workbook, mo: ExportMonth, L: ExcelLocale): Sheet {
   const fxRows: CellValue[][] = mo.fixed.map((f) => [
     f.paid ? L.yes : L.no,
     f.name,
-    // El día es texto libre: si es numérico va como número, si no, tal cual.
+    // The day is free text: if it is numeric it goes as a number; otherwise, as is.
     num(f.day) ?? (f.day || null),
     num(f.amount),
     f.cur || 'DOP',
@@ -442,7 +442,7 @@ function monthSheet(book: Workbook, mo: ExportMonth, L: ExcelLocale): Sheet {
       `<cfRule type="cellIs" dxfId="2" priority="4" operator="equal"><formula>${esc(no)}</formula></cfRule>`,
   });
 
-  // Por categoría
+  // By category
   sh.card('M14', 'Q26');
   sh.set('M14', M.byCategory, st.h2);
   sh.set('Q14', 'DOP', st.meta);
@@ -450,7 +450,7 @@ function monthSheet(book: Workbook, mo: ExportMonth, L: ExcelLocale): Sheet {
     const r = 15 + i;
     sh.set(`M${r}`, c, {});
     sh.mergeR(`M${r}`, `N${r}`);
-    // La barra es el mismo valor en blanco y diminuto, con una barra de datos por formato condicional.
+    // The bar is the same value in tiny white text, with a data bar from conditional formatting.
     sh.set(`O${r}`, { f: `Q${r}` }, { font: { color: 'FFFFFF', sz: 6 } });
     sh.mergeR(`O${r}`, `P${r}`);
     sh.set(
@@ -461,7 +461,7 @@ function monthSheet(book: Workbook, mo: ExportMonth, L: ExcelLocale): Sheet {
   });
   sh.cf.push(categoryBar('O15:P15', DARK, 5), categoryBar('O16:P25', GREEN, 6));
 
-  // Envíos
+  // Transfers
   sh.card(`M${envTitle}`, `Q${envEnd + 1}`);
   sh.set(`M${envTitle}`, M.transfersTitle, st.h2);
   sh.set(`O${envTitle}`, { f: phrase(M.average, 'FIXED($T$3,2)') }, st.meta);
@@ -488,13 +488,13 @@ function monthSheet(book: Workbook, mo: ExportMonth, L: ExcelLocale): Sheet {
   );
   sh.dv.push({ sqref: `N30:N${envEnd}`, f: '"Remitly,PayPal"' });
 
-  // Historial
+  // History
   const txs = [...mo.tx].sort((a, b) => String(a.date).localeCompare(String(b.date)));
   const txRows: CellValue[][] = txs.map((t) => [
     serialISO(t.date),
     t.desc || '',
     t.place || '',
-    // Categoría y método se guardan con su nombre canónico y se escriben en el idioma del libro.
+    // Category and method are stored under their canonical name and written in the workbook's language.
     catLabel(t.cat || '', L.lang),
     methodLabel(t.method || '', L.lang),
     num(t.amount),
@@ -533,7 +533,7 @@ function monthSheet(book: Workbook, mo: ExportMonth, L: ExcelLocale): Sheet {
     { sqref: `H${hHead + 1}:H3000`, f: '"DOP,USD"' },
   );
 
-  // Dona
+  // Donut
   const cid = book.charts.length + 1;
   book.charts.push(donutChartXml(Q, L));
   book.drawings.push({ chart: cid, xml: donutDrawingXml(sh, cid, L) });
@@ -542,8 +542,8 @@ function monthSheet(book: Workbook, mo: ExportMonth, L: ExcelLocale): Sheet {
 }
 
 /**
- * Hoja de ahorros: resumen del mes actual, tarjetas de metas (en bandas, ver export-goals.ts), ingresos por
- * mes y aportes. `monthsData` son los meses ya ordenados (al menos uno).
+ * Savings sheet: summary of the current month, goal cards (in bands, see export-goals.ts), income by
+ * month and contributions. `monthsData` holds the months, already sorted (at least one).
  */
 function savingsSheet(
   book: Workbook,
@@ -562,10 +562,10 @@ function savingsSheet(
   const [fy, fm] = firstKey.split('-').map(Number);
   const lastKey = monthsData[monthsData.length - 1].key;
   const [ly, lm] = lastKey.split('-').map(Number);
-  // La tabla de ingresos cubre desde el primer mes hasta un año después del último (mínimo 15 filas).
+  // The income table runs from the first month to one year after the last (at least 15 rows).
   const incN = Math.max(15, (ly - fy) * 12 + (lm - fm) + 1 + 12);
 
-  // Las tarjetas de metas van en bandas; las dos tablas empiezan debajo de la última.
+  // The goal cards go in bands; the two tables start below the last one.
   const top = BAND_TOP + BAND_ROWS * layout.bands;
   const head = top + 1;
   const incEnd = head + incN;
@@ -579,7 +579,7 @@ function savingsSheet(
   A.set('B1', L.brand, merge(st.band, { font: { sz: 13, b: true, color: 'F4F3EE' } }));
   A.set('D1', L.sheets.savings, merge(st.band, { font: { sz: 11, color: 'A9ABA3' } }));
 
-  // Resumen del mes actual: lee de la hoja cuyo nombre está en Config!C5.
+  // Summary of the current month: reads from the sheet whose name is in Config!C5.
   const IND = (c: string) => `INDIRECT("'"&Config!$C$5&"'!${c}")`;
   A.card('B3', 'O4');
   const summary: [col: string, label: string, formula: string, style: StyleSpec][] = [
@@ -607,21 +607,21 @@ function savingsSheet(
   A.mergeR('N4', 'O4');
   A.cf.push(neg('K4', 1));
 
-  // Cálculos (columna R, oculta). R3 es la tasa del mes actual, común a todas las tarjetas; cada meta con
-  // plan tiene además sus cinco celdas (ver plannedCard).
+  // Calculations (column R, hidden). R3 is the current month's rate, shared by all the cards; each goal with
+  // a plan also has its own five cells (see plannedCard).
   A.set('R2', L.calc, { font: { b: true } });
   A.set('R3', { f: `IFERROR(${IND('T3')},Config!$C$4)` });
 
-  // Tabla de aportes: de ella leen las tarjetas y la tabla de ingresos.
+  // Contributions table: the cards and the income table read from it.
   const AP = L.tables.contribs;
   const apGoal = `${AP}[${cols.goal}]`;
   const apMonth = `${AP}[${cols.month}]`;
   const monthList = L.months.map(str).join(',');
 
-  // Meta de aportes variables: total aportado y número de aportes.
+  // Goal with variable contributions: total contributed and number of contributions.
   const variableCard = (g: PlacedGoal) => {
     const [c1, c2] = GOAL_SLOTS[g.slot];
-    // Las filas se nombran como en la banda 0 (6 a 12); `r` las lleva a la banda de la meta.
+    // Rows are named as in band 0 (6 to 12); `r` moves them to the goal's band.
     const r = (n: number) => n + BAND_ROWS * g.band;
     const goal = criterion(g.name);
     A.card(`${c1}${r(6)}`, `${c2}${r(12)}`);
@@ -647,8 +647,8 @@ function savingsSheet(
     A.mergeR(`${c1}${r(11)}`, `${c2}${r(11)}`);
   };
 
-  // Meta con plan: aporte fijo mensual entre Inicio y Fin (editables en la última fila de la tarjeta).
-  // Sus cálculos van en la columna R, dos filas por encima de la banda (R4:R8 en la banda 0).
+  // Goal with a plan: fixed monthly contribution between Start and End (editable in the card's last row).
+  // Its calculations go in column R, two rows above the band (R4:R8 in band 0).
   const plannedCard = (g: PlacedGoal, plan: GoalPlan, priority: number) => {
     const r = (n: number) => n + BAND_ROWS * g.band;
     const goal = criterion(g.name);
@@ -708,14 +708,14 @@ function savingsSheet(
     A.mergeR(end, `O${r(12)}`);
   };
 
-  // La prioridad 1 es la del resumen (K4); cada barra de progreso lleva la siguiente.
+  // Priority 1 belongs to the summary (K4); each progress bar takes the next one.
   let priority = 2;
   for (const g of layout.goals) {
     if (g.slot === WIDE_SLOT && g.plan) plannedCard(g, g.plan, priority++);
     else variableCard(g);
   }
 
-  // Ingresos por mes: cada fila lee el ingreso y la tasa de la hoja de ese mes, si existe.
+  // Income by month: each row reads the income and the rate from that month's sheet, if it exists.
   A.card(`B${top}`, `G${incEnd + 1}`);
   A.set(`B${top}`, S.incomeTitle, st.h2);
   S.incomeCols.forEach((h, i) => A.set(`${colL(1 + i)}${head}`, h, i ? st.thR : st.th));
@@ -739,7 +739,7 @@ function savingsSheet(
     );
   }
 
-  // Aportes
+  // Contributions
   const apRows: CellValue[][] = [...(data.contribs || [])]
     .sort((a, b) => String(a.date).localeCompare(String(b.date)))
     .map((c) => [serialISO(c.date), null, c.goalName, num(c.amount), c.cur || 'USD', null, null]);
@@ -748,7 +748,7 @@ function savingsSheet(
   A.set(`I${top}`, S.contribsTitle, st.h2);
   A.set(`L${top}`, { f: phrase(S.total, `FIXED(SUM(${AP}[USD]),2)`) }, st.meta);
   A.mergeR(`L${top}`, `O${top}`);
-  // Tasa de la hoja del mes `x`; si esa hoja no existe, la tasa por defecto.
+  // Rate of the sheet of month `x`; if that sheet does not exist, the default rate.
   const RT = (x: string) => `IFERROR(INDIRECT("'"&${x}&"'!T3"),Config!$C$4)`;
   const date = TR(AP, cols.date);
   const month = TR(AP, cols.month);
@@ -781,7 +781,7 @@ function savingsSheet(
     ],
     apRows,
   );
-  // Los desplegables bajan con la tabla. El de metas apunta a la lista de Config; sin metas no hay lista.
+  // The dropdowns move down with the table. The goals one points to the Config list; with no goals there is no list.
   const lastRow = 2000 + (top - 14);
   if (layout.goals.length) {
     A.dv.push({ sqref: `K${head + 1}:K${lastRow}`, f: `Config!$G$4:$G$${3 + layout.goals.length}` });
@@ -790,7 +790,7 @@ function savingsSheet(
   return A;
 }
 
-/** Hoja Config: ajustes y las listas que alimentan los desplegables de las demás hojas. */
+/** Config sheet: settings and the lists that feed the dropdowns of the other sheets. */
 function configSheet(
   book: Workbook,
   data: ExportData,
@@ -811,25 +811,25 @@ function configSheet(
   C.set('C4', num(data.defaultRate) ?? 58.76, merge(st.input, { numFmt: '0.00' }));
   C.set('B5', G.currentMonth, {});
   C.set('C5', curLabel, merge(st.input, { font: { name: 'Segoe UI', b: true } }));
-  // La tarjeta de las listas llega a la fila 14 (diez categorías); con más de diez metas, se alarga.
+  // The lists card reaches row 14 (ten categories); with more than ten goals, it grows.
   C.card('E3', `G${Math.max(14, 4 + goals.length)}`);
   C.set('E3', G.cats, st.label);
   C.set('F3', G.methods, st.label);
   C.set('G3', G.goals, st.label);
   L.cats.forEach((c, i) => C.set(`E${4 + i}`, c, { border: { b: ROWL } }));
   L.methods.forEach((c, i) => C.set(`F${4 + i}`, c, { border: { b: ROWL } }));
-  // Las metas, en su orden: es la lista del desplegable de la tabla de aportes.
+  // The goals, in their order: this is the dropdown list of the contributions table.
   goals.forEach((c, i) => C.set(`G${4 + i}`, c, { border: { b: ROWL } }));
   return C;
 }
 
 /**
- * Genera el .xlsx (una hoja por mes + ahorros + Config) sin dependencias: OOXML + zip sin compresión.
- * El libro sale en el idioma de `opts.locale` (inglés si no se indica); la estructura es la misma en todos.
- * Port de design_handoff/referencia/excel-export.js: en español y con las tres metas del diseño devuelve,
- * para los mismos datos, los mismos bytes que el script original.
- * Sin meses exporta la plantilla vacía de `opts.currentKey` (por defecto, el mes actual del usuario).
- * Funciona igual en el navegador, en Node y en Workers; no modifica `data`.
+ * Generates the .xlsx (one sheet per month + savings + Config) with no dependencies: OOXML + uncompressed zip.
+ * The workbook comes out in the language of `opts.locale` (English if not given); the structure is the same in all.
+ * Port of design_handoff/referencia/excel-export.js: in Spanish and with the design's three goals it returns,
+ * for the same data, the same bytes as the original script.
+ * With no months it exports the empty template of `opts.currentKey` (by default, the user's current month).
+ * Works the same in the browser, in Node and in Workers; does not modify `data`.
  */
 export function buildFinanzasXlsx(data: ExportData, opts: BuildOptions = {}): Uint8Array<ArrayBuffer> {
   const book = new Workbook();
@@ -837,7 +837,7 @@ export function buildFinanzasXlsx(data: ExportData, opts: BuildOptions = {}): Ui
 
   let monthsData = [...(data.months || [])].sort((a, b) => a.key.localeCompare(b.key));
   if (!monthsData.length) {
-    // El original usaba la fecha del reloj local; aquí manda la zona horaria del usuario, no la del servidor.
+    // The original used the local clock's date; here the user's time zone decides, not the server's.
     const key = opts.currentKey ?? currentMonthKey();
     monthsData = [{ key, budget: null, incomeUSD: null, accounts: {}, fixed: [], transfers: [], tx: [] }];
   }
@@ -858,7 +858,7 @@ export function buildFinanzasXlsx(data: ExportData, opts: BuildOptions = {}): Ui
     ),
   ];
 
-  // El orden de inserción es el orden de las entradas del zip.
+  // Insertion order is the order of the zip entries.
   const files = new Map<string, string>();
   sheets.forEach((s, i) => {
     files.set(`xl/worksheets/sheet${i + 1}.xml`, s.xml());
@@ -875,7 +875,7 @@ export function buildFinanzasXlsx(data: ExportData, opts: BuildOptions = {}): Ui
     );
   });
   charts.forEach((x, i) => files.set(`xl/charts/chart${i + 1}.xml`, x));
-  // Estilos y textos compartidos se registran al generar el XML de las hojas: van después.
+  // Styles and shared strings are registered while the sheets' XML is generated: they go after.
   files.set('xl/styles.xml', book.stylesXml());
   files.set('xl/sharedStrings.xml', book.sharedStringsXml());
   files.set(
@@ -885,7 +885,7 @@ export function buildFinanzasXlsx(data: ExportData, opts: BuildOptions = {}): Ui
       `<workbook xmlns="${NS_MAIN}" xmlns:r="${NS_REL}">`,
       `<bookViews><workbookView activeTab="${months.length - 1}"/></bookViews>`,
       `<sheets>${sheets.map((s, i) => `<sheet name="${esc(s.name)}" sheetId="${i + 1}" r:id="rId${i + 1}"/>`).join('')}</sheets>`,
-      // Los valores no se guardan: Excel calcula todas las fórmulas al abrir.
+      // Values are not stored: Excel calculates every formula on open.
       '<calcPr calcId="191029" fullCalcOnLoad="1"/>',
       '</workbook>',
     ].join(''),

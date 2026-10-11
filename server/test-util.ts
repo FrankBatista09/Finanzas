@@ -1,4 +1,4 @@
-// Utilidades de las pruebas de server/: una base en memoria con las migraciones y un cliente de la app.
+// Utilities for the server/ tests: an in-memory database with the migrations and a client of the app.
 
 import type { ApiErrorBody } from '../shared/api';
 import type { AppState, AppUser } from '../shared/types';
@@ -10,19 +10,19 @@ import type { Env } from './env';
 
 export const TOKEN = 'token-de-prueba';
 
-/** Los usuarios de las pruebas, los mismos de wrangler.toml: dos personas con sus finanzas aparte. */
+/** The test users, the same as in wrangler.toml: two people with separate finances. */
 export const FRANK: AppUser = { id: 'frank', name: 'Frank' };
 export const EDA: AppUser = { id: 'eda', name: 'Eda' };
 export const USERS = 'frank:Frank,eda:Eda';
 
 export interface TestEnv {
-  /** El adaptador, para mirar la base por debajo de la API. */
+  /** The adapter, to look at the database underneath the API. */
   sqlite: NodeD1Database;
   db: D1Database;
   env: Env;
 }
 
-/** Una base recién migrada y su entorno, con los dos usuarios configurados salvo que `extra` diga otra cosa. */
+/** A freshly migrated database and its environment, with the two users configured unless `extra` says otherwise. */
 export function makeEnv(extra: Partial<Env> = {}): TestEnv {
   const sqlite = createTestDb();
   const db = asD1(sqlite);
@@ -31,9 +31,9 @@ export function makeEnv(extra: Partial<Env> = {}): TestEnv {
 
 export interface Reply<T> {
   status: number;
-  /** El cuerpo JSON (o null si la respuesta no es JSON). */
+  /** The JSON body (or null if the response is not JSON). */
   body: T;
-  /** `body.error` cuando la respuesta es un ApiErrorBody. */
+  /** `body.error` when the response is an ApiErrorBody. */
   error: ApiErrorBody['error'] | undefined;
   headers: Headers;
 }
@@ -44,13 +44,13 @@ export interface Client {
   put<T = unknown>(path: string, body?: unknown, headers?: Record<string, string>): Promise<Reply<T>>;
   patch<T = unknown>(path: string, body?: unknown, headers?: Record<string, string>): Promise<Reply<T>>;
   del<T = unknown>(path: string, headers?: Record<string, string>): Promise<Reply<T>>;
-  /** Petición sin adornos: el cuerpo se manda tal cual (pero con la cabecera del usuario, si el cliente tiene uno). */
+  /** Bare request: the body is sent as is (but with the user header, if the client has a user). */
   raw(path: string, init: RequestInit): Promise<Response>;
 }
 
 /**
- * Cliente de la app que habla como `user` (cabecera X-User), por defecto Frank. Con `null` no manda la cabecera.
- * Las cabeceras de cada petición ganan a la del cliente.
+ * Client of the app that speaks as `user` (X-User header), Frank by default. With `null` it does not send the header.
+ * The headers of each request win over the client's.
  */
 export function client(env: Env, user: string | null = FRANK.id): Client {
   const app = createApp();
@@ -85,7 +85,7 @@ export function client(env: Env, user: string | null = FRANK.id): Client {
   };
 }
 
-/** Quita lo que la base asigna por su cuenta (createdAt) para comparar estados. */
+/** Removes what the database assigns on its own (createdAt) so states can be compared. */
 export function withoutTimestamps(state: AppState): AppState {
   return {
     ...state,
@@ -95,7 +95,7 @@ export function withoutTimestamps(state: AppState): AppState {
   };
 }
 
-/** Filas de una tabla: las de un usuario, o las de todos si no se indica. */
+/** Rows of a table: those of one user, or everyone's if none is given. */
 export function count(sqlite: NodeD1Database, table: string, userId?: string): number {
   const row =
     userId === undefined

@@ -22,14 +22,14 @@ import type { GoalForm } from './goalForm';
 
 const TODAY = '2026-10-07';
 
-/** Formulario de una meta nueva con la casilla del objetivo marcada. */
+/** Form of a new goal with the target checkbox checked. */
 const planned = (over: Partial<GoalForm> = {}): GoalForm => ({ ...newGoalForm(TODAY, 'USD'), name: 'Car', planned: true, ...over });
 
-/** Lo que queda guardado al aceptar el formulario (el id y el orden los pone la capa de datos). */
+/** What ends up saved when the form is accepted (the data layer sets the id and the order). */
 const saved = (form: GoalForm, main: Currency = 'USD'): Goal => ({ id: 'g', sort: 0, ...formToInput(form, main) });
 
-describe('meses', () => {
-  it('addMonths suma meses pasando de año', () => {
+describe('months', () => {
+  it('addMonths adds months across year boundaries', () => {
     expect(addMonths('2026-10', 0)).toBe('2026-10');
     expect(addMonths('2026-10', 2)).toBe('2026-12');
     expect(addMonths('2026-10', 3)).toBe('2027-01');
@@ -38,7 +38,7 @@ describe('meses', () => {
     expect(addMonths('2026-01', 35)).toBe('2028-12');
   });
 
-  it('planMonths cuenta los dos extremos; 0 si el mes objetivo queda antes del de inicio', () => {
+  it('planMonths counts both ends; 0 if the target month falls before the start month', () => {
     expect(planMonths({ start: '2026-08', end: '2027-10' })).toBe(15);
     expect(planMonths({ start: '2026-10', end: '2026-10' })).toBe(1);
     expect(planMonths({ start: '2026-10', end: '2026-09' })).toBe(0);
@@ -47,20 +47,20 @@ describe('meses', () => {
   });
 });
 
-describe('de la meta al formulario', () => {
-  it('meta nueva: sin objetivo; el plan propuesto empieza este mes y acaba doce meses después', () => {
+describe('from the goal to the form', () => {
+  it('new goal: no target; the proposed plan starts this month and ends twelve months later', () => {
     expect(newGoalForm(TODAY, 'USD')).toEqual({ name: '', cur: 'USD', approxCur: 'USD', planned: false, start: '2026-10', end: '2027-10', target: '', monthly: '', exact: null });
-    // La moneda es la que se le pase: la principal del usuario.
+    // The currency is whichever one is passed in: the user's main one.
     expect(newGoalForm(TODAY, 'TRY').cur).toBe('TRY');
     expect(newGoalForm('2026-12-31', 'USD')).toMatchObject({ start: '2026-12', end: '2027-12' });
   });
 
-  it('meta de aportes variables: solo el nombre; si se marca la casilla, el plan propuesto es el de una nueva', () => {
+  it('goal with variable contributions: only the name; if the checkbox is checked, the proposed plan is that of a new goal', () => {
     const goal = seedState().goals[0]!;
     expect(goalToForm(goal, TODAY)).toEqual({ ...newGoalForm(TODAY, 'USD'), name: 'Emergency fund' });
   });
 
-  it('meta con plan: el objetivo es mensual × meses', () => {
+  it('goal with a plan: the target is monthly × months', () => {
     expect(goalToForm(SEED_PLANNED_GOAL, TODAY)).toEqual({
       name: 'Trip to Turkey',
       cur: 'USD',
@@ -74,19 +74,19 @@ describe('de la meta al formulario', () => {
     });
   });
 
-  it('la meta se abre en su moneda, tenga plan o no', () => {
+  it('the goal opens in its own currency, with or without a plan', () => {
     expect(goalToForm({ ...SEED_PLANNED_GOAL, cur: 'TRY' }, TODAY)).toMatchObject({ cur: 'TRY', target: '45000', monthly: '3000', exact: 3000 });
     expect(goalToForm({ ...seedState().goals[0]!, cur: 'DOP' }, TODAY)).toEqual({ ...newGoalForm(TODAY, 'DOP'), name: 'Emergency fund' });
   });
 
-  it('un plan a medias (datos dañados) se abre como meta sin objetivo', () => {
+  it('a half-filled plan (damaged data) opens as a goal with no target', () => {
     const broken: Goal = { ...SEED_PLANNED_GOAL, end: null };
     expect(goalToForm(broken, TODAY)).toEqual({ ...newGoalForm(TODAY, 'USD'), name: 'Trip to Turkey' });
     expect(goalToForm({ ...SEED_PLANNED_GOAL, monthly: 0 }, TODAY).planned).toBe(false);
     expect(goalToForm({ ...SEED_PLANNED_GOAL, start: '2027-11' }, TODAY).planned).toBe(false);
   });
 
-  it('los montos van redondeados a centavos y sin separador de miles (son el valor de un input numérico)', () => {
+  it('amounts are rounded to cents and have no thousands separator (they are the value of a numeric input)', () => {
     expect(amountText(45000)).toBe('45000');
     expect(amountText(833.3333333333334)).toBe('833.33');
     expect(amountText(10000.000000000002)).toBe('10000');
@@ -96,63 +96,63 @@ describe('de la meta al formulario', () => {
   });
 });
 
-describe('campos enlazados', () => {
-  it('escribir el objetivo recalcula el mensual: objetivo / meses', () => {
+describe('linked fields', () => {
+  it('typing the target recalculates the monthly amount: target / months', () => {
     const form = setTarget(planned({ start: '2026-08', end: '2027-10' }), '45000');
     expect(form).toMatchObject({ target: '45000', monthly: '3000', exact: 3000 });
-    // El texto se queda como lo escribió el usuario; solo cambia el otro campo.
+    // The text stays as the user typed it; only the other field changes.
     expect(setTarget(form, '45000.0')).toMatchObject({ target: '45000.0', monthly: '3000', exact: 3000 });
     expect(setTarget(form, '10000')).toMatchObject({ target: '10000', monthly: '666.67', exact: 10000 / 15 });
   });
 
-  it('escribir el mensual recalcula el objetivo: mensual × meses', () => {
+  it('typing the monthly amount recalculates the target: monthly × months', () => {
     const form = setMonthly(planned({ start: '2026-08', end: '2027-10' }), '3000');
     expect(form).toMatchObject({ target: '45000', monthly: '3000', exact: 3000 });
     expect(setMonthly(form, '833.33')).toMatchObject({ target: '12499.95', monthly: '833.33', exact: 833.33 });
     expect(setMonthly(form, '2500.5')).toMatchObject({ target: '37507.5', exact: 2500.5 });
   });
 
-  it('cambiar un mes conserva el objetivo y recalcula el mensual', () => {
+  it('changing a month keeps the target and recalculates the monthly amount', () => {
     const form = setTarget(planned({ start: '2026-08', end: '2027-10' }), '45000');
-    // 16 meses.
+    // 16 months.
     expect(setEnd(form, '2027-11')).toMatchObject({ end: '2027-11', target: '45000', monthly: '2812.5', exact: 2812.5 });
-    // 10 meses.
+    // 10 months.
     expect(setStart(form, '2027-01')).toMatchObject({ start: '2027-01', target: '45000', monthly: '4500', exact: 4500 });
-    // También cuando lo último que se escribió fue el mensual: el objetivo que se ve es el que se queda.
+    // Also when the last thing typed was the monthly amount: the target on screen is the one that stays.
     const typedMonthly = setMonthly(form, '1000');
     expect(typedMonthly.target).toBe('15000');
     expect(setEnd(typedMonthly, '2026-12')).toMatchObject({ target: '15000', monthly: '3000', exact: 3000 });
   });
 
-  it('con el mes objetivo antes del de inicio no hay mensual; al corregirlo vuelve a calcularse', () => {
+  it('with the target month before the start month there is no monthly amount; fixing it calculates it again', () => {
     const form = setTarget(planned({ start: '2026-08', end: '2027-10' }), '45000');
     const wrong = setEnd(form, '2026-07');
     expect(wrong).toMatchObject({ target: '45000', monthly: '', exact: null });
     expect(setEnd(wrong, '2026-10')).toMatchObject({ target: '45000', monthly: '15000', exact: 15000 });
-    // Escribir el objetivo con los meses al revés tampoco calcula nada todavía.
+    // Typing the target with the months reversed does not calculate anything yet either.
     expect(setTarget(wrong, '9000')).toMatchObject({ target: '9000', monthly: '', exact: null });
     expect(setStart(setTarget(wrong, '9000'), '2026-05')).toMatchObject({ target: '9000', monthly: '3000', exact: 3000 });
   });
 
-  it('el mensual escrito con los meses al revés se conserva y da el objetivo al corregirlos', () => {
+  it('the monthly amount typed with the months reversed is kept and yields the target once they are fixed', () => {
     const wrong = setEnd(planned({ start: '2026-08', end: '2027-10' }), '2026-07');
     const typed = setMonthly(wrong, '500');
     expect(typed).toMatchObject({ target: '', monthly: '500', exact: 500 });
     expect(setEnd(typed, '2026-11')).toMatchObject({ target: '2000', monthly: '500', exact: 500 });
   });
 
-  it('un monto vacío, en cero, negativo o que no es un número deja vacío el otro campo', () => {
+  it('an empty, zero, negative or non-numeric amount leaves the other field empty', () => {
     const form = setTarget(planned(), '13000');
     expect(form.exact).toBe(1000);
     for (const text of ['', '0', '-5', 'abc', '   ']) {
       expect(setTarget(form, text)).toMatchObject({ target: text, monthly: '', exact: null });
       expect(setMonthly(form, text)).toMatchObject({ target: '', monthly: text, exact: null });
     }
-    // Sin ningún monto, cambiar los meses no inventa nada.
+    // With no amount at all, changing the months makes nothing up.
     expect(setEnd(planned(), '2028-01')).toMatchObject({ target: '', monthly: '', exact: null });
   });
 
-  it('el resumen: meses del plan y mensual exacto; nada si falta algo o la casilla está desmarcada', () => {
+  it('the summary: plan months and exact monthly amount; nothing if something is missing or the checkbox is unchecked', () => {
     const form = setTarget(planned({ start: '2026-08', end: '2027-10' }), '45000');
     expect(planSummary(form)).toEqual({ months: 15, monthly: 3000, cur: 'USD' });
     expect(planSummary(setCur(form, 'TRY'))).toEqual({ months: 15, monthly: 3000, cur: 'TRY' });
@@ -163,24 +163,24 @@ describe('campos enlazados', () => {
   });
 });
 
-describe('moneda de la meta', () => {
-  it('cambiarla no toca los montos ni el plan: pasan a estar en la moneda nueva', () => {
+describe('goal currency', () => {
+  it('changing it does not touch the amounts or the plan: they are now in the new currency', () => {
     const form = setTarget(planned({ start: '2026-08', end: '2027-10' }), '45000');
     expect(setCur(form, 'TRY')).toEqual({ ...form, cur: 'TRY' });
-    // La moneda "≈" tampoco se mueve: sigue siendo la que tenía (aquí, la principal con la que nació la meta).
+    // The "≈" currency does not move either: it is still the one it had (here, the main one the goal was created with).
     expect(setCur(newGoalForm(TODAY, 'DOP'), 'USD')).toEqual(newGoalForm(TODAY, 'USD', 'DOP'));
   });
 
-  it('se guarda con la meta, tenga plan o no', () => {
+  it('it is saved with the goal, with or without a plan', () => {
     const form = setCur(setTarget(planned({ start: '2026-08', end: '2027-10' }), '45000'), 'TRY');
     expect(formToInput(form, 'USD')).toEqual({ name: 'Car', cur: 'TRY', approxCur: null, monthly: 3000, start: '2026-08', end: '2027-10' });
     expect(formToInput({ ...form, planned: false }, 'USD')).toEqual({ name: 'Car', cur: 'TRY', approxCur: null, monthly: null, start: null, end: null });
-    // Editar solo la moneda de una meta guardada deja el plan como estaba.
+    // Editing only the currency of a saved goal leaves the plan as it was.
     const edited = setCur(goalToForm(SEED_PLANNED_GOAL, TODAY), 'DOP');
     expect(saved(edited)).toEqual({ ...SEED_PLANNED_GOAL, id: 'g', sort: 0, name: 'Trip to Turkey', cur: 'DOP' });
   });
 
-  it('no cambia lo que hace falta para guardar', () => {
+  it('it does not change what is needed to save', () => {
     const goals = seedState().goals;
     for (const cur of ['DOP', 'USD', 'TRY'] as const) {
       expect(goalFormErrors(setCur(planned(), cur), goals, null)).toEqual(['amount']);
@@ -189,38 +189,38 @@ describe('moneda de la meta', () => {
   });
 });
 
-describe('moneda de la línea "≈"', () => {
-  it('meta nueva: arranca en la moneda de la meta, que es la principal del usuario, salvo que se le pase otra', () => {
+describe('currency of the "≈" line', () => {
+  it("new goal: it starts on the goal's currency, which is the user's main one, unless another one is passed in", () => {
     expect(newGoalForm(TODAY, 'DOP').approxCur).toBe('DOP');
     expect(newGoalForm(TODAY, 'USD', 'TRY')).toEqual({ ...newGoalForm(TODAY, 'USD'), approxCur: 'TRY' });
   });
 
-  it('al editar: la que eligió la meta o, si no eligió ninguna, la principal del usuario', () => {
+  it("when editing: the one the goal chose or, if it chose none, the user's main one", () => {
     const variable = seedState().goals[0]!;
-    // Sin elegir (null): la principal, que se le pasa; sin pasarla, la de la propia meta.
+    // Not chosen (null): the main one, which is passed in; when it is not passed, the goal's own.
     expect(goalToForm(variable, TODAY, 'DOP')).toEqual({ ...newGoalForm(TODAY, 'USD', 'DOP'), name: 'Emergency fund' });
     expect(goalToForm(variable, TODAY).approxCur).toBe('USD');
     expect(goalToForm(SEED_PLANNED_GOAL, TODAY, 'DOP')).toMatchObject({ cur: 'USD', approxCur: 'DOP', planned: true, exact: 3000 });
-    // Elegida: manda la de la meta, sea cual sea la principal (también si es la de la propia meta).
+    // Chosen: the goal's choice wins, whatever the main one is (also when it is the goal's own currency).
     expect(goalToForm({ ...variable, approxCur: 'TRY' }, TODAY, 'DOP').approxCur).toBe('TRY');
     expect(goalToForm({ ...variable, approxCur: 'TRY' }, TODAY).approxCur).toBe('TRY');
     expect(goalToForm({ ...SEED_PLANNED_GOAL, approxCur: 'USD' }, TODAY, 'DOP')).toMatchObject({ cur: 'USD', approxCur: 'USD', planned: true });
   });
 
-  it('se guarda null si es la principal (así la sigue si cambia) y la moneda si es otra', () => {
+  it('null is saved if it is the main one (so it follows it if it changes) and the currency if it is another one', () => {
     const form = { ...newGoalForm(TODAY, 'USD', 'DOP'), name: 'Car' };
     expect(formToInput(form, 'DOP')).toEqual({ name: 'Car', cur: 'USD', approxCur: null, monthly: null, start: null, end: null });
     expect(formToInput(form, 'USD').approxCur).toBe('DOP');
     expect(formToInput({ ...form, approxCur: 'TRY' }, 'DOP').approxCur).toBe('TRY');
-    // La de la propia meta también se guarda cuando no es la principal: la tarjeta no pinta entonces la línea.
+    // The goal's own currency is also saved when it is not the main one: the card then does not draw the line.
     expect(formToInput({ ...form, approxCur: 'USD' }, 'DOP').approxCur).toBe('USD');
-    // Con plan va igual, junto a sus tres valores.
+    // With a plan it goes the same way, alongside its three values.
     const withPlan = setTarget(planned({ start: '2026-08', end: '2027-10', approxCur: 'TRY' }), '45000');
     expect(formToInput(withPlan, 'DOP')).toEqual({ name: 'Car', cur: 'USD', approxCur: 'TRY', monthly: 3000, start: '2026-08', end: '2027-10' });
     expect(formToInput(withPlan, 'TRY').approxCur).toBeNull();
   });
 
-  it('cambiar la moneda de la meta o los campos del plan no la toca', () => {
+  it('changing the goal currency or the plan fields does not touch it', () => {
     const form = planned({ approxCur: 'TRY' });
     expect(setCur(form, 'DOP').approxCur).toBe('TRY');
     expect(setEnd(setStart(setMonthly(setTarget(form, '1000'), '50'), '2026-11'), '2027-01').approxCur).toBe('TRY');
@@ -228,12 +228,12 @@ describe('moneda de la línea "≈"', () => {
     for (const approxCur of ['DOP', 'USD', 'TRY'] as const) expect(goalFormErrors({ ...setTarget(form, '100'), approxCur }, [], null)).toEqual([]);
   });
 
-  it('guardar sin tocar nada deja la meta como estaba, haya elegido moneda "≈" o no', () => {
+  it('saving without touching anything leaves the goal as it was, whether or not it chose a "≈" currency', () => {
     for (const main of ['DOP', 'USD', 'TRY'] as const) {
       for (const approxCur of [null, 'DOP', 'USD', 'TRY'] as const) {
         const goal: Goal = { ...SEED_PLANNED_GOAL, approxCur };
         const again = saved(goalToForm(goal, TODAY, main), main);
-        // Lo único que puede cambiar es la forma de decir "la principal": elegida a mano se guarda como null.
+        // The only thing that can change is the way of saying "the main one": chosen by hand, it is saved as null.
         expect(again).toEqual({ ...goal, id: 'g', sort: 0, approxCur: approxCur === main ? null : approxCur });
         expect(goalToForm(again, TODAY, main)).toEqual(goalToForm(goal, TODAY, main));
       }
@@ -241,26 +241,26 @@ describe('moneda de la línea "≈"', () => {
   });
 });
 
-describe('redondeo: lo que se guarda vuelve a verse igual', () => {
-  it('10,000 en 12 meses se guarda como 833.33… al mes y al reabrir vuelve a ser 10,000', () => {
+describe('rounding: what is saved shows up the same again', () => {
+  it('10,000 over 12 months is saved as 833.33… a month and is 10,000 again on reopening', () => {
     const form = setTarget(planned({ start: '2026-10', end: '2027-09' }), '10000');
     expect(planMonths(form)).toBe(12);
     expect(form.monthly).toBe('833.33');
 
     const goal = saved(form);
-    // No 833.33 (que daría 9,999.96): el mensual exacto.
+    // Not 833.33 (which would give 9,999.96): the exact monthly amount.
     expect(goal.monthly).toBe(10000 / 12);
 
     const again = goalToForm(goal, TODAY);
     expect(again.target).toBe('10000');
     expect(again.monthly).toBe('833.33');
-    // Guardar sin tocar nada deja la meta exactamente como estaba.
+    // Saving without touching anything leaves the goal exactly as it was.
     expect(saved(again)).toEqual(goal);
-    // Y editar solo el nombre tampoco mueve el plan.
+    // And editing only the name does not move the plan either.
     expect(saved({ ...again, name: 'New car' })).toEqual({ ...goal, name: 'New car' });
   });
 
-  it('cualquier objetivo con centavos sobrevive al viaje de ida y vuelta, sea cual sea el plazo', () => {
+  it('any target with cents survives the round trip, whatever the term', () => {
     const targets = ['1', '100', '999.99', '10000', '12345.67', '45000', '250000.5', '1000000'];
     const spans = [1, 2, 3, 6, 7, 9, 11, 12, 13, 15, 24, 36, 120];
     for (const target of targets) {
@@ -274,7 +274,7 @@ describe('redondeo: lo que se guarda vuelve a verse igual', () => {
     }
   });
 
-  it('un mensual escrito a mano se guarda tal cual, y su objetivo es el producto', () => {
+  it('a monthly amount typed by hand is saved as is, and its target is the product', () => {
     const form = setMonthly(planned({ start: '2026-10', end: '2027-09' }), '833.33');
     expect(form.target).toBe('9999.96');
     const goal = saved(form);
@@ -282,17 +282,17 @@ describe('redondeo: lo que se guarda vuelve a verse igual', () => {
     expect(goalToForm(goal, TODAY)).toMatchObject({ target: '9999.96', monthly: '833.33', exact: 833.33 });
   });
 
-  it('el objetivo que se calcula es el de shared/calc: mensual × meses, ambos incluidos', () => {
+  it('the calculated target is the one from shared/calc: monthly × months, both included', () => {
     const goal = saved(setTarget(planned({ start: '2026-10', end: '2027-09' }), '10000'));
     expect(goal.monthly! * monthSpan(goal.start!, goal.end!)).toBeCloseTo(10000, 9);
   });
 });
 
-describe('validación', () => {
+describe('validation', () => {
   const goals = seedState().goals;
   const errors = (form: GoalForm, editingId: string | null = null) => goalFormErrors(form, goals, editingId);
 
-  it('el nombre es obligatorio', () => {
+  it('the name is required', () => {
     expect(errors(newGoalForm(TODAY, 'USD'))).toEqual(['name']);
     expect(errors({ ...newGoalForm(TODAY, 'USD'), name: '   ' })).toEqual(['name']);
     expect(errors({ ...newGoalForm(TODAY, 'USD'), name: 'Car' })).toEqual([]);
@@ -300,20 +300,20 @@ describe('validación', () => {
     expect(errors({ ...newGoalForm(TODAY, 'USD'), name: 'x'.repeat(121) })).toEqual(['name']);
   });
 
-  it('no puede llamarse como otra meta, sin distinguir mayúsculas ni espacios sobrantes', () => {
+  it('it cannot have the name of another goal, ignoring case and extra spaces', () => {
     expect(errors({ ...newGoalForm(TODAY, 'USD'), name: 'Emergency fund' })).toEqual(['nameTaken']);
     expect(errors({ ...newGoalForm(TODAY, 'USD'), name: '  EMERGENCY Fund ' })).toEqual(['nameTaken']);
     expect(errors({ ...newGoalForm(TODAY, 'USD'), name: 'Emergency fund 2' })).toEqual([]);
   });
 
-  it('al editar, su propio nombre no cuenta como repetido', () => {
+  it('when editing, its own name does not count as a duplicate', () => {
     const form = goalToForm(goals[0]!, TODAY);
     expect(errors(form, 'emergency')).toEqual([]);
     expect(errors({ ...form, name: 'emergency FUND' }, 'emergency')).toEqual([]);
     expect(errors({ ...form, name: 'Personal savings' }, 'emergency')).toEqual(['nameTaken']);
   });
 
-  it('con objetivo hace falta un monto mayor que 0', () => {
+  it('with a target, an amount greater than 0 is needed', () => {
     expect(errors(planned())).toEqual(['amount']);
     expect(errors(setTarget(planned(), '0'))).toEqual(['amount']);
     expect(errors(setTarget(planned(), '-100'))).toEqual(['amount']);
@@ -322,22 +322,22 @@ describe('validación', () => {
     expect(errors(setMonthly(planned(), '250'))).toEqual([]);
   });
 
-  it('con objetivo, el mes objetivo no puede quedar antes del de inicio (el mismo mes sí vale)', () => {
+  it('with a target, the target month cannot fall before the start month (the same month is fine)', () => {
     const form = setTarget(planned(), '1000');
     expect(errors(setEnd(form, '2026-09'))).toEqual(['months']);
     expect(errors(setStart(form, '2027-11'))).toEqual(['months']);
     expect(errors(setEnd(form, '2026-10'))).toEqual([]);
-    // Sin monto y con los meses al revés salen los dos.
+    // With no amount and the months reversed, both show up.
     expect(errors(setEnd(planned(), '2026-09'))).toEqual(['amount', 'months']);
     expect(errors({ ...setEnd(planned(), '2026-09'), name: '' })).toEqual(['name', 'amount', 'months']);
   });
 
-  it('sin objetivo, lo que haya en los campos del plan no importa', () => {
+  it('with no target, whatever is in the plan fields does not matter', () => {
     const form = { ...setEnd(planned(), '2026-09'), planned: false };
     expect(errors(form)).toEqual([]);
   });
 
-  it('un formulario válido es una meta que la capa de datos acepta', () => {
+  it('a valid form is a goal that the data layer accepts', () => {
     const forms = [
       { ...newGoalForm(TODAY, 'USD'), name: 'Car' },
       setTarget(planned(), '10000'),
@@ -352,21 +352,21 @@ describe('validación', () => {
   });
 });
 
-describe('lo que se guarda', () => {
-  it('sin objetivo: el nombre sin espacios sobrantes y el plan en null, aunque los campos tuvieran algo', () => {
+describe('what gets saved', () => {
+  it('with no target: the name without extra spaces and the plan as null, even if the fields held something', () => {
     expect(formToInput({ ...newGoalForm(TODAY, 'USD'), name: '  Car  ' }, 'USD')).toEqual({ name: 'Car', cur: 'USD', approxCur: null, monthly: null, start: null, end: null });
     expect(formToInput({ ...setTarget(planned(), '5000'), planned: false }, 'USD')).toEqual({ name: 'Car', cur: 'USD', approxCur: null, monthly: null, start: null, end: null });
   });
 
-  it('con objetivo: mensual, inicio y fin; el monto objetivo no se guarda', () => {
+  it('with a target: monthly, start and end; the target amount is not stored', () => {
     const form = setTarget(planned({ start: '2026-08', end: '2027-10' }), '45000');
     expect(formToInput(form, 'USD')).toEqual({ name: 'Car', cur: 'USD', approxCur: null, monthly: 3000, start: '2026-08', end: '2027-10' });
   });
 
-  it('quitar el objetivo de una meta que lo tenía manda los tres campos en null', () => {
+  it('removing the target from a goal that had one sends the three fields as null', () => {
     const form = { ...goalToForm(SEED_PLANNED_GOAL, TODAY), planned: false };
     expect(formToInput(form, 'USD')).toEqual({ name: 'Trip to Turkey', cur: 'USD', approxCur: null, monthly: null, start: null, end: null });
-    // Y al volver a marcar la casilla el plan que tenía sigue en el formulario.
+    // And on checking the checkbox again, the plan it had is still in the form.
     expect(formToInput({ ...form, planned: true }, 'USD')).toEqual({ name: 'Trip to Turkey', cur: 'USD', approxCur: null, monthly: 3000, start: '2026-08', end: '2027-10' });
   });
 });

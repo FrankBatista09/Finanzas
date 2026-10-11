@@ -1,6 +1,6 @@
-/* Estilos globales: los del <style> del prototipo y nada más.
-   A propósito no hay `* { box-sizing: border-box }`: los anchos de th/td del prototipo son de contenido
-   (width: 44px + padding), y cada input que lo necesita declara su propio border-box. */
+/* Global styles: those from the prototype's <style> and nothing else.
+   On purpose there is no `* { box-sizing: border-box }`: the prototype's th/td widths are content widths
+   (width: 44px + padding), and each input that needs it declares its own border-box. */
 
 body {
   margin: 0;

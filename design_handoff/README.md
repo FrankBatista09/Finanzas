@@ -1,92 +1,92 @@
-# Handoff: Finanzas personales (app web + exportación a Excel)
+# Handoff: Personal finances (web app + Excel export)
 
 ## Overview
-App personal de finanzas para un usuario en República Dominicana que cobra en USD y gasta en DOP. Permite:
-- Registrar transacciones del mes (fecha, descripción, lugar, categoría, método, monto, moneda, notas).
-- Llevar los gastos mensuales fijos (mismos conceptos cada mes, monto variable) con estado pagado/no pagado.
-- Registrar envíos USD → DOP (Remitly / PayPal) con su tasa; la tasa del mes es el promedio ponderado de esos envíos.
-- Ver en cada pantalla: dinero total (cuenta USA en USD + cuenta RD en DOP), presupuesto planeado del mes, usado, disponible, y una dona de presupuesto con el valor usado al centro.
-- Cerrar el mes: el mes queda en solo lectura como resumen y se crea el siguiente con los mismos gastos fijos sin pagar.
-- Ahorros: ingreso de cada mes, metas (Fondo de emergencia, Ahorro personal, Viaje a Turquía con 3,000 USD/mes hasta oct-2027) y aportes.
-- Exportar todo a un .xlsx con el mismo diseño (una hoja por mes + Ahorros + Config). Si no hay datos, se exporta la plantilla vacía.
-- Recibir transacciones desde un chat con Claude (el usuario le dicta "gasté X en Y" y Claude lo registra).
+Personal finance app for a user in the Dominican Republic who is paid in USD and spends in DOP. It lets the user:
+- Record the month's transactions (date, description, place, category, method, amount, currency, notes).
+- Keep track of the fixed monthly expenses (same items every month, variable amount) with a paid/unpaid status.
+- Record USD → DOP transfers (Remitly / PayPal) with their rate; the month rate is the weighted average of those transfers.
+- See on every screen: total money (US account in USD + DR account in DOP), the month's planned budget, used, available, and a budget donut with the used amount in the center.
+- Close the month: the month becomes a read-only summary and the next one is created with the same fixed expenses, unpaid.
+- Savings: each month's income, goals (Emergency fund, Personal savings, Trip to Turkey with 3,000 USD/month until Oct 2027) and contributions.
+- Export everything to an .xlsx with the same design (one sheet per month + Savings + Config). If there is no data, the empty template is exported.
+- Receive transactions from a chat with Claude (the user dictates "I spent X on Y" and Claude records it).
 
-Objetivo de despliegue: **Cloudflare Pages** (frontend) + **Pages Functions / Workers** (API) + **D1** (histórico).
+Deployment target: **Cloudflare Pages** (frontend) + **Pages Functions / Workers** (API) + **D1** (history).
 
 ## About the Design Files
-Los archivos en `referencia/` son **referencias de diseño hechas en HTML**: un prototipo que muestra el aspecto y el comportamiento esperados, no código de producción para copiar tal cual. La tarea es **recrear este diseño** en un proyecto nuevo. Stack recomendado (no hay codebase previa):
-- Frontend: React + Vite + TypeScript, desplegado en Cloudflare Pages.
-- API: Pages Functions (`/functions/api/*`) con binding a D1.
-- Estilos: CSS modules o Tailwind con los tokens de abajo. Todo se renderiza en el cliente; no hace falta SSR.
+The files in `referencia/` are **design references made in HTML**: a prototype that shows the expected look and behavior, not production code to copy as is. The task is to **recreate this design** in a new project. Recommended stack (there is no previous codebase):
+- Frontend: React + Vite + TypeScript, deployed on Cloudflare Pages.
+- API: Pages Functions (`/functions/api/*`) with a D1 binding.
+- Styles: CSS modules or Tailwind with the tokens below. Everything renders on the client; no SSR is needed.
 
-`referencia/excel-export.js` **sí es reutilizable**: genera el .xlsx sin dependencias (OOXML + zip sin compresión). Se puede portar a TypeScript y usar en el cliente o en un Worker.
+`referencia/excel-export.js`, however, **is reusable**: it generates the .xlsx with no dependencies (OOXML + uncompressed zip). It can be ported to TypeScript and used on the client or in a Worker.
 
 ## Fidelity
-**Alta fidelidad (hifi).** Colores, tipografía, espaciados e interacciones son finales. Recrear fiel al prototipo.
+**High fidelity (hifi).** Colors, typography, spacing and interactions are final. Recreate it true to the prototype.
 
 ## Screens / Views
 
-Layout general: fondo `#EFEEE8`; contenido centrado `max-width: 1320px`, padding `20px 24px 90px`, gap vertical 20px. Barra superior sticky oscura; barra de pestañas fija abajo (estilo pestañas de hoja de cálculo).
+General layout: background `#EFEEE8`; centered content `max-width: 1320px`, padding `20px 24px 90px`, vertical gap 20px. Dark sticky top bar; tab bar fixed at the bottom (spreadsheet-tab style).
 
-### Barra superior (todas las pantallas)
-- Fondo `#1D1F1C`, texto `#F4F3EE`, padding `10px 24px`, flex-wrap, gap `12px 20px`.
-- Izquierda: "Finanzas personales" (700, 16px) + subtítulo de estado (12px, `#A9ABA3`): "Mes en curso" / "Resumen del mes" / "Ahorros".
-- Selector de mes: botón ‹, `<select>` (min-width 190px, alto 30px, fondo `#2B2E29`, borde `#3A3D38`, radio 3px), botón ›. Opciones "Octubre 2026", con sufijo " · cerrado" en los meses cerrados.
-- Botón "Cargar Excel" (outline) y botón "Descargar Excel" (fondo `#2F7D52`, hover `#23613F`).
-- Chip "Tasa del mes · 1 USD = 58.76 DOP" (monoespaciada).
+### Top bar (all screens)
+- Background `#1D1F1C`, text `#F4F3EE`, padding `10px 24px`, flex-wrap, gap `12px 20px`.
+- Left: "Personal finances" (700, 16px) + status subtitle (12px, `#A9ABA3`): "Current month" / "Month summary" / "Savings".
+- Month select: ‹ button, `<select>` (min-width 190px, height 30px, background `#2B2E29`, border `#3A3D38`, radius 3px), › button. Options "October 2026", with the " · closed" suffix on closed months.
+- "Import Excel" button (outline) and "Download Excel" button (background `#2F7D52`, hover `#23613F`).
+- Chip "Month rate · 1 USD = 58.76 DOP" (monospaced).
 
-### Panel resumen (arriba en todas las pantallas)
-Grid `repeat(auto-fit, minmax(280px, 1fr))`, separado por líneas de 1px `#E3E1D8`, borde 1px, radio 4px, celdas fondo `#FFFEFA`, padding `18px 20px`.
-1. **Dinero total**: etiqueta (11px, 600, uppercase, tracking .06em, `#6B6D66`); total en DOP (mono 28px 600) = `cuentaUSA × tasa + cuentaRD`; "≈ X USD" (mono 13px, muted). Mini tabla editable: Cuenta USA (USD), Cuenta RD (DOP). Fila separada por borde punteado: "Ingreso del mes − usado" = `ingresoUSD × tasa − usado` (rojo si es negativo).
-2. **Dona** 168×168, r=64, grosor 20, hueco: segmentos en este orden: Fijos pagados `#2B3A33`, Transacciones `#2F7D52`, Fijos pendientes `#C9D3C9`, fondo/libre `#EBE9E1`. Escala = `max(presupuesto, usado + pendientes)`. Centro: etiqueta "USADO" + monto usado (mono 19px 600; rojo `#B23A2A` si se pasa del presupuesto) + "de 70,000 DOP". La leyenda va a la derecha con el valor de cada segmento.
-3. **Presupuesto del mes** (lista label/valor con separadores `#EEECE5`): Presupuesto planeado (input editable), Usado hasta hoy, Disponible (verde `#23613F` / rojo si < 0), Disponible tras fijos pendientes, Usado en USD.
+### Summary panel (at the top of every screen)
+Grid `repeat(auto-fit, minmax(280px, 1fr))`, separated by 1px lines `#E3E1D8`, 1px border, radius 4px, cells with background `#FFFEFA`, padding `18px 20px`.
+1. **Total money**: label (11px, 600, uppercase, tracking .06em, `#6B6D66`); total in DOP (mono 28px 600) = `usAccount × rate + drAccount`; "≈ X USD" (mono 13px, muted). Small editable table: US account (USD), DR account (DOP). Row separated by a dashed border: "Month income − used" = `incomeUSD × rate − used` (red if negative).
+2. **Donut** 168×168, r=64, thickness 20, hollow: segments in this order: Fixed paid `#2B3A33`, Transactions `#2F7D52`, Fixed pending `#C9D3C9`, background/free `#EBE9E1`. Scale = `max(budget, used + pending)`. Center: label "USED" + used amount (mono 19px 600; red `#B23A2A` if it goes over the budget) + "of 70,000 DOP". The legend goes on the right with the value of each segment.
+3. **Month budget** (label/value list with `#EEECE5` separators): Planned budget (editable input), Used so far, Available (green `#23613F` / red if < 0), Available after pending fixed, Used in USD.
 
-### Pantalla "Mes"
-- **Banner de mes cerrado** (solo en meses cerrados): fondo `#1D1F1C`. Muestra Ingreso, Gastado, Ahorrado y Vs. presupuesto, más el botón "Reabrir mes".
-- Fila flex-wrap con gap de 20px:
-  - **Gastos mensuales** (flex 1 1 600px): tabla con las columnas Pagado (checkbox, accent `#2F7D52`), Concepto, Día, Monto, Moneda (DOP/USD), DOP (calc), USD (calc) y eliminar ×. La fila final sirve para agregar (fondo `#F9F8F3`). La meta del encabezado dice "6 de 11 pagados · total 42,025.57 DOP".
-  - Columna derecha (flex 1 1 340px):
-    - **Por categoría**: barras horizontales (alto 8px). "Gastos fijos" va en `#2B3A33` y el resto en `#2F7D52`, ordenadas de mayor a menor.
-    - **Envíos USD → DOP**: tabla con Fecha, Vía (Remitly/PayPal), USD, Tasa y DOP (calc). Tiene fila para agregar.
-- **Historial de transacciones**, a todo el ancho: la fila para agregar va arriba, seguida de las filas ordenadas por fecha descendente. Columnas: Fecha, Descripción, Lugar, Categoría, Método, Monto, Mon., DOP, USD, Notas y ×. Ancho mínimo de 980px con scroll horizontal.
-- Caja punteada para cerrar el mes, con el texto "Al cerrar el mes se guarda este resumen y se crea Noviembre 2026…" y el botón "Cerrar Octubre 2026" (fondo `#1D1F1C`).
-- **Modal de cierre**: el título es "Cerrar Octubre 2026" y el texto explica que se creará el mes siguiente y pregunta si también se agrega al Excel. Tiene tres botones: Cancelar, "Solo en la página" y "Sí, agregar al Excel" (este cierra el mes y descarga el .xlsx).
+### "Month" screen
+- **Closed-month banner** (closed months only): background `#1D1F1C`. It shows Income, Spent, Saved and Vs. budget, plus the "Reopen month" button.
+- Flex-wrap row with a 20px gap:
+  - **Fixed monthly expenses** (flex 1 1 600px): table with the columns Paid (checkbox, accent `#2F7D52`), Item, Day, Amount, Currency (DOP/USD), DOP (calc), USD (calc) and delete ×. The last row is the add row (background `#F9F8F3`). The header meta reads "6 of 11 paid · total 42,025.57 DOP".
+  - Right column (flex 1 1 340px):
+    - **By category**: horizontal bars (height 8px). "Fixed expenses" is in `#2B3A33` and the rest in `#2F7D52`, sorted from largest to smallest.
+    - **Transfers USD → DOP**: table with Date, Via (Remitly/PayPal), USD, Rate and DOP (calc). It has an add row.
+- **Transaction history**, full width: the add row goes at the top, followed by the rows sorted by date in descending order. Columns: Date, Description, Place, Category, Method, Amount, Cur., DOP, USD, Notes and ×. Minimum width of 980px with horizontal scroll.
+- Dashed box for closing the month, with the text "Closing the month saves this summary and creates November 2026…" and the "Close October 2026" button (background `#1D1F1C`).
+- **Close-month dialog**: the title is "Close October 2026" and the text explains that the next month will be created and asks whether to add it to the Excel file too. It has three buttons: Cancel, "Only on the page" and "Yes, add to Excel" (this one closes the month and downloads the .xlsx).
 
-### Pantalla "Ahorros"
-- Tarjetas de metas en un grid `auto-fit minmax(260px,1fr)`. Cada tarjeta muestra el nombre, el tipo ("Aportes variables" o "3,000 USD / mes"), el total ahorrado en USD (mono 24px) y su equivalente en DOP.
-  - Turquía además tiene barra de progreso, "X% de 45,000 USD", la meta (oct 2027) y "Faltan N aportes · X USD por mes para llegar".
-- **Ingresos por mes**: tabla con Mes, Ingreso USD (editable), Tasa, Ingreso DOP, Ahorrado USD y % ahorro.
-- **Aportes**: tabla con Fecha, Meta, Monto, Moneda, USD y DOP. Tiene fila para agregar.
+### "Savings" screen
+- Goal cards in a grid `auto-fit minmax(260px,1fr)`. Each card shows the name, the type ("Variable contributions" or "3,000 USD / month"), the total saved in USD (mono 24px) and its equivalent in DOP.
+  - Turkey also has a progress bar, "X% of 45,000 USD", the target (Oct 2027) and "N contributions left · X USD per month to get there".
+- **Income by month**: table with Month, Income USD (editable), Rate, Income DOP, Saved USD and % saved.
+- **Contributions**: table with Date, Goal, Amount, Currency, USD and DOP. It has an add row.
 
-### Celdas tipo hoja de cálculo (común)
-- `th`: 11px, 600, uppercase, tracking .06em, `#6B6D66`, fondo `#F6F5F0`, borde inferior `#E3E1D8`, derecho `#EBE9E2`.
-- `td`: borde inferior `#EEECE5` y derecho `#F1EFE9`. El input ocupa toda la celda, sin borde y con fondo transparente, padding `7px 10px`.
-- Foco de una celda: `box-shadow: inset 0 0 0 2px #2F7D52` y fondo `#fff`, como la selección de Excel.
-- Los números van alineados a la derecha en mono 12.5px. En los meses cerrados todo es de solo lectura y se ocultan las filas de agregar y los botones ×.
+### Spreadsheet-style cells (shared)
+- `th`: 11px, 600, uppercase, tracking .06em, `#6B6D66`, background `#F6F5F0`, bottom border `#E3E1D8`, right `#EBE9E2`.
+- `td`: bottom border `#EEECE5` and right `#F1EFE9`. The input fills the whole cell, with no border and a transparent background, padding `7px 10px`.
+- Cell focus: `box-shadow: inset 0 0 0 2px #2F7D52` and background `#fff`, like the Excel selection.
+- Numbers are right-aligned in mono 12.5px. In closed months everything is read-only and the add rows and the × buttons are hidden.
 
 ## Interactions & Behavior
-- **Tasa del mes**: `Σ(usd × tasa) / Σ(usd)` de los envíos del mes. Si no hay envíos, se usa la del mes anterior más reciente; si tampoco hay, 58.76.
-- **Conversión**: si la moneda es USD, el monto en DOP es `monto × tasa del mes`, y el USD equivalente es `DOP / tasa`.
-- **Cálculos del mes**:
-  - `fijosPagados = Σ DOP de los fijos pagados`
-  - `transacciones = Σ DOP de las transacciones`
-  - `usado = fijosPagados + transacciones`
-  - `pendientes = Σ DOP de los fijos no pagados`
-  - `disponible = presupuesto − usado`
-  - `trasFijos = disponible − pendientes`
-- **Cerrar mes**: marca el mes como `closed`. Crea el mes siguiente si no existe, copiando los fijos con `paid=false` y el mismo presupuesto e ingreso; los envíos y las transacciones empiezan vacíos.
-- **Reabrir mes**: vuelve a poner `closed=false`.
-- **Agregar**: valida que tenga descripción y monto > 0 (transacción), concepto y monto > 0 (fijo), o USD y tasa > 0 (envío). Después de agregar limpia los campos y mantiene la fecha.
-- **Exportar Excel**: un libro con una hoja por mes ("Octubre 2026"), además de las hojas Ahorros y Config. Ver `referencia/excel-export.js` y `referencia/Finanzas Personales v3.xlsx`. Sin datos, sale la plantilla vacía del mes actual (`referencia/Plantilla vacia.xlsx`).
-- **Importar Excel**: lee el mismo formato y localiza las tablas por sus encabezados ("Concepto", "Fecha"+"Vía", "Fecha"+"Descripción"). Ver `importExcel` en el prototipo.
-- **Responsive**: las columnas pasan a una sola con flex-wrap, y las tablas tienen scroll horizontal.
+- **Month rate**: `Σ(usd × rate) / Σ(usd)` of the month's transfers. If there are no transfers, the rate of the most recent previous month is used; if there is none either, 58.76.
+- **Conversion**: if the currency is USD, the amount in DOP is `amount × month rate`, and the equivalent USD is `DOP / rate`.
+- **Month calculations**:
+  - `fixedPaid = Σ DOP of the paid fixed expenses`
+  - `transactions = Σ DOP of the transactions`
+  - `used = fixedPaid + transactions`
+  - `pending = Σ DOP of the unpaid fixed expenses`
+  - `available = budget − used`
+  - `afterFixed = available − pending`
+- **Close month**: marks the month as `closed`. Creates the next month if it does not exist, copying the fixed expenses with `paid=false` and the same budget and income; transfers and transactions start empty.
+- **Reopen month**: sets `closed=false` again.
+- **Add**: validates that it has a description and amount > 0 (transaction), an item and amount > 0 (fixed expense), or USD and rate > 0 (transfer). After adding, it clears the fields and keeps the date.
+- **Export Excel**: a workbook with one sheet per month ("October 2026"), plus the Savings and Config sheets. See `referencia/excel-export.js` and `referencia/Finanzas Personales v3.xlsx`. With no data, the output is the empty template for the current month (`referencia/Plantilla vacia.xlsx`).
+- **Import Excel**: reads the same format and locates the tables by their headers ("Item", "Date"+"Via", "Date"+"Description"). See `importExcel` in the prototype.
+- **Responsive**: the columns collapse into a single one with flex-wrap, and the tables scroll horizontally.
 
-## Arquitectura propuesta (Cloudflare)
-- **Pages**: el build de Vite. **Pages Functions** en `/functions/api/[[route]].ts` (o Hono).
-- **Auth**: Cloudflare Access delante de todo el sitio, porque es una app de un solo usuario. Para que Claude pueda escribir, usar un token Bearer aparte, guardado como secret (`API_TOKEN`), válido solo en las rutas `/api/ingest/*` y `/mcp`.
-- **D1**: es la fuente de verdad del histórico. El Excel queda como formato de exportación/importación.
+## Proposed architecture (Cloudflare)
+- **Pages**: the Vite build. **Pages Functions** in `/functions/api/[[route]].ts` (or Hono).
+- **Auth**: Cloudflare Access in front of the whole site, because it is a single-user app. So that Claude can write, use a separate Bearer token, stored as a secret (`API_TOKEN`), valid only on the `/api/ingest/*` and `/mcp` routes.
+- **D1**: it is the source of truth for the history. Excel remains an export/import format.
 
-### Esquema D1 (sugerido)
+### D1 schema (suggested)
 ```sql
 CREATE TABLE months (key TEXT PRIMARY KEY, budget_dop REAL, income_usd REAL, acc_usd REAL, acc_dop REAL, closed INTEGER DEFAULT 0, closed_at TEXT);
 CREATE TABLE fixed_expenses (id TEXT PRIMARY KEY, month_key TEXT NOT NULL REFERENCES months(key), name TEXT NOT NULL, day TEXT, amount REAL NOT NULL, currency TEXT NOT NULL CHECK (currency IN ('DOP','USD')), paid INTEGER DEFAULT 0, sort INTEGER);
@@ -97,57 +97,57 @@ CREATE TABLE contributions (id TEXT PRIMARY KEY, goal_id TEXT NOT NULL REFERENCE
 CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT);
 CREATE INDEX tx_month ON transactions(month_key, date);
 ```
-- Categorías: Comida, Supermercado, Transporte, Entretenimiento, Salud, Ropa, Hogar, Suscripciones, Educación, Viajes.
-- Métodos: Tarjeta, Transferencia, App del banco.
-- La transacción guarda el monto y la moneda originales. DOP/USD se calculan con la tasa del mes y no se persisten.
+- Categories: Food, Groceries, Transport, Entertainment, Health, Clothing, Home, Subscriptions, Education, Travel.
+- Methods: Card, Transfer, Bank app.
+- The transaction stores the original amount and currency. DOP/USD are calculated with the month rate and are not persisted.
 
-### API (sugerida)
-- `GET /api/months` (lista) · `GET /api/months/:key` (mes completo con fijos, transacciones y envíos) · `PATCH /api/months/:key`
-- `POST /api/months/:key/close` → cierra el mes y crea el siguiente (en una transacción D1 `batch`) · `POST /api/months/:key/reopen`
+### API (suggested)
+- `GET /api/months` (list) · `GET /api/months/:key` (full month with fixed expenses, transactions and transfers) · `PATCH /api/months/:key`
+- `POST /api/months/:key/close` → closes the month and creates the next one (in a D1 `batch` transaction) · `POST /api/months/:key/reopen`
 - CRUD: `/api/fixed`, `/api/transactions`, `/api/transfers`, `/api/contributions`, `/api/goals`
-- `GET /api/export.xlsx` → genera el libro con `excel-export` (o genéralo en el cliente).
-- `POST /api/import` → recibe el .xlsx y hace upsert.
+- `GET /api/export.xlsx` → generates the workbook with `excel-export` (or generate it on the client).
+- `POST /api/import` → receives the .xlsx and upserts.
 
-### Registro desde Claude
-Hay dos opciones, de menor a mayor esfuerzo:
-1. **Endpoint de ingesta**: `POST /api/ingest/transaction` con Bearer, que recibe `{date, description, place, category, method, amount, currency, notes}`. Si el mes no existe, lo crea. Claude llama a este endpoint a través de una herramienta o conector configurado por el usuario.
-2. **Servidor MCP remoto** en un Worker (`/mcp`) con estas herramientas:
+### Recording from Claude
+There are two options, from least to most effort:
+1. **Ingest endpoint**: `POST /api/ingest/transaction` with Bearer, which receives `{date, description, place, category, method, amount, currency, notes}`. If the month does not exist, it creates it. Claude calls this endpoint through a tool or connector configured by the user.
+2. **Remote MCP server** in a Worker (`/mcp`) with these tools:
    - `add_transaction`
    - `list_transactions(month)`
    - `month_summary(month)`
    - `add_transfer`
    - `mark_fixed_paid(name, month)`
 
-   Se agrega como conector personalizado en Claude. Así, en el chat, "gasté 850 en Uber hoy con tarjeta" se convierte en `add_transaction`.
+   It is added as a custom connector in Claude. That way, in the chat, "I spent 850 on Uber today by card" becomes `add_transaction`.
 
 ## State Management (frontend)
-- Datos del servidor con TanStack Query o similar: meses, mes seleccionado (fijos, transacciones, envíos), metas y aportes.
-- Estado local: mes seleccionado (en la URL, `?mes=2026-10`), pestaña (Mes/Ahorros), borradores de las filas de agregar y el modal de cierre.
-- Actualizaciones optimistas en las ediciones de celdas, con debounce de ~400ms en los inputs numéricos.
+- Server data with TanStack Query or similar: months, selected month (fixed expenses, transactions, transfers), goals and contributions.
+- Local state: selected month (in the URL, `?mes=2026-10`), tab (Month/Savings), drafts of the add rows and the close-month dialog.
+- Optimistic updates on cell edits, with a ~400ms debounce on numeric inputs.
 
 ## Design Tokens
-- **Colores**:
-  - Tinta `#1D1F1C`, texto secundario `#45473F`, muted `#6B6D66`, gris claro `#A9ABA3`
-  - Fondo de página `#EFEEE8`, superficie `#FFFEFA`, encabezado de tabla `#F6F5F0`, fila para agregar `#F9F8F3`
-  - Bordes `#E3E1D8`, `#EBE9E2`, `#EEECE5`, `#F1EFE9`, punteado `#CFCCC1`
-  - Acento `#2F7D52` (hover `#23613F`), oscuro de la dona `#2B3A33`, pendiente `#C9D3C9`, libre `#EBE9E1`
+- **Colors**:
+  - Ink `#1D1F1C`, secondary text `#45473F`, muted `#6B6D66`, light gray `#A9ABA3`
+  - Page background `#EFEEE8`, surface `#FFFEFA`, table header `#F6F5F0`, add row `#F9F8F3`
+  - Borders `#E3E1D8`, `#EBE9E2`, `#EEECE5`, `#F1EFE9`, dashed `#CFCCC1`
+  - Accent `#2F7D52` (hover `#23613F`), donut dark `#2B3A33`, pending `#C9D3C9`, free `#EBE9E1`
   - Error `#B23A2A`
-  - Barra oscura `#1D1F1C`, inputs de la barra `#2B2E29`, borde `#3A3D38`
-- **Tipografía**: UI en "Schibsted Grotesk" (400/500/600/700); números en "JetBrains Mono" (400/500/600) con `tabular-nums`.
-  - Escala: 11 (labels uppercase), 12–12.5 (meta y celdas numéricas), 13 (cuerpo y tablas), 15 (títulos de tarjeta, 600), 16 (marca), 19/24/28 (cifras).
-- **Espaciado**: gaps de 6/8/10/12/14/20px. Padding de tarjeta `14px 16px` y de celda `7px 10px`.
-- **Radios**: 3px en botones e inputs, 4px en tarjetas. Sin sombras, excepto el modal (`0 12px 40px rgba(0,0,0,.18)`).
+  - Dark bar `#1D1F1C`, bar inputs `#2B2E29`, border `#3A3D38`
+- **Typography**: UI in "Schibsted Grotesk" (400/500/600/700); numbers in "JetBrains Mono" (400/500/600) with `tabular-nums`.
+  - Scale: 11 (uppercase labels), 12–12.5 (meta and numeric cells), 13 (body and tables), 15 (card titles, 600), 16 (brand), 19/24/28 (figures).
+- **Spacing**: gaps of 6/8/10/12/14/20px. Card padding `14px 16px` and cell padding `7px 10px`.
+- **Radii**: 3px on buttons and inputs, 4px on cards. No shadows, except the dialog (`0 12px 40px rgba(0,0,0,.18)`).
 
 ## Assets
-Ninguno. No hay imágenes ni íconos; los glifos son texto (‹ › × +).
+None. There are no images or icons; the glyphs are text (‹ › × +).
 
 ## Files
-- `referencia/Finanzas Personales.html` es el prototipo autocontenido. Se abre en el navegador e incluye datos de ejemplo, importación y exportación de Excel, y el cierre de mes.
-- `referencia/excel-export.js` es el generador de .xlsx (expone `window.buildFinanzasXlsx(data)`). La forma de `data` está documentada en `downloadExcel()` del prototipo.
-- `referencia/Finanzas Personales v3.xlsx` es el Excel de ejemplo con 3 meses.
-- `referencia/Plantilla vacia.xlsx` es la plantilla vacía.
+- `referencia/Finanzas Personales.html` is the self-contained prototype. It opens in the browser and includes sample data, Excel import and export, and closing the month.
+- `referencia/excel-export.js` is the .xlsx generator (it exposes `window.buildFinanzasXlsx(data)`). The shape of `data` is documented in `downloadExcel()` in the prototype.
+- `referencia/Finanzas Personales v3.xlsx` is the sample Excel workbook with 3 months.
+- `referencia/Plantilla vacia.xlsx` is the empty template.
 
-## Datos de ejemplo
-Los gastos fijos son: Luz 1,337.15 DOP · Internet 2,699 · Seguro médico 5,640 · Pago nevera 15,000 · Claude 106 USD (día 5) · Google One 121.56 (día 16) · iCloud+ 604 (día 17) · Cluely 308 · Smartfit 1,550 (día 17) · Netflix 1,137.30 · Unicaribe 7,400.
+## Sample data
+The fixed expenses are: Electricity 1,337.15 DOP · Internet 2,699 · Health insurance 5,640 · Fridge payment 15,000 · Claude 106 USD (day 5) · Google One 121.56 (day 16) · iCloud+ 604 (day 17) · Cluely 308 · Smartfit 1,550 (day 17) · Netflix 1,137.30 · Unicaribe 7,400.
 
-Presupuesto mensual: 70,000 DOP. Tasa Remitly de referencia: 58.76.
+Monthly budget: 70,000 DOP. Reference Remitly rate: 58.76.

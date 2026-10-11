@@ -7,12 +7,12 @@ import { incomeRowViews, NO_NOTE } from './model';
 import type { RateNote } from './model';
 import { AHORROS } from './strings';
 
-// La suma del mes mezcla filas con tasas distintas: aquí solo se marca que alguna usó la de respaldo.
+// The month's sum mixes rows with different rates: here it is only flagged that some row used the default rate.
 const FALLBACK: RateNote = { hint: '', fallback: true };
 
 /**
- * "Income by month": una fila por mes con lo que entró, lo que se apartó y qué porcentaje es, en la moneda principal.
- * Aquí no se escribe nada: el ingreso de un mes es la suma de sus ingresos (la tarjeta "Income").
+ * "Income by month": one row per month with what came in, what was set aside and what percentage that is, in the main currency.
+ * Nothing is typed here: a month's income is the sum of its incomes (the "Income" card).
  */
 export function IncomeCard() {
   const { state, main } = useFinanzas();

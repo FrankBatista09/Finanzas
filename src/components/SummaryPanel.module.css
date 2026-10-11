@@ -1,5 +1,5 @@
-/* Celdas separadas por líneas de 1px (el fondo del grid asoma por el gap): tres en "Mes" (presupuesto, dona y
-   lista) y dos en "Savings" (dinero total y dona por cuenta). */
+/* Cells separated by 1px lines (the grid background shows through the gap): three in "Month" (budget, donut and
+   list) and two in "Savings" (total money and donut by account). */
 .panel {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
@@ -28,7 +28,7 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* ── Primera tarjeta: presupuesto (Mes) o dinero total (Savings) ──────────── */
+/* ── First card: budget (Month) or total money (Savings) ──────────────────── */
 
 .money {
   display: flex;
@@ -50,7 +50,7 @@
   font-weight: 500;
 }
 
-/* La línea "≈" en la segunda moneda. */
+/* The "≈" line in the second currency. */
 .totalSecond {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
@@ -59,32 +59,32 @@
   margin-top: 4px;
 }
 
-/* Aviso bajo el total: el oro no entra en él mientras no tenga precio. */
+/* Notice under the total: gold is left out of it while it has no price. */
 .totalNote {
   font-size: var(--fs-meta);
   color: var(--text-muted);
   margin-top: 4px;
 }
 
-/* Tabla de cuentas: una tabla de src/ui dentro de su propio marco (las partes del presupuesto, los saldos). */
+/* Accounts table: a src/ui table inside its own frame (the budget parts, the balances). */
 .accounts {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   overflow: hidden;
 }
 
-/* El precio del gramo de oro: su propio marco, separado de las cuentas. */
+/* The price of a gram of gold: its own frame, separate from the accounts. */
 .goldPrice {
   margin-top: 8px;
 }
 
-/* El marco ya cierra la tabla por abajo. */
+/* The frame already closes the table at the bottom. */
 .accounts tr:last-child > td {
   border-bottom: 0;
 }
 
-/* La columna del importe: ancho fijo para que el nombre de la cuenta se lleve el resto.
-   (Con .accounts delante para ganar a los estilos de celda de src/ui, cargue quien cargue antes.) */
+/* The amount column: fixed width so that the account name takes the rest.
+   (With .accounts in front to beat the cell styles of src/ui, whichever loads first.) */
 .accounts .amountCol {
   width: 132px;
 }
@@ -93,14 +93,14 @@
   font-weight: 500;
 }
 
-/* Columna del control "Hide": lo justo para su texto. */
+/* Column of the "Hide" control: just wide enough for its text. */
 .accounts .linkCol {
   width: 1%;
   white-space: nowrap;
   padding: 1px 8px;
 }
 
-/* Controles discretos de las cuentas (ocultar, mostrar, eliminar, desplegar las ocultas): texto atenuado, sin caja. */
+/* Discreet account controls (hide, show, delete, expand the hidden ones): muted text, no box. */
 .link {
   border: 0;
   padding: 0;
@@ -123,7 +123,7 @@
   outline-offset: 1px;
 }
 
-/* "+ Add account" / "+ Add account to budget": pegado al marco de su tabla (la celda separa sus piezas 14px). */
+/* "+ Add account" / "+ Add account to budget": tight against its table's frame (the cell spaces its pieces 14px apart). */
 .reveal {
   margin-top: -6px;
 }
@@ -187,7 +187,7 @@
   min-width: 80px;
 }
 
-/* Las partes del presupuesto que quedaron en negativo: una línea por cuenta, en el color de error. */
+/* The budget parts that ended up negative: one line per account, in the error color. */
 .overrun {
   margin: 0;
   padding: 0;
@@ -199,7 +199,7 @@
   color: var(--error);
 }
 
-/* "Leftover from last month": la cifra y, a su derecha, el botón para sumarla (o "added"). */
+/* "Leftover from last month": the figure and, to its right, the button to add it (or "added"). */
 .leftover {
   display: flex;
   flex-wrap: wrap;
@@ -234,8 +234,8 @@
   color: var(--text-muted);
 }
 
-/* "Budget history": una caja propia debajo del panel (dentro de la rejilla, una celda a todo el ancho impediría
-   que las columnas vacías se plegaran), con la tabla en el mismo marco que las cuentas. */
+/* "Budget history": a box of its own below the panel (inside the grid, a full-width cell would keep the empty
+   columns from collapsing), with the table in the same frame as the accounts. */
 .history {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -251,14 +251,14 @@
   color: var(--text-muted);
 }
 
-/* La nota del movimiento o la descripción del ingreso, detrás de su tipo. */
+/* The note of the movement or the description of the income, after its type. */
 .historyNote {
   margin-left: 8px;
   font-size: var(--fs-meta);
   color: var(--text-muted);
 }
 
-/* ── Dona (de presupuesto o de dinero por cuenta) ─────────────────────────── */
+/* ── Donut (budget or money by account) ───────────────────────────────────── */
 
 .ringCell {
   display: flex;
@@ -274,7 +274,7 @@
   flex: none;
 }
 
-/* Los segmentos empiezan arriba (las 12) y avanzan en el sentido del reloj. */
+/* The segments start at the top (12 o'clock) and advance clockwise. */
 .donutSvg {
   transform: rotate(-90deg);
 }
@@ -343,14 +343,14 @@
   box-sizing: border-box;
 }
 
-/* El nombre puede ser el de una cuenta, que lo escribe el usuario: si es largo, se parte. */
+/* The name can be an account's, which the user types: if it is long, it wraps. */
 .legendName {
   flex: 1;
   min-width: 0;
   overflow-wrap: anywhere;
 }
 
-/* ── Presupuesto del mes ──────────────────────────────────────────────────── */
+/* ── Month budget ─────────────────────────────────────────────────────────── */
 
 .budget {
   display: flex;
@@ -375,7 +375,7 @@
   color: var(--text-soft);
 }
 
-/* "Used in <segunda moneda>". */
+/* "Used in <second currency>". */
 .rowSecond {
   border-bottom: 0;
   color: var(--text-muted);

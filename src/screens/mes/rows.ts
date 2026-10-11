@@ -1,5 +1,5 @@
-// Orden, listas y formatos de las tablas de la hoja "Mes": lo que renderVals() del prototipo prepara antes de pintar.
-// Funciones puras, sin React y sin textos: los que dependen del idioma están en strings.ts.
+// Order, lists and formats of the "Month" sheet's tables: what the prototype's renderVals() prepares before painting.
+// Pure functions, no React and no strings: the ones that depend on the language are in strings.ts.
 
 import type { TransferFee } from '../../../shared/calc';
 import { CREDIT_CARD_METHOD, METHODS, VIAS } from '../../../shared/constants';
@@ -8,33 +8,33 @@ import { firstDay } from '../../../shared/month';
 import type { Account, CreditCard, Currency, FixedExpense, ISODate, Month, MonthKey, MonthRate, Transaction } from '../../../shared/types';
 import type { AccountOption, Money, PairRate } from '../../store';
 
-// Topes de texto que exige el servidor. La celda no deja pasarse: así el guardado no se rechaza
-// (y se deshace) por un texto demasiado largo.
+// Text length limits the server enforces. The cell does not let you go past them: that way the save is not rejected
+// (and undone) because of a text that is too long.
 export { MAX_LEN } from '../../../shared/constants';
 
-/** Gastos fijos en el orden de la hoja (`sort`). Los empates conservan el orden en que llegaron. */
+/** Fixed expenses in the sheet's order (`sort`). Ties keep the order they arrived in. */
 export function sortFixed<T extends Pick<FixedExpense, 'sort'>>(rows: readonly T[]): T[] {
   return [...rows].sort((a, b) => a.sort - b.sort);
 }
 
 /**
- * Transacciones de la más reciente a la más antigua. El orden es estable: las de un mismo día quedan como
- * estaban (la recién agregada, debajo de las de su misma fecha), igual que en el prototipo.
+ * Transactions from newest to oldest. The order is stable: those of the same day stay as they
+ * were (the one just added, below the ones with its same date), same as in the prototype.
  */
 export function sortTxDesc<T extends Pick<Transaction, 'date'>>(rows: readonly T[]): T[] {
-  // Las fechas ISO se ordenan bien como texto; se comparan sin localeCompare para no depender del locale.
+  // ISO dates sort correctly as text; they are compared without localeCompare so as not to depend on the locale.
   return [...rows].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
 }
 
 /**
- * Una fila del historial: una transacción (se edita y se borra) o la comisión de un envío (calc.transferFees),
- * que no es una fila guardada: se ve, cuenta en los totales y cambia con su envío.
+ * A history row: a transaction (it can be edited and deleted) or the fee of a transfer (calc.transferFees),
+ * which is not a stored row: it is shown, counts in the totals and changes with its transfer.
  */
 export type HistoryRow = { kind: 'tx'; key: string; date: ISODate; tx: Transaction } | { kind: 'fee'; key: string; date: ISODate; fee: TransferFee };
 
 /**
- * El historial del mes: las transacciones y las comisiones de los envíos juntas, de la más reciente a la más
- * antigua. Con la misma fecha van primero las transacciones, en su orden, y después las comisiones.
+ * The month's history: the transactions and the transfer fees together, from newest to
+ * oldest. On the same date the transactions go first, in their order, and then the fees.
  */
 export function historyRows(tx: readonly Transaction[], fees: readonly TransferFee[]): HistoryRow[] {
   return sortTxDesc<HistoryRow>([
@@ -44,9 +44,9 @@ export function historyRows(tx: readonly Transaction[], fees: readonly TransferF
 }
 
 /**
- * La comisión del envío más reciente hecho por esa vía (sin distinguir mayúsculas), en este mes o en los
- * anteriores: es la que se propone para el siguiente, porque cada servicio suele cobrar siempre lo mismo. 0 si
- * no hay ninguno. "Más reciente" es por fecha; con la misma fecha, el que se registró después.
+ * The fee of the most recent transfer made through that via (case-insensitive), in this month or in earlier
+ * ones: it is the one suggested for the next transfer, because each service usually charges the same every time. 0 if
+ * there is none. "Most recent" is by date; on the same date, the one recorded later.
  */
 export function lastFee(months: Readonly<Record<MonthKey, Pick<Month, 'transfers'>>>, monthKey: MonthKey, via: string): number {
   const wanted = via.trim().toLowerCase();
@@ -60,18 +60,18 @@ export function lastFee(months: Readonly<Record<MonthKey, Pick<Month, 'transfers
   return hit?.fee ?? 0;
 }
 
-// ── Tarjetas de crédito en los selectores ────────────────────────────────────
+// ── Credit cards in the selects ──────────────────────────────────────────────
 
-/** Valor de «Pagar con» para una cuenta; con tarjeta es `card:<id>`. */
+/** "Pay with" value for an account; with a credit card it is `card:<id>`. */
 export const PAY_ACCOUNT = 'account';
 const PAY_CARD = 'card:';
 
-/** El valor del selector «Pagar con» de un gasto fijo: la tarjeta que tiene, o la primera activa si no dice cuál. */
+/** The value of a fixed expense's "Pay with" select: its credit card, or the first active one if it does not say which. */
 export function payWithValue(onCard: boolean, cardId: string | null | undefined, firstActive: string | null): string {
   return onCard ? `${PAY_CARD}${cardId ?? firstActive ?? ''}` : PAY_ACCOUNT;
 }
 
-/** Lo contrario: el selector elegido pasa a `onCard` y a la tarjeta (sin tarjeta cuando es una cuenta). */
+/** The reverse: the chosen select value becomes `onCard` and the credit card (no credit card when it is an account). */
 export function parsePayWith(value: string): { onCard: boolean; cardId?: string } {
   return value.startsWith(PAY_CARD) ? { onCard: true, cardId: value.slice(PAY_CARD.length) } : { onCard: false };
 }
@@ -81,26 +81,26 @@ export interface CardOption {
   label: string;
 }
 
-/** Las tarjetas activas por su nombre; la que ya tiene la fila se queda aunque esté apagada, para que el selector no mienta. */
+/** The active credit cards by name; the one the row already has stays even if it is off, so the select does not lie. */
 export function cardOptions(cards: readonly CreditCard[], current?: string | null): CardOption[] {
   return [...cards].filter((c) => c.active || c.id === current).sort((a, b) => a.sort - b.sort).map((c) => ({ value: c.id, label: c.name }));
 }
 
-/** «Pagar con»: la cuenta y una opción por tarjeta activa (más la de la fila, si está apagada). */
+/** "Pay with": the account and one option per active credit card (plus the row's own, if it is off). */
 export function payWithOptions(accountLabel: string, cards: readonly CreditCard[], current?: string | null): CardOption[] {
   return [{ value: PAY_ACCOUNT, label: accountLabel }, ...cardOptions(cards, current).map((o) => ({ value: `${PAY_CARD}${o.value}`, label: o.label }))];
 }
 
-/** Los métodos de pago que se ofrecen: sin ninguna tarjeta activa no tiene sentido «Credit card» (salvo que la fila ya lo tenga). */
+/** The payment methods offered: with no active credit card, "Credit card" makes no sense (unless the row already has it). */
 export function methodChoices(hasCard: boolean, current?: string): readonly string[] {
   const base: readonly string[] = hasCard ? METHODS : METHODS.filter((m) => m !== CREDIT_CARD_METHOD);
   return current === undefined || base.includes(current) ? base : [...base, current];
 }
 
 /**
- * Opciones de un desplegable de categoría o método. Si la fila trae un valor que no está en la lista
- * (datos importados del Excel o registrados por Claude), se agrega al final: sin eso el <select> mostraría
- * la primera opción y el valor real cambiaría sin que nadie lo pidiera.
+ * Options of a category or method select. If the row comes with a value that is not in the list
+ * (data imported from Excel or recorded by Claude), it is appended at the end: without that the <select> would show
+ * the first option and the real value would change without anyone asking for it.
  */
 export function optionsWith(base: readonly string[], value: string): readonly string[] {
   return base.includes(value) ? base : [...base, value];
@@ -112,23 +112,23 @@ export interface LabelledOption {
 }
 
 /**
- * Las opciones como las pide CellSelect cuando lo que se ve no es lo que se guarda: el valor es el nombre
- * canónico (en inglés) y el texto, su nombre en el idioma actual (catLabel / methodLabel de useI18n).
- * Un valor de fuera de la lista no tiene traducción y sale tal cual.
+ * The options as CellSelect wants them when what is shown is not what is stored: the value is the canonical
+ * name (in English) and the text, its name in the current language (catLabel / methodLabel from useI18n).
+ * A value from outside the list has no translation and is shown as is.
  */
 export function labelled(values: readonly string[], label: (value: string) => string): LabelledOption[] {
   return values.map((value) => ({ value, label: label(value) }));
 }
 
-// ── Importes y cuentas de una fila ───────────────────────────────────────────
+// ── Amounts and accounts of a row ────────────────────────────────────────────
 
-/** Una fila con sus dos columnas calculadas: el importe en la moneda principal y en la segunda. */
+/** A row with its two computed columns: the amount in the main currency and in the second one. */
 export type WithMoney<T> = { row: T } & Money;
 
 /**
- * Las filas con sus importes ya convertidos (`inBoth` de useFinanzas()): una fila con fecha propia (una
- * transacción), con la tasa vigente en su fecha; una sin fecha (un gasto fijo), con la última del mes. A una fila
- * memorizada se le pasan las dos cifras y no la función, que cambia con cada cambio de estado.
+ * The rows with their amounts already converted (`inBoth` from useFinanzas()): a row with its own date (a
+ * transaction), at the rate in effect on its date; one without a date (a fixed expense), at the month's last one. A
+ * memoized row gets the two figures and not the function, which changes with every state change.
  */
 export function withMoney<T extends { amount: number; cur: Currency; date?: ISODate }>(
   rows: readonly T[],
@@ -138,21 +138,21 @@ export function withMoney<T extends { amount: number; cur: Currency; date?: ISOD
 }
 
 /**
- * Las opciones del selector de cuenta de una fila: las visibles (`base`, la misma lista para todas las filas, así
- * las memorizadas no se repintan) y, solo si la cuenta de la fila no está entre ellas porque se ocultó después,
- * esa detrás con su nombre: tiene que seguir viéndose en vez de cambiarse sola por otra.
+ * The options of a row's account select: the visible ones (`base`, the same list for every row, so the
+ * memoized ones do not repaint) and, only if the row's account is not among them because it was hidden later,
+ * that one after them with its name: it has to stay visible instead of changing to another on its own.
  */
 export function rowAccountOptions(base: readonly AccountOption[], accounts: readonly Account[], id: string): readonly AccountOption[] {
   if (!id || base.some((o) => o.value === id)) return base;
   return [...base, { value: id, label: accounts.find((a) => a.id === id)?.name ?? '—' }];
 }
 
-// ── Tasas del mes ────────────────────────────────────────────────────────────
+// ── Month rates ──────────────────────────────────────────────────────────────
 
-// usedCurrencies y shownRates viven en store/view.ts: la barra superior necesita saber qué tasas hacen falta.
+// usedCurrencies and shownRates live in store/view.ts: the top bar needs to know which rates are needed.
 export { accountsInUse, currenciesInUse, hasActivity, shownRates, usedCurrencies } from '../../store/view';
 
-/** No hace falta ninguna tasa: todo el dinero está en una moneda y no hay ninguna escrita este mes que enseñar. */
+/** No rate is needed: all the money is in one currency and there is no rate typed this month to show. */
 export function noRatesNeeded(shown: readonly PairRate[]): boolean {
   return shown.length === 0;
 }
@@ -161,31 +161,31 @@ const samePair = (r: { from: Currency; to: Currency }, from: Currency, to: Curre
   (r.from === from && r.to === to) || (r.from === to && r.to === from);
 
 /**
- * Una fila de la tarjeta "Tasas del mes".
- *  typed     una tasa escrita en este mes, con su fecha: se corrige y se quita.
- *  resolved  la tasa vigente de un par que no tiene ninguna escrita en este mes (valor de respaldo, envíos, cruce
- *            o un mes anterior): no hay nada guardado que quitar; escribir en ella crea la del par, desde `date`.
+ * A row of the "Month rates" card.
+ *  typed     a rate typed in this month, with its date: it can be corrected and removed.
+ *  resolved  the rate in effect for a pair that has none typed in this month (default value, transfers, crossed rate
+ *            or an earlier month): nothing is stored to remove; typing in it creates the pair's rate, from `date`.
  */
 export type RateRow =
   | { kind: 'typed'; key: string; from: Currency; to: Currency; rate: number; date: ISODate }
   | { kind: 'resolved'; key: string; from: Currency; to: Currency; rate: number; date: ISODate; info: PairRate };
 
 /**
- * La fecha que se propone para una tasa nueva de ese par: `draftDate` (hoy si el mes es el actual; si no, su
- * primer día) cuando el par ya tiene una tasa escrita vigente; si no tiene ninguna, el primer día del mes, para
- * que la tasa cubra también las filas anteriores de este mes. `rates` son las de useFinanzas().
+ * The date suggested for a new rate of that pair: `draftDate` (today if the month is the current one; otherwise its
+ * first day) when the pair already has a typed rate in effect; if it has none, the first day of the month, so
+ * that the rate also covers this month's earlier rows. `rates` are the ones from useFinanzas().
  */
 export function newRateDate(from: Currency, to: Currency, rates: readonly PairRate[], monthKey: MonthKey, draftDate: ISODate): ISODate {
-  // RateInfo.date solo viene cuando la tasa vigente es una escrita (de este mes o de uno anterior).
+  // RateInfo.date is only set when the rate in effect is a typed one (from this month or an earlier one).
   const typed = rates.find((r) => samePair(r, from, to))?.date ?? null;
   return typed === null ? firstDay(monthKey) : draftDate;
 }
 
 /**
- * Las filas de la tarjeta: por cada par que se ve (`shown`, en su orden), sus tasas escritas en este mes por
- * fecha (las de una misma fecha, como llegaron) o, si no tiene ninguna, la vigente con su origen. La clave de una
- * fila es su par y su fecha: al escribir en una fila 'resolved' aparece en su sitio la 'typed' con esa misma
- * clave, y el campo en el que se está escribiendo no se desmonta.
+ * The card's rows: for each pair shown (`shown`, in its order), its rates typed in this month by
+ * date (those with the same date, as they arrived) or, if it has none, the one in effect with its source. A row's
+ * key is its pair and its date: typing in a 'resolved' row makes the 'typed' one with that same key appear in its
+ * place, and the field being typed in does not unmount.
  */
 export function rateRows(
   shown: readonly PairRate[],
@@ -204,17 +204,17 @@ export function rateRows(
 }
 
 /**
- * Una tasa como texto: dos decimales, como en toda la app. Una menor que 1 (1 DOP = 0.0170 USD) lleva cuatro,
- * como en la barra superior: con dos no diría nada.
+ * A rate as text: two decimals, as in the whole app. One below 1 (1 DOP = 0.0170 USD) gets four,
+ * as in the top bar: with two it would say nothing.
  */
 export function showRate(rate: number): string {
   return rate > 0 && rate < 1 ? rate.toFixed(4) : fRate(rate);
 }
 
 /**
- * Sugerencias para la vía de un envío: primero las de siempre (VIAS) y después las que ya se usaron en este mes
- * y en los anteriores, de la más reciente a la más antigua. La vía es texto libre; esto solo ahorra escribirla.
- * No se repiten aunque cambien las mayúsculas ("paypal" no se ofrece al lado de "PayPal").
+ * Suggestions for a transfer's via: first the usual ones (VIAS) and then the ones already used in this month
+ * and in earlier ones, from newest to oldest. The via is free text; this only saves typing it.
+ * They are not repeated even if the capitalization differs ("paypal" is not offered next to "PayPal").
  */
 export function viaSuggestions(months: Readonly<Record<MonthKey, Pick<Month, 'transfers'>>>, monthKey: MonthKey): string[] {
   const seen = new Set<string>();
@@ -227,7 +227,7 @@ export function viaSuggestions(months: Readonly<Record<MonthKey, Pick<Month, 'tr
     out.push(text);
   };
   VIAS.forEach(offer);
-  // Las claves 'YYYY-MM' se ordenan bien como texto.
+  // 'YYYY-MM' keys sort correctly as text.
   const keys = Object.keys(months)
     .filter((key) => key <= monthKey)
     .sort()
@@ -236,27 +236,27 @@ export function viaSuggestions(months: Readonly<Record<MonthKey, Pick<Month, 'tr
   return out;
 }
 
-/** '2026-10-02' → '02/10' (columna "Fecha" de los envíos). */
+/** '2026-10-02' → '02/10' ("Date" column of the transfers). */
 export function shortDate(date: ISODate): string {
   return `${date.slice(8)}/${date.slice(5, 7)}`;
 }
 
-/** Cómo se nombra un envío en las etiquetas de sus celdas: "Remitly 02/10". */
+/** How a transfer is named in the labels of its cells: "Remitly 02/10". */
 export function transferName(t: { via: string; date: ISODate }): string {
   return `${t.via} ${shortDate(t.date)}`.trim();
 }
 
 /**
- * La tasa dentro de su campo: con dos decimales al menos, como en el resto de la hoja (58.7 → '58.70'),
- * pero sin recortar los que el usuario haya escrito de más (58.755 se queda en '58.755').
+ * The rate inside its field: with at least two decimals, as in the rest of the sheet (58.7 → '58.70'),
+ * but without trimming the extra ones the user typed (58.755 stays as '58.755').
  */
 export function rateText(rate: number): string {
   const two = fRate(rate);
-  // Un valor no finito no llega del campo (parseAmount lo deja en 0); por si acaso, sale como lo pinta fRate.
+  // The field never yields a non-finite value (parseAmount turns it into 0); just in case, it is shown as fRate paints it.
   return !Number.isFinite(rate) || Number(two) === rate ? two : String(rate);
 }
 
-/** Ancho de la barra de una categoría: su parte del valor mayor (`MonthCalc.catMax`, que nunca es 0). */
+/** Width of a category's bar: its share of the largest value (`MonthCalc.catMax`, which is never 0). */
 export function barWidth(value: number, max: number): string {
   return `${(value / max) * 100}%`;
 }

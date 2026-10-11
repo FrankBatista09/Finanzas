@@ -1,5 +1,5 @@
-// Tasa propia por ingreso y por aporte, y la cuenta de la que sale un aporte: cifras calculadas a mano sobre los
-// datos de ejemplo (1 USD = 58.76 DOP en octubre de 2026; moneda principal DOP).
+// Own rate per income and per contribution, and the account a contribution comes out of: figures calculated by hand on
+// the sample data (1 USD = 58.76 DOP in October 2026; main currency DOP).
 
 import { describe, expect, it } from 'vitest';
 import { balances, contribIn, goalProgress, incomeInMonth, incomeIn, incomeRows, ownRate, savedInMonth } from './calc';
@@ -8,18 +8,18 @@ import type { AppState } from './types';
 
 const balanceOf = (s: AppState, id: string) => balances(s, '2026-10').accounts.find((a) => a.account.id === id)!.balance;
 
-describe('ingresos con tasa propia', () => {
-  it('la tasa propia manda en la columna principal, en el total del mes y en "Income by month"', () => {
+describe('incomes with their own rate', () => {
+  it('its own rate wins in the main-currency column, in the month total and in "Income by month"', () => {
     const s = seedState();
     expect(incomeInMonth(s, '2026-10')).toBeCloseTo(5800 * 58.76, 6);
     s.incomes.find((i) => i.id === 'seed-in-3')!.rate = 60;
     expect(incomeInMonth(s, '2026-10')).toBeCloseTo(5800 * 60, 6);
     expect(incomeRows(s).find((r) => r.key === '2026-10')!.income).toBeCloseTo(5800 * 60, 6);
-    // Los otros meses no cambian.
+    // The other months do not change.
     expect(incomeInMonth(s, '2026-09')).toBeCloseTo(339731.22, 2);
   });
 
-  it('rate null o ausente es la automática; en la moneda principal (o en oro) la tasa no cuenta', () => {
+  it('rate null or absent is the automatic one; in the main currency (or in gold) the rate does not count', () => {
     const s = seedState();
     const auto = incomeInMonth(s, '2026-10');
     s.incomes[2]!.rate = null;
@@ -32,7 +32,7 @@ describe('ingresos con tasa propia', () => {
     expect(ownRate(s, { cur: 'USD', rate: 60 })).toBe(60);
   });
 
-  it('solo gobierna la conversión a la moneda principal: saldos y el presupuesto del ingreso siguen la tasa de su fecha', () => {
+  it('it only governs the conversion to the main currency: balances and the budget of the income follow the rate of its date', () => {
     const s = seedState();
     const before = balanceOf(s, 'dr');
     s.incomes.push({ id: 'x', date: '2026-10-09', desc: '', accountId: 'dr', amount: 100, cur: 'USD', budget: true, rate: 70 });
@@ -40,13 +40,13 @@ describe('ingresos con tasa propia', () => {
     s.incomes.at(-1)!.rate = null;
     expect(balanceOf(s, 'dr')).toBe(withRate);
     expect(withRate).toBeCloseTo(before + 100 * 58.76, 6);
-    // Hacia otra moneda que no es la principal, la tasa propia tampoco entra.
+    // Toward another currency that is not the main one, its own rate does not come into play either.
     expect(incomeIn(s, { ...s.incomes.at(-1)!, cur: 'USD', rate: 70 }, 'TRY')).toBeCloseTo(incomeIn(s, { ...s.incomes.at(-1)!, cur: 'USD', rate: null }, 'TRY'), 8);
   });
 });
 
-describe('aportes con tasa propia', () => {
-  it('hacia la moneda principal usa la tasa propia; la meta en la principal recibe el monto ya convertido', () => {
+describe('contributions with their own rate', () => {
+  it('toward the main currency it uses its own rate; a goal in the main currency receives the amount already converted', () => {
     const s = seedState();
     s.goals.push({ id: 'dop', name: 'Pesos', cur: 'DOP', monthly: null, start: null, end: null, approxCur: null, sort: 9 });
     s.contribs = [{ id: 'a', goalId: 'dop', date: '2026-10-10', amount: 100, cur: 'USD', rate: 60 }];
@@ -55,7 +55,7 @@ describe('aportes con tasa propia', () => {
     expect(savedInMonth(s, '2026-10')).toBe(6000);
   });
 
-  it('meta en otra moneda: la meta suma el monto tal cual y su valor en la principal queda fijo en la tasa propia', () => {
+  it('goal in another currency: the goal adds the amount as is and its value in the main currency stays fixed at its own rate', () => {
     const s = seedState();
     const emergency = s.goals.find((g) => g.id === 'emergency')!;
     s.contribs = [
@@ -64,14 +64,14 @@ describe('aportes con tasa propia', () => {
     ];
     const p = goalProgress(s, emergency);
     expect(p.saved).toBe(300);
-    // 100 × 60 fijo + 200 × 58.76 (la tasa del mes en curso).
+    // 100 × 60 fixed + 200 × 58.76 (the rate of the current month).
     expect(p.savedMain).toBeCloseTo(6000 + 200 * 58.76, 6);
-    // Sin tasa propia es lo de siempre.
+    // Without its own rate it is the usual.
     s.contribs[0]!.rate = null;
     expect(goalProgress(s, emergency).savedMain).toBeCloseTo(300 * 58.76, 6);
   });
 
-  it('tercera moneda: la meta se convierte como siempre; solo contribución → principal usa la tasa propia', () => {
+  it('third currency: the goal is converted as usual; only contribution → main currency uses its own rate', () => {
     const s = seedState();
     s.months['2026-10']!.rates.push({ from: 'USD', to: 'TRY', rate: 40, date: '2026-10-01' });
     s.goals.push({ id: 'try', name: 'Lira', cur: 'TRY', monthly: null, start: null, end: null, approxCur: null, sort: 9 });
@@ -82,27 +82,27 @@ describe('aportes con tasa propia', () => {
   });
 });
 
-describe('cuenta de origen de un aporte', () => {
-  it('resta de su saldo, en la moneda de la cuenta y con la tasa de la fecha del aporte', () => {
+describe('origin account of a contribution', () => {
+  it('it subtracts from its balance, in the currency of the account and with the rate of the contribution date', () => {
     const s = seedState();
     const dr = balanceOf(s, 'dr');
     const us = balanceOf(s, 'us');
     s.contribs = [{ id: 'a', goalId: 'emergency', date: '2026-10-10', amount: 100, cur: 'USD', accountId: 'dr' }];
     expect(balanceOf(s, 'dr')).toBeCloseTo(dr - 100 * 58.76, 6);
-    // En la misma moneda no se convierte.
+    // In the same currency there is no conversion.
     s.contribs[0]!.accountId = 'us';
     expect(balanceOf(s, 'us')).toBeCloseTo(us - 100, 8);
     expect(balanceOf(s, 'dr')).toBeCloseTo(dr, 8);
   });
 
-  it('con tasa propia, el aporte hacia una cuenta en la moneda principal resta a esa tasa; sin cuenta no mueve nada', () => {
+  it('with its own rate, a contribution toward a main-currency account subtracts at that rate; without an account it moves nothing', () => {
     const s = seedState();
     const dr = balanceOf(s, 'dr');
     s.contribs = [{ id: 'a', goalId: 'emergency', date: '2026-10-10', amount: 100, cur: 'USD', accountId: 'dr', rate: 60 }];
     expect(balanceOf(s, 'dr')).toBeCloseTo(dr - 6000, 8);
     s.contribs[0]!.accountId = null;
     expect(balanceOf(s, 'dr')).toBeCloseTo(dr, 8);
-    // Un aporte posterior al mes que se mira no cuenta todavía.
+    // A contribution later than the month being viewed does not count yet.
     s.contribs[0]!.accountId = 'dr';
     s.contribs[0]!.date = '2026-11-02';
     expect(balanceOf(s, 'dr')).toBeCloseTo(dr, 8);

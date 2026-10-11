@@ -15,7 +15,7 @@ import { MAX_LEN, rowAccountOptions } from './rows';
 import { MES } from './strings';
 import styles from './TransactionsCard.module.css';
 
-/** Lo que MesScreen guarda para que el enlace de "Transaction history" pueda abrir esta tarjeta aunque no se vea. */
+/** What MesScreen holds so the link in "Transaction history" can open this card even when it is not visible. */
 export interface OutsideAdding {
   control: AddRowControl;
   draft: OutsideDraft;
@@ -28,14 +28,14 @@ export function useOutsideAdding(): OutsideAdding {
   return { control, draft, setDraft };
 }
 
-/** La tarjeta se ve cuando el mes tiene alguno o cuando se abre su fila de agregar; si no, no existe (sin tabla vacía). */
+/** The card shows when the month has any or when its add row is open; otherwise it does not exist (no empty table). */
 export function outsideCardVisible(count: number, adding: OutsideAdding): boolean {
   return count > 0 || adding.control.open;
 }
 
 /**
- * "Outside budget": gastos que salen de una cuenta (le restan al saldo como una transacción) pero no son parte del
- * presupuesto: no cuentan en lo usado, lo disponible ni las categorías. La cabecera dice cuántos hay y cuánto suman.
+ * "Outside budget": expenses that come out of an account (they reduce its balance like a transaction) but are not part
+ * of the budget: they do not count toward used, available or the categories. The header gives their count and total.
  */
 export function OutsideCard({ adding: { control, draft, setDraft } }: { adding: OutsideAdding }) {
   const { state, monthKey, month, main, second, inBoth, accounts, defaultAccount, accountOptions, readOnly, draftDate, actions } = useFinanzas();
@@ -114,7 +114,7 @@ export function OutsideCard({ adding: { control, draft, setDraft } }: { adding: 
                 />
               </Td>
               <Td kind="edit">
-                {/* Mientras no se toque, la moneda es la de la cuenta elegida. */}
+                {/* Until it is touched, the currency is that of the chosen account. */}
                 <CellSelect
                   value={draftCurrency(draft, ctx)}
                   options={CURRENCIES}
@@ -233,7 +233,7 @@ const OutsideRow = memo(function OutsideRow({ row, inMain, inSecond, accounts, r
             >
               ↖
             </button>
-            <DeleteButton onClick={() => actions.removeOutside(row.id)} label={t('deleteNamed', named)} />
+            <DeleteButton kind="kindOutsideExpense" item={`${row.name} · ${f2(row.amount)} ${row.cur}`} onConfirm={() => actions.removeOutside(row.id)} label={t('deleteNamed', named)} />
           </>
         )}
       </Td>

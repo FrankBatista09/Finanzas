@@ -1,4 +1,4 @@
-/* Diálogo modal: el único elemento de la app con sombra. */
+/* Modal dialog: the only element of the app with a shadow. */
 .backdrop {
   position: fixed;
   inset: 0;
@@ -34,8 +34,8 @@
   overflow: auto;
 }
 
-/* Un formulario largo en una pantalla baja se desplaza dentro del panel en vez de salirse de la vista
-   (48px = el padding del fondo, 2px = el borde del panel). */
+/* A long form on a short screen scrolls inside the panel instead of spilling out of view
+   (48px = the backdrop's padding, 2px = the panel's border). */
 .form {
   max-height: calc(100vh - 50px);
   overflow: auto;
@@ -48,7 +48,7 @@
   font-size: var(--fs-brand);
 }
 
-/* Cuerpo de texto. */
+/* Text body. */
 .text {
   margin: 0;
   padding: 0 22px 18px;
@@ -58,7 +58,7 @@
   text-wrap: pretty;
 }
 
-/* Cuerpo de formulario: una columna de campos. */
+/* Form body: a column of fields. */
 .fields {
   display: flex;
   flex-direction: column;
@@ -89,7 +89,7 @@
   opacity: 0.6;
 }
 
-/* Al principio del pie, separado del resto ("Delete goal"). */
+/* At the start of the footer, apart from the rest ("Delete goal"). */
 .start {
   margin-right: auto;
 }

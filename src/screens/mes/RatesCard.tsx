@@ -10,12 +10,12 @@ import { currenciesInUse, noRatesNeeded, rateRows, shortDate, showRate, shownRat
 import { MES } from './strings';
 
 /**
- * "Tasas del mes": con qué tasa se convierte cada par de monedas en este mes, como "1 USD = 58.76 DOP".
- * Las escritas a mano van con su fecha (un par puede tener varias: cada una vale desde su fecha hasta la
- * siguiente) y se corrigen o se quitan aquí mismo. De un par sin ninguna escrita en este mes se enseña la vigente
- * y de dónde sale (los envíos del mes, otra moneda, un mes anterior, o el valor fijo de respaldo, que se avisa):
- * ahí no hay nada guardado que quitar, pero escribir en su celda crea la tasa del par. La fila de agregar (la abre
- * el botón de la cabecera) escribe la de cualquier par, desde la fecha que se elija.
+ * "Month rates": the rate at which each currency pair is converted this month, as "1 USD = 58.76 DOP".
+ * The ones typed by hand carry their date (a pair can have several: each one applies from its date until the
+ * next) and are corrected or removed right here. A pair with none typed this month shows the rate in effect
+ * and where it comes from (the month's transfers, another currency, an earlier month, or the fixed default value,
+ * which is flagged): there is nothing stored to remove there, but typing in its cell creates the pair's rate. The add
+ * row (the header button opens it) writes the rate of any pair, from the chosen date.
  */
 export function RatesCard() {
   const { state, month, monthKey, main, second, rates, readOnly, draftDate, actions } = useFinanzas();
@@ -28,12 +28,12 @@ export function RatesCard() {
   const rows = rateRows(shown, month.rates, rates, monthKey, draftDate);
   const pair = ratePair(draft, shown, main, second);
   const date = rateDate(draft, pair, rates, monthKey, draftDate);
-  // Con todo el dinero en una moneda la tabla sobra; "Add rate" se queda por si el usuario quiere escribir una tasa suelta.
+  // With all the money in one currency the table is unnecessary; "Add rate" stays in case the user wants to type a standalone rate.
   const empty = noRatesNeeded(shown) && !adding.open;
 
   const add = () => {
     if (!canAddRate(draft) || !actions.setMonthRate(pair[0], pair[1], draft.rate, date)) return false;
-    // Sin par ni fecha elegidos, la fila pasa sola al siguiente par que falte por escribir.
+    // With no pair or date chosen, the row moves on its own to the next pair still to be typed.
     setDraft(EMPTY_RATE);
     return true;
   };
@@ -80,7 +80,7 @@ export function RatesCard() {
                   </Td>
                 ) : (
                   <Td kind="edit">
-                    {/* La misma celda para las dos clases de fila: al escribir en una sin guardar, pasa a ser la escrita sin perder el foco. */}
+                    {/* The same cell for both kinds of row: typing in one with nothing stored makes it the typed one without losing focus. */}
                     <RateCell
                       value={r.rate}
                       onCommit={(rate) => actions.setMonthRate(r.from, r.to, rate, r.date)}
@@ -92,12 +92,12 @@ export function RatesCard() {
                 )}
                 <Td>
                   <span className={styles.code}>{r.to}</span>
-                  {/* De dónde sale, cuando no es una escrita en este mes. El valor de respaldo se destaca. */}
+                  {/* Where it comes from, when it is not one typed this month. The default value is highlighted. */}
                   {!typed && <span className={cx(styles.hint, r.info.source === 'default' && styles.warn)}>{rateHint(r.info, r.from, r.to)}</span>}
                 </Td>
                 <Td kind="action">
                   {typed && !readOnly && (
-                    <DeleteButton compact onClick={() => actions.removeMonthRate(r.from, r.to, r.date)} label={s('deleteRateSince', names)} />
+                    <DeleteButton compact kind="kindRate" item={`${names.date} · 1 ${r.from} = ${showRate(r.rate)} ${r.to}`} onConfirm={() => actions.removeMonthRate(r.from, r.to, r.date)} label={s('deleteRateSince', names)} />
                   )}
                 </Td>
               </tr>
@@ -109,7 +109,7 @@ export function RatesCard() {
                 <CellDate value={date} onCommit={(next) => setDraft((d) => ({ ...d, date: next }))} label={s('newRateDate')} />
               </Td>
               <Td kind="edit">
-                {/* Elegir la moneda del otro lado invierte el par: las dos nunca son la misma. */}
+                {/* Choosing the currency of the other side flips the pair: the two are never the same. */}
                 <CellSelect
                   value={pair[0]}
                   options={CURRENCIES}

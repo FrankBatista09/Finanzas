@@ -1,34 +1,34 @@
-// Servidor MCP remoto (Model Context Protocol) en /mcp: es lo que permite decirle a Claude
-// "gasté 850 en Uber hoy con tarjeta" y que quede registrado.
+// Remote MCP (Model Context Protocol) server at /mcp: it is what lets you tell Claude
+// "I spent 850 on Uber today by card" and have it recorded.
 //
-// Transporte Streamable HTTP sin estado y sin SDK: cada POST trae un mensaje JSON-RPC 2.0 y la respuesta va
-// como JSON en esa misma petición. No hay sesiones (no se emite Mcp-Session-Id) ni flujo SSE, así que GET y
-// DELETE responden 405. Toda petición exige Authorization: Bearer <API_TOKEN>.
+// Stateless Streamable HTTP transport, with no SDK: each POST carries a JSON-RPC 2.0 message and the response goes
+// back as JSON in that same request. There are no sessions (no Mcp-Session-Id is issued) and no SSE stream, so GET
+// and DELETE answer 405. Every request requires Authorization: Bearer <API_TOKEN>.
 //
-// Habla las dos épocas del protocolo en el mismo endpoint:
-//   · con handshake (2025-11-25 y anteriores): initialize negocia la versión; después ping, tools/list y
-//     tools/call, sueltos o en un lote;
-//   · sin handshake (2026-07-28): cada petición declara su versión en la cabecera MCP-Protocol-Version y en
-//     `_meta`, repite su método en Mcp-Method, y el servidor se describe con server/discover.
-// Como aquí no se guarda nada entre peticiones, la época se decide en cada una por lo que trae.
+// It speaks both eras of the protocol on the same endpoint:
+//   · with a handshake (2025-11-25 and earlier): initialize negotiates the version; then ping, tools/list and
+//     tools/call, alone or in a batch;
+//   · without a handshake (2026-07-28): each request declares its version in the MCP-Protocol-Version header and in
+//     `_meta`, repeats its method in Mcp-Method, and the server describes itself with server/discover.
+// Since nothing is kept between requests here, the era is decided on each one from what it carries.
 //
-// De quién son los datos: cada persona tiene sus finanzas aparte (USERS, shared/users.ts) y el Bearer es uno
-// solo para todas, así que cada herramienta recibe `user`. Es obligatorio cuando hay más de un usuario
-// configurado: el modelo lo saca de la conversación o de las instrucciones del proyecto y, si no lo sabe,
-// tiene que preguntar. Como la lista sale del entorno, tools/list y las instrucciones se arman en cada petición.
+// Whose data it is: each person has their own separate finances (USERS, shared/users.ts) and there is a single
+// Bearer for all of them, so every tool takes `user`. It is required when more than one user is
+// configured: the model gets it from the conversation or from the project instructions and, if it does not know,
+// it has to ask. Since the list comes from the environment, tools/list and the instructions are built on each request.
 //
-// Dinero: cada usuario tiene sus cuentas, su moneda principal y su segunda moneda. Todo lo que se registra
-// mueve el saldo de una cuenta (un gasto resta de la cuenta de la que se paga, un ingreso suma, un envío pasa
-// dinero de una a otra), así que cada confirmación dice de qué cuenta y cómo quedó su saldo. Las cifras del mes
-// van en la moneda principal del usuario, con su código. Todas las cuentas salen de shared/calc.ts.
+// Money: each user has their own accounts, main currency and second currency. Everything that is recorded
+// moves the balance of an account (an expense subtracts from the account it is paid from, an income adds, a transfer
+// moves money from one to another), so each confirmation says which account and what its balance is now. The month's
+// figures are in the user's main currency, with its code. All the calculations come from shared/calc.ts.
 //
-// Idioma: todo lo que este servidor le dice al modelo va en inglés (Claude ya le habla a cada persona en el
-// suyo). Lo que dicta el usuario no se traduce; categorías y métodos se aceptan en cualquiera de los idiomas
-// de la app y se guardan con su nombre canónico (shared/i18n.ts).
+// Language: everything this server says to the model is in English (Claude already speaks to each person in
+// their own). What the user dictates is not translated; categories and methods are accepted in any of the app's
+// languages and stored under their canonical name (shared/i18n.ts).
 //
-// Los fallos de dominio y de validación de una herramienta (mes cerrado, fecha inválida, usuario que falta,
-// gasto fijo que no existe) son un resultado normal con isError: true, para que el modelo los lea y se
-// corrija; los errores JSON-RPC quedan para los fallos del protocolo.
+// A tool's domain and validation failures (closed month, invalid date, missing user,
+// fixed expense that does not exist) are a normal result with isError: true, so the model can read them and
+// correct itself; JSON-RPC errors are left for protocol failures.
 
 import { z } from 'zod';
 import {
@@ -83,26 +83,26 @@ import { ingestTransaction, matchAccount, matchCard } from './ingest';
 import { configuredUsers, userFromBody } from './users';
 import { fixedPatchSchema, incomeCreateSchema, MAX_AMOUNT, MAX_LEN, parse, transferCreateSchema } from './validate';
 
-/** Las monedas de la app, como las ve el modelo: siempre por su código. */
+/** The app's currencies, as the model sees them: always by their code. */
 const CURRENCY_CODES = ['DOP', 'USD', 'TRY'] as const satisfies readonly Currency[];
 
 
-// ── Protocolo ────────────────────────────────────────────────────────────────
+// ── Protocol ─────────────────────────────────────────────────────────────────
 
-/** Revisiones sin handshake: cada petición declara su versión y las capacidades del cliente. */
+/** Revisions without a handshake: each request declares its version and the client's capabilities. */
 export const MODERN_PROTOCOL_VERSIONS = ['2026-07-28'] as const;
-/** Revisiones con handshake `initialize`. */
+/** Revisions with the `initialize` handshake. */
 export const LEGACY_PROTOCOL_VERSIONS = ['2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05'] as const;
-/** Todas las revisiones de MCP que este servidor entiende, de la más nueva a la más vieja. */
+/** Every MCP revision this server understands, from newest to oldest. */
 export const PROTOCOL_VERSIONS = [...MODERN_PROTOCOL_VERSIONS, ...LEGACY_PROTOCOL_VERSIONS] as const;
 export const LATEST_PROTOCOL_VERSION = PROTOCOL_VERSIONS[0];
 
-/** `version` es la de package.json (server/mcp.test.ts comprueba que no se desfasen). */
+/** `version` is the one in package.json (server/mcp.test.ts checks that they do not drift apart). */
 export const SERVER_INFO = { name: 'fe-finance', title: APP_NAME, version: '0.1.0' } as const;
 
-/** Un mensaje MCP de este servidor ocupa unos cientos de bytes; el tope solo frena abusos. */
+/** An MCP message of this server takes a few hundred bytes; the cap only stops abuse. */
 export const MAX_BODY_BYTES = 256 * 1024;
-/** Cada llamada a una herramienta son varias consultas a D1: un lote no puede multiplicarlas sin límite. */
+/** Each tool call is several D1 queries: a batch cannot multiply them without limit. */
 export const MAX_BATCH = 20;
 
 const PARSE_ERROR = -32700;
@@ -110,12 +110,12 @@ const INVALID_REQUEST = -32600;
 const METHOD_NOT_FOUND = -32601;
 const INVALID_PARAMS = -32602;
 const INTERNAL_ERROR = -32603;
-// Códigos propios de MCP (2026-07-28). Un cliente que habla las dos épocas reconoce por ellos a un servidor
-// sin handshake y corrige la petición en vez de volver a initialize.
+// MCP's own codes (2026-07-28). A client that speaks both eras recognizes a server without a handshake
+// by them and fixes the request instead of going back to initialize.
 const HEADER_MISMATCH = -32020;
 const UNSUPPORTED_PROTOCOL_VERSION = -32022;
 
-/** Claves de `_meta` que reserva el protocolo sin handshake. */
+/** `_meta` keys reserved by the protocol without a handshake. */
 const META_VERSION = 'io.modelcontextprotocol/protocolVersion';
 const META_CLIENT_CAPABILITIES = 'io.modelcontextprotocol/clientCapabilities';
 const META_SERVER_INFO = 'io.modelcontextprotocol/serverInfo';
@@ -123,9 +123,9 @@ const META_SERVER_INFO = 'io.modelcontextprotocol/serverInfo';
 const CAPABILITIES = { tools: {} } as const;
 
 /**
- * Pistas de caché de server/discover y tools/list (2026-07-28). La lista es la misma para cualquiera
- * ("public") y solo cambia con un despliegue (los usuarios que nombra salen de la variable USERS): cinco
- * minutos sin volver a pedirla es poco riesgo.
+ * Cache hints for server/discover and tools/list (2026-07-28). The list is the same for anyone
+ * ("public") and only changes with a deploy (the users it names come from the USERS variable): five
+ * minutes without asking for it again is low risk.
  */
 const CACHE_HINTS = { ttlMs: 5 * 60 * 1000, cacheScope: 'public' } as const;
 
@@ -142,8 +142,8 @@ type Incoming =
   | { kind: 'invalid'; id: JsonRpcId | null };
 
 /**
- * Fallo del protocolo: se responde como error JSON-RPC con este código. `status` es el estado HTTP cuando la
- * petición viaja sola (en un lote la respuesta es siempre 200).
+ * Protocol failure: it is answered as a JSON-RPC error with this code. `status` is the HTTP status when the
+ * request travels alone (in a batch the response is always 200).
  */
 class RpcError extends Error {
   constructor(
@@ -186,14 +186,14 @@ function isLegacy(version: string): boolean {
   return (LEGACY_PROTOCOL_VERSIONS as readonly string[]).includes(version);
 }
 
-/** Lo que el cliente mandó y se devuelve en un mensaje de error: acotado, por si viene algo enorme. */
+/** What the client sent and is echoed back in an error message: bounded, in case something huge comes in. */
 function quoted(value: string): string {
   return value.slice(0, 80);
 }
 
 function classify(msg: unknown): Incoming {
   if (!isRecord(msg)) return { kind: 'invalid', id: null };
-  // MCP no admite id null: un id que no sea texto o número no identifica nada.
+  // MCP does not allow a null id: an id that is not text or a number identifies nothing.
   const id = isId(msg.id) ? msg.id : null;
   if (msg.jsonrpc !== '2.0') return { kind: 'invalid', id };
   if ('method' in msg) {
@@ -201,19 +201,19 @@ function classify(msg: unknown): Incoming {
     if (!('id' in msg)) return { kind: 'notification' };
     return id === null ? { kind: 'invalid', id } : { kind: 'request', id, method: msg.method, params: msg.params };
   }
-  // Respuesta del cliente a una petición del servidor. Este servidor no hace peticiones: se acepta y se ignora.
+  // The client's response to a request from the server. This server makes no requests: it is accepted and ignored.
   if (id !== null && ('result' in msg || 'error' in msg)) return { kind: 'response' };
   return { kind: 'invalid', id };
 }
 
-// ── Usuarios ─────────────────────────────────────────────────────────────────
+// ── Users ────────────────────────────────────────────────────────────────────
 
-/** "frank (Frank), eda (Eda)": el id es lo que va en `user`; el nombre, cómo se llama esa persona. */
+/** "frank (Frank), eda (Eda)": the id is what goes in `user`; the name, what that person is called. */
 function userList(users: readonly AppUser[]): string {
   return users.map((u) => `${u.id} (${u.name})`).join(', ');
 }
 
-/** La propiedad `user` del inputSchema de cada herramienta: sus valores son los usuarios configurados. */
+/** The `user` property of each tool's inputSchema: its values are the configured users. */
 function userProperty(users: readonly AppUser[]): Record<string, unknown> {
   const ids = users.map((u) => u.id);
   if (ids.length === 1) {
@@ -237,9 +237,9 @@ function userError(users: readonly AppUser[], problem: string): ApiError {
 }
 
 /**
- * De quién son las finanzas de una llamada. La regla es la de server/users.ts (el id, sin distinguir
- * mayúsculas; se puede omitir si solo hay un usuario configurado). Aquí cambia el mensaje: nombra a cada
- * usuario, para que el modelo sepa de quién es cada id y le pregunte a la persona en vez de probar con otro.
+ * Whose finances a call is about. The rule is the one in server/users.ts (the id, case-insensitive;
+ * it can be omitted if only one user is configured). What changes here is the message: it names each
+ * user, so the model knows who each id belongs to and asks the person instead of trying another one.
  */
 function resolveUser(users: readonly AppUser[], value: unknown): AppUser {
   const given = value ?? undefined;
@@ -252,9 +252,9 @@ function resolveUser(users: readonly AppUser[], value: unknown): AppUser {
   }
 }
 
-// ── Textos para el modelo ────────────────────────────────────────────────────
+// ── Texts for the model ──────────────────────────────────────────────────────
 
-/** Las instrucciones nombran a los usuarios configurados: se arman en cada petición. */
+/** The instructions name the configured users: they are built on each request. */
 function instructions(users: readonly AppUser[]): string {
   const who =
     users.length === 1
@@ -283,23 +283,23 @@ function instructions(users: readonly AppUser[]): string {
 
 const SEP = ' · ';
 
-/** Cómo se le explica al modelo el mes por defecto (ver resolveMonth). */
+/** How the default month is explained to the model (see resolveMonth). */
 const IN_PROGRESS = 'the month in progress (the calendar month or, if it does not exist yet or is already closed, the last open month)';
 
-/** Un importe con su moneda; de oro, sus gramos: "125.50 g". */
+/** An amount with its currency; for gold, its grams: "125.50 g". */
 function money(amount: number, cur: AccountCurrency): string {
   return isGold(cur) ? `${fGrams(amount)} ${GOLD_UNIT}` : `${f2(amount)} ${cur}`;
 }
 
 /**
- * Un importe y, si está en otra moneda que `to`, también su equivalente: con la tasa vigente en `date` si la
- * fila tiene fecha propia, o con la última del mes `key` si no.
+ * An amount and, if it is in a currency other than `to`, its equivalent too: at the rate in effect on `date` if the
+ * row has its own date, or at the latest one of month `key` if not.
  */
 function moneyIn(state: AppState, key: MonthKey, amount: number, cur: Currency, to: Currency, date?: ISODate): string {
   return cur === to ? money(amount, cur) : `${money(amount, cur)} (${money(convert(state, key, amount, cur, to, date), to)})`;
 }
 
-/** Un importe con su signo a la vista: "+5,000.00 DOP", "-1,200.00 DOP". */
+/** An amount with its sign showing: "+5,000.00 DOP", "-1,200.00 DOP". */
 function signed(amount: number, cur: Currency): string {
   return `${amount < 0 ? '-' : '+'}${money(Math.abs(amount), cur)}`;
 }
@@ -308,7 +308,7 @@ function monthTitle(m: Pick<Month, 'key' | 'closed'>): string {
   return `${label(m.key)}${m.closed ? `${SEP}closed` : ''}`;
 }
 
-/** Encabezado de una consulta: de quién y de qué mes son las cifras. */
+/** Heading of a query: whose figures they are and for which month. */
 function heading(user: AppUser, m: Pick<Month, 'key' | 'closed'>): string {
   return `${user.name}${SEP}${monthTitle(m)}`;
 }
@@ -323,12 +323,12 @@ function fixedLine(c: MonthCalc): string {
   return `Monthly expenses: ${c.paidCount} of ${c.fixedCount} paid${SEP}Fixed pending: ${money(c.pending, c.main)}.`;
 }
 
-/** Las cifras del mes van en la moneda principal del usuario: `currency` dice cuál. */
+/** The month's figures are in the user's main currency: `currency` says which one. */
 function monthStatus(c: MonthCalc) {
   return { key: c.key, label: label(c.key), closed: c.closed, currency: c.main, budget: c.budget, used: c.used, available: c.avail };
 }
 
-// ── Tasas ────────────────────────────────────────────────────────────────────
+// ── Rates ────────────────────────────────────────────────────────────────────
 
 interface RateLine {
   from: Currency;
@@ -336,11 +336,11 @@ interface RateLine {
   /** 1 `from` = `rate` `to`. */
   rate: number;
   source: RateSource;
-  /** Mes del que salió la tasa (shared/calc.ts RateInfo). */
+  /** Month the rate came from (shared/calc.ts RateInfo). */
   monthKey: MonthKey | null;
-  /** Fecha desde la que vale, si es una tasa escrita a mano; null si salió de otro sitio. */
+  /** Date it applies from, if it is a rate typed by hand; null if it came from somewhere else. */
   date: ISODate | null;
-  /** De dónde salió, dicho en claro: es lo que avisa de una tasa que no es la del mes. */
+  /** Where it came from, in plain words: it is what warns of a rate that is not the month's. */
   note: string;
 }
 
@@ -353,10 +353,10 @@ function rateNote(info: RateInfo, from: Currency, to: Currency): string {
     case 'transfers':
       return "from this month's transfers";
     case 'cross':
-      // Con tres monedas, la que no es ninguna de las dos.
+      // With three currencies, the one that is neither of the two.
       return `crossed through ${CURRENCY_CODES.find((c) => c !== from && c !== to) ?? 'another currency'}`;
     case 'previous':
-      // Una escrita en un mes anterior sigue vigente hasta que se escriba otra.
+      // One typed in an earlier month stays in effect until another one is typed.
       if (info.date) return `typed on ${info.date}, still in effect`;
       return info.monthKey ? `from ${label(info.monthKey)}` : 'from an earlier month';
     case 'default':
@@ -365,8 +365,9 @@ function rateNote(info: RateInfo, from: Currency, to: Currency): string {
 }
 
 /**
- * La tasa entre dos monedas, en el sentido en que se lee (la que vale más primero: "USD to DOP: 58.76" y no
- * "DOP to USD: 0.02", que con dos decimales no dice nada). Sin `date`, la última del mes; con ella, la vigente ese día.
+ * The rate between two currencies, in the direction it is read (the one worth more first: "USD to DOP: 58.76" and not
+ * "DOP to USD: 0.02", which says nothing with two decimals). Without `date`, the month's latest; with it, the one in
+ * effect that day.
  */
 function rateLine(state: AppState, key: MonthKey, a: Currency, b: Currency, date?: ISODate): RateLine {
   const direct = rateFor(state, key, a, b, date);
@@ -378,14 +379,14 @@ function rateText(r: RateLine): string {
   return `${r.from} to ${r.to}: ${fRate(r.rate)} (${r.note})`;
 }
 
-/** Una tasa suelta, en el sentido en que se lee: "1 USD = 59.40 DOP" también para un envío de DOP a USD. */
+/** A single rate, in the direction it is read: "1 USD = 59.40 DOP" also for a transfer from DOP to USD. */
 function pairText(from: Currency, to: Currency, rate: number): string {
   return rate >= 1 || !(rate > 0) ? `1 ${from} = ${fRate(rate)} ${to}` : `1 ${to} = ${fRate(1 / rate)} ${from}`;
 }
 
 /**
- * Aviso de que lo convertido es aproximado: alguna de las conversiones de `cur` a las monedas de `to` en el
- * mes `key` sale del valor de respaldo, porque nadie ha escrito esa tasa. Una frase por par; ninguna si no pasa.
+ * Warning that the converted amounts are approximate: at least one conversion from `cur` to the currencies in `to` in
+ * month `key` comes from the default value, because nobody has typed that rate. One sentence per pair; none otherwise.
  */
 function approxNotes(state: AppState, key: MonthKey, cur: Currency, to: readonly Currency[], date?: ISODate): string[] {
   return [...new Set(to)]
@@ -395,34 +396,34 @@ function approxNotes(state: AppState, key: MonthKey, cur: Currency, to: readonly
     .map((r) => `Note: the rate ${r.from} to ${r.to} (${fRate(r.rate)}) is a default value, not set yet, so the converted amounts are only approximate.`);
 }
 
-/** Las tasas con las que se lleva a la moneda principal cada una de las otras monedas de `used`. */
+/** The rates used to bring each of the other currencies in `used` to the main currency. */
 function ratesToMain(state: AppState, key: MonthKey, used: Iterable<Currency>): RateLine[] {
   const wanted = new Set(used);
   return CURRENCY_CODES.filter((c) => c !== state.mainCurrency && wanted.has(c)).map((c) => rateLine(state, key, c, state.mainCurrency));
 }
 
-// ── Reglas compartidas por las herramientas ──────────────────────────────────
+// ── Rules shared by the tools ────────────────────────────────────────────────
 
-/** Lo que comparten todos los mensajes de una petición HTTP. */
+/** What all the messages of one HTTP request share. */
 interface ServerContext {
   db: D1Database;
   now: Date;
-  /** Los usuarios configurados (USERS), en su orden. */
+  /** The configured users (USERS), in their order. */
   users: readonly AppUser[];
 }
 
 interface ToolContext {
   db: D1Database;
   now: Date;
-  /** De quién son las finanzas de esta llamada, ya resuelto: todo lo que la herramienta lee o escribe es suyo. */
+  /** Whose finances this call is about, already resolved: everything the tool reads or writes is theirs. */
   user: AppUser;
 }
 
 /**
- * El mes sobre el que trabaja una herramienta. Sin `requested` es el mes en curso: el del calendario (en la
- * zona del usuario) mientras exista y esté abierto; si no, el mes en curso de la aplicación (el último abierto).
- * Cubre los primeros días de un mes cuando aún no se ha cerrado el anterior, y los últimos cuando el mes
- * se cerró antes de tiempo y ya se trabaja en el siguiente.
+ * The month a tool works on. Without `requested` it is the current month: the calendar one (in the
+ * user's time zone) while it exists and is open; otherwise, the application's current month (the last open one).
+ * It covers the first days of a month when the previous one has not been closed yet, and the last ones when the month
+ * was closed early and work has already moved to the next one.
  */
 function resolveMonth(state: AppState, requested: MonthKey | undefined, { now, user }: Pick<ToolContext, 'now' | 'user'>): Month {
   const calendar = currentMonthKey(now);
@@ -435,19 +436,19 @@ function resolveMonth(state: AppState, requested: MonthKey | undefined, { now, u
   if (keys.length === 0) {
     throw notFoundError(`${user.name} has no months yet. Record a transaction to create the current month.`);
   }
-  // Con la clave, que es lo que hay que mandar en `month`.
+  // With the key, which is what has to be sent in `month`.
   const known = keys.slice(-12).map((k) => `${k}${state.months[k]!.closed ? ' (closed)' : ''}`);
   throw notFoundError(`${label(key ?? calendar)} does not exist for ${user.name}. Existing months: ${known.join(', ')}.`);
 }
 
-/** Meses hacia atrás y hacia delante de hoy en los que una herramienta acepta una fecha de un mes que no existe. */
+/** Months back and ahead of today in which a tool accepts a date in a month that does not exist. */
 const CREATE_MONTHS_BACK = 6;
 const CREATE_MONTHS_AHEAD = 1;
 
 /**
- * Registrar algo crea el mes de su fecha si no existe. Un año mal puesto por el modelo dejaría un mes fantasma
- * (o un ingreso que nadie ve y que mueve un saldo): por eso solo se aceptan fechas de meses cercanos a hoy.
- * A un mes que ya existe se puede escribir sea cual sea su fecha.
+ * Recording something creates the month of its date if it does not exist. A wrong year from the model would leave a
+ * ghost month (or an income nobody sees that moves a balance): that is why only dates in months close to today are
+ * accepted. A month that already exists can be written to whatever its date.
  */
 async function assertReachable({ db, now, user }: ToolContext, date: ISODate): Promise<void> {
   const key = monthOf(date);
@@ -460,9 +461,9 @@ async function assertReachable({ db, now, user }: ToolContext, date: ISODate): P
 }
 
 /**
- * Lo que una confirmación cuenta después de escribir (el usado del mes, el saldo nuevo de la cuenta). Es un
- * extra: si no se puede leer o calcular, la confirmación sale sin él. Responder con un error haría que el
- * modelo repitiera un registro que ya se guardó.
+ * What a confirmation reports after writing (the month's used amount, the account's new balance). It is an
+ * extra: if it cannot be read or computed, the confirmation goes out without it. Answering with an error would make
+ * the model repeat a record that was already saved.
  */
 async function afterWrite<T>({ db, user }: ToolContext, derive: (state: AppState) => T): Promise<T | null> {
   try {
@@ -474,8 +475,8 @@ async function afterWrite<T>({ db, user }: ToolContext, derive: (state: AppState
 }
 
 /**
- * Los saldos "de ahora": al final del mes más reciente entre los registrados, el del calendario y los que se
- * indiquen (el del registro que se acaba de hacer). Así un gasto con fecha del mes siguiente ya se ve restado.
+ * The balances "as of now": at the end of the most recent month among the recorded ones, the calendar one and the ones
+ * given (that of the record just made). That way an expense dated in the next month already shows as subtracted.
  */
 function balancesNow(state: AppState, now: Date, ...keys: MonthKey[]): { asOf: MonthKey; all: Balances } {
   const asOf = [...sortedKeys(state).slice(-1), currentMonthKey(now), ...keys].sort().at(-1)!;
@@ -490,22 +491,22 @@ function balanceSentence(b: AccountBalance): string {
   return `${b.account.name} balance: ${money(b.balance, b.account.currency)}.`;
 }
 
-/** Una cuenta en los datos crudos; `balance` es null si no se pudo leer después de escribir. */
+/** An account in the raw data; `balance` is null if it could not be read after writing. */
 function accountData(account: Account, b: AccountBalance | null) {
   return { id: account.id, name: account.name, currency: account.currency, balance: b ? b.balance : null };
 }
 
-/** La cuenta a la que entra o de la que sale `amount`, y cuánto es en su moneda si se dijo en otra. */
+/** The account `amount` goes into or comes out of, and how much it is in its currency if it was stated in another. */
 function accountPart(state: AppState | null, key: MonthKey, account: Account, amount: number, cur: AccountCurrency, date?: ISODate): string {
   const to = account.currency;
-  // Gramos y dinero no se convierten entre sí en un movimiento.
+  // Grams and money are not converted into each other in a movement.
   if (!state || cur === to || isGold(cur) || isGold(to)) return account.name;
   return `${account.name} (${money(convert(state, key, amount, cur, to, date), to)})`;
 }
 
 /**
- * El saldo de una cuenta como se le dice al modelo, con su equivalente en `main` si está en otra moneda. De una
- * cuenta de oro, sus gramos y lo que valen al precio del oro; sin precio, solo los gramos, y se dice por qué.
+ * An account's balance as it is told to the model, with its equivalent in `main` if it is in another currency. For a
+ * gold account, its grams and what they are worth at the gold price; with no price, only the grams, and it says why.
  */
 function balanceText(state: AppState, key: MonthKey, b: AccountBalance, main: Currency): string {
   const cur = b.account.currency;
@@ -513,14 +514,14 @@ function balanceText(state: AppState, key: MonthKey, b: AccountBalance, main: Cu
   return b.valued ? `${money(b.balance, cur)} (${money(b.inMain, main)})` : `${money(b.balance, cur)} (no gold price set)`;
 }
 
-/** Las monedas de verdad entre las de unas cuentas: el oro no tiene tasa. */
+/** The real currencies among those of some accounts: gold has no rate. */
 function moneyCurrencies(list: readonly AccountCurrency[]): Currency[] {
   return list.filter((c): c is Currency => !isGold(c));
 }
 
 /**
- * Lo que hay que saber del oro cuando el usuario tiene alguna cuenta visible de oro: el precio escrito y, si no
- * hay, que el oro no entra en el total. Ninguna línea si no tiene oro a la vista.
+ * What there is to know about gold when the user has a visible gold account: the typed price and, if there is
+ * none, that gold is left out of the total. No line if they have no gold in view.
  */
 function goldLines(state: AppState, all: Balances): string[] {
   if (!all.accounts.some((b) => !b.account.hidden && isGold(b.account.currency))) return [];
@@ -532,7 +533,7 @@ function goldLines(state: AppState, all: Balances): string[] {
   ];
 }
 
-/** La cuenta que nombra la persona o, si no nombra ninguna, su cuenta por defecto. */
+/** The account the person names or, if they name none, their default account. */
 async function resolveAccount({ db, user }: ToolContext, named: string | undefined): Promise<Account> {
   const { accounts, defaultAccount } = await userAccounts(db, user.id);
   const account = named === undefined ? defaultAccount : matchAccount(accounts, named);
@@ -540,7 +541,7 @@ async function resolveAccount({ db, user }: ToolContext, named: string | undefin
   return account;
 }
 
-/** Para comparar nombres sin distinguir mayúsculas, acentos ni espacios de más. */
+/** For comparing names ignoring case, accents and extra spaces. */
 function fold(text: string): string {
   return text
     .normalize('NFD')
@@ -551,8 +552,8 @@ function fold(text: string): string {
 }
 
 /**
- * Gastos fijos que coinciden con `name`: primero por nombre exacto, si no por comienzo y si no por contenido.
- * Devuelve los del primer criterio que acierte; más de uno significa que el nombre es ambiguo.
+ * Fixed expenses that match `name`: first by exact name, otherwise by prefix and otherwise by containment.
+ * Returns those of the first criterion that hits; more than one means the name is ambiguous.
  */
 function findFixed(list: readonly FixedExpense[], name: string): FixedExpense[] {
   const query = fold(name);
@@ -597,17 +598,17 @@ function findBudgetIncome(state: AppState, named: string, accountId: string, key
   throw validationError(`No income of ${userName} in that account matches "${quoted(named)}".${options ? ` Incomes in it: ${options}.` : ' It has no incomes.'}`);
 }
 
-// ── Argumentos ───────────────────────────────────────────────────────────────
-// Un solo esquema zod por herramienta: valida los argumentos y de él sale el inputSchema que ve el modelo.
-// La excepción es `user`, que depende de la configuración y no del código: se resuelve aparte (resolveUser) y
-// su propiedad se añade al inputSchema en cada petición (userProperty).
-// Categoría y método se limitan aquí a las listas de la interfaz (en la API son texto libre): un valor fuera
-// de lista no se podría elegir después en los desplegables de la aplicación. La vía de un envío sí es libre.
-// Una cuenta se dice por su nombre (o su id) y se busca entre las del usuario (server/ingest.ts matchAccount).
+// ── Arguments ────────────────────────────────────────────────────────────────
+// A single zod schema per tool: it validates the arguments and the inputSchema the model sees comes from it.
+// The exception is `user`, which depends on the configuration and not on the code: it is resolved separately
+// (resolveUser) and its property is added to the inputSchema on each request (userProperty).
+// Category and method are limited here to the lists of the interface (in the API they are free text): a value outside
+// the list could not be picked later in the application's selects. The via of a transfer is free text, though.
+// An account is given by its name (or its id) and looked up among the user's (server/ingest.ts matchAccount).
 
 type IssueLike = { input?: unknown };
 
-/** Mensaje de tipo: distingue "falta" de "vino con otro tipo". */
+/** Type message: tells "missing" apart from "came with another type". */
 const typed = (message: string) => (issue: IssueLike) => (issue.input === undefined ? 'is required' : message);
 
 const text = (max: number) => z.string({ error: typed('must be text') }).trim().max(max, { error: `allows up to ${max} characters` });
@@ -619,19 +620,19 @@ const nonNegative = () =>
 const oneOf = <const T extends readonly [string, ...string[]]>(values: T) => z.enum(values, { error: `must be one of: ${values.join(', ')}` });
 
 /**
- * Un valor de lista fija (categoría, método), opcional y con el primero de la lista por defecto. La persona
- * puede decirlo en español o en turco y Claude pasa lo que oye: antes de validar se lleva a su nombre canónico.
- * El esquema que ve el modelo lista solo los canónicos.
+ * A value from a fixed list (category, method), optional and defaulting to the first of the list. The person may
+ * say it in Spanish or in Turkish and Claude passes what it hears: before validating, it is mapped to its canonical name.
+ * The schema the model sees lists only the canonical ones.
  */
 const listed = <const T extends readonly [string, ...string[]]>(values: T, canonical: (name: string) => string, description: string) =>
   z.preprocess((v) => (typeof v === 'string' ? canonical(v) : v), oneOf(values).optional().meta({ description, default: values[0] }));
 
-/** Sin valor por defecto en el esquema: la moneda que se aplica es la de la cuenta, que el esquema no conoce. */
+/** No default value in the schema: the currency that applies is the account's, which the schema does not know. */
 const currency = (description: string) => z.enum(CURRENCY_CODES, { error: 'must be DOP, USD or TRY' }).optional().describe(description);
 
 const accountName = (description: string) => text(MAX_LEN.name).optional().describe(description);
 
-// Los patrones son la pista para el modelo; quien decide es shared/month.ts (que además rechaza un 30 de febrero).
+// The patterns are the hint for the model; the one that decides is shared/month.ts (which also rejects a February 30).
 const NOT_A_DATE = 'is not a valid date (YYYY-MM-DD)';
 const NOT_A_MONTH = 'is not a valid month (YYYY-MM)';
 const isoDate = () =>
@@ -791,48 +792,48 @@ const payCreditCardArgs = z.strictObject({
 
 const listCreditCardsArgs = z.strictObject({});
 
-// ── Herramientas ─────────────────────────────────────────────────────────────
+// ── Tools ────────────────────────────────────────────────────────────────────
 
 interface ToolOutput {
-  /** Confirmación corta, en inglés: es lo que lee el modelo. Dice de quién son las finanzas. */
+  /** Short confirmation, in English: it is what the model reads. It says whose finances they are. */
   text: string;
-  /** Los datos crudos (structuredContent); callTool les añade el usuario. */
+  /** The raw data (structuredContent); callTool adds the user to it. */
   data: Record<string, unknown>;
 }
 
 interface ToolSpec<T> {
   name: string;
   title: string;
-  /** Para el modelo: cuándo usarla y qué pasa si se omiten argumentos. */
+  /** For the model: when to use it and what happens if arguments are omitted. */
   description: string;
-  /** Los argumentos propios de la herramienta, sin `user`. */
+  /** The tool's own arguments, without `user`. */
   schema: z.ZodType<T>;
   readOnly: boolean;
-  /** Repetir la llamada con los mismos argumentos no cambia nada más. */
+  /** Repeating the call with the same arguments changes nothing else. */
   idempotent: boolean;
   run(args: T, ctx: ToolContext): Promise<ToolOutput>;
 }
 
 interface Tool {
   name: string;
-  /** Lo que se publica en tools/list, con `user` según los usuarios configurados. */
+  /** What is published in tools/list, with `user` according to the configured users. */
   definition(users: readonly AppUser[]): Record<string, unknown>;
-  /** Valida los argumentos (ya sin `user`) y ejecuta. Lanza ApiError si no cumplen o si el dominio lo impide. */
+  /** Validates the arguments (already without `user`) and runs. Throws ApiError if they are invalid or the domain forbids it. */
   call(args: Record<string, unknown>, ctx: ToolContext): Promise<ToolOutput>;
 }
 
-/** Un modelo suele mandar null o '' en lo que no sabe: cuenta como "no vino" y se aplica el valor por defecto. */
+/** A model often sends null or '' for what it does not know: it counts as "not sent" and the default value applies. */
 function dropBlank(args: Record<string, unknown>): Record<string, unknown> {
   return Object.fromEntries(Object.entries(args).filter(([, v]) => v !== null && !(typeof v === 'string' && v.trim() === '')));
 }
 
 function defineTool<T>(spec: ToolSpec<T>): Tool {
-  // Solo se usan palabras clave comunes a draft-07 y 2020-12; sin `$schema`, cada cliente aplica el dialecto que entienda.
+  // Only keywords common to draft-07 and 2020-12 are used; without `$schema`, each client applies the dialect it understands.
   const { properties = {}, required = [], additionalProperties } = z.toJSONSchema(spec.schema, { io: 'input' });
   return {
     name: spec.name,
     definition: (users) => {
-      // `user` va primero, porque es lo primero que hay que saber, y es obligatorio solo si hay de quién elegir.
+      // `user` goes first, because it is the first thing to know, and is required only if there is someone to choose from.
       const mandatory = users.length > 1 ? ['user', ...required] : required;
       return {
         name: spec.name,
@@ -847,10 +848,10 @@ function defineTool<T>(spec: ToolSpec<T>): Tool {
         annotations: {
           title: spec.title,
           readOnlyHint: spec.readOnly,
-          // Ninguna herramienta borra ni sobrescribe datos del usuario.
+          // No tool deletes or overwrites user data.
           destructiveHint: false,
           idempotentHint: spec.idempotent,
-          // Solo tocan la base de esta aplicación.
+          // They only touch this application's database.
           openWorldHint: false,
         },
       };
@@ -876,15 +877,15 @@ const addTransaction = defineTool({
   async run(args, ctx) {
     const { db, now, user } = ctx;
     if (args.date) await assertReachable(ctx, args.date);
-    // El usuario ya está resuelto: ingestTransaction solo tiene que encontrarlo. Las reglas de la cuenta y de
-    // la moneda por defecto son las suyas (las mismas de POST /api/ingest/transaction).
+    // The user is already resolved: ingestTransaction only has to find them. The rules for the default account and
+    // currency are its own (the same as those of POST /api/ingest/transaction).
     const { transaction: t, monthCreated } = await ingestTransaction(db, [user], { ...args, user: user.id }, now);
     const after = await afterWrite(ctx, (state) => ({
       state,
       calc: monthCalc(state, t.monthKey),
       paidFrom: balanceOf(balancesNow(state, now, t.monthKey).all, t.accountId),
     }));
-    // Una compra con tarjeta de crédito no sale de ninguna cuenta: queda cargada a la tarjeta hasta que se pague.
+    // A credit card purchase does not come out of any account: it stays charged to the credit card until it is paid.
     const onCard = isCardTx(t);
     const paidFrom = onCard ? null : (after?.paidFrom ?? null);
 
@@ -985,7 +986,7 @@ const listTransactions = defineTool({
     const main = state.mainCurrency;
     const accounts = accountsById(state);
 
-    // Más reciente primero; con la misma fecha, la última que se registró.
+    // Most recent first; on the same date, the last one recorded.
     const sorted = m.tx
       .map((t, i) => ({ t, i }))
       .sort((a, b) => (a.t.date < b.t.date ? 1 : a.t.date > b.t.date ? -1 : b.i - a.i))
@@ -1022,10 +1023,10 @@ const listTransactions = defineTool({
   },
 });
 
-/** Cómo se nombra cada fila de la historia del presupuesto. */
+/** How each row of the budget history is named. */
 const HISTORY_KIND = { initial: 'initial', adjust: 'adjustment', leftover: 'leftover', income: 'income', transfer: 'transfer' } as const;
 
-/** El aviso de una tarjeta, solo en el último mes registrado (en uno anterior no tiene sentido) y si tiene límite y corte. */
+/** A credit card's hint, only in the last recorded month (in an earlier one it makes no sense) and if it has a limit and a cutoff. */
 function hintOf(state: AppState, key: MonthKey, k: CardCalc, today: ISODate) {
   return key === sortedKeys(state).at(-1) ? cardHint(k.card, k.remainder, today) : null;
 }
@@ -1118,21 +1119,21 @@ const monthSummary = defineTool({
     const c = monthCalc(state, m.key);
     const { main, second } = c;
     const today = todayISO(now);
-    // Sin segunda moneda no hay cifra entre paréntesis ni campos *Second en `data`.
+    // Without a second currency there is no figure in parentheses and no *Second fields in `data`.
     const both = (amount: number, inSecond: number | null) =>
       second && inSecond !== null ? `${money(amount, main)} (${money(inSecond, second)})` : money(amount, main);
 
     const pending = m.fixed
       .filter((f) => !f.paid)
       .map((f) => ({ name: f.name, day: f.day, amount: f.amount, cur: f.cur, inMain: convert(state, m.key, f.amount, f.cur, main) }));
-    // Las partes sin monto no dicen nada: el presupuesto de una cuenta que no aporta es cero.
+    // Parts with no amount say nothing: the budget of an account that contributes nothing is zero.
     const parts = c.budgetParts.filter((p) => p.amount !== 0);
-    // Saldos al final del mes que se resume: para el mes en curso son los de ahora.
+    // Balances at the end of the month being summarized: for the current month they are the ones as of now.
     const all = balances(state, m.key);
     const visible = all.accounts.filter((b) => !b.account.hidden);
-    // Los ingresos del mes son los de dinero: los gramos que entran a una cuenta de oro no cuentan (incomeInMonth).
+    // The month's incomes are the money ones: grams entering a gold account do not count (incomeInMonth).
     const incomes = state.incomes.filter(isMoneyIncome).filter((i) => monthOf(i.date) === m.key);
-    // Las comisiones de los envíos: ya van dentro de c.txCount y c.varSpent, como una transacción más cada una.
+    // The transfer fees: they are already inside c.txCount and c.varSpent, each as one more transaction.
     const fees = transferFees(state, m.key);
     const outside = outsideSummary(state, m.key);
     const rates = ratesToMain(state, m.key, [
@@ -1148,7 +1149,7 @@ const monthSummary = defineTool({
 
     const history = budgetHistory(state, m.key);
     const left = leftoverFor(state, m.key);
-    // Las tasas escritas con fecha en el mes: cada una vale desde su fecha hasta la siguiente del par.
+    // The rates typed with a date in the month: each one applies from its date until the next one of the pair.
     const typed = m.rates.filter((r) => r.rate > 0);
 
     const lines = [
@@ -1175,7 +1176,7 @@ const monthSummary = defineTool({
       `Available after pending fixed: ${money(c.after, main)}`,
       `Monthly expenses: ${c.paidCount} of ${c.fixedCount} paid${SEP}Fixed paid: ${money(c.fixedPaid, main)}${SEP}Fixed pending: ${money(c.pending, main)}`,
     );
-    // Solo las tarjetas activas que tienen algo este mes (o que debían algo).
+    // Only the active credit cards that have something this month (or that owed something).
     const cards = c.cards.filter((k) => k.total !== 0 || k.payments.length > 0);
     for (const k of cards) {
       const cur = k.cur;
@@ -1242,7 +1243,7 @@ const monthSummary = defineTool({
         budgetHistory: history.map((h) => ({
           kind: h.kind,
           id: h.id,
-          // Solo en un envío: 'out' lo que resta a la cuenta de origen, 'in' lo que suma a la de destino.
+          // Only on a transfer: 'out' is what it subtracts from the origin account, 'in' what it adds to the destination.
           ...(h.side && { side: h.side }),
           date: h.date,
           accountId: h.account.id,
@@ -1261,8 +1262,8 @@ const monthSummary = defineTool({
         availableAfterPending: c.after,
         fixed: { count: c.fixedCount, paidCount: c.paidCount, paid: c.fixedPaid, pending: c.pending, pendingItems: pending },
         transactions: { count: c.txCount, total: c.varSpent },
-        // Pago diferido: `total` = previous + other + charged; `paid` = suma de `payments`; `remainder` = lo que falta por
-        // pagar (si el mes se cierra así, pasa al siguiente). En la moneda principal.
+        // Deferred payment: `total` = previous + other + charged; `paid` = sum of `payments`; `remainder` = what is left to
+        // pay (if the month closes like that, it carries to the next one). In the main currency.
         creditCards: c.cards.map((k) => ({
           id: k.card.id,
           name: k.card.name,
@@ -1278,9 +1279,9 @@ const monthSummary = defineTool({
           utilization: k.card.limit ? Math.max(0, k.remainder) / k.card.limit : null,
           hint: hintOf(state, m.key, k, today),
         })),
-        // Aparte de `transactions`, `used` y `available`: resta de los saldos de las cuentas, nada más.
+        // Separate from `transactions`, `used` and `available`: it subtracts from the account balances, nothing more.
         outsideBudget: { ...outsideSummary(state, m.key), expenses: outsideOf(m) },
-        // Ya contadas en `transactions` y en `categories` (Other): no son filas de transacción, salen de los envíos.
+        // Already counted in `transactions` and `categories` (Other): not transaction rows; they come from the transfers.
         transferFees: fees.map((f) => ({
           transferId: f.transferId,
           date: f.date,
@@ -1294,10 +1295,10 @@ const monthSummary = defineTool({
         })),
         categories: c.categories.map((cat) => ({ name: cat.name, value: cat.value })),
         income: { count: incomes.length, total: c.income, left: c.incomeLeft },
-        // De una cuenta de oro, `balance` son gramos; `inMain` es null si no hay precio del oro.
+        // For a gold account, `balance` is grams; `inMain` is null if there is no gold price.
         accounts: visible.map((b) => ({ ...accountData(b.account, b), inMain: b.valued ? b.inMain : null })),
         totalMoney: { main: all.totalMain, ...(all.totalSecond !== null && { second: all.totalSecond }) },
-        // El precio del oro escrito por la persona (null = sin precio) y si por eso hay oro fuera del total.
+        // The gold price typed by the person (null = no price) and whether that leaves gold out of the total.
         gold: { price: state.goldPrice, excludedFromTotal: all.goldExcluded },
         rates,
         typedRates: typed,
@@ -1327,27 +1328,27 @@ const addTransfer = defineTool({
     const date = givenDate ?? todayISO(now);
     const key = monthOf(date);
 
-    // Las cuentas se resuelven antes de tocar nada: una que no se reconoce no llega a crear el mes.
+    // The accounts are resolved before touching anything: one that is not recognized never gets to create the month.
     const { accounts } = await userAccounts(db, user.id);
     const from = matchAccount(accounts, from_account, 'from_account');
     const to = matchAccount(accounts, to_account, 'to_account');
-    // Una cuenta de oro guarda gramos: no envía ni recibe dinero.
+    // A gold account holds grams: it neither sends nor receives money.
     if (!isMoneyAccount(from)) throw goldAccountError(from.name);
     if (!isMoneyAccount(to)) throw goldAccountError(to.name);
     if (from.id === to.id) throw validationError(invalidData(`to_account: must be a different account from from_account (both are ${from.name})`));
     const same = from.currency === to.currency;
-    // Entre cuentas de la misma moneda entra lo mismo que sale: otra tasa inventaría o perdería dinero.
+    // Between accounts of the same currency, what goes in equals what comes out: another rate would invent or lose money.
     if (same && given !== undefined && given !== 1) {
       throw validationError(invalidData(`rate: must be omitted between accounts of the same currency (both are in ${from.currency})`));
     }
 
     const { month, created } = await ensureMonth(db, user.id, key);
     if (month.closed) throw monthClosedError(key);
-    // Sin tasa vale la vigente en la fecha del envío para ese par. Se resuelve aquí (y no dentro de
-    // createTransfer) para poder decir de dónde salió: una vez guardado el envío, la tasa del mes podría salir de él.
+    // Without a rate, the one in effect on the transfer's date for that pair applies. It is resolved here (and not inside
+    // createTransfer) to be able to say where it came from: once the transfer is saved, the month rate could come from it.
     const assumed = same || given !== undefined ? null : rateFor(await loadState(db, user.id), key, from.currency, to.currency, date);
     const rate = same ? 1 : (given ?? assumed?.rate);
-    // Las reglas del contrato (shared/api.ts) las pone el mismo esquema que usa POST /api/transfers.
+    // The contract's rules (shared/api.ts) are set by the same schema POST /api/transfers uses.
     const transfer = await createTransfer(
       db,
       user.id,
@@ -1420,7 +1421,7 @@ const addIncome = defineTool({
     const key = monthOf(date);
     const account = await resolveAccount(ctx, named);
 
-    // Un ingreso no pertenece a un mes (shared/api.ts): no crea el de su fecha ni lo frena que esté cerrado.
+    // An income belongs to no month (shared/api.ts): it does not create the month of its date, nor does a closed one stop it.
     const income = await createIncome(
       db,
       user.id,
@@ -1432,7 +1433,7 @@ const addIncome = defineTool({
       balance: balanceOf(balancesNow(state, now, key).all, account.id),
       monthIncome: incomeInMonth(state, key),
       count: state.incomes.filter((i) => monthOf(i.date) === key).length,
-      // El presupuesto solo existe si el mes está registrado: un ingreso no crea el mes de su fecha.
+      // The budget only exists if the month is recorded: an income does not create the month of its date.
       budget: state.months[key] ? monthCalc(state, key).budget : null,
     }));
 
@@ -1482,8 +1483,8 @@ const listAccounts = defineTool({
   idempotent: true,
   async run(_args, ctx) {
     const { db, now, user } = ctx;
-    // Quien nunca abrió la web recibe aquí sus cuentas iniciales (como en cualquier escritura): sin ellas la
-    // lista saldría vacía y el modelo no tendría en qué registrar.
+    // Someone who never opened the web app gets their initial accounts here (as on any write): without them the
+    // list would come out empty and the model would have nothing to record into.
     const state = await userState(db, user.id);
     const { asOf, all } = balancesNow(state, now);
     const main = state.mainCurrency;
@@ -1521,13 +1522,13 @@ const listAccounts = defineTool({
         defaultAccountId: preferred?.id ?? null,
         accounts: visible.map((b) => ({
           ...accountData(b.account, b),
-          // De una cuenta de oro, `balance` son gramos; su valor es null si no hay precio del oro.
+          // For a gold account, `balance` is grams; its value is null if there is no gold price.
           inMain: b.valued ? b.inMain : null,
           ...(second && { inSecond: b.valued ? b.inSecond : null }),
           isDefault: b.account.id === preferred?.id,
         })),
         totalMoney: { main: all.totalMain, ...(all.totalSecond !== null && { second: all.totalSecond }) },
-        // El precio del oro escrito por la persona (null = sin precio) y si por eso hay oro fuera del total.
+        // The gold price typed by the person (null = no price) and whether that leaves gold out of the total.
         gold: { price: state.goldPrice, excludedFromTotal: all.goldExcluded },
         hiddenCount: hidden,
         rates,
@@ -1536,7 +1537,7 @@ const listAccounts = defineTool({
   },
 });
 
-/** El total de la tarjeta a la que está cargado un gasto (la suya, o la primera activa si no dice). */
+/** The total of the credit card an expense is charged to (its own, or the first active one if it does not say). */
 function cardTotalLine(c: MonthCalc, cardId: string | null | undefined): string[] {
   const k = c.cards.find((x) => x.card.id === (cardId ?? c.cards[0]?.card.id));
   return k ? [`${k.card.name} total: ${money(k.total, k.cur)}.`] : [];
@@ -1573,11 +1574,11 @@ const markFixedPaid = defineTool({
 
     const found = hits[0]!;
     const changed = found.paid !== paid || (onCardArg !== undefined && (found.onCard === true) !== onCardArg);
-    // Sin cambio no se escribe nada: repetir la llamada es inofensivo. La regla del mes cerrado la aplica patchFixed.
+    // With no change nothing is written: repeating the call is harmless. The closed-month rule is applied by patchFixed.
     const fixed = changed ? await patchFixed(db, user.id, found.id, parse(fixedPatchSchema, { paid, ...(onCardArg === undefined ? {} : { onCard: onCardArg }) })) : found;
     m.fixed = m.fixed.map((f) => (f.id === fixed.id ? fixed : f));
     const c = monthCalc(state, m.key);
-    // Un gasto en tarjeta no sale de ninguna cuenta al marcarlo: queda cargado a la tarjeta.
+    // An expense on the credit card does not come out of any account when it is marked: it stays charged to the credit card.
     const onCard = fixed.onCard === true;
     const paidFrom = onCard ? null : balanceOf(balancesNow(state, now, m.key).all, fixed.accountId);
 
@@ -1602,7 +1603,7 @@ const markFixedPaid = defineTool({
   },
 });
 
-/** La tarjeta que nombra la persona o, sin nombre, la única activa / la primera activa. */
+/** The credit card the person names or, with no name, the only active one / the first active one. */
 async function resolveCard({ db }: ToolContext, userId: string, named: string | undefined): Promise<CreditCard> {
   const cards = await listCards(db, userId);
   if (named === undefined) {
@@ -1629,7 +1630,7 @@ const payCreditCard = defineTool({
     const before = await loadState(db, user.id);
     const m = resolveMonth(before, month, ctx);
     const card = await resolveCard(ctx, user.id, cardName);
-    // Sin cuenta nombrada: la del último pago de la tarjeta (cardAccountFor); con una nombrada, la que diga la persona.
+    // With no account named: that of the credit card's last payment (cardAccountFor); with one named, the one the person says.
     const account = named === undefined ? cardAccountFor(before, m.key, card.id) : await resolveAccount(ctx, named);
     if (!account) throw noAccountsError();
     if (!isMoneyAccount(account)) throw goldAccountError(account.name);
@@ -1758,24 +1759,24 @@ const addBudgetExtra = defineTool({
   },
 });
 
-/** En el orden en que las lista tools/list. */
+/** In the order tools/list lists them. */
 const TOOLS = new Map(
   [addTransaction, addOutsideExpense, listTransactions, monthSummary, addTransfer, markFixedPaid, addIncome, listAccounts, payCreditCard, listCreditCards, addBudgetExtra].map((t) => [t.name, t]),
 );
-// ── Métodos ──────────────────────────────────────────────────────────────────
+// ── Methods ──────────────────────────────────────────────────────────────────
 
 type RequestMessage = Extract<Incoming, { kind: 'request' }>;
 
-/** Lo que de la petición HTTP decide cómo se atiende un mensaje. */
+/** The parts of the HTTP request that decide how a message is handled. */
 interface HttpContext {
   headers: Headers;
-  /** Cabecera MCP-Protocol-Version, ya comprobado que es una versión soportada; null si no vino. */
+  /** MCP-Protocol-Version header, already checked to be a supported version; null if it was not sent. */
   version: string | null;
 }
 
 /**
- * Negociación de versión con handshake: la que pide el cliente si se entiende; si no, la más nueva de las
- * que usan handshake (las posteriores no tienen initialize: no se pueden acordar por esta vía).
+ * Version negotiation with a handshake: the one the client asks for if it is understood; otherwise, the newest of
+ * those that use a handshake (the later ones have no initialize: they cannot be agreed on this way).
  */
 function initialize(params: Record<string, unknown>, users: readonly AppUser[]): unknown {
   const requested = params.protocolVersion;
@@ -1788,7 +1789,7 @@ function initialize(params: Record<string, unknown>, users: readonly AppUser[]):
   };
 }
 
-/** Son nueve: caben en una página y no se devuelve nextCursor. */
+/** There are nine: they fit in one page and no nextCursor is returned. */
 function listTools(users: readonly AppUser[]): { tools: Record<string, unknown>[] } {
   return { tools: [...TOOLS.values()].map((t) => t.definition(users)) };
 }
@@ -1802,7 +1803,7 @@ async function callTool(params: Record<string, unknown>, ctx: ServerContext): Pr
   if (!isRecord(args)) throw new RpcError(INVALID_PARAMS, 'Invalid params: `arguments` must be an object.');
 
   try {
-    // Antes que nada, de quién: sin eso no hay nada que validar ni que leer.
+    // First of all, whose: without that there is nothing to validate or read.
     const { user: requested, ...own } = args;
     const user = resolveUser(ctx.users, requested);
     const out = await tool.call(own, { db: ctx.db, now: ctx.now, user });
@@ -1813,13 +1814,13 @@ async function callTool(params: Record<string, unknown>, ctx: ServerContext): Pr
     };
   } catch (err) {
     const api = toApiError(err);
-    // Lo inesperado no es un error de la herramienta: sube y se responde como error interno.
+    // The unexpected is not a tool error: it propagates and is answered as an internal error.
     if (api.status === 500) throw err;
     return { content: [{ type: 'text', text: api.message }], isError: true };
   }
 }
 
-/** MCP solo usa parámetros con nombre. */
+/** MCP only uses named parameters. */
 function namedParams(params: unknown, status = 200): Record<string, unknown> {
   if (params != null && !isRecord(params)) throw new RpcError(INVALID_PARAMS, 'Invalid params: `params` must be an object.', status);
   return params ?? {};
@@ -1831,7 +1832,7 @@ function headerMismatch(detail: string): RpcError {
 
 const VERSION_MISMATCH = '`_meta` declares a protocol version that is not the one in the MCP-Protocol-Version header.';
 
-/** Valor de una cabecera que repite un campo del cuerpo: lo que no es ASCII simple viaja como =?base64?…?= (UTF-8). */
+/** Value of a header that repeats a field of the body: anything that is not plain ASCII travels as =?base64?…?= (UTF-8). */
 function mirrored(value: string | null): string | null {
   const encoded = value === null ? null : /^=\?base64\?(.*)\?=$/.exec(value);
   if (!encoded) return value;
@@ -1843,12 +1844,12 @@ function mirrored(value: string | null): string | null {
   }
 }
 
-/** Época con handshake (2025-11-25 y anteriores). */
+/** Era with a handshake (2025-11-25 and earlier). */
 async function dispatchLegacy(req: RequestMessage, ctx: ServerContext, http: HttpContext): Promise<unknown> {
   const params = namedParams(req.params);
   if (req.method === 'initialize') return initialize(params, ctx.users);
 
-  // Quien declara su versión en `_meta` habla el protocolo sin handshake, que obliga a repetirla en la cabecera.
+  // Anyone declaring its version in `_meta` speaks the protocol without a handshake, which requires repeating it in the header.
   const declared = isRecord(params._meta) ? params._meta[META_VERSION] : undefined;
   if (declared !== undefined && declared !== http.version) throw headerMismatch(VERSION_MISMATCH);
 
@@ -1865,9 +1866,9 @@ async function dispatchLegacy(req: RequestMessage, ctx: ServerContext, http: Htt
 }
 
 /**
- * Época sin handshake (2026-07-28). Las cabeceras repiten campos del cuerpo para que un intermediario pueda
- * enrutar sin leerlo; el servidor tiene que rechazar la petición si no coinciden (400), porque si no cada
- * uno estaría actuando sobre un dato distinto.
+ * Era without a handshake (2026-07-28). The headers repeat fields of the body so an intermediary can
+ * route without reading it; the server has to reject the request if they do not match (400), because otherwise each
+ * one would be acting on different data.
  */
 async function dispatchModern(req: RequestMessage, ctx: ServerContext, http: HttpContext): Promise<unknown> {
   const params = namedParams(req.params, 400);
@@ -1879,7 +1880,7 @@ async function dispatchModern(req: RequestMessage, ctx: ServerContext, http: Htt
     throw new RpcError(INVALID_PARAMS, `Invalid params: \`_meta["${META_CLIENT_CAPABILITIES}"]\` is missing.`, 400);
   }
   if (http.headers.get('Mcp-Method') !== req.method) throw headerMismatch('the Mcp-Method header is missing or is not the method of the request.');
-  // Sin un nombre legible en el cuerpo no hay con qué comparar: lo rechaza callTool.
+  // Without a readable name in the body there is nothing to compare with: callTool rejects it.
   if (req.method === 'tools/call' && typeof params.name === 'string' && mirrored(http.headers.get('Mcp-Name')) !== params.name) {
     throw headerMismatch('the Mcp-Name header is missing or is not the name of the tool.');
   }
@@ -1896,39 +1897,39 @@ async function dispatchModern(req: RequestMessage, ctx: ServerContext, http: Htt
       result = await callTool(params, ctx);
       break;
     default:
-      // Aquí un método que no existe es además un 404 (initialize y ping ya no forman parte del protocolo).
+      // Here a method that does not exist is also a 404 (initialize and ping are no longer part of the protocol).
       throw new RpcError(METHOD_NOT_FOUND, `Method not found: ${quoted(req.method)}`, 404);
   }
-  // Sin handshake no hay otro momento para presentarse: el servidor se identifica en cada resultado.
+  // Without a handshake there is no other moment to introduce itself: the server identifies itself in each result.
   return { resultType: 'complete', ...result, _meta: { [META_SERVER_INFO]: SERVER_INFO } };
 }
 
 interface Answer {
-  /** Estado HTTP si el mensaje viaja solo. */
+  /** HTTP status if the message travels alone. */
   status: number;
   body: JsonRpcResponse;
 }
 
 async function respond(req: RequestMessage, ctx: ServerContext, http: HttpContext): Promise<Answer> {
-  // initialize solo existe con handshake, diga lo que diga la cabecera.
+  // initialize only exists with a handshake, whatever the header says.
   const modern = http.version !== null && isModern(http.version) && req.method !== 'initialize';
   try {
     const result = await (modern ? dispatchModern(req, ctx, http) : dispatchLegacy(req, ctx, http));
     return { status: 200, body: { jsonrpc: '2.0', id: req.id, result } };
   } catch (err) {
     if (err instanceof RpcError) return { status: err.status, body: failure(req.id, err.code, err.message) };
-    // Solo lo inesperado va al log, y nunca a la respuesta.
+    // Only the unexpected goes to the log, and never to the response.
     console.error(`[mcp] ${req.method}`, err);
     return { status: 200, body: failure(req.id, INTERNAL_ERROR, INTERNAL_MESSAGE) };
   }
 }
 
-// ── Transporte ───────────────────────────────────────────────────────────────
+// ── Transport ────────────────────────────────────────────────────────────────
 
-/** Atiende /mcp. `now` solo se pasa en las pruebas. */
+/** Handles /mcp. `now` is only passed in tests. */
 export async function handleMcp(request: Request, env: Env, now: Date = new Date()): Promise<Response> {
-  // La autenticación va antes que todo lo demás: sin el token no se lee el cuerpo ni se revela qué acepta el servidor.
-  // El cuerpo del 401 es el mismo que en el resto de la API (shared/api.ts).
+  // Authentication goes before everything else: without the token the body is not read and what the server accepts is
+  // not revealed. The 401 body is the same as in the rest of the API (shared/api.ts).
   if (!(await checkBearer(request, env))) {
     return reply(401, errorBody('unauthorized', 'Invalid or missing token.'), { 'WWW-Authenticate': 'Bearer' });
   }
@@ -1954,8 +1955,8 @@ export async function handleMcp(request: Request, env: Env, now: Date = new Date
     const messages = raw.map(classify);
     const first = messages[0]!;
 
-    // En initialize la versión se negocia en el cuerpo. En todo lo demás la cabecera dice qué versión se habla:
-    // si no es ninguna de las soportadas se rechaza diciendo cuáles hay, para que el cliente reintente con una.
+    // On initialize the version is negotiated in the body. On everything else the header says which version is spoken:
+    // if it is none of the supported ones it is rejected saying which ones there are, so the client can retry with one.
     const version = request.headers.get('MCP-Protocol-Version');
     const initializing = messages.some((m) => m.kind === 'request' && m.method === 'initialize');
     if (version !== null && !isSupported(version) && !initializing) {
@@ -1967,15 +1968,15 @@ export async function handleMcp(request: Request, env: Env, now: Date = new Date
       return reply(400, failure(null, INVALID_REQUEST, 'Invalid request: since version 2026-07-28 each POST carries a single message.'));
     }
 
-    // De uno en uno y en orden: un lote puede registrar algo y pedir el resumen después.
-    // Un USERS mal escrito es un error de configuración: lanza aquí y sale como error interno, con el motivo en el log.
+    // One at a time and in order: a batch can record something and ask for the summary afterward.
+    // A malformed USERS is a configuration error: it throws here and comes out as an internal error, with the reason in the log.
     const ctx: ServerContext = { db: env.DB, now, users: configuredUsers(env) };
     const http: HttpContext = { headers: request.headers, version };
     const answers: Answer[] = [];
     for (const m of messages) {
       if (m.kind === 'invalid') answers.push({ status: 400, body: failure(m.id, INVALID_REQUEST, 'Invalid JSON-RPC request.') });
       else if (m.kind === 'request') answers.push(await respond(m, ctx, http));
-      // Las notificaciones y las respuestas del cliente se aceptan y no se contestan.
+      // Notifications and the client's responses are accepted and not answered.
     }
 
     if (answers.length === 0) return new Response(null, { status: 202, headers: NO_STORE });
