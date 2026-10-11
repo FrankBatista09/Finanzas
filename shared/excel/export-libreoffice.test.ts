@@ -1,13 +1,13 @@
-// La prueba de verdad de que el libro funciona en una hoja de cálculo: LibreOffice lo abre, lo recalcula
-// entero y lo vuelve a guardar, y aquí se comprueba que ninguna celda da error y que los valores calculados son
-// los de shared/calc.ts. Cubre dos cosas a la vez:
-//   · los nombres traducidos (hojas, tablas, columnas) y las fórmulas, en los tres idiomas;
-//   · el puente desde el estado de la app (data.ts buildExportData): lo que la app calcula con su modelo de
-//     cuentas es lo que el libro vuelve a calcular con lo que recibe, también cuando hay cuentas y montos en
-//     TRY, que el libro no conoce y le llegan ya convertidos.
+// The real proof that the workbook works in a spreadsheet: LibreOffice opens it, recalculates all of it
+// and saves it again, and here we check that no cell gives an error and that the calculated values are
+// those of shared/calc.ts. It covers two things at once:
+//   · the translated names (sheets, tables, columns) and the formulas, in the three languages;
+//   · the bridge from the app's state (data.ts buildExportData): what the app calculates with its account
+//     model is what the workbook calculates again from what it receives, also when there are accounts and
+//     amounts in TRY, which the workbook does not know about and which reach it already converted.
 //
-// Necesita LibreOffice (soffice); si no está instalado, estas pruebas se saltan. La conversión es por línea
-// de comandos (--headless --convert-to): no abre ventanas ni puertos, y usa un perfil temporal propio.
+// It needs LibreOffice (soffice); if it is not installed, these tests are skipped. The conversion runs from the
+// command line (--headless --convert-to): it opens no windows or ports, and uses its own temporary profile.
 
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -57,9 +57,9 @@ const usdGoal = (id: string, name: string, sort: number, plan: Pick<Goal, 'month
 });
 
 /**
- * Datos de ejemplo más siete metas, para que haya varias bandas de tarjetas: una con plan cuyo nombre lleva
- * comillas y &, y tres parejas sin plan cuyos nombres solo se distinguen si "?", "*" y "=" se toman al pie
- * de la letra en los criterios de SUMIFS (y no como comodines o como una comparación).
+ * Sample data plus seven goals, so there are several bands of cards: one with a plan whose name has
+ * quotes and &, and three pairs without a plan whose names can only be told apart if "?", "*" and "=" are
+ * taken literally in the SUMIFS criteria (and not as wildcards or as a comparison).
  */
 function sampleState(): AppState {
   const state = seedState();
@@ -82,7 +82,7 @@ function sampleState(): AppState {
     { id: 'c-ten', goalId: 'ten', date: '2026-10-07', amount: 33, cur: 'USD' },
     { id: 'c-tenx', goalId: 'tenx', date: '2026-10-07', amount: 44, cur: 'USD' },
   );
-  // Un gasto en USD y una categoría fuera de la lista.
+  // An expense in USD and a category outside the list.
   state.months['2026-10']!.tx.push({
     id: 'tx-usd',
     monthKey: '2026-10',
@@ -122,14 +122,14 @@ function errorsOf(book: TestBook): ErrorCell[] {
   return out;
 }
 
-/** Un estado de la app y el libro que sale de él. */
+/** An app state and the workbook that comes out of it. */
 interface Case {
   id: string;
-  /** El estado tal como lo tiene el usuario (con su moneda principal). */
+  /** The state as the user has it (with their main currency). */
   state: AppState;
   /**
-   * El mismo estado visto como lo ve el libro: todo en DOP y el "≈" en USD. Con él, las cifras de
-   * shared/calc.ts se comparan directamente con las celdas.
+   * The same state as the workbook sees it: everything in DOP and the "≈" in USD. With it, the figures of
+   * shared/calc.ts are compared directly with the cells.
    */
   view: AppState;
   data: ExportData;
@@ -144,25 +144,25 @@ function makeCase(id: string, state: AppState): Case {
 const SAMPLE = makeCase('sample', sampleState());
 const MIXED = makeCase('mixed', mixedState());
 
-/** Lo que cada prueba necesita para mirar el libro de un caso en un idioma. */
+/** What each test needs to look at one case's workbook in one language. */
 interface Opened {
   lang: Language;
   L: ExcelLocale;
   book(): TestBook;
   monthSheet(key: string): TestSheet;
   savings(): TestSheet;
-  /** Valor numérico de una celda (la prueba falla si no lo es). */
+  /** Numeric value of a cell (the test fails if it is not one). */
   num(sheet: TestSheet, ref: string): number;
-  /** Fila del encabezado de las dos tablas de la hoja de ahorros: empiezan debajo de la última banda. */
+  /** Header row of the two tables of the savings sheet: they start below the last band. */
   head: number;
 }
 
-describe.skipIf(!SOFFICE)('el libro recalculado por LibreOffice', () => {
+describe.skipIf(!SOFFICE)('the workbook recalculated by LibreOffice', () => {
   const books = new Map<string, TestBook>();
   const files = [SAMPLE, MIXED].flatMap((c) => LANGS.map((lang) => ({ name: `${c.id}-${lang}`, data: c.data, lang })));
   let dir = '';
 
-  // Una sola pasada de LibreOffice para todos los libros: arrancarlo es lo que tarda.
+  // A single LibreOffice run for all the workbooks: starting it up is what takes time.
   beforeAll(() => {
     dir = mkdtempSync(join(tmpdir(), 'fe-finance-xlsx-'));
     const inDir = join(dir, 'in');
@@ -176,7 +176,7 @@ describe.skipIf(!SOFFICE)('el libro recalculado por LibreOffice', () => {
         '--headless',
         '--norestore',
         '--nolockcheck',
-        // Perfil propio: no toca el del usuario ni choca con un LibreOffice abierto o con otra prueba en marcha.
+        // Its own profile: it does not touch the user's or clash with an open LibreOffice or another running test.
         `-env:UserInstallation=${pathToFileURL(join(dir, 'profile')).href}`,
         '--convert-to',
         'xlsx',
@@ -193,7 +193,7 @@ describe.skipIf(!SOFFICE)('el libro recalculado por LibreOffice', () => {
     if (dir) rmSync(dir, { recursive: true, force: true });
   });
 
-  /** Registra, para cada idioma, las comprobaciones comunes a cualquier libro y las propias del caso (`extra`). */
+  /** Registers, for each language, the checks common to any workbook and those specific to the case (`extra`). */
   function check({ id, state, view, layout }: Case, extra: (o: Opened) => void): void {
     describe.each(LANGS)('%s', (lang) => {
       const L = EXCEL_LOCALES[lang];
@@ -209,7 +209,7 @@ describe.skipIf(!SOFFICE)('el libro recalculado por LibreOffice', () => {
       };
       const head = 15 + 8 * (layout.bands - 1);
 
-      it('conserva hojas y tablas, y recalcula todas las fórmulas', () => {
+      it('keeps sheets and tables, and recalculates every formula', () => {
         expect(book().sheets.map((s) => s.name)).toEqual([...keys.map((k) => label(k, lang)), L.sheets.savings, 'Config']);
         expect(book().tables.map((t) => t.name).sort()).toEqual(
           [...keys.flatMap((k) => [L.tables.fixed, L.tables.transfers, L.tables.tx].map((t) => `${t}_${k.replace('-', '_')}`)), L.tables.contribs].sort(),
@@ -225,48 +225,48 @@ describe.skipIf(!SOFFICE)('el libro recalculado por LibreOffice', () => {
         expect(formulas).toBeGreaterThan(500);
       });
 
-      it('ninguna celda da error', () => {
+      it('no cell gives an error', () => {
         const errors = errorsOf(book());
-        // Ni nombres que no existan (#NAME?: una tabla, una columna o una función mal escrita) ni tipos equivocados.
+        // No names that do not exist (#NAME?: a misspelled table, column or function) and no wrong types.
         expect(errors.filter((e) => e.value !== '#REF!')).toEqual([]);
-        // LibreOffice no deja que IFERROR atrape el INDIRECT a una hoja que no existe (Excel sí, y devuelve ""):
-        // en "Ingresos por mes", las filas de los meses que aún no tienen hoja dan #REF!. Pasa igual con el libro
-        // del diseño original; fuera de esas celdas no puede haber ninguno.
+        // LibreOffice does not let IFERROR catch the INDIRECT to a sheet that does not exist (Excel does, and
+        // returns ""): in "Income by month", the rows of the months that have no sheet yet give #REF!. The same
+        // happens with the workbook of the original design; outside those cells there can be none.
         const future = new Set<string>();
         for (let r = head + 1 + keys.length; r <= head + 15; r++) for (const col of 'CDEFG') future.add(`${col}${r}`);
         expect(errors.filter((e) => !(e.sheet === L.sheets.savings && future.has(e.ref)))).toEqual([]);
       });
 
-      it.each(keys)('hoja de %s: tasa, saldos, presupuesto y totales como en shared/calc.ts', (key) => {
+      it.each(keys)('%s sheet: rate, balances, budget and totals as in shared/calc.ts', (key) => {
         const c = monthCalc(view, key);
         const b = balances(view, key);
         const sh = monthSheet(key);
-        // La tasa que el libro saca de sus envíos es la del mes en la app.
+        // The rate the workbook derives from its transfers is the month rate in the app.
         expect(num(sh, 'T3')).toBeCloseTo(rateFor(state, key, 'USD', 'DOP').rate, 8);
         expect(num(sh, 'T4')).toBeCloseTo(c.fixedPaid, 6);
         expect(num(sh, 'T5')).toBeCloseTo(c.varSpent, 6);
         expect(num(sh, 'T6')).toBeCloseTo(c.pending, 6);
         expect(num(sh, 'T7')).toBeCloseTo(c.free, 6);
-        // Presupuesto y usado del mes.
+        // Budget and used for the month.
         expect(num(sh, 'O6')).toBeCloseTo(c.budget, 6);
         expect(num(sh, 'T8')).toBeCloseTo(c.used, 6);
         expect(num(sh, 'O8')).toBeCloseTo(c.used, 6);
         expect(num(sh, 'O9')).toBeCloseTo(c.avail, 6);
         expect(num(sh, 'O10')).toBeCloseTo(c.after, 6);
         expect(num(sh, 'O11')).toBeCloseTo(c.usedSecond!, 6);
-        // Dinero total: el de la app (la suma de sus cuentas visibles), en DOP y en USD.
+        // Total money: the app's (the sum of its visible accounts), in DOP and in USD.
         expect(num(sh, 'B5')).toBeCloseTo(b.totalMain, 6);
         expect(num(sh, 'B5')).toBeCloseTo(convert(state, key, balances(state, key).totalMain, state.mainCurrency, 'DOP'), 6);
         expect(num(sh, 'B6')).toBeCloseTo(b.totalSecond!, 6);
-        // Ingreso del mes, y lo que queda de él.
+        // The month's income, and what is left of it.
         expect(num(sh, 'C10')).toBeCloseTo(incomeInMonth(state, key, 'USD'), 6);
         expect(num(sh, 'C11')).toBeCloseTo(c.incomeLeft, 6);
-        // "6 of 11 paid · total 42,025.57 DOP": los contadores salen de la columna Pagado (Sí/Yes/Evet).
+        // "6 of 11 paid · total 42,025.57 DOP": the counters come from the Paid column (Sí/Yes/Evet).
         const [before, mid, total] = L.month.fixedMeta;
         expect(String(sh.cells.get('H14')?.value)).toContain(`${before}${c.paidCount}${mid}${c.fixedCount}${total}`);
-        // Por categoría: la lista traducida casa con la categoría traducida de cada fila del historial.
+        // By category: the translated list matches the translated category of each history row.
         expect(num(sh, 'Q15')).toBeCloseTo(c.fixedPaid, 6);
-        // El libro lista las diez categorías del diseño original (L.cats); "Other", la undécima, no tiene fila.
+        // The workbook lists the ten categories of the original design (L.cats); "Other", the eleventh, has no row.
         expect(L.cats).toHaveLength(10);
         CATS.slice(0, L.cats.length).forEach((cat, i) => {
           expect(L.cats[i]).toBe(catLabel(cat, lang));
@@ -275,7 +275,7 @@ describe.skipIf(!SOFFICE)('el libro recalculado por LibreOffice', () => {
         });
       });
 
-      it('ahorros: el resumen lee la hoja del mes actual por su nombre', () => {
+      it('savings: the summary reads the sheet of the current month by its name', () => {
         const c = monthCalc(view, now);
         const sh = savings();
         expect(sh.cells.get('B4')?.value).toBe(label(now, lang));
@@ -287,22 +287,22 @@ describe.skipIf(!SOFFICE)('el libro recalculado por LibreOffice', () => {
         expect(num(sh, 'R3')).toBeCloseTo(c.rate!.rate, 8);
       });
 
-      it('ahorros: lo aportado a cada meta, en su tarjeta', () => {
+      it('savings: what was contributed to each goal, on its card', () => {
         const sh = savings();
         for (const placed of layout.goals) {
           const goal = state.goals.find((g) => g.name === placed.name)!;
           const mine = state.contribs.filter((x) => x.goalId === goal.id);
-          // El libro lleva todas las metas en USD: lo aportado, con la tasa del mes de cada aporte.
+          // The workbook keeps every goal in USD: what was contributed, at the month rate of each contribution.
           const savedUSD = mine.reduce((a, x) => a + contribIn(view, x, 'USD'), 0);
           const o = 8 * placed.band;
           const c1 = GOAL_SLOTS[placed.slot]![0];
           expect(sh.cells.get(`${c1}${6 + o}`)?.value).toBe(goal.name);
-          // Total aportado a la meta, en USD y, a la tasa del mes en curso, en DOP.
+          // Total contributed to the goal, in USD and, at the current month's rate, in DOP.
           expect(num(sh, `${c1}${8 + o}`), goal.name).toBeCloseTo(savedUSD, 6);
           expect(num(sh, placed.plan ? `L${8 + o}` : `${c1}${9 + o}`), goal.name).toBeCloseTo(convert(view, now, savedUSD, 'USD', 'DOP'), 5);
           const p = goalProgress(view, goal);
           if (goal.cur === 'USD') {
-            // Una meta en USD es la misma en la app y en el libro.
+            // A goal in USD is the same in the app and in the workbook.
             expect(p.saved, goal.name).toBeCloseTo(savedUSD, 6);
             expect(num(sh, placed.plan ? `L${8 + o}` : `${c1}${9 + o}`), goal.name).toBeCloseTo(p.savedMain, 5);
           }
@@ -311,7 +311,7 @@ describe.skipIf(!SOFFICE)('el libro recalculado por LibreOffice', () => {
             continue;
           }
           const t = p.target!;
-          // El objetivo de una meta en otra moneda llega en USD, a la tasa del mes en curso.
+          // The target of a goal in another currency arrives in USD, at the current month's rate.
           const targetUSD = convert(view, now, t.targetAmount, goal.cur, 'USD');
           expect(placed.plan.monthlyUSD * monthSpan(placed.plan.start, placed.plan.end), goal.name).toBeCloseTo(targetUSD, 6);
           expect(num(sh, `R${4 + o}`), goal.name).toBeCloseTo(targetUSD, 6);
@@ -319,14 +319,14 @@ describe.skipIf(!SOFFICE)('el libro recalculado por LibreOffice', () => {
           expect(num(sh, `R${8 + o}`), goal.name).toBeCloseTo(savedUSD / targetUSD, 8);
           expect(num(sh, `I${10 + o}`), goal.name).toBeCloseTo(savedUSD / targetUSD, 8);
           if (goal.cur === 'USD') expect(num(sh, `R${8 + o}`), goal.name).toBeCloseTo(t.pct / 100, 8);
-          // "Target: October 2027": el mes sale de la lista CHOOSE, con la mayúscula o minúscula de cada idioma.
+          // "Target: October 2027": the month comes from the CHOOSE list, in each language's upper or lower case.
           const month = L.months[+t.end.slice(5) - 1]!;
           const shown = L.savings.monthCase === 'LOWER' ? month.toLocaleLowerCase(lang) : month;
           expect(sh.cells.get(`L${11 + o}`)?.value).toBe(`${L.savings.target[0]}${shown}${L.savings.target[1]}${t.end.slice(0, 4)}`);
         }
       });
 
-      it('ahorros: ingresos por mes y aportes', () => {
+      it('savings: income by month and contributions', () => {
         const sh = savings();
         incomeRows(view).forEach((row, i) => {
           const r = head + 1 + i;
@@ -334,7 +334,7 @@ describe.skipIf(!SOFFICE)('el libro recalculado por LibreOffice', () => {
           expect(num(sh, `C${r}`)).toBeCloseTo(incomeInMonth(view, row.key, 'USD'), 6);
           expect(num(sh, `D${r}`)).toBeCloseTo(row.rate!.rate, 8);
           expect(num(sh, `E${r}`)).toBeCloseTo(row.income, 6);
-          // Ahorrado en el mes: SUMIFS por la columna Mes de los aportes, que es texto ("October 2026").
+          // Saved in the month: SUMIFS over the Month column of the contributions, which is text ("October 2026").
           expect(num(sh, `F${r}`)).toBeCloseTo(savedInMonth(view, row.key, 'USD'), 6);
           expect(num(sh, `G${r}`)).toBeCloseTo(row.pct! / 100, 8);
         });
@@ -346,7 +346,7 @@ describe.skipIf(!SOFFICE)('el libro recalculado por LibreOffice', () => {
           expect(num(sh, `N${r}`)).toBeCloseTo(contribIn(view, c, 'USD'), 6);
           expect(num(sh, `O${r}`)).toBeCloseTo(contribIn(view, c, 'DOP'), 5);
         });
-        // Las filas en blanco de la tabla quedan en blanco, no en cero ni en error.
+        // The table's blank rows stay blank, not zero and not an error.
         expect(sh.cells.get(`N${head + 1 + sorted.length}`)?.value).toBe('');
         expect(String(sh.cells.get(`L${head - 1}`)?.value).startsWith(L.savings.total[0])).toBe(true);
       });
@@ -355,11 +355,11 @@ describe.skipIf(!SOFFICE)('el libro recalculado por LibreOffice', () => {
     });
   }
 
-  describe('datos de ejemplo, con siete metas más', () => {
+  describe('sample data, with seven more goals', () => {
     const { state } = SAMPLE;
 
     check(SAMPLE, ({ monthSheet, savings, num }) => {
-      it('el gasto en USD se convierte con la tasa del mes', () => {
+      it('the expense in USD is converted with the month rate', () => {
         const sh = monthSheet('2026-10');
         const row = [...sh.cells.values()].find((c) => c.value === 'Namecheap')!.ref.slice(1);
         expect(sh.cells.get(`H${row}`)?.value).toBe('USD');
@@ -367,7 +367,7 @@ describe.skipIf(!SOFFICE)('el libro recalculado por LibreOffice', () => {
         expect(num(sh, `J${row}`)).toBeCloseTo(12.5, 6);
       });
 
-      it('los saldos de las dos cuentas son los que calcula la app', () => {
+      it('the balances of the two accounts are the ones the app calculates', () => {
         const sh = monthSheet('2026-10');
         const b = balances(state, '2026-10');
         expect(num(sh, 'C8')).toBeCloseTo(b.accounts.find((a) => a.account.id === 'us')!.balance, 6);
@@ -375,11 +375,11 @@ describe.skipIf(!SOFFICE)('el libro recalculado por LibreOffice', () => {
         expect(num(sh, 'C8')).toBeCloseTo(13482 - 12.5, 6);
       });
 
-      it('cada meta cuenta solo lo suyo, aunque su nombre lleve comodines o empiece por un operador', () => {
+      it('each goal counts only its own, even if its name has wildcards or starts with an operator', () => {
         const sh = savings();
         expect(SAMPLE.layout.bands).toBe(4);
-        // "Gifts?" no suma lo de "Giftsx", ni "5* hotel…" lo de "5 stars hotel…", ni "=10" lo de "10"
-        // (bandas 1, 2 y 3; huecos B y E).
+        // "Gifts?" does not add in the amounts of "Giftsx", nor "5* hotel…" those of "5 stars hotel…", nor "=10"
+        // those of "10" (bands 1, 2 and 3; slots B and E).
         expect(goalProgress(state, state.goals.find((g) => g.id === 'gifts')!).saved).toBeCloseTo(100, 6);
         expect(['B16', 'E16', 'B24', 'E24', 'B32', 'E32'].map((ref) => num(sh, ref))).toEqual([100, 77, 11, 22, 33, 44].map((n) => expect.closeTo(n, 6)));
         expect(['B14', 'E14', 'B22', 'E22', 'B30', 'E30'].map((ref) => sh.cells.get(ref)?.value)).toEqual([
@@ -394,24 +394,24 @@ describe.skipIf(!SOFFICE)('el libro recalculado por LibreOffice', () => {
     });
   });
 
-  describe('con TRY, más cuentas y cuentas ocultas: lo que el libro recibe ya convertido', () => {
+  describe('with TRY, more accounts and hidden accounts: what the workbook receives already converted', () => {
     const { state, data } = MIXED;
 
     check(MIXED, ({ monthSheet, savings, num }) => {
-      it('premisa: el usuario ve su dinero en TRY y tiene más cuentas de las que caben en el libro', () => {
+      it('premise: the user sees their money in TRY and has more accounts than fit in the workbook', () => {
         expect(state.mainCurrency).toBe('TRY');
         expect(state.accounts.filter((a) => !a.hidden)).toHaveLength(5);
         expect(MIXED.layout.bands).toBe(2);
       });
 
-      it('las dos celdas de saldo suman las cuentas visibles: las de DOP y, en USD, las demás', () => {
+      it('the two balance cells add up the visible accounts: the DOP ones and, in USD, the rest', () => {
         const sh = monthSheet('2026-10');
         const bal = (id: string) => balances(state, '2026-10').accounts.find((a) => a.account.id === id)!.balance;
         expect(num(sh, 'C8')).toBeCloseTo(bal('us') + bal('pp') + convert(state, '2026-10', bal('tr'), 'TRY', 'USD'), 6);
         expect(num(sh, 'C9')).toBeCloseTo(bal('dr') + bal('cash'), 6);
       });
 
-      it('lo que estaba en TRY llega en DOP, y la transacción anota el monto original', () => {
+      it('what was in TRY arrives in DOP, and the transaction notes the original amount', () => {
         const sh = monthSheet('2026-10');
         const rowOf = (text: string) => [...sh.cells.values()].find((c) => c.value === text)!.ref.slice(1);
         const seat = rowOf('Seat selection');
@@ -424,7 +424,7 @@ describe.skipIf(!SOFFICE)('el libro recalculado por LibreOffice', () => {
         expect(num(sh, `G${turkcell}`)).toBeCloseTo(convert(state, '2026-10', 350, 'TRY', 'DOP'), 6);
       });
 
-      it('el envío de vuelta (DOP → USD) entra en la tasa del mes como los USD que llegaron', () => {
+      it('the transfer back (DOP → USD) goes into the month rate as the USD that arrived', () => {
         const sh = monthSheet('2026-10');
         const sent = data.months[2]!.transfers;
         expect(sent).toHaveLength(3);
@@ -433,9 +433,9 @@ describe.skipIf(!SOFFICE)('el libro recalculado por LibreOffice', () => {
         expect(num(sh, 'T3')).toBeCloseTo((1500 * 58.76 + 11700 + 50 * 58.9) / (1500 + 200 + 50), 8);
       });
 
-      it('la meta en TRY tiene su tarjeta con plan, en USD', () => {
+      it('the goal in TRY has its card with a plan, in USD', () => {
         const sh = savings();
-        // Banda 1, hueco ancho: 10,000 TRY al mes durante 12 meses, a la tasa de octubre.
+        // Band 1, wide slot: 10,000 TRY a month for 12 months, at the October rate.
         expect(sh.cells.get('I14')?.value).toBe('Istanbul flat');
         const monthly = convert(state, '2026-10', 10000, 'TRY', 'USD');
         expect(num(sh, 'J20')).toBeCloseTo(monthly, 6);

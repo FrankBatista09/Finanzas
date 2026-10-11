@@ -1,20 +1,20 @@
-// Textos propios de la hoja "Mes" en los tres idiomas. Los comunes (Add, Delete, Date, Amount, Currency, Rate,
-// Account, From, To, Received, Month rates, Delete month, Income, "Close {month}", "{month} summary"…) salen del
-// diccionario de src/i18n con t(); los nombres de mes, categoría y método y el origen de una tasa, de useI18n().
-// Los códigos de moneda (DOP, USD, TRY) se ven igual en todos los idiomas.
+// Strings specific to the "Month" sheet in the three languages. The common ones (Add, Delete, Date, Amount, Currency,
+// Rate, Account, From, To, Received, Month rates, Delete month, Income, "Close {month}", "{month} summary"…) come from
+// the src/i18n dictionary with t(); the month, category and method names and the source of a rate, from useI18n().
+// The currency codes (DOP, USD, TRY) look the same in every language.
 //
-// El español es el de la versión 1, tal cual. El turco usa los términos acordados y los del libro de Excel
-// (Kalem, Kanal, İşlem geçmişi…); queda pendiente la revisión de un hablante nativo.
+// The Spanish is the one from version 1, as is. The Turkish uses the agreed terms and the ones from the Excel workbook
+// (Kalem, Kanal, İşlem geçmişi…); a review by a native speaker is still pending.
 //
-// Las metas de las tarjetas terminan en "· total" porque detrás va la cifra, que se pinta aparte (<Num>).
-// Las etiquetas "… de {name}" son nombres accesibles de celdas; en turco van como "Etiqueta: {name}" porque el
-// nombre lo escribe el usuario y no se puede declinar.
+// The cards' meta lines end in "· total" because the figure goes after them, painted separately (<Num>).
+// The "… of {name}" labels are accessible names of cells; in Turkish they go as "Label: {name}" because the
+// user types the name and it cannot be inflected.
 
 import { defineStrings } from '../../i18n';
 
 export const MES = defineStrings({
   en: {
-    // Gastos mensuales
+    // Fixed expenses
     fixedTitle: 'Fixed monthly expenses',
     fixedMeta: '{paid} of {total} paid · total',
     paid: 'Paid',
@@ -111,11 +111,11 @@ export const MES = defineStrings({
     cardOfNamed: 'Card of {name}',
     newTxCard: 'Card of the new transaction',
 
-    // Por categoría
+    // By category
     byCategory: 'By category',
     noExpenses: 'No expenses yet this month.',
 
-    // Envíos
+    // Transfers
     transfersTitle: 'Transfers',
     via: 'Via',
     deleteTransfer: 'Delete transfer from {date}',
@@ -137,7 +137,7 @@ export const MES = defineStrings({
     newTransferFee: 'Fee of the new transfer',
     addTransfer: 'Add transfer',
 
-    // Tasas del mes
+    // Month rates
     pairRate: 'Rate {from} → {to}',
     newRateFrom: 'Currency the new rate converts from',
     newRateTo: 'Currency the new rate converts to',
@@ -149,10 +149,10 @@ export const MES = defineStrings({
     deleteRateSince: 'Delete rate {from} → {to} of {date}',
     newRateDate: 'Date the new rate applies from',
     
-    // Ingresos del mes
+    // Month income
     incomeNote: 'Money received outside transfers. With "Adds to budget" checked, it also raises this month\'s budget.',
 
-    // Historial
+    // History
     txTitle: 'Transaction history',
     txMeta: { one: '{count} transaction · total', other: '{count} transactions · total' },
     description: 'Name',
@@ -178,12 +178,12 @@ export const MES = defineStrings({
     openNotes: 'Open the description of {name}',
     closeNotes: 'Close',
     addTx: 'Add transaction',
-    // La comisión de un envío, como fila del historial: su nombre y la marca de que sale del envío.
+    // The fee of a transfer, as a history row: its name and the tag saying it comes from the transfer.
     feeName: '{via} fee',
     feeFromTransfer: 'From the transfer of {date}. Change it in Transfers.',
     feeTag: 'from transfer',
 
-    // Fuera de presupuesto
+    // Outside budget
     outsideTitle: 'Outside budget',
     outsideMeta: { one: '{count} expense · total', other: '{count} expenses · total' },
     outsideNote: 'Paid from your accounts like any expense, but not part of the budget: it does not count as used or available.',
@@ -197,7 +197,7 @@ export const MES = defineStrings({
     moveOutside: 'Move {name} outside the budget',
     moveToBudget: 'Move {name} back to the budget',
 
-    // Cerrar el mes y mes cerrado
+    // Close the month and closed month
     closeText: 'Closing the month saves this summary and creates {next} with the same monthly expenses, not marked as paid.',
     closedNote: 'Month closed. Records are read-only.',
     amountsIn: 'Amounts in {currency}',

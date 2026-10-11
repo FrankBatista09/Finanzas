@@ -1,6 +1,6 @@
-// Cuentas de oro (gramos, 'XAU') por la API, el repositorio y el MCP: dónde vale el oro, dónde se rechaza con un
-// mensaje claro, el precio del oro como ajuste y que una importación de Excel no lo toca.
-// Datos de ejemplo de octubre de 2026 (US account 13,482 USD, DR account 220,641.93 DOP, 1 USD = 58.76 DOP).
+// Gold accounts (grams, 'XAU') through the API, the repository and the MCP: where gold is valid, where it is rejected
+// with a clear message, the gold price as a setting, and that an Excel import does not touch it.
+// Sample data for October 2026 (US account 13,482 USD, DR account 220,641.93 DOP, 1 USD = 58.76 DOP).
 
 import { describe, expect, it } from 'vitest';
 import type { SettingsResponse, StateResponse } from '../shared/api';
@@ -14,14 +14,14 @@ import { client, EDA, FRANK, makeEnv, TOKEN } from './test-util';
 
 const F = FRANK.id;
 const OCT = '2026-10';
-/** Mediodía del 7 de octubre de 2026 en Santo Domingo. */
+/** Noon on October 7, 2026 in Santo Domingo. */
 const NOW = new Date('2026-10-07T16:00:00Z');
 
 const GOLD_REJECTED =
   '"Gold" is a gold account (grams): it cannot be used for budget parts, monthly expenses, transactions or transfers, or as the default account.';
 const rejected = { status: 400, error: { code: 'validation', message: GOLD_REJECTED } };
 
-/** Los dos usuarios con los datos de ejemplo; Frank, además, con una cuenta de oro de 100 g creada por la API. */
+/** The two users with the sample data; Frank, in addition, with a 100 g gold account created through the API. */
 async function withGold() {
   const t = makeEnv();
   await replaceAll(t.db, F, seedState());
@@ -33,11 +33,11 @@ async function withGold() {
   return { ...t, api };
 }
 
-/** Lo de Frank que una escritura rechazada no puede haber tocado. */
+/** Everything of Frank's that a rejected write cannot have touched. */
 const snapshot = async (db: D1Database) => JSON.stringify(await loadState(db, F));
 
-describe('oro: solo vale como moneda de una cuenta', () => {
-  it('no es moneda principal ni segunda, ni de metas, aportes, gastos, transacciones o tasas', async () => {
+describe('gold: only valid as the currency of an account', () => {
+  it('is not a main or second currency, nor one for goals, contributions, expenses, transactions or rates', async () => {
     const { api, db } = await withGold();
     const before = await snapshot(db);
     const moneyOnly = 'must be DOP, USD or TRY';
@@ -61,7 +61,7 @@ describe('oro: solo vale como moneda de una cuenta', () => {
     expect(await snapshot(db)).toBe(before);
   });
 
-  it('una cuenta de oro no lleva presupuesto, ni paga gastos, ni envía ni recibe, ni es la cuenta por defecto', async () => {
+  it('a gold account carries no budget, pays no expenses, neither sends nor receives, and is not the default account', async () => {
     const { api, db, env } = await withGold();
     const fixedId = seedState().months[OCT]!.fixed[0]!.id;
     const txId = seedState().months[OCT]!.tx[0]!.id;
@@ -71,7 +71,7 @@ describe('oro: solo vale como moneda de una cuenta', () => {
     const transfer = { monthKey: OCT, date: '2026-10-07', via: 'Shop', amount: 100 };
     const cases: [method: 'post' | 'patch', path: string, body: unknown][] = [
       ['patch', `/api/months/${OCT}`, { budgets: { gold: 5 } }],
-      // Con otra parte válida al lado tampoco se guarda ninguna.
+      // With another valid part next to it, none is saved either.
       ['patch', `/api/months/${OCT}`, { budgets: { dr: 1, gold: 0 } }],
       ['post', `/api/months/${OCT}/budget-log`, { accountId: 'gold', amount: 5 }],
       ['post', `/api/months/${OCT}/close`, { budgets: { dr: 100, gold: 5 } }],
@@ -81,7 +81,7 @@ describe('oro: solo vale como moneda de una cuenta', () => {
       ['patch', `/api/transactions/${txId}`, { accountId: 'gold', notes: 'x' }],
       ['post', '/api/transfers', { ...transfer, fromAccountId: 'gold', toAccountId: 'dr', rate: 5000 }],
       ['post', '/api/transfers', { ...transfer, fromAccountId: 'us', toAccountId: 'gold', rate: 0.01 }],
-      // Sin tasa tampoco: no hay tasa entre una moneda y el oro.
+      // Not without a rate either: there is no rate between a currency and gold.
       ['post', '/api/transfers', { ...transfer, fromAccountId: 'us', toAccountId: 'gold' }],
       ['patch', `/api/transfers/${transferId}`, { toAccountId: 'gold' }],
       ['patch', `/api/transfers/${transferId}`, { fromAccountId: 'gold' }],
@@ -91,32 +91,32 @@ describe('oro: solo vale como moneda de una cuenta', () => {
       const r = await api[method](path, body);
       expect({ status: r.status, error: r.error }, `${method} ${path} ${JSON.stringify(body)}`).toEqual(rejected);
     }
-    // El registro dictado a Claude, igual: de palabra o por id.
+    // The record dictated to Claude, likewise: by name or by id.
     const ingest = await client(env, null).post('/api/ingest/transaction', { user: F, description: 'Coin', amount: 1, account: 'gold' }, { Authorization: `Bearer ${TOKEN}` });
     expect({ status: ingest.status, error: ingest.error }).toEqual(rejected);
     expect(await snapshot(db)).toBe(before);
-    // El mes sigue abierto: el cierre rechazado no lo dejó a medias.
+    // The month is still open: the rejected close did not leave it half done.
     expect((await loadState(db, F)).months[OCT]!.closed).toBe(false);
   });
 
-  it('una cuenta que pasa a ser de oro deja de ser la de por defecto; la última de dinero no se borra', async () => {
+  it('an account that becomes a gold one stops being the default; the last money account cannot be deleted', async () => {
     const { api, db } = await withGold();
     await api.post('/api/accounts', { id: 'spare', name: 'Spare', currency: 'USD' });
     expect((await api.patch<SettingsResponse>('/api/settings', { defaultAccountId: 'spare' })).body.defaultAccountId).toBe('spare');
     expect((await api.patch<Account>('/api/accounts/spare', { currency: 'XAU' })).body.currency).toBe('XAU');
     expect((await api.get<StateResponse>('/api/state')).body.state.defaultAccountId).toBeNull();
-    // Con movimientos, la moneda de una cuenta no cambia: tampoco a oro.
+    // With movements, an account's currency does not change: not to gold either.
     expect((await api.patch('/api/accounts/us', { currency: 'XAU' })).status).toBe(409);
 
-    // Un usuario con una sola cuenta de dinero y una de oro: la de dinero no se puede borrar, la de oro sí.
+    // A user with a single money account and a gold one: the money one cannot be deleted, the gold one can.
     await replaceAll(db, F, { ...seedState(), months: {}, incomes: [], defaultAccountId: null, accounts: [seedState().accounts[1]!, { id: 'g', name: 'G', currency: 'XAU', opening: 1, hidden: false, sort: 5 }] });
     expect((await api.del('/api/accounts/dr')).status).toBe(409);
     expect((await api.del('/api/accounts/g')).status).toBe(200);
   });
 });
 
-describe('oro: saldo inicial, ingresos en gramos y precio', () => {
-  it('un ingreso a una cuenta de oro son gramos y nunca sube el presupuesto', async () => {
+describe('gold: opening balance, incomes in grams and price', () => {
+  it('an income into a gold account is grams and never raises the budget', async () => {
     const { api, db } = await withGold();
     const income = { date: '2026-10-05', desc: 'Bought', accountId: 'gold', amount: 25.125 };
     const ok = await api.post<Income>('/api/incomes', { ...income, id: 'g1', cur: 'XAU' });
@@ -128,7 +128,7 @@ describe('oro: saldo inicial, ingresos en gramos y precio', () => {
       ['post', '/api/incomes', { ...income, cur: 'XAU', budget: true }, 'budget: an income in gold (XAU, grams) cannot add to the budget'],
       ['post', '/api/incomes', { ...income, cur: 'USD' }, 'cur: must be XAU (grams) because "Gold" is a gold account'],
       ['post', '/api/incomes', { ...income, accountId: 'us', cur: 'XAU' }, 'cur: XAU (grams of gold) is only valid for an income into a gold account, and "US account" is not one'],
-      // Sin cuenta entra a la de por defecto, que nunca es de oro.
+      // With no account it goes into the default one, which is never a gold account.
       ['post', '/api/incomes', { date: '2026-10-05', amount: 1, cur: 'XAU' }, 'cur: XAU (grams of gold) is only valid for an income into a gold account, and "DR account" is not one'],
       ['patch', '/api/incomes/g1', { budget: true }, 'budget: an income into a gold account cannot add to the budget ("Gold" holds grams of gold)'],
       ['patch', '/api/incomes/g1', { cur: 'USD' }, 'cur: must be XAU (grams) because "Gold" is a gold account'],
@@ -144,19 +144,19 @@ describe('oro: saldo inicial, ingresos en gramos y precio', () => {
     expect((await api.patch('/api/incomes/g1', { accountId: 'nope' })).error?.message).toBe('Unknown account "nope".');
     expect(await snapshot(db)).toBe(before);
 
-    // Lo que sí vale: corregir los gramos, y mover el ingreso de cuenta mandando la moneda que le toca.
+    // What is valid: correcting the grams, and moving the income to another account by sending the matching currency.
     expect((await api.patch<Income>('/api/incomes/g1', { amount: 30, desc: 'More' })).body).toMatchObject({ amount: 30, cur: 'XAU', accountId: 'gold' });
     expect((await api.patch<Income>('/api/incomes/g1', { accountId: 'us', cur: 'USD', budget: true })).body).toMatchObject({ accountId: 'us', cur: 'USD', budget: true });
     expect((await api.patch<Income>('/api/incomes/g1', { accountId: 'gold', cur: 'XAU', budget: false })).body).toMatchObject({ accountId: 'gold', cur: 'XAU', budget: false });
 
-    // 100 g iniciales + 30: el saldo son gramos, y el ingreso y el presupuesto del mes no se mueven.
+    // 100 g opening + 30: the balance is grams, and the month's income and budget do not move.
     const state = await loadState(db, F);
     expect(balances(state, OCT).accounts.find((b) => b.account.id === 'gold')).toMatchObject({ balance: 130, valued: false });
     expect(monthCalc(state, OCT).income).toBe(monthCalc(seedState(), OCT).income);
     expect(monthCalc(state, OCT).budget).toBe(70000);
   });
 
-  it('el precio del oro es un ajuste de cada usuario: se escribe, se cambia y se quita', async () => {
+  it('the gold price is a per-user setting: it is typed, changed and removed', async () => {
     const { api, db, env } = await withGold();
     expect((await api.get<StateResponse>('/api/state')).body.state.goldPrice).toBeNull();
 
@@ -165,15 +165,15 @@ describe('oro: saldo inicial, ingresos en gramos y precio', () => {
     expect(set.body.goldPrice).toEqual({ amount: 85.5, currency: 'USD' });
     const state = (await api.get<StateResponse>('/api/state')).body.state;
     expect(state.goldPrice).toEqual({ amount: 85.5, currency: 'USD' });
-    // 100 g × 85.5 USD × 58.76 = 502,398 DOP, que ahora suman al dinero total.
+    // 100 g × 85.5 USD × 58.76 = 502,398 DOP, which now add to the total money.
     const b = balances(state, OCT);
     expect(b.accounts.find((a) => a.account.id === 'gold')!.inMain).toBeCloseTo(502398, 6);
     expect(b.totalMain).toBeCloseTo(1012844.25 + 502398, 2);
     expect(b.goldExcluded).toBe(false);
-    // Es de Frank: Eda sigue sin precio.
+    // It is Frank's: Eda still has no price.
     expect((await client(env, EDA.id).get<StateResponse>('/api/state')).body.state.goldPrice).toBeNull();
 
-    // Otro ajuste no lo toca, y lo que no vale no lo cambia.
+    // Another setting does not touch it, and what is not valid does not change it.
     expect((await api.patch<SettingsResponse>('/api/settings', { language: 'tr' })).body.goldPrice).toEqual({ amount: 85.5, currency: 'USD' });
     for (const goldPrice of [{ amount: 0, currency: 'USD' }, { amount: -1, currency: 'USD' }, { amount: 85 }, { currency: 'USD' }, 85, { amount: '85', currency: 'USD' }]) {
       expect((await api.patch('/api/settings', { goldPrice })).status, JSON.stringify(goldPrice)).toBe(400);
@@ -185,7 +185,7 @@ describe('oro: saldo inicial, ingresos en gramos y precio', () => {
     expect(balances(await loadState(db, F), OCT).goldExcluded).toBe(true);
   });
 
-  it('un precio guardado que no se puede leer cuenta como no tenerlo', async () => {
+  it('a stored price that cannot be read counts as having none', async () => {
     const { db, sqlite } = await withGold();
     for (const value of ['{roto', '{"amount":0,"currency":"USD"}', '{"amount":85,"currency":"XAU"}', '{"amount":"85","currency":"USD"}', '85']) {
       sqlite.sqlite.prepare("INSERT INTO settings (user_id, key, value) VALUES (?, 'gold_price', ?) ON CONFLICT(user_id, key) DO UPDATE SET value = excluded.value").run(F, value);
@@ -193,7 +193,7 @@ describe('oro: saldo inicial, ingresos en gramos y precio', () => {
     }
   });
 
-  it('importar un Excel no borra ni cambia las cuentas de oro, sus ingresos ni el precio', async () => {
+  it('importing an Excel file does not delete or change the gold accounts, their incomes or the price', async () => {
     const { api, db } = await withGold();
     await api.post('/api/incomes', { id: 'g1', date: '2026-10-05', accountId: 'gold', amount: 25.5, cur: 'XAU' });
     await api.patch('/api/settings', { goldPrice: { amount: 85, currency: 'USD' } });
@@ -204,19 +204,19 @@ describe('oro: saldo inicial, ingresos en gramos y precio', () => {
     expect(state.goldPrice).toEqual({ amount: 85, currency: 'USD' });
     expect(state.accounts.find((a) => a.id === 'gold')).toEqual({ id: 'gold', name: 'Gold', currency: 'XAU', opening: 100, hidden: false, sort: 2 });
     expect(state.incomes.find((i) => i.id === 'g1')).toMatchObject({ accountId: 'gold', amount: 25.5, cur: 'XAU', budget: false });
-    // Las dos celdas del libro son solo dinero: las cuentas de dinero quedan con lo que dice, y el oro aparte.
+    // The workbook's two cells are money only: the money accounts end up with what it says, and the gold stays apart.
     const b = balances(state, OCT);
     expect(b.accounts.map((a) => [a.account.id, Math.round(a.balance * 100) / 100])).toEqual([
       ['us', 1000],
       ['dr', 2000],
       ['gold', 125.5],
     ]);
-    // El oro no es ingreso: el del libro (5,800 USD) no se duplica ni se descuenta por los gramos.
+    // Gold is not income: the workbook's income (5,800 USD) is neither duplicated nor reduced by the grams.
     expect(incomeInMonth(state, OCT, 'USD')).toBeCloseTo(5800, 6);
   });
 });
 
-describe('oro en el MCP', () => {
+describe('gold in the MCP', () => {
   interface Called {
     text: string;
     isError: boolean;
@@ -237,7 +237,7 @@ describe('oro en el MCP', () => {
     return { text: result.content[0]!.text, isError: result.isError === true, data: result.structuredContent };
   }
 
-  it('list_accounts y month_summary dan el oro en gramos, el precio y si queda fuera del total', async () => {
+  it('list_accounts and month_summary give the gold in grams, the price and whether it is left out of the total', async () => {
     const { api, env } = await withGold();
     const bare = await call(env, 'list_accounts');
     expect(bare.text.split('\n')).toEqual([
@@ -266,12 +266,12 @@ describe('oro en el MCP', () => {
     const summary = await call(env, 'month_summary');
     expect(summary.text).toContain('Gold 100.00 g (499,460.00 DOP) · Total money: 1,512,304.25 DOP (25,736.97 USD)');
     expect(summary.text).toContain('Gold price: 1 g = 85.00 USD');
-    // El oro no tiene tasa: la línea de tasas sigue siendo la de las monedas.
+    // Gold has no rate: the rates line is still the one for the currencies.
     expect(summary.text).toContain('Month rates: USD to DOP: 58.76 (typed on 2026-10-06)\n');
     expect(summary.data!.gold).toEqual({ price: { amount: 85, currency: 'USD' }, excludedFromTotal: false });
   });
 
-  it('add_income suma gramos a una cuenta de oro; los gastos, los envíos y el presupuesto la rechazan', async () => {
+  it('add_income adds grams to a gold account; expenses, transfers and the budget reject it', async () => {
     const { db, env } = await withGold();
     const added = await call(env, 'add_income', { account: 'Gold', amount: 2.125, description: 'Coin' });
     expect(added.isError).toBe(false);

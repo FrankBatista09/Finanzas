@@ -1,5 +1,5 @@
-// Las reglas del oro en la capa de datos de la web: lo que el servidor rechazaría no llega a enviarse, y lo que
-// se ofrece en cada selector. Una cuenta de oro (gramos, 'XAU') solo tiene saldo inicial e ingresos en gramos.
+// The gold rules in the web's data layer: what the server would reject never gets sent, and what
+// each select offers. A gold account (grams, 'XAU') only has an opening balance and income in grams.
 
 import { describe, expect, it } from 'vitest';
 import { seedState } from '../../shared/seed';
@@ -33,10 +33,10 @@ function withGold(): AppState {
   return { ...s, accounts: [...s.accounts, GOLD], incomes: [...s.incomes, GRAMS] };
 }
 
-describe('cuentas de oro', () => {
+describe('gold accounts', () => {
   const s = withGold();
 
-  it('newAccount acepta el oro, con los gramos iniciales a tres decimales', () => {
+  it('newAccount accepts gold, with the opening grams to three decimals', () => {
     expect(newAccount(seedState(), { name: 'Gold', currency: 'XAU', opening: 125.50049 }, 'x')).toEqual({
       id: 'x',
       name: 'Gold',
@@ -46,12 +46,12 @@ describe('cuentas de oro', () => {
       sort: 2,
     });
     expect(newAccount(seedState(), { name: 'Gold', currency: 'XAU', opening: 1.2346 }, 'x')!.opening).toBe(1.235);
-    // El dinero no se recorta.
+    // Money is not trimmed.
     expect(newAccount(seedState(), { name: 'PayPal', currency: 'USD', opening: 1.23456 }, 'x')!.opening).toBe(1.23456);
   });
 
-  it('corregir su saldo corrige los gramos; ocultarla se puede siempre, pero no la última de dinero', () => {
-    // 25.5 g entraron: para ver 200.0004 → 200 g hacen falta 174.5 de partida.
+  it('correcting its balance corrects the grams; it can always be hidden, but not the last money account', () => {
+    // 25.5 g came in: to see 200.0004 → 200 g it takes an opening of 174.5.
     expect(openingForBalance(s, OCT, 'gold', 200.0004)).toBe(174.5);
     expect(canHideAccount(s, 'gold')).toBe(true);
     const oneMoney: AppState = { ...s, accounts: [s.accounts[0]!, GOLD] };
@@ -59,7 +59,7 @@ describe('cuentas de oro', () => {
     expect(canHideAccount(oneMoney, s.accounts[0]!.id)).toBe(false);
   });
 
-  it('no se puede elegir para nada que sea dinero', () => {
+  it('cannot be chosen for anything that is money', () => {
     const tx = { date: '2026-10-07', desc: 'Coin', cat: 'Other', method: 'Cash', amount: 1, cur: 'USD' as const };
     const transfer = { date: '2026-10-07', via: 'Shop', amount: 100 };
     expect(newFixed(s, OCT, { name: 'Vault', amount: 1, cur: 'USD', accountId: 'gold' }, 'x')).toBeNull();
@@ -70,7 +70,7 @@ describe('cuentas de oro', () => {
     expect(newBudgetEntry(s, OCT, { accountId: 'gold', amount: 5 }, 'x', '2026-10-07')).toBeNull();
     expect(budgetPart(s, OCT, 'gold', 5)).toBeNull();
     expect(budgetPart(s, OCT, 'dr', 5)).not.toBeNull();
-    // En una celda, la cuenta de oro se ignora y lo demás se guarda.
+    // In a cell, the gold account is ignored and the rest is saved.
     expect(fixedChange(s, { accountId: 'gold', amount: 9 })).toEqual({ amount: 9 });
     expect(txChange(s, { accountId: 'gold', notes: 'x' })).toEqual({ notes: 'x' });
     const transferId = s.months[OCT]!.transfers[0]!.id;
@@ -78,10 +78,10 @@ describe('cuentas de oro', () => {
     expect(transferChange(s, transferId, { fromAccountId: 'gold' })).toEqual({});
   });
 
-  it('solo se ofrece para los ingresos de Savings', () => {
+  it('is only offered for the income of Savings', () => {
     expect(accountOptions(s).map((o) => o.value)).toEqual(['us', 'dr']);
     expect(incomeAccountOptions(s).map((o) => o.value)).toEqual(['us', 'dr', 'gold']);
-    // La hoja del mes ni la ofrece ni lista sus ingresos; Savings sí, en gramos y sin equivalente.
+    // The Month sheet neither offers it nor lists its income; Savings does, in grams and with no equivalent.
     expect(incomeItems(s, 'en', OCT).map((i) => i.id)).toEqual(['seed-in-3']);
     expect(incomeItems(s, 'en').find((i) => i.id === 'g1')).toMatchObject({ amount: 25.5, amountText: '25.50', cur: 'XAU', budget: false, main: '—' });
     const picked = { ...EMPTY_MONTH_INCOME, accountId: 'gold', cur: 'USD' as const };
@@ -91,10 +91,10 @@ describe('cuentas de oro', () => {
   });
 });
 
-describe('ingresos en gramos', () => {
+describe('income in grams', () => {
   const s = withGold();
 
-  it('newIncome: a una cuenta de oro entran gramos, sin presupuesto, se indique lo que se indique', () => {
+  it('newIncome: grams go into a gold account, with no budget, whatever is specified', () => {
     expect(newIncome(s, { date: '2026-10-07', accountId: 'gold', amount: 2.12549, cur: 'USD', budget: true }, 'x')).toEqual({
       id: 'x',
       date: '2026-10-07',
@@ -106,36 +106,36 @@ describe('ingresos en gramos', () => {
       rate: null,
       recurring: false,
     });
-    // Menos de un miligramo no es nada.
+    // Less than a milligram is nothing.
     expect(newIncome(s, { date: '2026-10-07', accountId: 'gold', amount: 0.0004, cur: 'XAU' }, 'x')).toBeNull();
-    // A una cuenta de dinero no le valen los gramos; sin cuenta va a la de por defecto, que nunca es de oro.
+    // A money account does not take grams; with no account it goes to the default one, which is never a gold account.
     expect(newIncome(s, { date: '2026-10-07', accountId: 'us', amount: 1, cur: 'XAU' }, 'x')).toBeNull();
     expect(newIncome(s, { date: '2026-10-07', amount: 1, cur: 'XAU' }, 'x')).toBeNull();
     expect(newIncome(s, { date: '2026-10-07', amount: 1, cur: 'USD' }, 'x')).toMatchObject({ accountId: 'dr', cur: 'USD' });
   });
 
-  it('incomeChange: la moneda y la casilla siguen a la cuenta en la que queda el ingreso', () => {
-    // Un ingreso de dinero que sube el presupuesto pasa a una cuenta de oro: gramos y sin presupuesto.
+  it('incomeChange: the currency and the checkbox follow the account the income ends up in', () => {
+    // A money income that raises the budget moves to a gold account: grams and no budget.
     const raising: AppState = { ...s, incomes: s.incomes.map((i) => (i.id === 'seed-in-3' ? { ...i, budget: true } : i)) };
     expect(incomeChange(raising, 'seed-in-3', { accountId: 'gold' })).toEqual({ accountId: 'gold', cur: 'XAU', budget: false });
     expect(incomeChange(s, 'seed-in-3', { accountId: 'gold' })).toEqual({ accountId: 'gold', cur: 'XAU' });
-    // Uno en gramos: ni otra moneda ni la casilla; los gramos, a tres decimales.
+    // One in grams: neither another currency nor the checkbox; the grams, to three decimals.
     expect(incomeChange(s, 'g1', { cur: 'USD' })).toEqual({});
     expect(incomeChange(s, 'g1', { budget: true, amount: 30.00049 })).toEqual({ amount: 30 });
-    // Al sacarlo a una cuenta de dinero toma su moneda.
+    // When moved out to a money account it takes that account's currency.
     expect(incomeChange(s, 'g1', { accountId: 'us' })).toEqual({ accountId: 'us', cur: 'USD' });
-    // A uno de dinero no se le pueden poner gramos sin cambiarlo de cuenta.
+    // A money one cannot be given grams without changing its account.
     expect(incomeChange(s, 'seed-in-3', { cur: 'XAU', desc: 'x' })).toEqual({ desc: 'x' });
     expect(incomeChange(s, 'seed-in-3', { cur: 'TRY', budget: true })).toEqual({ cur: 'TRY', budget: true });
     expect(incomeChange(s, 'nope', { amount: 1 })).toEqual({});
   });
 });
 
-describe('precio del oro', () => {
+describe('gold price', () => {
   const s = seedState();
   const priced: AppState = { ...s, goldPrice: { amount: 85, currency: 'USD' } };
 
-  it('goldPriceChange: un monto mayor que 0 lo escribe, 0 lo quita y lo que no cambia no se manda', () => {
+  it('goldPriceChange: an amount greater than 0 sets it, 0 removes it and what does not change is not sent', () => {
     expect(goldPriceChange(s, 85, 'USD')).toEqual({ goldPrice: { amount: 85, currency: 'USD' } });
     expect(goldPriceChange(priced, 85, 'USD')).toEqual({});
     expect(goldPriceChange(priced, 85, 'TRY')).toEqual({ goldPrice: { amount: 85, currency: 'TRY' } });
@@ -146,11 +146,11 @@ describe('precio del oro', () => {
     expect(goldPriceChange(s, 85, 'XAU' as 'USD')).toBeNull();
   });
 
-  it('settings/patch lo aplica, lo quita con null y es idempotente', () => {
+  it('settings/patch applies it, removes it with null and is idempotent', () => {
     const set = reduce(s, { type: 'settings/patch', patch: { goldPrice: { amount: 85, currency: 'USD' } } });
     expect(set.goldPrice).toEqual({ amount: 85, currency: 'USD' });
     expect(reduce(set, { type: 'settings/patch', patch: { goldPrice: { amount: 85, currency: 'USD' } } })).toBe(set);
-    // Otro ajuste no lo toca.
+    // Another setting does not touch it.
     expect(reduce(set, { type: 'settings/patch', patch: { language: 'es' } }).goldPrice).toBe(set.goldPrice);
     const cleared = reduce(set, { type: 'settings/patch', patch: { goldPrice: null } });
     expect(cleared.goldPrice).toBeNull();

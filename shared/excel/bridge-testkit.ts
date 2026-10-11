@@ -1,11 +1,11 @@
-// Solo para pruebas (data.test.ts y export-libreoffice.test.ts): estados de la app con los que se prueba el
-// puente entre el modelo de cuentas y el libro de Excel (data.ts).
+// Tests only (data.test.ts and export-libreoffice.test.ts): app states used to test the
+// bridge between the accounts model and the Excel workbook (data.ts).
 
 import { DEFAULT_ACCOUNTS, DEFAULT_GOALS, DEFAULT_MAIN_CURRENCY, DEFAULT_RATE, DEFAULT_SECOND_CURRENCY } from '../constants';
 import { seedState, setBudgets } from '../seed';
 import type { AppState, Currency, MonthKey, Transaction, Transfer } from '../types';
 
-/** Un usuario recién llegado, como lo deja el servidor: sus cuentas y metas iniciales y el mes actual, vacío. */
+/** A brand-new user, as the server leaves them: their initial accounts and goals and the current month, empty. */
 export function newUserState(current: MonthKey = '2026-10'): AppState {
   return {
     mainCurrency: DEFAULT_MAIN_CURRENCY,
@@ -25,20 +25,20 @@ export function newUserState(current: MonthKey = '2026-10'): AppState {
 }
 
 /**
- * Los datos de ejemplo más todo lo que el libro no sabe representar: moneda principal TRY, una cuenta en TRY,
- * otra en USD y otra en DOP además de las dos de siempre, dos cuentas ocultas, gastos fijos, transacciones,
- * ingresos y aportes en TRY, una meta en TRY con plan, otra en DOP y una con el plan a medias, envíos en todos
- * los sentidos (también entre cuentas de la misma moneda) y el presupuesto repartido entre varias cuentas.
+ * The sample data plus everything the workbook cannot represent: main currency TRY, one account in TRY, another in
+ * USD and another in DOP besides the usual two, two hidden accounts, fixed expenses, transactions, incomes and
+ * contributions in TRY, a goal in TRY with a plan, another in DOP and one with a half-filled plan, transfers in every
+ * direction (also between accounts of the same currency) and the budget split across several accounts.
  *
- * Las tasas de cada mes son coherentes entre sí, que es cuando el dinero total del libro coincide con el de la
- * app: cada mes tiene tasa propia para dos de los tres pares y el tercero sale de cruzarlos (o cuadra con ellos).
- *  · agosto: USD↔DOP de sus envíos y USD→TRY escrita a mano;
- *  · septiembre: USD↔DOP de sus envíos y USD→TRY escrita a mano, la que dan sus envíos (en los dos sentidos);
- *  · octubre: USD↔DOP y TRY↔DOP de sus envíos (en los dos sentidos) y USD→TRY escrita a mano, la que sale de
- *    cruzar las otras dos.
- * Una tasa escrita sigue vigente hasta que se escribe otra: por eso, escrita la de agosto, septiembre y octubre
- * llevan la suya desde su día 1 (sin ella valdría la de agosto y el mes dejaría de cuadrar con sus envíos).
- * Ningún mes tiene escrita la tasa USD→DOP: la app la saca de los envíos, igual que el libro.
+ * Each month's rates are consistent with each other, which is when the workbook's total money matches the app's:
+ * each month has its own rate for two of the three pairs and the third comes from crossing them (or agrees with them).
+ *  · August: USD↔DOP from its transfers and USD→TRY typed by hand;
+ *  · September: USD↔DOP from its transfers and USD→TRY typed by hand, the one its transfers give (in both directions);
+ *  · October: USD↔DOP and TRY↔DOP from its transfers (in both directions) and USD→TRY typed by hand, the one that
+ *    comes from crossing the other two.
+ * A typed rate stays in effect until another one is typed: that is why, once August's is typed, September and October
+ * carry their own from their day 1 (without it August's would apply and the month would stop matching its transfers).
+ * No month has the USD→DOP rate typed: the app derives it from the transfers, like the workbook does.
  */
 export function mixedState(): AppState {
   const s = seedState();
@@ -57,8 +57,8 @@ export function mixedState(): AppState {
   const sep = s.months['2026-09']!;
   const oct = s.months['2026-10']!;
   aug.rates = [{ from: 'USD', to: 'TRY', rate: 39, date: '2026-08-01' }];
-  // Septiembre: 500 USD → 19,700 TRY y 3,950 TRY → 100.33 USD. Octubre: USD→DOP (102,785 DOP por 1,750 USD)
-  // entre TRY→DOP (4,350 DOP por 3,001 TRY), las dos de sus envíos.
+  // September: 500 USD → 19,700 TRY and 3,950 TRY → 100.33 USD. October: USD→DOP (102,785 DOP for 1,750 USD)
+  // divided by TRY→DOP (4,350 DOP for 3,001 TRY), both from its transfers.
   sep.rates = [{ from: 'USD', to: 'TRY', rate: (500 * 39.4 + 3950) / (500 + 3950 * 0.0254), date: '2026-09-01' }];
   oct.rates = [
     {
@@ -121,10 +121,10 @@ export function mixedState(): AppState {
   sep.tx.push(tx('2026-09', 1, '13', 'Baklava', 'Food', 1250, 'TRY', 'tr'));
   oct.tx.push(
     tx('2026-10', 1, '08', 'Seat selection', 'Travel', 2400.5, 'TRY', 'tr', 'Turkish Airlines'),
-    // En TRY pero pagado desde la cuenta en DOP.
+    // In TRY but paid from the DOP account.
     tx('2026-10', 2, '09', 'Gift for Eda', 'Home', 600, 'TRY', 'dr'),
     tx('2026-10', 3, '09', 'Domain', 'Subscriptions', 12.5, 'USD', 'pp'),
-    // Pagado desde una cuenta oculta: cuenta como gasto del mes, pero su saldo no entra en el dinero total.
+    // Paid from a hidden account: it counts as an expense of the month, but its balance is not part of the total money.
     tx('2026-10', 4, '10', 'Snacks', 'Food', 200, 'DOP', 'box'),
   );
   oct.fixed.push(
@@ -139,7 +139,7 @@ export function mixedState(): AppState {
     { id: 'mx-in-1', date: '2026-09-20', desc: 'Sold bike', accountId: 'cash', amount: 8000, cur: 'DOP', budget: false },
     { id: 'mx-in-2', date: '2026-10-15', desc: 'Freelance', accountId: 'tr', amount: 20000, cur: 'TRY', budget: false },
     { id: 'mx-in-3', date: '2026-10-02', desc: 'Refund', accountId: 'old', amount: 40, cur: 'USD', budget: false },
-    // Con fecha en un mes que todavía no existe: no tiene hoja en la que salir.
+    // Dated in a month that does not exist yet: it has no sheet to appear on.
     { id: 'mx-in-4', date: '2026-11-01', desc: 'Early salary', accountId: 'us', amount: 100, cur: 'USD', budget: false },
   );
 

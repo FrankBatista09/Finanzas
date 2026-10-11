@@ -1,6 +1,6 @@
-// Hoja "Mes" (prototipo, líneas 336-521): gastos mensuales, categorías, tasas, envíos, ingresos e historial del mes seleccionado.
-// Todo sale de useFinanzas(); el panel resumen de arriba y los diálogos de cerrar y de borrar el mes los pinta App.
-// Los textos están en strings.ts (inglés, español y turco) y salen en el idioma del usuario.
+// "Month" sheet (prototype, lines 336-521): fixed monthly expenses, categories, rates, transfers, income and history of the selected month.
+// Everything comes from useFinanzas(); App renders the summary panel at the top and the dialogs to close and to delete the month.
+// The texts live in strings.ts (English, Spanish and Turkish) and show in the user's language.
 
 import { outsideOf } from '../../../shared/calc';
 import { useI18n } from '../../i18n';
@@ -20,10 +20,10 @@ import { TransactionsCard } from './TransactionsCard';
 import { TransfersCard } from './TransfersCard';
 
 export function MesScreen() {
-  // Un mes cerrado es de solo lectura: lleva el banner con su resumen y pierde la caja de cerrar
-  // (cada tarjeta esconde por su cuenta la fila de agregar y los botones ×).
+  // A closed month is read-only: it gets the banner with its summary and loses the close box
+  // (each card hides its add row and its × buttons on its own).
   const { readOnly, actions, month } = useFinanzas();
-  // Lo guarda la pantalla porque el enlace de "Transaction history" abre la tarjeta aunque todavía no se vea.
+  // The screen holds it because the link in "Transaction history" opens the card even when it is not visible yet.
   const outside = useOutsideAdding();
   const { t } = useI18n();
   const { columns, left, side } = useColumnCap();
@@ -40,7 +40,7 @@ export function MesScreen() {
           <CreditCardsCard />
         </div>
       </div>
-      {/* Envíos e ingresos, uno al lado del otro con el mismo ancho y alto; cuando no caben, se apilan. */}
+      {/* Transfers and income, side by side with the same width and height; when they do not fit, they stack. */}
       <div className={styles.pair}>
         <TransfersCard />
         <IncomeCard />
@@ -48,7 +48,7 @@ export function MesScreen() {
       <TransactionsCard outside={outside} />
       {outsideCardVisible(outsideOf(month).length, outside) && <OutsideCard adding={outside} />}
       {!readOnly && <CloseBox />}
-      {/* Borrar el mes, abierto o cerrado: discreto y al final. Solo abre el diálogo de confirmación, que vive en App. */}
+      {/* Delete the month, open or closed: discreet and at the end. It only opens the confirmation dialog, which lives in App. */}
       <div className={styles.footer}>
         <button type="button" className={styles.deleteMonth} onClick={() => actions.requestDeleteMonth()}>
           {t('deleteMonth')}

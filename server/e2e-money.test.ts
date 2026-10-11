@@ -1,26 +1,26 @@
-// De punta a punta, el modelo de dinero: un mes guionizado con cifras redondas, registrado por la API y por las
-// herramientas del MCP, y comprobado contra cuentas hechas a mano (no contra lo que devuelva shared/calc.ts con
-// otros datos). Todas las piezas son las reales (API + D1 de server/d1-node.ts + MCP + Excel).
+// End to end, the money model: a scripted month with round figures, recorded through the API and through the
+// MCP tools, and checked against calculations done by hand (not against whatever shared/calc.ts returns with
+// other data). All the pieces are the real ones (API + the D1 from server/d1-node.ts + MCP + Excel).
 //
-// El guion (moneda principal TRY, segunda USD; tasas escritas del mes: 1 USD = 60 DOP y 1 USD = 40 TRY, así que
-// TRY↔DOP sale cruzando por USD: 1 TRY = 1.5 DOP):
+// The script (main currency TRY, second USD; typed month rates: 1 USD = 60 DOP and 1 USD = 40 TRY, so
+// TRY↔DOP comes from crossing through USD: 1 TRY = 1.5 DOP):
 //
-//   Cuentas        us  USD  inicial  1,000      dr  DOP  inicial 10,000      tr  TRY  inicial 20,000 (por defecto)
-//                  cash DOP inicial 500, oculta: se calcula pero no suma al dinero total
-//   Presupuesto    dr 30,000 DOP → luego 36,000 DOP (= 24,000 TRY)   +   tr 8,000 TRY            = 32,000 TRY
-//   Ingresos       3,000 USD → us      12,000 TRY → tr      100 USD → dr (entran 6,000 DOP)      = 136,000 TRY
-//   Transacciones  400 TRY de tr · 3,000 DOP de dr · 50 USD de dr (salen 3,000 DOP) · 600 DOP de tr (salen 400 TRY)
-//                  en TRY: 400 + 2,000 + 2,000 + 400                                             =   4,800 TRY
-//   Gastos fijos   Rent 6,000 TRY de tr (se marca pagado) · Internet 1,500 DOP de dr (pendiente = 1,000 TRY)
-//                  Claude 20 USD de us (pagado = 800 TRY)                           pagados      =   6,800 TRY
-//   Envíos         us → dr 500 USD a 59 (entran 29,500 DOP) · tr → us 4,000 TRY a la tasa del mes (entran 100 USD)
-//                  dr → tr 3,000 DOP a la tasa del mes (entran 2,000 TRY)
+//   Accounts       us  USD  opening  1,000      dr  DOP  opening 10,000      tr  TRY  opening 20,000 (default)
+//                  cash DOP opening 500, hidden: it is computed but does not count toward the total money
+//   Budget         dr 30,000 DOP → then 36,000 DOP (= 24,000 TRY)   +   tr 8,000 TRY             = 32,000 TRY
+//   Income         3,000 USD → us      12,000 TRY → tr      100 USD → dr (6,000 DOP in)          = 136,000 TRY
+//   Transactions   400 TRY from tr · 3,000 DOP from dr · 50 USD from dr (3,000 DOP out) · 600 DOP from tr (400 TRY out)
+//                  in TRY: 400 + 2,000 + 2,000 + 400                                             =   4,800 TRY
+//   Fixed expenses Rent 6,000 TRY from tr (gets marked paid) · Internet 1,500 DOP from dr (pending = 1,000 TRY)
+//                  Claude 20 USD from us (paid = 800 TRY)                           paid         =   6,800 TRY
+//   Transfers      us → dr 500 USD at 59 (29,500 DOP in) · tr → us 4,000 TRY at the month rate (100 USD in)
+//                  dr → tr 3,000 DOP at the month rate (2,000 TRY in)
 //
-//   Usado 11,600 TRY (290 USD) · disponible 20,400 · tras pendientes 19,400
-//   Saldos   us = 1,000 + 3,000 − 20 − 500 + 100            =  3,580 USD
+//   Used 11,600 TRY (290 USD) · available 20,400 · after pending 19,400
+//   Balances us = 1,000 + 3,000 − 20 − 500 + 100            =  3,580 USD
 //            dr = 10,000 + 6,000 − 3,000 − 3,000 + 29,500 − 3,000 = 36,500 DOP
 //            tr = 20,000 + 12,000 − 400 − 400 − 6,000 − 4,000 + 2,000 = 23,200 TRY
-//   Dinero total = 3,580 × 40 + 36,500 / 1.5 + 23,200 = 190,733.33 TRY
+//   Total money = 3,580 × 40 + 36,500 / 1.5 + 23,200 = 190,733.33 TRY
 
 import { describe, expect, it } from 'vitest';
 import type { CloseResponse, ImportPayload, MonthSummary, StateResponse } from '../shared/api';
@@ -58,7 +58,7 @@ interface ToolReply {
   data: Record<string, unknown>;
 }
 
-/** Una llamada a una herramienta del MCP, como la haría Claude. `now` fija el "hoy" del servidor. */
+/** A call to an MCP tool, the way Claude would make it. `now` sets the server's "today". */
 async function tool(env: Env, now: Date, user: string, name: string, args: Record<string, unknown> = {}): Promise<ToolReply> {
   const res = await handleMcp(
     new Request('https://finanzas.example/mcp', {
@@ -80,9 +80,9 @@ async function done(reply: Promise<ToolReply>): Promise<ToolReply> {
   return r;
 }
 
-/** Lo que no son movimientos: primera visita, cuentas, monedas, tasas del mes, presupuesto y los gastos fijos. Devuelve el mes. */
+/** What is not a movement: first visit, accounts, currencies, month rates, budget and the fixed expenses. Returns the month. */
 async function setUp(api: Client): Promise<MonthKey> {
-  // Primera visita: las dos cuentas de partida y el mes actual.
+  // First visit: the two starting accounts and the current month.
   const first = await getState(api);
   expect(rateFor(first, sortedKeys(first)[0]!, 'TRY', 'DOP').source).toBe('default');
   expect(first.accounts.map((a) => [a.id, a.currency, a.opening])).toEqual([['us', 'USD', 0], ['dr', 'DOP', 0]]);
@@ -96,11 +96,11 @@ async function setUp(api: Client): Promise<MonthKey> {
   await ok(api.patch('/api/accounts/cash', { hidden: true }));
 
   await ok(api.patch('/api/settings', { mainCurrency: 'TRY', secondCurrency: 'USD', defaultAccountId: 'tr' }));
-  // Las dos tasas del guion valen desde el día 1: todas sus filas se convierten con ellas.
+  // The script's two rates apply from day 1: all of its rows are converted with them.
   await ok(api.put(`/api/months/${key}/rates`, { from: 'USD', to: 'DOP', rate: 60, date: `${key}-01` }));
   await ok(api.put(`/api/months/${key}/rates`, { from: 'USD', to: 'TRY', rate: 40, date: `${key}-01` }));
   await ok(api.patch(`/api/months/${key}`, { budgets: { dr: 30000, tr: 8000 } }));
-  // Con dos tasas escritas, la tercera sale cruzando por USD.
+  // With two typed rates, the third comes from crossing through USD.
   expect(rateFor(await getState(api), key, 'TRY', 'DOP')).toMatchObject({ rate: expect.closeTo(1.5, 10), source: 'cross', monthKey: key });
 
   await ok(api.post<FixedExpense>('/api/fixed', { id: 'rent', monthKey: key, name: 'Rent', day: '1', amount: 6000, cur: 'TRY' }), 201);
@@ -109,11 +109,11 @@ async function setUp(api: Client): Promise<MonthKey> {
   return key;
 }
 
-/** Los movimientos del guion, por la API. */
+/** The script's movements, through the API. */
 async function movementsByApi(api: Client, key: MonthKey): Promise<void> {
   const d = (day: string) => `${key}-${day}`;
   await ok(api.post('/api/incomes', { date: d('01'), desc: 'Salary', accountId: 'us', amount: 3000, cur: 'USD' }), 201);
-  // Sin cuenta: entra a la de por defecto (tr).
+  // No account: it goes into the default one (tr).
   await ok(api.post('/api/incomes', { date: d('02'), desc: 'Maaş', amount: 12000, cur: 'TRY' }), 201);
   await ok(api.post('/api/incomes', { date: d('03'), desc: 'Gift', accountId: 'dr', amount: 100, cur: 'USD' }), 201);
 
@@ -132,12 +132,12 @@ async function movementsByApi(api: Client, key: MonthKey): Promise<void> {
   await ok(api.patch(`/api/months/${key}`, { budgets: { dr: 36000 } }));
 }
 
-/** Los mismos movimientos, dictados a Claude: cuentas por su nombre y lo que no se dice, por defecto. */
+/** The same movements, dictated to Claude: accounts by name, and whatever is left unsaid takes its default. */
 async function movementsByMcp(env: Env, api: Client, now: Date, user: string, key: MonthKey): Promise<void> {
   const d = (day: string) => `${key}-${day}`;
   const say = (name: string, args: Record<string, unknown>) => done(tool(env, now, user, name, args));
   await say('add_income', { amount: 3000, currency: 'USD', account: 'US account', date: d('01'), description: 'Salary' });
-  // Sin cuenta ni moneda: la cuenta por defecto (tr) y su moneda.
+  // No account or currency: the default account (tr) and its currency.
   await say('add_income', { amount: 12000, date: d('02'), description: 'Maaş' });
   await say('add_income', { amount: 100, currency: 'USD', account: 'dr account', date: d('03'), description: 'Gift' });
 
@@ -153,18 +153,18 @@ async function movementsByMcp(env: Env, api: Client, now: Date, user: string, ke
   expect(toTr.text).toContain('crossed through USD');
 
   await say('mark_fixed_paid', { name: 'Rent', month: key });
-  // El presupuesto no se cambia desde Claude: por la API, como en la web.
+  // The budget is not changed from Claude: through the API, as on the web.
   await ok(api.patch(`/api/months/${key}`, { budgets: { dr: 36000 } }));
 }
 
 const balanceOf = (state: AppState, asOf: MonthKey) => Object.fromEntries(balances(state, asOf).accounts.map((a) => [a.account.id, a.balance]));
 
-/** Las cifras del guion, hechas a mano (cabecera del archivo). */
+/** The script's figures, worked out by hand (file header). */
 function expectScriptedMonth(state: AppState, key: MonthKey, asOf: MonthKey = key): void {
   expect([state.mainCurrency, state.secondCurrency, state.defaultAccountId]).toEqual(['TRY', 'USD', 'tr']);
 
-  // Tasas: dos escritas a mano. La tercera salía cruzando por USD; el envío dr → tr se guardó con esa misma tasa,
-  // y desde entonces el par tiene la de sus propios envíos (el mismo número, otro origen).
+  // Rates: two typed by hand. The third used to come from crossing through USD; the dr → tr transfer was saved with
+  // that same rate, and since then the pair has the rate of its own transfers (the same number, a different source).
   expect(rateFor(state, key, 'USD', 'DOP')).toEqual({ rate: 60, source: 'month', monthKey: key, date: `${key}-01` });
   expect(rateFor(state, key, 'TRY', 'USD')).toEqual({ rate: 1 / 40, source: 'month', monthKey: key, date: `${key}-01` });
   expect(rateFor(state, key, 'TRY', 'DOP')).toMatchObject({ rate: expect.closeTo(1.5, 10), source: 'transfers', monthKey: key });
@@ -185,11 +185,11 @@ function expectScriptedMonth(state: AppState, key: MonthKey, asOf: MonthKey = ke
   expect(c.income).toBeCloseTo(136000, 6);
   expect(c.incomeLeft).toBeCloseTo(124400, 6);
 
-  // Los envíos sin tasa guardaron la del mes para su par.
+  // The transfers without a rate saved the month rate for their pair.
   const month = state.months[key]!;
   expect(month.transfers.map((t) => [t.fromAccountId, t.toAccountId, t.amount])).toEqual([['us', 'dr', 500], ['tr', 'us', 4000], ['dr', 'tr', 3000]]);
   expect(month.transfers.map((t) => t.rate)).toEqual([59, expect.closeTo(0.025, 12), expect.closeTo(1 / 1.5, 12)]);
-  // Cada fila guarda su monto y su moneda originales, y la cuenta de la que sale.
+  // Each row keeps its original amount and currency, and the account it comes out of.
   expect(month.tx.map((t) => [t.desc, t.amount, t.cur, t.accountId])).toEqual([
     ['Kahve', 400, 'TRY', 'tr'],
     ['Groceries', 3000, 'DOP', 'dr'],
@@ -210,13 +210,13 @@ function expectScriptedMonth(state: AppState, key: MonthKey, asOf: MonthKey = ke
   expect(byId.cash!.balance).toBe(500);
   expect(byId.us!.inMain).toBeCloseTo(143200, 6);
   expect(byId.dr!.inSecond).toBeCloseTo(36500 / 60, 6);
-  // La cuenta oculta no suma.
+  // The hidden account does not count.
   expect(b.totalMain).toBeCloseTo(143200 + 36500 / 1.5 + 23200, 6);
   expect(b.totalSecond).toBeCloseTo(3580 + 36500 / 60 + 580, 6);
 }
 
-describe('de punta a punta: el mes guionizado', () => {
-  it('por la API: saldos, presupuesto, usado e ingreso son los calculados a mano; al cerrar, el mes siguiente los hereda', async () => {
+describe('end to end: the scripted month', () => {
+  it('through the API: balances, budget, used and income are the ones worked out by hand; on close, the next month inherits them', async () => {
     const { frank } = fresh();
     const key = await setUp(frank);
     await movementsByApi(frank, key);
@@ -224,12 +224,12 @@ describe('de punta a punta: el mes guionizado', () => {
     const state = await getState(frank);
     expectScriptedMonth(state, key);
 
-    // El resumen de meses habla en la moneda principal.
+    // The summary of months speaks in the main currency.
     expect(await ok(frank.get<MonthSummary[]>('/api/months'))).toEqual([
       { key, closed: false, closedAt: null, main: 'TRY', budget: expect.closeTo(32000, 6), used: expect.closeTo(11600, 6), txCount: 4 },
     ]);
 
-    // Una meta en TRY con un aporte en USD: se convierte a la moneda de la meta y no mueve ningún saldo.
+    // A goal in TRY with a contribution in USD: it is converted to the goal's currency and moves no balance.
     const goal = await ok(frank.post<Goal>('/api/goals', { name: 'Araba', monthly: 5000, start: key, end: nextKey(key) }), 201);
     expect(goal.cur).toBe('TRY');
     await ok(frank.post('/api/contributions', { goalId: goal.id, date: `${key}-11`, amount: 50, cur: 'USD' }), 201);
@@ -239,7 +239,7 @@ describe('de punta a punta: el mes guionizado', () => {
     expect([progress.cur, progress.saved, progress.target?.targetAmount]).toEqual(['TRY', expect.closeTo(2000, 6), 10000]);
     expect(incomeRows(withGoal)[0]).toMatchObject({ income: expect.closeTo(136000, 6), saved: expect.closeTo(2000, 6) });
 
-    // Cerrar: el mes queda de solo lectura y el siguiente nace con los fijos sin pagar y el mismo presupuesto.
+    // Closing: the month becomes read-only and the next one starts with the fixed expenses unpaid and the same budget.
     const next = nextKey(key);
     const closed = await ok(frank.post<CloseResponse>(`/api/months/${key}/close`));
     expect(closed.closed.closed).toBe(true);
@@ -262,14 +262,14 @@ describe('de punta a punta: el mes guionizado', () => {
       expect([r.status, r.error?.code]).toEqual([409, 'month_closed']);
     }
 
-    // Nada se movió: los saldos al final del mes siguiente son los mismos, con las tasas del mes anterior.
+    // Nothing moved: the balances at the end of the next month are the same, with the previous month's rates.
     const after = await getState(frank);
     expectScriptedMonth(after, key, next);
     expect(rateFor(after, next, 'USD', 'TRY')).toEqual({ rate: 40, source: 'previous', monthKey: key, date: `${key}-01` });
     expect(monthCalc(after, next)).toMatchObject({ budget: expect.closeTo(32000, 6), used: 0, pending: expect.closeTo(7800, 6), income: 0 });
   });
 
-  it('por las herramientas del MCP: las mismas cifras, y lo que Claude responde es lo que calcula la app', async () => {
+  it('through the MCP tools: the same figures, and what Claude answers is what the app computes', async () => {
     const { env, eda } = fresh();
     const key = await setUp(eda);
     const now = new Date(`${key}-15T16:00:00Z`);
@@ -313,7 +313,7 @@ describe('de punta a punta: el mes guionizado', () => {
     expect(summary.text).toContain('Budget: 32,000.00 TRY');
     expect(summary.text).toContain(`USD to TRY: 40.00 (typed on ${key}-01)`);
 
-    // Lo que no puede ser: una cuenta que no existe, la misma cuenta dos veces, un mes cerrado.
+    // What is not possible: an account that does not exist, the same account twice, a closed month.
     const unknown = await tool(env, now, EDA.id, 'add_transaction', { description: 'x', amount: 1, account: 'Wise' });
     expect([unknown.isError, unknown.text]).toEqual([true, expect.stringContaining('unknown account "Wise"')]);
     const same = await tool(env, now, EDA.id, 'add_transfer', { from_account: 'tr', to_account: 'TR account', amount: 1 });
@@ -324,7 +324,7 @@ describe('de punta a punta: el mes guionizado', () => {
     expectScriptedMonth(await getState(eda), key);
   });
 
-  it('dos usuarios con el mismo guion no se mezclan, y borrar un mes devuelve los saldos a como estaban', async () => {
+  it('two users with the same script do not mix, and deleting a month puts the balances back as they were', async () => {
     const { env, db, frank, eda } = fresh();
     const key = await setUp(frank);
     expect(await setUp(eda)).toBe(key);
@@ -334,7 +334,7 @@ describe('de punta a punta: el mes guionizado', () => {
     expectScriptedMonth(await getState(eda), key);
     const edaBefore = await loadState(db, EDA.id);
 
-    // Frank cierra y sigue en el mes siguiente: un gasto, un envío y un fijo pagado mueven sus saldos…
+    // Frank closes and carries on in the next month: an expense, a transfer and a paid fixed expense move his balances…
     const next = nextKey(key);
     const closed = await ok(frank.post<CloseResponse>(`/api/months/${key}/close`));
     await ok(frank.post('/api/transactions', { monthKey: next, date: `${next}-02`, desc: 'Bilet', cat: 'Travel', method: 'Debit card', amount: 1000, cur: 'TRY' }), 201);
@@ -342,10 +342,10 @@ describe('de punta a punta: el mes guionizado', () => {
     await ok(frank.patch(`/api/fixed/${closed.next.fixed.find((f) => f.name === 'Claude')!.id}`, { paid: true }));
     const moved = await getState(frank);
     expect(balanceOf(moved, next)).toEqual({ us: expect.closeTo(3460, 6), dr: expect.closeTo(36500, 6), tr: expect.closeTo(26300, 6), cash: 500 });
-    // …y el saldo al final del mes cerrado no cambia por lo que pasa después.
+    // …and the balance at the end of the closed month does not change because of what happens afterwards.
     expectScriptedMonth(moved, key);
 
-    // Borrar el mes siguiente se lleva sus movimientos: los saldos vuelven.
+    // Deleting the next month takes its movements with it: the balances come back.
     expect(await ok(frank.del(`/api/months/${next}`))).toEqual({ ok: true });
     const back = await getState(frank);
     expect(sortedKeys(back)).toEqual([key]);
@@ -353,8 +353,8 @@ describe('de punta a punta: el mes guionizado', () => {
     expect((await frank.get(`/api/months/${next}`)).status).toBe(404);
     expect((await frank.del(`/api/months/${next}`)).status).toBe(404);
 
-    // Borrar también el mes cerrado: quedan los saldos iniciales más los ingresos, que no son de ningún mes.
-    // Al volver a entrar se crea el mes actual, vacío y sin tasas: la conversión cae al valor de respaldo.
+    // Deleting the closed month too: what remains is the opening balances plus the incomes, which belong to no month.
+    // The next visit creates the current month, empty and with no rates: conversion falls back to the default value.
     await ok(frank.del(`/api/months/${key}`));
     const empty = await getState(frank);
     const [only] = sortedKeys(empty);
@@ -363,12 +363,12 @@ describe('de punta a punta: el mes guionizado', () => {
     expect(rateFor(empty, only!, 'USD', 'DOP')).toEqual({ rate: 58.76, source: 'default', monthKey: null, date: null });
     expect(balanceOf(empty, only!)).toEqual({ us: 4000, dr: expect.closeTo(10000 + 100 * 58.76, 6), tr: 32000, cash: 500 });
 
-    // Nada de esto tocó a Eda.
+    // None of this touched Eda.
     expect(await loadState(db, EDA.id)).toEqual(edaBefore);
     expectScriptedMonth(await getState(eda), key);
   });
 
-  it('errores del modelo: cuenta desconocida, envío a la misma cuenta, monedas iguales, cuenta en uso', async () => {
+  it('model errors: unknown account, transfer to the same account, equal currencies, account in use', async () => {
     const { frank } = fresh();
     const key = await setUp(frank);
     await movementsByApi(frank, key);
@@ -389,16 +389,16 @@ describe('de punta a punta: el mes guionizado', () => {
       const r = await reply;
       expect([r.status, r.error?.code]).toEqual([status, code]);
     }
-    // Ninguno dejó nada a medias.
+    // None of them left anything half done.
     expectScriptedMonth(await getState(frank), key);
-    // Intercambiar las dos monedas sí se puede, mandándolas juntas; y una cuenta sin uso se borra.
+    // Swapping the two currencies is allowed, by sending them together; and an unused account can be deleted.
     await ok(frank.patch('/api/settings', { mainCurrency: 'USD', secondCurrency: 'TRY' }));
     expect(monthCalc(await getState(frank), key)).toMatchObject({ main: 'USD', used: expect.closeTo(290, 6), usedSecond: expect.closeTo(11600, 6) });
     await ok(frank.del('/api/accounts/cash'));
   });
 });
 
-describe('de punta a punta: el Excel como resumen del modelo de cuentas', () => {
+describe('end to end: Excel as a summary of the account model', () => {
   async function download(api: Client): Promise<{ bytes: Uint8Array; book: ImportPayload }> {
     const res = await api.raw('/api/export.xlsx', { method: 'GET' });
     expect(res.status).toBe(200);
@@ -406,7 +406,7 @@ describe('de punta a punta: el Excel como resumen del modelo de cuentas', () => 
     return { bytes, book: parseFinanzasXlsx(bytes) };
   }
 
-  it('exportar el mes guionizado e importarlo en un usuario vacío da los mismos totales en los términos del libro', async () => {
+  it('exporting the scripted month and importing it into an empty user gives the same totals in the terms of the workbook', async () => {
     const { frank, ana } = fresh();
     const key = await setUp(frank);
     await movementsByApi(frank, key);
@@ -415,14 +415,14 @@ describe('de punta a punta: el Excel como resumen del modelo de cuentas', () => 
     const source = await getState(frank);
     const { bytes, book } = await download(frank);
 
-    // El libro, en sus términos (DOP y USD, dos cuentas), con las tasas del mes de la app.
+    // The workbook, in its own terms (DOP and USD, two accounts), with the app's month rates.
     expect(book.months).toHaveLength(1);
     const m = book.months[0]!;
     expect(m.budget).toBeCloseTo(36000 + 8000 * 1.5, 6); // 48,000 DOP
     expect(m.incomeUSD).toBeCloseTo(3000 + 12000 / 40 + 100, 6); // 3,400 USD
-    expect(m.accounts.dop).toBeCloseTo(36500, 6); // la cuenta oculta no cuenta
-    expect(m.accounts.usd).toBeCloseTo(3580 + 23200 / 40, 6); // lo que no es DOP, en USD
-    // Lo que estaba en TRY llega en DOP; solo viajan los envíos entre USD y DOP.
+    expect(m.accounts.dop).toBeCloseTo(36500, 6); // the hidden account does not count
+    expect(m.accounts.usd).toBeCloseTo(3580 + 23200 / 40, 6); // what is not DOP, in USD
+    // What was in TRY arrives in DOP; only the transfers between USD and DOP travel.
     expect(m.tx.map((t) => [t.desc, t.amount, t.cur])).toEqual([
       ['Kahve', expect.closeTo(600, 6), 'DOP'],
       ['Groceries', 3000, 'DOP'],
@@ -437,35 +437,35 @@ describe('de punta a punta: el Excel como resumen del modelo de cuentas', () => 
     expect(m.transfers.map((t) => [t.usd, t.rate])).toEqual([[500, 59]]);
     expect(book.contribs).toEqual([{ date: `${key}-11`, goalName: 'Araba', amount: expect.closeTo(75, 6), cur: 'USD' }]);
 
-    // Ana nunca entró: importar le crea sus cuentas de partida y vuelca el libro en ellas.
+    // Ana never visited: importing creates her starting accounts and dumps the workbook into them.
     const res = await ana.raw('/api/import', { method: 'POST', headers: { 'Content-Type': XLSX_MIME }, body: bytes });
     expect(res.status).toBe(200);
     const imported = await getState(ana);
     expect(imported.accounts.map((a) => [a.id, a.currency])).toEqual([['us', 'USD'], ['dr', 'DOP']]);
     expect(imported.months[key]).toMatchObject({ budgets: { dr: expect.closeTo(48000, 6) }, rates: [] });
 
-    // El libro de Ana dice lo mismo que el de Frank.
+    // Ana's workbook says the same as Frank's.
     const again = (await download(ana)).book;
     const approx = (book: ImportPayload) => JSON.parse(JSON.stringify(book), (_k, v: unknown) => (typeof v === 'number' ? Math.round(v * 1e6) / 1e6 : v)) as ImportPayload;
     expect(approx(again)).toEqual(approx(book));
 
-    // Y en la app, los totales que el libro sabe llevar coinciden: saldos del último mes, ingreso y presupuesto.
+    // And in the app, the totals the workbook knows how to carry match: the last month's balances, income and budget.
     const b = balanceOf(imported, key);
     expect(b.us).toBeCloseTo(3580 + 23200 / 40, 6);
     expect(b.dr).toBeCloseTo(36500, 6);
     const dop = { ...imported, mainCurrency: 'DOP' as const, secondCurrency: 'USD' as const };
     const sourceDop = { ...source, mainCurrency: 'DOP' as const, secondCurrency: 'USD' as const };
     expect(monthCalc(dop, key).budget).toBeCloseTo(monthCalc(sourceDop, key).budget, 6);
-    // El libro saca su tasa de los envíos del mes (59), no de la escrita (60): lo convertido difiere justo en eso.
+    // The workbook gets its rate from the month's transfers (59), not the typed one (60): conversions differ by just that.
     expect(rateFor(imported, key, 'USD', 'DOP')).toEqual({ rate: 59, source: 'transfers', monthKey: key, date: null });
     expect(monthCalc(dop, key).income).toBeCloseTo(3400 * 59, 6);
     expect(monthCalc(sourceDop, key).income).toBeCloseTo(3400 * 60, 6);
-    // Gastado, en DOP: 600 + 3,000 + 600 + 9,000 en DOP y 70 USD a la tasa de cada uno.
+    // Spent, in DOP: 600 + 3,000 + 600 + 9,000 in DOP and 70 USD at each one's rate.
     expect(monthCalc(dop, key).used).toBeCloseTo(13200 + 70 * 59, 6);
     expect(monthCalc(sourceDop, key).used).toBeCloseTo(13200 + 70 * 60, 6);
 
-    // Volver a cargar el propio libro no duplica el ingreso del mes ni infla el dinero total, aunque Frank tiene
-    // tres cuentas visibles. Sí pierde lo que el libro no lleva: las tasas escritas y el reparto del presupuesto.
+    // Reloading his own workbook does not duplicate the month's income or inflate the total money, even though Frank
+    // has three visible accounts. It does lose what the workbook does not carry: the typed rates and the budget split.
     const reload = await frank.raw('/api/import', { method: 'POST', headers: { 'Content-Type': XLSX_MIME }, body: bytes });
     expect(reload.status).toBe(200);
     const reloaded = (await download(frank)).book.months[0]!;

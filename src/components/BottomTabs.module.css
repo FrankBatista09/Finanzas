@@ -1,4 +1,4 @@
-/* Pestañas de hoja, como las de una hoja de cálculo. */
+/* Sheet tabs, like the ones in a spreadsheet. */
 .nav {
   position: fixed;
   left: 0;
@@ -20,7 +20,7 @@
   padding: 0 20px;
   font: 600 var(--fs-body) var(--font-ui);
   cursor: pointer;
-  /* Sube 1px para tapar el borde superior de la barra. */
+  /* Moves up 1px to cover the bar's top border. */
   margin-top: -1px;
   background: transparent;
   color: var(--tabs-text);

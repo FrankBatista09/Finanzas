@@ -1,5 +1,5 @@
 // "Are you sure?" before any delete. DeleteButton wraps its action with this; dialogs that have their own Delete
-// button (goal, card, hidden account) use the hook and <ConfirmDeleteDialog> directly.
+// button (goal, credit card, hidden account) use the hook and <ConfirmDeleteDialog> directly.
 //
 //   const confirm = useConfirmDelete(() => actions.removeGoal(goal.id) && onClose());
 //   <DialogButton onClick={() => confirm.request(goal.name)}>…</DialogButton>

@@ -6,17 +6,17 @@ import type { RateNote } from './model';
 import { AHORROS } from './strings';
 
 export interface ConvertedProps {
-  /** La cifra, ya con formato. */
+  /** The figure, already formatted. */
   value: string;
-  /** La tasa con la que se convirtió (./model rateNote). */
+  /** The rate it was converted with (./model rateNote). */
   note: RateNote;
   tone?: Tone;
   last?: boolean;
 }
 
 /**
- * Celda de una cifra convertida. Si la tasa no es la escrita para su mes, de dónde salió va en el title; si es el
- * valor fijo de respaldo, la cifra va además en rojo y con un asterisco, que explica <FallbackNote> al pie de la tabla.
+ * Cell for a converted figure. If the rate is not the one typed for its month, where it came from goes in the title; if it is
+ * the fixed default value, the figure is also shown in red with an asterisk, which <FallbackNote> explains below the table.
  */
 export function Converted({ value, note, tone, last }: ConvertedProps) {
   return (
@@ -27,7 +27,7 @@ export function Converted({ value, note, tone, last }: ConvertedProps) {
   );
 }
 
-/** El pie que explica el asterisco. Solo se pinta si alguna cifra de la tabla lo lleva. */
+/** The footer that explains the asterisk. It is only rendered if some figure in the table carries one. */
 export function FallbackNote({ show }: { show: boolean }) {
   const s = useStrings(AHORROS);
   return show ? <div className={styles.fallbackNote}>{s('fallbackNote')}</div> : null;

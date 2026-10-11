@@ -6,11 +6,11 @@ import { ExpandedContext, ExpandOpenContext } from './expandContext';
 import { ExpandButton } from './buttons';
 
 export interface CardProps extends HTMLAttributes<HTMLDivElement> {
-  /** Padding 14px 16px 16px, para tarjetas sin tabla. Las que llevan tabla van sin padding (la tabla llega al borde). */
+  /** Padding 14px 16px 16px, for cards without a table. The ones with a table have no padding (the table reaches the border). */
   padded?: boolean;
 }
 
-/** Superficie #fffefa con borde y radio de 4px. El tamaño (flex, min-width) lo pone quien la usa con className. */
+/** #fffefa surface with a border and a 4px radius. The size (flex, min-width) is set by whoever uses it, with className. */
 export function Card({ padded, className, children, ...rest }: CardProps) {
   return (
     <div {...rest} className={cx(styles.card, padded && styles.padded, className)}>
@@ -21,13 +21,13 @@ export function Card({ padded, className, children, ...rest }: CardProps) {
 
 export interface CardHeaderProps {
   title: ReactNode;
-  /** Texto a la derecha (12px, atenuado). Las cifras dentro van con <Num tone="ink">. */
+  /** Text on the right (12px, muted). The figures inside go in <Num tone="ink">. */
   meta?: ReactNode;
-  /** Un control a la derecha del todo, después de `meta`: el "+ Add …" que abre la fila de agregar. */
+  /** A control at the far right, after `meta`: the "+ Add …" that opens the add row. */
   action?: ReactNode;
-  /** Permite que título y meta se partan en dos líneas (historial de transacciones). */
+  /** Lets the title and the meta break into two lines (transaction history). */
   wrap?: boolean;
-  /** Para tarjetas `padded`: sin padding propio y con 12px de margen inferior ("Por categoría"). */
+  /** For `padded` cards: no padding of its own and a 12px bottom margin ("By category"). */
   inset?: boolean;
   className?: string;
 }
@@ -53,7 +53,7 @@ export function CardHeader({ title, meta, action, wrap, inset, className }: Card
   );
 }
 
-/** Una línea de aclaración bajo la cabecera de una tarjeta (12px, atenuada): qué significa lo que se escribe en ella. */
+/** A one-line note under a card's header (12px, muted): what the things typed into the card mean. */
 export function CardNote({ className, children, ...rest }: HTMLAttributes<HTMLParagraphElement>) {
   return (
     <p {...rest} className={cx(styles.note, className)}>
@@ -62,7 +62,7 @@ export function CardNote({ className, children, ...rest }: HTMLAttributes<HTMLPa
   );
 }
 
-/** Columna con 20px de separación: la raíz de cada pantalla. */
+/** Column with a 20px gap: the root of every screen. */
 export function Stack({ className, children, ...rest }: HTMLAttributes<HTMLDivElement>) {
   return (
     <div {...rest} className={cx(styles.stack, className)}>

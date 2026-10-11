@@ -11,11 +11,11 @@ import { EMPTY_INCOME, incomeItems, incomeMonthKeys, incomeTotalOf, monthDraftDa
 import { AHORROS } from './strings';
 
 /**
- * "Income": los ingresos de UN mes, del más reciente al más antiguo, con la fila de agregar arriba (la abre el
- * botón de la cabecera). El mes se elige aquí mismo (flechas y lista: los meses registrados y los que tienen
- * ingresos); arranca en el mes que se ve en la app y es independiente del de la barra superior. Los que se
- * agregan aquí no suben el presupuesto salvo que se marque su casilla. La cabecera lleva el ingreso del mes elegido.
- * Un ingreso agregado con fecha de otro mes se guarda igual y la tabla salta a ese mes, para que no parezca que se perdió.
+ * "Income": the incomes of ONE month, from newest to oldest, with the add row on top (the header button opens it).
+ * The month is picked right here (arrows and select: the recorded months and the ones that have incomes); it starts
+ * on the month shown in the app and is independent of the top bar's. Incomes added here do not raise the budget
+ * unless their checkbox is checked. The header carries the income of the picked month.
+ * An income added with a date in another month is still saved and the table jumps to that month, so it does not look lost.
  */
 export function IncomesCard() {
   const { state, monthKey, main } = useFinanzas();

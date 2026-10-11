@@ -1,6 +1,6 @@
-// Prueba de humo: los componentes comunes se pintan con los datos de ejemplo y enseñan las cifras de shared/calc.ts,
-// con los textos de cada idioma. Se renderiza a HTML en Node (sin DOM): no se prueban interacciones, solo que el
-// marcado, los textos y los cálculos casan.
+// Smoke test: the common components render with the sample data and show the figures from shared/calc.ts,
+// with each language's texts. It renders to HTML in Node (no DOM): interactions are not tested, only that the
+// markup, the texts and the calculations match.
 
 import type { ReactNode } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -82,7 +82,7 @@ interface Opts {
   shell?: Partial<Shell>;
   state?: AppState;
   user?: AppUser;
-  /** Las filas de agregar: abiertas (como tras pulsar su "+ Add …") salvo que se pida false, que es como nace la pantalla. */
+  /** The add rows: open (as after pressing their "+ Add …") unless false is requested, which is how the screen starts. */
   addRows?: boolean;
 }
 
@@ -98,7 +98,7 @@ function render(node: ReactNode, { monthKey = '2026-10', lang = 'en', shell: ove
   );
 }
 
-/** Texto visible, sin etiquetas. */
+/** Visible text, without tags. */
 const text = (html: string) =>
   html
     .replace(/<[^>]+>/g, ' ')
@@ -106,7 +106,7 @@ const text = (html: string) =>
     .replace(/&#x27;/g, "'")
     .replace(/\s+/g, ' ');
 
-/** Atributos de cada <tag> del HTML, sin depender del orden en que React los escribe. */
+/** Attributes of each <tag> in the HTML, regardless of the order React writes them in. */
 function els(html: string, tag: string): Record<string, string>[] {
   return [...html.matchAll(new RegExp(`<${tag}\\b([^>]*)>`, 'g'))].map((m) =>
     Object.fromEntries([...m[1]!.matchAll(/([\w:-]+)(?:="([^"]*)")?/g)].map((a) => [a[1]!, a[2] ?? ''])),
@@ -115,10 +115,10 @@ function els(html: string, tag: string): Record<string, string>[] {
 
 const has = (list: Record<string, string>[], attrs: Record<string, string>) => expect(list).toContainEqual(expect.objectContaining(attrs));
 
-/** Texto de cada <button>, en orden. */
+/** Text of each <button>, in order. */
 const buttonTexts = (html: string) => [...html.matchAll(/<button\b[^>]*>(.*?)<\/button>/g)].map((m) => text(m[1]!).trim());
 
-/** Los datos de ejemplo con la lira como moneda principal y sus tasas escritas (las de shared/calc.test.ts). */
+/** The sample data with the lira as the main currency and its typed rates (the ones in shared/calc.test.ts). */
 function tryState(): AppState {
   const s = seedState();
   s.mainCurrency = 'TRY';
@@ -130,7 +130,7 @@ function tryState(): AppState {
   return s;
 }
 
-/** Un movimiento del registro del presupuesto de octubre, en la DR account. */
+/** A movement in October's budget log, in the DR account. */
 const logEntry = (over: Partial<BudgetEntry> & Pick<BudgetEntry, 'id' | 'amount' | 'kind'>): BudgetEntry => ({
   date: '2026-10-07',
   accountId: 'dr',
@@ -138,7 +138,7 @@ const logEntry = (over: Partial<BudgetEntry> & Pick<BudgetEntry, 'id' | 'amount'
   ...over,
 });
 
-/** Un ingreso de octubre con la casilla "Adds to budget", en la DR account. */
+/** An October income with the "Adds to budget" checkbox, in the DR account. */
 const budgetIncome = (over: Partial<Income> & Pick<Income, 'id' | 'amount'>): Income => ({
   date: '2026-10-03',
   desc: 'Refund',
@@ -148,7 +148,7 @@ const budgetIncome = (over: Partial<Income> & Pick<Income, 'id' | 'amount'>): In
   ...over,
 });
 
-/** Los datos de ejemplo con una tercera cuenta en liras (visible) y una vieja, oculta y sin usar. */
+/** The sample data with a third account in liras (visible) and an old one, hidden and unused. */
 function manyAccounts(): AppState {
   const s = seedState();
   s.accounts.push(
@@ -159,13 +159,13 @@ function manyAccounts(): AppState {
   return s;
 }
 
-describe('SummaryPanel · Month: el presupuesto', () => {
+describe('SummaryPanel · Month: the budget', () => {
   const panel = (opts: Opts = {}) => render(<SummaryPanel sheet="mes" />, opts);
 
-  it('October 2026: las cifras de shared/calc.ts, en la moneda principal y en la segunda', () => {
+  it('October 2026: the figures from shared/calc.ts, in the main currency and in the second one', () => {
     const html = panel();
     const t = text(html);
-    // La primera tarjeta es el presupuesto: total, "≈" y una fila por cuenta con su parte.
+    // The first card is the budget: total, "≈" and one row per account with its part.
     expect(t).toContain('Budget 70,000.00 DOP ≈ 1,191.29 USD');
     expect(t).toContain('US account');
     expect(t).toContain('DR account');
@@ -179,10 +179,10 @@ describe('SummaryPanel · Month: el presupuesto', () => {
     has(els(html, 'table'), { 'aria-label': 'Budget' });
   });
 
-  it('una fila por cuenta con parte, con su parte editable, su moneda y su ×; el presupuesto planeado ya no se escribe', () => {
+  it('one row per account with a part: its editable part, its currency and its ×; the planned budget is no longer typed', () => {
     const html = panel();
-    // Solo las partes son campos (más el monto de la fila de agregar): "Planned budget" es su suma.
-    // La US account existe y está visible, pero sin parte este mes no tiene fila.
+    // Only the parts are fields (plus the amount in the add row): "Planned budget" is their sum.
+    // The US account exists and is visible, but with no part this month it has no row.
     const inputs = els(html, 'input');
     expect(inputs.map((i) => [i.type, i.value, i['aria-label']])).toEqual([
       ['number', '70000', 'Budget from DR account, in DOP'],
@@ -192,36 +192,36 @@ describe('SummaryPanel · Month: el presupuesto', () => {
     expect(html).not.toContain('readOnly');
     const rows = [...html.matchAll(/<tr\b[^>]*>(.*?)<\/tr>/g)].map((m) => text(m[1]!).trim());
     expect(rows).toEqual(['DR account DOP ×', 'US account New account… USD Add']);
-    // La × quita la cuenta del presupuesto (deja su parte en 0). Debajo de la tabla, el sobrante y el historial.
+    // The × removes the account from the budget (leaves its part at 0). Below the table, the leftover and the history.
     expect(buttonTexts(html)).toEqual(['×', 'Add', 'Cancel', '+ Extra budget', 'Add to budget', 'Budget history']);
     has(els(html, 'button'), { 'aria-label': 'Remove DR account from the budget' });
   });
 
-  it('la fila de agregar: las cuentas visibles que aún no están en el presupuesto, "New account…" al final, el monto y "Add"', () => {
+  it('the add row: the visible accounts not yet in the budget, "New account…" at the end, the amount and "Add"', () => {
     const html = panel();
     expect(els(html, 'select')).toEqual([expect.objectContaining({ 'aria-label': 'Account to add to the budget' })]);
-    // Arranca en la primera cuenta libre, y enseña su moneda.
+    // It starts on the first free account, and shows its currency.
     expect(html).toContain('<option value="us" selected="">US account</option><option value="__new__">New account…</option></select>');
     has(els(html, 'input'), { placeholder: '0.00', value: '', 'aria-label': 'Amount of the new budget part' });
 
-    // Con varias cuentas libres salen todas las visibles, en su orden; la oculta (sin parte) no se ofrece.
+    // With several free accounts all the visible ones appear, in their order; the hidden one (with no part) is not offered.
     const many = panel({ state: manyAccounts() });
     expect(many).toContain(
       '<option value="us" selected="">US account</option><option value="tr">TR account</option><option value="__new__">New account…</option></select>',
     );
     expect(many).not.toContain('Old savings');
 
-    // Con todas las visibles ya en el presupuesto solo queda "New account…", que lleva a Savings.
+    // With all the visible ones already in the budget only "New account…" is left, which leads to Savings.
     const state = seedState();
     setBudgets(state.months['2026-10']!, { us: 200, dr: 58248 });
     const full = panel({ state });
-    // Un select de una sola opción no dispararía nada: ahí va un botón.
+    // A select with a single option would not trigger anything: a button goes there.
     expect(els(full, 'option')).toHaveLength(0);
     expect(buttonTexts(full)).toEqual(['×', '×', 'New account…', 'Add', 'Cancel', '+ Extra budget', 'Add to budget', 'Budget history']);
     has(els(full, 'button'), { 'aria-label': 'Remove US account from the budget' });
   });
 
-  it('sin segunda moneda: ni "≈" ni "Used in" ni cifras en otra moneda en el panel del mes', () => {
+  it('no second currency: no "≈", no "Used in" and no figures in another currency in the month panel', () => {
     const state = { ...seedState(), secondCurrency: null };
     const t = text(panel({ state }));
     expect(t).toContain('Budget 70,000.00 DOP');
@@ -230,14 +230,14 @@ describe('SummaryPanel · Month: el presupuesto', () => {
     expect(t).not.toContain('Used in');
   });
 
-  it('las partes en otra moneda suman convertidas con la tasa del mes; una cuenta oculta con parte sigue a la vista', () => {
+  it('parts in another currency add up converted at the month rate; a hidden account with a part stays in view', () => {
     const state = seedState();
     setBudgets(state.months['2026-10']!, { us: 200, dr: 58248 });
     const c = monthCalc(state, '2026-10');
     expect(text(panel({ state }))).toContain(`Budget ${f2(c.budget)} DOP ≈ ${f2(c.budgetSecond!)} USD`);
     expect(f2(c.budget)).toBe('70,000.00');
 
-    // La US account se oculta: con parte, su fila se queda (suma al total); sin parte, desaparece.
+    // The US account gets hidden: with a part, its row stays (it adds to the total); without a part, it disappears.
     state.accounts.find((a) => a.id === 'us')!.hidden = true;
     const withPart = panel({ state });
     expect(els(withPart, 'input').map((i) => i['aria-label'])).toEqual([
@@ -245,17 +245,17 @@ describe('SummaryPanel · Month: el presupuesto', () => {
       'Budget from DR account, in DOP',
       'Amount of the new budget part',
     ]);
-    // También la oculta se puede quitar del presupuesto.
+    // The hidden one can also be removed from the budget.
     has(els(withPart, 'button'), { 'aria-label': 'Remove US account from the budget' });
     setBudgets(state.months['2026-10']!, { dr: 70000 });
     const withoutPart = panel({ state });
     expect(els(withoutPart, 'input').map((i) => i['aria-label'])).toEqual(['Budget from DR account, in DOP', 'Amount of the new budget part']);
-    // Y, oculta, tampoco se ofrece para agregarla.
+    // And, hidden, it is not offered for adding either.
     expect(els(withoutPart, 'option')).toHaveLength(0);
     expect(buttonTexts(withoutPart)).toContain('New account…');
   });
 
-  it('con la lira como moneda principal, todo el panel va en TRY y la línea "≈" en USD', () => {
+  it('with the lira as the main currency, the whole panel is in TRY and the "≈" line in USD', () => {
     const state = tryState();
     const c = monthCalc(state, '2026-10');
     const html = panel({ state });
@@ -269,14 +269,14 @@ describe('SummaryPanel · Month: el presupuesto', () => {
     expect(t).toContain(`Planned budget ${f2(c.budget)} Used so far ${f2(c.used)} Available ${f2(c.avail)}`);
     expect(t).toContain('Used in USD 836.45 USD');
     has(els(html, 'svg'), { 'aria-label': `Budget used: ${f0(c.used)} of ${f0(c.budget)} TRY` });
-    // Las partes siguen en la moneda de su cuenta: lo guardado no se convierte.
-    // (La US account, sin parte, ya no tiene fila; el último campo es el monto vacío de la fila de agregar.)
+    // The parts stay in their account's currency: what is stored is not converted.
+    // (The US account, with no part, no longer has a row; the last field is the empty amount of the add row.)
     expect(els(html, 'input').map((i) => i.value)).toEqual(['70000', '']);
     expect(t).toContain('DR account DOP');
     expect(t).not.toContain('DOP ≈');
   });
 
-  it('en español conserva, palabra por palabra, los textos de la versión 1', () => {
+  it('in Spanish it keeps, word for word, the texts of version 1', () => {
     const html = panel({ lang: 'es' });
     const t = text(html);
     expect(t).toContain('Presupuesto 70,000.00 DOP ≈ 1,191.29 USD');
@@ -287,12 +287,12 @@ describe('SummaryPanel · Month: el presupuesto', () => {
     expect(t).toContain('Usado hasta hoy 49,149.71 Disponible 20,850.29 Disponible tras fijos pendientes 17,129.43 Usado en USD 836.45 USD');
     const inputs = els(html, 'input');
     has(inputs, { 'aria-label': 'Presupuesto de DR account, en DOP' });
-    // La US account solo tiene campo cuando tiene parte en el presupuesto del mes.
+    // The US account only has a field when it has a part in the month's budget.
     expect(inputs.map((i) => i['aria-label'])).not.toContain('Presupuesto de US account, en USD');
     const state = seedState();
     setBudgets(state.months['2026-10']!, { us: 200, dr: 58248 });
     has(els(panel({ lang: 'es', state }), 'input'), { 'aria-label': 'Presupuesto de US account, en USD' });
-    // Lo nuevo: quitar una cuenta del presupuesto y la fila para sumar otra.
+    // What is new: removing an account from the budget and the add row for another.
     has(inputs, { 'aria-label': 'Monto de la nueva parte del presupuesto' });
     has(els(html, 'select'), { 'aria-label': 'Cuenta que se suma al presupuesto' });
     has(els(html, 'button'), { 'aria-label': 'Quitar DR account del presupuesto' });
@@ -302,7 +302,7 @@ describe('SummaryPanel · Month: el presupuesto', () => {
     has(els(html, 'svg'), { 'aria-label': 'Presupuesto usado: 49,150 de 70,000 DOP' });
   });
 
-  it('en turco: los términos acordados y las mismas cifras, con el mismo formato', () => {
+  it('in Turkish: the agreed terms and the same figures, in the same format', () => {
     const html = panel({ lang: 'tr' });
     const t = text(html);
     has(els(html, 'input'), { 'aria-label': 'Yeni bütçe payının tutarı' });
@@ -310,7 +310,7 @@ describe('SummaryPanel · Month: el presupuesto', () => {
     has(els(html, 'button'), { 'aria-label': 'DR account hesabını bütçeden çıkar' });
     expect(html).toContain('<option value="__new__">Yeni hesap…</option>');
     expect(t).toContain('Bütçe 70,000.00 DOP ≈ 1,191.29 USD');
-    // Los nombres de las cuentas los escribe el usuario: no se traducen.
+    // Account names are typed by the user: they are not translated.
     expect(t).toContain('US account');
     expect(t).toContain('Kullanılan 49,150 / 70,000 DOP');
     expect(t).toContain('İşlemler 10,845.00');
@@ -319,7 +319,7 @@ describe('SummaryPanel · Month: el presupuesto', () => {
     expect(t).toContain('USD olarak kullanılan 836.45 USD');
   });
 
-  it('la dona pinta fondo, pendientes, fijos y transacciones, en ese orden', () => {
+  it('the donut draws background, pending, fixed and transactions, in that order', () => {
     const html = panel();
     const circles = els(html, 'circle');
     expect(circles.map((c) => c.style)).toEqual([
@@ -330,7 +330,7 @@ describe('SummaryPanel · Month: el presupuesto', () => {
     ]);
     expect(circles.every((c) => c.cx === '84' && c.cy === '84' && c.r === '64' && c['stroke-width'] === '20' && c.fill === 'none')).toBe(true);
     has(els(html, 'svg'), { viewBox: '0 0 168 168', width: '168', height: '168' });
-    // El fondo no lleva trazo discontinuo; fijos pagados arranca en 0 y transacciones donde acaban los fijos.
+    // The background has no dashed stroke; fixed paid starts at 0 and transactions where the fixed ones end.
     const [track, pending, fixed, variable] = circles;
     expect(track!['stroke-dasharray']).toBeUndefined();
     expect(fixed!['stroke-dashoffset']).toBe('0');
@@ -339,19 +339,19 @@ describe('SummaryPanel · Month: el presupuesto', () => {
     expect(+pending!['stroke-dashoffset']!).toBeCloseTo(-(len(fixed!) + len(variable!)), 8);
   });
 
-  it('en un mes cerrado las partes del presupuesto son de solo lectura: sin × y sin fila de agregar', () => {
+  it('in a closed month the budget parts are read-only: no × and no add row', () => {
     const html = panel({ monthKey: '2026-09' });
-    // Solo la parte de la DR account: la US account no tiene parte en septiembre.
+    // Only the DR account's part: the US account has no part in September.
     expect(els(html, 'input').map((i) => i['aria-label'])).toEqual(['Budget from DR account, in DOP']);
     expect(els(html, 'input').filter((i) => 'readOnly' in i)).toHaveLength(1);
     expect(els(html, 'select')).toEqual([]);
-    // Lo único que se puede pulsar es el historial, que solo se despliega.
+    // The only thing that can be pressed is the history, which only expands.
     expect(buttonTexts(html)).toEqual(['Budget history']);
     expect(text(html)).not.toContain('New account…');
     expect(text(html)).toContain('September 2026 Planned budget 70,000.00');
   });
 
-  it('pasado de presupuesto, el centro y el disponible van en rojo', () => {
+  it('over budget, the center and the available figure are in red', () => {
     const state = seedState();
     setBudgets(state.months['2026-10']!, { dr: 40000 });
     const html = panel({ state });
@@ -359,9 +359,9 @@ describe('SummaryPanel · Month: el presupuesto', () => {
     expect([...html.matchAll(/errorText/g)].length).toBeGreaterThanOrEqual(3);
   });
 
-  it('la × de una cuenta solo sale si su parte viene del registro: lo que ponen los ingresos no se quita desde aquí', () => {
+  it("an account's × only shows if its part comes from the log: what incomes put in is not removed from here", () => {
     const state = seedState();
-    // Un ingreso que sube el presupuesto y entra a la US account, que no tiene parte en el registro.
+    // An income that raises the budget and goes into the US account, which has no part in the log.
     state.incomes.push(budgetIncome({ id: 'in-us', amount: 50, cur: 'USD', accountId: 'us' }));
     const html = panel({ state });
     expect(els(html, 'input').map((i) => [i.value, i['aria-label']])).toEqual([
@@ -375,7 +375,7 @@ describe('SummaryPanel · Month: el presupuesto', () => {
     // 70,000 + 50 USD × 58.76.
     expect(text(html)).toContain('Budget 72,938.00 DOP');
 
-    // Con parte en el registro y además un ingreso, la × sigue: quita lo del registro.
+    // With a part in the log and also an income, the × stays: it removes what is in the log.
     const both = seedState();
     both.incomes.push(budgetIncome({ id: 'in-dr', amount: 4000 }));
     const mixed = panel({ state: both });
@@ -383,47 +383,47 @@ describe('SummaryPanel · Month: el presupuesto', () => {
     has(els(mixed, 'button'), { 'aria-label': 'Remove DR account from the budget' });
   });
 
-  describe('el sobrante del mes anterior', () => {
-    /** La línea del sobrante: su texto, y los botones que lleva. */
+  describe('the leftover from the previous month', () => {
+    /** The leftover line: its text, and the buttons it carries. */
     const leftover = (opts: Opts = {}) => {
       const html = panel(opts);
       const block = /<div class="[^"]*leftover[^"]*">.*?<\/div>/.exec(html)?.[0];
       return block === undefined ? null : { text: text(block).trim(), buttons: buttonTexts(block), html: block };
     };
 
-    it('offer: lo que sobró en septiembre, con el botón para sumarlo al presupuesto de octubre', () => {
+    it("offer: what was left over in September, with the button to add it to October's budget", () => {
       const line = leftover();
       // 70,000 − 66,636.54.
       expect(line!.text).toBe('Leftover from last month: 3,363.46 DOP Add to budget');
       expect(line!.buttons).toEqual(['Add to budget']);
       has(els(line!.html, 'button'), { type: 'button' });
       expect(line!.html).toContain('inkText');
-      // Va debajo de la tabla de las cuentas y antes del historial.
+      // It goes below the accounts table and before the history.
       const html = panel();
       const order = ['</table>', 'Leftover from last month:', 'Budget history'].map((x) => html.indexOf(x));
       expect(order.every((x) => x >= 0)).toBe(true);
       expect(order).toEqual([...order].sort((a, b) => a - b));
     });
 
-    it('added: una vez sumado, en vez del botón dice "added"', () => {
+    it('added: once added, it says "added" instead of the button', () => {
       const state = seedState();
       state.months['2026-10']!.budgetLog.push(logEntry({ id: 'bg-left', amount: 3363.46, kind: 'leftover' }));
       const line = leftover({ state });
       expect(line!.text).toBe('Leftover from last month: 3,363.46 DOP added');
       expect(line!.buttons).toEqual([]);
-      // Y el presupuesto ya lo lleva.
+      // And the budget already includes it.
       expect(text(panel({ state }))).toContain('Budget 73,363.46 DOP');
     });
 
-    it('plain: en un mes cerrado, solo la cifra', () => {
-      // Septiembre enseña lo que sobró en agosto.
+    it('plain: in a closed month, only the figure', () => {
+      // September shows what was left over in August.
       const avail = monthCalc(seedState(), '2026-08').avail;
       const line = leftover({ monthKey: '2026-09' });
       expect(line!.text).toBe(`Leftover from last month: ${f2(avail)} DOP`);
       expect(line!.buttons).toEqual([]);
     });
 
-    it('plain: si sobró 0 no hay nada que sumar', () => {
+    it('plain: if 0 was left over there is nothing to add', () => {
       const state = seedState();
       setBudgets(state.months['2026-09']!, { dr: monthCalc(seedState(), '2026-09').used });
       const line = leftover({ state });
@@ -431,13 +431,13 @@ describe('SummaryPanel · Month: el presupuesto', () => {
       expect(line!.buttons).toEqual([]);
     });
 
-    it('sin mes anterior no hay línea', () => {
+    it('with no previous month there is no line', () => {
       expect(leftover({ monthKey: '2026-08' })).toBeNull();
       expect(text(panel({ monthKey: '2026-08' }))).not.toContain('Leftover');
       expect(buttonTexts(panel({ monthKey: '2026-08' }))).toEqual(['Budget history']);
     });
 
-    it('un sobrante negativo (el mes anterior se pasó) va en rojo y también se puede sumar', () => {
+    it('a negative leftover (the previous month went over) is in red and can also be added', () => {
       const state = seedState();
       setBudgets(state.months['2026-09']!, { dr: 60000 });
       const line = leftover({ state });
@@ -446,13 +446,13 @@ describe('SummaryPanel · Month: el presupuesto', () => {
       expect(line!.html).not.toContain('inkText');
     });
 
-    it('va en la moneda principal del usuario', () => {
+    it("it is in the user's main currency", () => {
       const state = tryState();
       const line = leftover({ state });
       expect(line!.text).toBe(`Leftover from last month: ${f2(monthCalc(tryState(), '2026-09').avail)} TRY Add to budget`);
     });
 
-    it('en español y en turco', () => {
+    it('in Spanish and in Turkish', () => {
       expect(leftover({ lang: 'es' })!.text).toBe('Sobrante del mes pasado: 3,363.46 DOP Sumar al presupuesto');
       expect(leftover({ lang: 'tr' })!.text).toBe('Geçen aydan kalan: 3,363.46 DOP Bütçeye ekle');
       const added = () => {
@@ -467,12 +467,12 @@ describe('SummaryPanel · Month: el presupuesto', () => {
     });
   });
 
-  it('el historial del presupuesto arranca plegado: solo su botón, sin tabla ni filas', () => {
+  it('the budget history starts collapsed: only its button, no table or rows', () => {
     for (const monthKey of ['2026-10', '2026-09']) {
       const html = panel({ monthKey });
       const toggle = els(html, 'button').filter((b) => 'aria-controls' in b);
       expect(toggle).toEqual([expect.objectContaining({ type: 'button', 'aria-expanded': 'false' })]);
-      // La única tabla es la de las partes por cuenta.
+      // The only table is the one with the parts per account.
       expect(els(html, 'table').map((x) => x['aria-label'])).toEqual(['Budget']);
       const t = text(html);
       expect(t).toContain('Budget history');
@@ -485,7 +485,7 @@ describe('SummaryPanel · Month: el presupuesto', () => {
     expect(buttonTexts(panel({ lang: 'tr' })).at(-1)).toBe('Bütçe geçmişi');
   });
 
-  it('no enseña el dinero total ni los saldos: eso es de Savings', () => {
+  it('does not show the total money or the balances: that belongs to Savings', () => {
     const t = text(panel());
     expect(t).not.toContain('Total money');
     expect(t).not.toContain('Money by account');
@@ -494,10 +494,10 @@ describe('SummaryPanel · Month: el presupuesto', () => {
   });
 });
 
-describe('SummaryPanel · Savings: el dinero total', () => {
+describe('SummaryPanel · Savings: the total money', () => {
   const panel = (opts: Opts = {}) => render(<SummaryPanel sheet="ahorros" />, { ...opts, shell: { sheet: 'ahorros', ...opts.shell } });
 
-  it('October 2026: el total de las cuentas visibles y el saldo de cada una, de shared/calc.ts', () => {
+  it('October 2026: the total of the visible accounts and the balance of each one, from shared/calc.ts', () => {
     const b = balances(seedState(), '2026-10');
     const html = panel();
     const t = text(html);
@@ -508,7 +508,7 @@ describe('SummaryPanel · Savings: el dinero total', () => {
     has(els(html, 'section'), { 'aria-label': 'October 2026 summary' });
     has(els(html, 'table'), { 'aria-label': 'Accounts' });
 
-    // Una fila por cuenta visible: nombre editable, saldo editable (en centavos) y su moneda.
+    // One row per visible account: editable name, editable balance (to the cent) and its currency.
     const inputs = els(html, 'input');
     expect(inputs.slice(0, 4).map((i) => [i.type, i.value, i['aria-label']])).toEqual([
       ['text', 'US account', 'Account name'],
@@ -516,14 +516,14 @@ describe('SummaryPanel · Savings: el dinero total', () => {
       ['text', 'DR account', 'Account name'],
       ['number', '220641.93', 'Balance of DR account, in DOP'],
     ]);
-    // Octubre es el último mes: los saldos se pueden corregir.
+    // October is the last month: the balances can be corrected.
     expect(html).not.toContain('readOnly');
     expect(buttonTexts(html)).toEqual(['Hide', 'Hide', 'Add', 'Cancel']);
     has(els(html, 'button'), { 'aria-label': 'Hide US account' });
     has(els(html, 'button'), { 'aria-label': 'Hide DR account' });
   });
 
-  it('la fila de agregar: nombre, saldo inicial, moneda (arranca en la principal) y "Add account"', () => {
+  it('the add row: name, opening balance, currency (starts on the main one) and "Add account"', () => {
     const html = panel();
     const inputs = els(html, 'input');
     expect(inputs.slice(4).map((i) => [i.type, i.value, i.placeholder, i['aria-label']])).toEqual([
@@ -535,7 +535,7 @@ describe('SummaryPanel · Savings: el dinero total', () => {
     expect(panel({ state: tryState() })).toContain('<option value="TRY" selected="">TRY</option>');
   });
 
-  it('la dona del dinero por cuenta: un segmento por cuenta visible con saldo, el total en el centro y su leyenda', () => {
+  it('the money-by-account donut: one segment per visible account with a balance, the total in the center and its legend', () => {
     const b = balances(seedState(), '2026-10');
     const html = panel();
     const t = text(html);
@@ -543,7 +543,7 @@ describe('SummaryPanel · Savings: el dinero total', () => {
     expect(t).toContain('Money by account US account 792,202.32 DR account 220,641.93');
     has(els(html, 'svg'), { 'aria-label': 'Money by account: 1,012,844 DOP in total', viewBox: '0 0 168 168' });
 
-    // Fondo y, encima, un segmento por cuenta: su largo es su parte del total, y van encadenados.
+    // Background and, on top, one segment per account: its length is its share of the total, and they are chained.
     const [track, us, dr] = els(html, 'circle');
     const circ = 2 * Math.PI * 64;
     const len = (c: Record<string, string>) => +c['stroke-dasharray']!.split(' ')[0]!;
@@ -557,11 +557,11 @@ describe('SummaryPanel · Savings: el dinero total', () => {
     expect(len(us!) + len(dr!)).toBeCloseTo(circ, 6);
   });
 
-  it('los colores de los segmentos salen del tema del usuario, tantos tonos como cuentas', () => {
+  it("the segment colors come from the user's theme, as many shades as accounts", () => {
     const defaults = ringShades(null, 2);
     const html = panel();
     expect(els(html, 'circle').slice(1).map((c) => c.style)).toEqual(defaults.map((color) => `stroke:${color}`));
-    // La leyenda usa los mismos.
+    // The legend uses the same ones.
     for (const color of defaults) expect(html).toContain(`background:${color}`);
 
     const ocean = THEME_PRESETS.find((p) => p.id === 'ocean')!.colors;
@@ -570,7 +570,7 @@ describe('SummaryPanel · Savings: el dinero total', () => {
     expect(shades).not.toEqual(defaults);
     expect(els(themed, 'circle').slice(1).map((c) => c.style)).toEqual(shades.map((color) => `stroke:${color}`));
 
-    // Con tres cuentas con saldo, tres tonos distintos; el del medio es el acento.
+    // With three accounts with a balance, three different shades; the middle one is the accent.
     const three = panel({ state: manyAccounts() });
     const strokes = els(three, 'circle').slice(1).map((c) => c.style);
     expect(strokes).toEqual(ringShades(null, 3).map((color) => `stroke:${color}`));
@@ -578,9 +578,9 @@ describe('SummaryPanel · Savings: el dinero total', () => {
     expect(strokes[1]).toBe('stroke:#2f7d52');
   });
 
-  it('una cuenta sin saldo o en negativo no ocupa nada en la dona, pero sigue en la tabla y en la leyenda', () => {
+  it('an account with no balance or a negative one takes up nothing in the donut, but stays in the table and the legend', () => {
     const state = seedState();
-    state.accounts.find((a) => a.id === 'us')!.opening = -20000; // saldo: −8,518 USD
+    state.accounts.find((a) => a.id === 'us')!.opening = -20000; // balance: −8,518 USD
     const b = balances(state, '2026-10');
     const html = panel({ state });
     expect(els(html, 'circle')).toHaveLength(2);
@@ -589,12 +589,12 @@ describe('SummaryPanel · Savings: el dinero total', () => {
     expect(t).toContain(`US account ${f2(b.accounts[0]!.inMain)} DR account 220,641.93`);
     expect(t).toContain(`Total money ${f2(b.totalMain)} DOP`);
     has(els(html, 'input'), { value: '-8518', 'aria-label': 'Balance of US account, in USD' });
-    // Dinero total en negativo: en rojo.
+    // Negative total money: in red.
     expect(b.totalMain).toBeLessThan(0);
     expect([...html.matchAll(/errorText/g)].length).toBeGreaterThanOrEqual(2);
   });
 
-  it('con la lira como moneda principal: total, centro y leyenda en TRY; los saldos, en la moneda de cada cuenta', () => {
+  it("with the lira as the main currency: total, center and legend in TRY; the balances, in each account's currency", () => {
     const state = tryState();
     const b = balances(state, '2026-10');
     const html = panel({ state });
@@ -609,14 +609,14 @@ describe('SummaryPanel · Savings: el dinero total', () => {
     has(els(html, 'svg'), { 'aria-label': 'Money by account: 689,479 TRY in total' });
   });
 
-  it('en un mes que no es el último los saldos son los de entonces y no se pueden corregir', () => {
+  it('in a month that is not the last one the balances are those of that time and cannot be corrected', () => {
     const b = balances(seedState(), '2026-08');
     const html = panel({ monthKey: '2026-08' });
     expect(text(html)).toContain(`Total money ${f2(b.totalMain)} DOP ≈ ${f2(b.totalSecond!)} USD`);
     // US: 2,000 + 5,800 − 1,800 − 106. DR: 60,000 + 104,730 − 27,850 − 35,750.26.
     has(els(html, 'input'), { value: '5894', 'aria-label': 'Balance of US account, in USD' });
     has(els(html, 'input'), { value: '101129.74', 'aria-label': 'Balance of DR account, in DOP' });
-    // Solo los dos saldos quedan de solo lectura: renombrar, ocultar y agregar no dependen del mes.
+    // Only the two balances become read-only: renaming, hiding and adding do not depend on the month.
     expect(els(html, 'input').filter((i) => 'readOnly' in i).map((i) => i['aria-label'])).toEqual([
       'Balance of US account, in USD',
       'Balance of DR account, in DOP',
@@ -624,16 +624,16 @@ describe('SummaryPanel · Savings: el dinero total', () => {
     expect(buttonTexts(html)).toEqual(['Hide', 'Hide', 'Add', 'Cancel']);
   });
 
-  it('las cuentas ocultas no suman ni salen en la tabla: quedan plegadas detrás de "Hidden accounts (N)"', () => {
+  it('hidden accounts neither add to the total nor appear in the table: they stay collapsed behind "Hidden accounts (N)"', () => {
     const state = manyAccounts();
     const b = balances(state, '2026-10');
     const html = panel({ state });
     const t = text(html);
-    // Tres visibles (la TR account, en liras) y una oculta.
+    // Three visible (the TR account, in liras) and one hidden.
     expect(b.accounts).toHaveLength(4);
     expect(t).toContain(`Total money ${f2(b.totalMain)} DOP`);
     expect(b.totalMain).toBeCloseTo(13482 * 58.76 + 220641.93 + (21000 / 42) * 58.76, 6);
-    // La TR account no la nombra nada (ni movimientos ni presupuesto): además de ocultarse, se puede eliminar con su ×.
+    // Nothing references the TR account (neither movements nor budget): besides hiding it, it can also be deleted with its ×.
     expect(buttonTexts(html)).toEqual(['Hide', 'Hide', 'Hide', '×', 'Add', 'Cancel', 'Hidden accounts (1)']);
     expect(els(html, 'button').map((b) => b['aria-label']).filter((l) => l?.startsWith('Delete '))).toEqual(['Delete TR account']);
     has(els(html, 'button'), { 'aria-expanded': 'false' });
@@ -642,7 +642,7 @@ describe('SummaryPanel · Savings: el dinero total', () => {
     has(els(html, 'input'), { value: '21000', 'aria-label': 'Balance of TR account, in TRY' });
   });
 
-  it('con una sola cuenta visible no se ofrece ocultarla', () => {
+  it('with a single visible account, hiding it is not offered', () => {
     const state = seedState();
     state.accounts.find((a) => a.id === 'us')!.hidden = true;
     const html = panel({ state });
@@ -650,13 +650,13 @@ describe('SummaryPanel · Savings: el dinero total', () => {
     expect(text(html)).toContain('Total money 220,641.93 DOP');
   });
 
-  it('sin segunda moneda el total no lleva la línea "≈"', () => {
+  it('with no second currency the total has no "≈" line', () => {
     const t = text(panel({ state: { ...seedState(), secondCurrency: null } }));
     expect(t).toContain('Total money 1,012,844.25 DOP');
     expect(t).not.toContain('≈');
   });
 
-  it('en español y en turco', () => {
+  it('in Spanish and in Turkish', () => {
     const es = panel({ lang: 'es', state: manyAccounts() });
     expect(text(es)).toContain('Dinero total');
     expect(text(es)).toContain('Dinero por cuenta US account 792,202.32');
@@ -675,7 +675,7 @@ describe('SummaryPanel · Savings: el dinero total', () => {
     has(els(tr, 'input'), { 'aria-label': 'US account bakiyesi, USD cinsinden' });
   });
 
-  it('no enseña la dona de presupuesto ni la lista del presupuesto: eso es de Month', () => {
+  it('does not show the budget donut or the budget list: that belongs to Month', () => {
     const t = text(panel());
     expect(t).not.toContain('Budget');
     expect(t).not.toContain('Planned budget');
@@ -686,7 +686,7 @@ describe('SummaryPanel · Savings: el dinero total', () => {
 });
 
 describe('TopBar', () => {
-  it('mes en curso: marca, subtítulo, meses con su sufijo, Excel, tasa y ajustes', () => {
+  it('current month: brand, subtitle, months with their suffix, Excel, rate and settings', () => {
     const html = render(<TopBar />);
     const t = text(html);
     expect(t).toContain('FE Finance Current month');
@@ -698,12 +698,12 @@ describe('TopBar', () => {
     has(els(html, 'input'), { type: 'file', accept: '.xlsx' });
     expect(els(html, 'button').map((b) => b['aria-label'])).toEqual(['Previous month', 'Next month', undefined, undefined]);
     expect(buttonTexts(html)).toEqual(['‹', '›', 'Download Excel', 'Settings']);
-    // El panel de ajustes está cerrado.
+    // The settings panel is closed.
     has(els(html, 'button'), { 'aria-expanded': 'false' });
     expect(html).not.toContain('role="dialog"');
   });
 
-  it('sin segunda moneda: la tasa que hace falta (la de USD, con cuentas en USD) o ninguna si todo está en una moneda', () => {
+  it('no second currency: the rate needed (the USD one, with accounts in USD) or none if everything is in one currency', () => {
     const state = { ...seedState(), secondCurrency: null };
     expect(text(render(<TopBar />, { state }))).toContain('Month rate 1 USD = 58.76 DOP');
 
@@ -717,33 +717,33 @@ describe('TopBar', () => {
     expect(text(render(<TopBar />, { state: single }))).not.toContain('Month rate');
   });
 
-  it('con varios usuarios hay un selector junto a la marca, con el actual elegido y el mismo estilo que el de mes', () => {
+  it('with several users there is a select next to the brand, with the current one chosen and styled like the month one', () => {
     const html = render(<TopBar />, { user: EDA, shell: { user: EDA } });
     const selects = els(html, 'select');
     expect(selects.map((s) => s['aria-label'])).toEqual(['User', 'Month']);
     expect(html).toContain('<option value="frank">Frank</option><option value="eda" selected="">Eda</option>');
-    // Mismo estilo: el selector de mes solo añade su ancho mínimo.
+    // Same style: the month select only adds its minimum width.
     const [userSelect, monthSelect] = selects;
     expect(monthSelect!.class!.split(' ')).toContain(userSelect!.class!);
-    // Va antes que el selector de mes, justo después de la marca y el subtítulo.
+    // It goes before the month select, right after the brand and the subtitle.
     expect(html.indexOf('aria-label="User"')).toBeGreaterThan(html.indexOf('Current month'));
     expect(html.indexOf('aria-label="User"')).toBeLessThan(html.indexOf('aria-label="Previous month"'));
   });
 
-  it('con un solo usuario el selector no se muestra', () => {
+  it('with a single user the select is not shown', () => {
     const html = render(<TopBar />, { shell: { users: [FRANK] } });
     expect(els(html, 'select').map((s) => s['aria-label'])).toEqual(['Month']);
     expect(html).not.toContain('>Frank<');
   });
 
-  it('subtítulos de mes cerrado y de ahorros', () => {
+  it('subtitles for a closed month and for savings', () => {
     expect(text(render(<TopBar />, { monthKey: '2026-08' }))).toContain('FE Finance Month summary');
     expect(text(render(<TopBar />, { monthKey: '2026-08' }))).toContain('1 USD = 58.18 DOP');
     expect(text(render(<TopBar />, { shell: { sheet: 'ahorros' } }))).toContain('FE Finance Savings');
   });
 
-  describe('la tasa del mes: 1 segunda = tasa principal, y de dónde sale', () => {
-    /** El texto del bloque de la tasa y las clases de sus piezas. */
+  describe('the month rate: 1 second = rate main, and where it comes from', () => {
+    /** The text of the rate block and the classes of its pieces. */
     const rate = (opts: Opts = {}) => {
       const html = render(<TopBar />, opts);
       const block = /<div class="[^"]*rate[^"]*"><span>.*?<\/div>/.exec(html)![0];
@@ -751,7 +751,7 @@ describe('TopBar', () => {
       return { text: text(block).trim(), chip: spans[1]!, note: spans[2] };
     };
 
-    it('escrita para este mes: solo la tasa, sin apunte (el origen queda en el title)', () => {
+    it('typed for this month: only the rate, with no note (the source stays in the title)', () => {
       const r = rate();
       expect(r.text).toBe('Month rate 1 USD = 58.76 DOP');
       expect(r.note).toBeUndefined();
@@ -759,7 +759,7 @@ describe('TopBar', () => {
       expect(r.chip.attrs).not.toContain('chipWarn');
     });
 
-    it('de los envíos del mes: un apunte atenuado al lado', () => {
+    it("from the month's transfers: a dimmed note next to it", () => {
       const r = rate({ monthKey: '2026-08' });
       expect(r.text).toBe("Month rate 1 USD = 58.18 DOP from this month's transfers");
       expect(r.note!.attrs).toContain('rateHint');
@@ -767,33 +767,33 @@ describe('TopBar', () => {
       expect(r.chip.attrs).not.toContain('chipWarn');
     });
 
-    it('de un mes anterior: dice de cuál', () => {
+    it('from an earlier month: it says which one', () => {
       const state = seedState();
       state.months['2026-10']!.rates = [];
       state.months['2026-10']!.transfers = [];
       const r = rate({ state });
-      // Septiembre: (1,500 × 58.55 + 800 × 58.62) / 2,300
+      // September: (1,500 × 58.55 + 800 × 58.62) / 2,300
       expect(r.text).toBe('Month rate 1 USD = 58.57 DOP from September 2026');
       expect(r.note!.attrs).toContain('rateHint');
       expect(rate({ state, lang: 'es' }).text).toBe('Tasa del mes 1 USD = 58.57 DOP de septiembre 2026');
       expect(rate({ state, lang: 'tr' }).text).toBe('Ay kuru 1 USD = 58.57 DOP Eylül 2026 ayından');
     });
 
-    it('cruzada por la tercera moneda: dice por cuál', () => {
+    it('crossed through the third currency: it says which one', () => {
       const state = seedState();
       state.secondCurrency = 'TRY';
       state.months['2026-10']!.rates.push({ from: 'USD', to: 'TRY', rate: 40, date: '2026-10-01' });
       const r = rate({ state });
-      // 58.76 DOP por USD / 40 TRY por USD
+      // 58.76 DOP per USD / 40 TRY per USD
       expect(r.text).toBe('Month rate 1 TRY = 1.47 DOP crossed through USD');
       expect(r.note!.attrs).toContain('rateHint');
     });
 
-    it('valor de respaldo (nadie la ha escrito): se destaca en la tasa y en el aviso', () => {
+    it('default value (nobody has typed it): it is highlighted in the rate and in the warning', () => {
       const state = seedState();
       state.secondCurrency = 'TRY';
       const r = rate({ state });
-      // DEFAULT_USD_RATES: 58.76 DOP y 42 TRY por USD.
+      // DEFAULT_USD_RATES: 58.76 DOP and 42 TRY per USD.
       expect(r.text).toBe('Month rate 1 TRY = 1.40 DOP default value, not set yet');
       expect(r.chip.attrs).toContain('chipWarn');
       expect(r.note!.attrs).toContain('rateWarn');
@@ -802,7 +802,7 @@ describe('TopBar', () => {
       expect(rate({ state, lang: 'tr' }).text).toBe('Ay kuru 1 TRY = 1.40 DOP varsayılan değer, henüz girilmedi');
     });
 
-    it('sigue a las monedas del usuario; una tasa menor que 1 lleva cuatro decimales', () => {
+    it("follows the user's currencies; a rate below 1 has four decimals", () => {
       expect(rate({ state: tryState() }).text).toBe('Month rate 1 USD = 40.00 TRY');
       const flipped = seedState();
       flipped.mainCurrency = 'USD';
@@ -811,14 +811,14 @@ describe('TopBar', () => {
     });
   });
 
-  it('los dos botones de Excel avisan de que el libro es un resumen en USD y DOP', () => {
+  it('both Excel buttons warn that the workbook is a summary in USD and DOP', () => {
     const html = render(<TopBar />);
     const note = 'The Excel file is a summary in USD and DOP, with two accounts, until it is redesigned.';
     has(els(html, 'label'), { title: note });
     has(els(html, 'button'), { title: note });
   });
 
-  it('estado de la carga de Excel, en el idioma actual', () => {
+  it('status of the Excel import, in the current language', () => {
     const loaded = text(render(<TopBar />, { shell: { excelStatus: { kind: 'loaded', file: 'my finances.xlsx' } } }));
     expect(loaded).toContain('Loaded: my finances.xlsx');
     expect(loaded).not.toContain('Import Excel');
@@ -830,7 +830,7 @@ describe('TopBar', () => {
     expect(text(render(<TopBar />, { lang: 'tr', shell: { excelStatus: { kind: 'failed' } } }))).toContain('Dosya okunamadı');
   });
 
-  it('en español: los textos de la versión 1 (la marca no se traduce)', () => {
+  it('in Spanish: the texts of version 1 (the brand is not translated)', () => {
     const html = render(<TopBar />, { lang: 'es' });
     const t = text(html);
     expect(t).toContain('FE Finance Mes en curso');
@@ -843,7 +843,7 @@ describe('TopBar', () => {
     expect(text(render(<TopBar />, { lang: 'es', shell: { sheet: 'ahorros' } }))).toContain('FE Finance Ahorros');
   });
 
-  it('en turco', () => {
+  it('in Turkish', () => {
     const html = render(<TopBar />, { lang: 'tr' });
     const t = text(html);
     expect(t).toContain('FE Finance Bu ay');
@@ -858,18 +858,18 @@ describe('TopBar', () => {
 describe('DownloadExcelDialog', () => {
   const KEYS: MonthKey[] = ['2026-08', '2026-09', '2026-10'];
   const noop = () => {};
-  /** Las casillas del diálogo, en orden: su texto y si están marcadas. */
+  /** The dialog's checkboxes, in order: their text and whether they are checked. */
   const checks = (html: string) =>
     [...html.matchAll(/<label\b[^>]*><input\b([^>]*)\/><span>(.*?)<\/span><\/label>/g)].map((m) => [text(m[2]!).trim(), /\bchecked=""/.test(m[1]!)]);
 
-  it('la barra no lo pinta hasta que se pulsa "Download Excel"', () => {
+  it('the bar does not render it until "Download Excel" is pressed', () => {
     const html = render(<TopBar />);
     expect(html).not.toContain('role="dialog"');
     expect(html).not.toContain('type="checkbox"');
     expect(text(html)).not.toContain('All months');
   });
 
-  it('abierto: una casilla por mes, del más reciente al más antiguo, todas marcadas, y "Download (3)"', () => {
+  it('open: one checkbox per month, from newest to oldest, all checked, and "Download (3)"', () => {
     const html = render(<DownloadExcelDialog months={KEYS} onCancel={noop} onDownload={noop} />);
     const [dialog] = els(html, 'div').filter((d) => d.role === 'dialog');
     expect(dialog).toMatchObject({ 'aria-modal': 'true' });
@@ -882,14 +882,14 @@ describe('DownloadExcelDialog', () => {
       ['August 2026', true],
     ]);
     expect(els(html, 'input').every((i) => i.type === 'checkbox')).toBe(true);
-    // Es un formulario: Enter o el botón principal descargan.
+    // It is a form: Enter or the primary button downloads.
     expect(html).toContain('<form');
     expect(buttonTexts(html)).toEqual(['Cancel', 'Download (3)']);
     expect(els(html, 'button').map((b) => b.type)).toEqual(['button', 'submit']);
     expect(html).not.toContain('disabled');
   });
 
-  it('con algunos meses: "All months" queda sin marcar y el botón cuenta los elegidos', () => {
+  it('with some months: "All months" stays unchecked and the button counts the chosen ones', () => {
     const html = render(<DownloadExcelDialog months={KEYS} initial={['2026-08', '2026-10']} onCancel={noop} onDownload={noop} />);
     expect(checks(html)).toEqual([
       ['All months', false],
@@ -901,7 +901,7 @@ describe('DownloadExcelDialog', () => {
     expect(html).not.toContain('disabled');
   });
 
-  it('sin ningún mes no se puede descargar', () => {
+  it('with no month chosen it cannot be downloaded', () => {
     const html = render(<DownloadExcelDialog months={KEYS} initial={[]} onCancel={noop} onDownload={noop} />);
     expect(checks(html).map(([, on]) => on)).toEqual([false, false, false, false]);
     expect(buttonTexts(html)).toEqual(['Cancel', 'Download (0)']);
@@ -910,7 +910,7 @@ describe('DownloadExcelDialog', () => {
     expect(download).toHaveProperty('disabled');
   });
 
-  it('en español y en turco', () => {
+  it('in Spanish and in Turkish', () => {
     const es = render(<DownloadExcelDialog months={KEYS} initial={['2026-10']} onCancel={noop} onDownload={noop} />, { lang: 'es' });
     expect(checks(es).map(([name]) => name)).toEqual(['Todos los meses', 'Octubre 2026', 'Septiembre 2026', 'Agosto 2026']);
     expect(buttonTexts(es)).toEqual(['Cancelar', 'Descargar (1)']);
@@ -921,11 +921,11 @@ describe('DownloadExcelDialog', () => {
     expect(text(tr)).toContain('Excel indir');
   });
 
-  it('toggleMonth: marca y desmarca un mes, siempre en el orden de la lista', () => {
+  it("toggleMonth: checks and unchecks a month, always in the list's order", () => {
     expect(toggleMonth(KEYS, KEYS, '2026-09', false)).toEqual(['2026-08', '2026-10']);
     expect(toggleMonth(KEYS, ['2026-10'], '2026-08', true)).toEqual(['2026-08', '2026-10']);
     expect(toggleMonth(KEYS, ['2026-08', '2026-10'], '2026-09', true)).toEqual(KEYS);
-    // Marcar uno ya marcado o desmarcar uno que no lo estaba no cambia nada.
+    // Checking one already checked or unchecking one that was not checked changes nothing.
     expect(toggleMonth(KEYS, ['2026-10'], '2026-10', true)).toEqual(['2026-10']);
     expect(toggleMonth(KEYS, ['2026-10'], '2026-08', false)).toEqual(['2026-10']);
     expect(toggleMonth(KEYS, ['2026-10'], '2026-10', false)).toEqual([]);
@@ -935,23 +935,23 @@ describe('DownloadExcelDialog', () => {
 describe('SettingsPanel', () => {
   const panel = (opts: Opts = {}) => render(<SettingsPanel id="settings" opener={{ current: null }} onClose={() => {}} />, opts);
 
-  /** Los botones de los temas: van detrás de los 3 idiomas, las 6 monedas (3 por fila) y la opción «None» de la segunda. */
+  /** The theme buttons: they come after the 3 languages, the 6 currencies (3 per row) and the "None" option of the second one. */
   const FIRST_PRESET = 10;
 
-  it('cuatro secciones: idioma, monedas, apariencia y la nota del Excel', () => {
+  it('four sections: language, currencies, appearance and the Excel note', () => {
     const html = panel();
     has(els(html, 'div'), { id: 'settings', role: 'dialog', 'aria-label': 'Settings' });
     expect([...html.matchAll(/<h2\b[^>]*>(.*?)<\/h2>/g)].map((m) => m[1])).toEqual(['Language', 'Currencies', 'Appearance', 'Excel']);
     expect(text(html)).toContain('Excel The Excel file is a summary in USD and DOP, with two accounts, until it is redesigned.');
   });
 
-  it('monedas: la principal y la segunda, cada una entre las tres, con la actual marcada', () => {
+  it('currencies: the main one and the second one, each among the three, with the current one marked', () => {
     const html = panel();
     expect(text(html)).toContain('Currencies Main currency DOP USD TRY Second currency DOP USD TRY None Default account');
     const codes = els(html, 'button').slice(3, FIRST_PRESET);
     expect(buttonTexts(html).slice(3, FIRST_PRESET)).toEqual(['DOP', 'USD', 'TRY', 'DOP', 'USD', 'TRY', 'None']);
     expect(codes.map((b) => b['aria-pressed'])).toEqual(['true', 'false', 'false', 'false', 'true', 'false', 'false']);
-    // Cada fila es un grupo con el nombre de su ajuste.
+    // Each row is a group with the name of its setting.
     const groups = els(html, 'div').filter((d) => d.role === 'group' && d['aria-labelledby']);
     expect(groups).toHaveLength(2);
     for (const group of groups) has(els(html, 'span'), { id: group['aria-labelledby']! });
@@ -959,22 +959,22 @@ describe('SettingsPanel', () => {
     const tr = els(panel({ state: tryState() }), 'button').slice(3, FIRST_PRESET);
     expect(tr.map((b) => b['aria-pressed'])).toEqual(['false', 'false', 'true', 'false', 'true', 'false', 'false']);
 
-    // Sin segunda moneda es "None" la marcada.
+    // With no second currency, "None" is the marked one.
     const none = els(panel({ state: { ...seedState(), secondCurrency: null } }), 'button').slice(3, FIRST_PRESET);
     expect(none.map((b) => b['aria-pressed'])).toEqual(['true', 'false', 'false', 'false', 'false', 'false', 'true']);
   });
 
-  it('cuenta por defecto: las cuentas visibles y "Automatic", que dice a cuál equivale', () => {
+  it('default account: the visible accounts and "Automatic", which says which one it stands for', () => {
     const html = panel();
     const [select] = els(html, 'select');
     has(els(html, 'label'), { for: select!.id! });
     expect(html).toContain('<option value="">Automatic (DR account)</option><option value="us">US account</option><option value="dr" selected="">DR account</option>');
 
-    // Sin elección guardada: "Automatic" es la elegida.
+    // With no saved choice: "Automatic" is the chosen one.
     const auto = panel({ state: { ...seedState(), defaultAccountId: null } });
     expect(auto).toContain('<option value="" selected="">Automatic (DR account)</option>');
 
-    // Una cuenta oculta no se ofrece, y si era la elegida manda la automática (shared/calc defaultAccount).
+    // A hidden account is not offered, and if it was the chosen one the automatic one wins (shared/calc defaultAccount).
     const state = seedState();
     state.accounts.find((a) => a.id === 'dr')!.hidden = true;
     const hidden = panel({ state });
@@ -982,7 +982,7 @@ describe('SettingsPanel', () => {
     expect(hidden).not.toContain('DR account');
   });
 
-  it('los tres idiomas, cada uno con su propio nombre, y el actual marcado', () => {
+  it('the three languages, each with its own name, and the current one marked', () => {
     const html = panel({ state: { ...seedState(), language: 'tr' }, lang: 'tr' });
     const langs = els(html, 'button').filter((b) => 'lang' in b);
     expect(langs.map((b) => [b.lang, b['aria-pressed']])).toEqual([
@@ -993,13 +993,13 @@ describe('SettingsPanel', () => {
     expect(buttonTexts(html).slice(0, 3)).toEqual(['English', 'Español', 'Türkçe']);
   });
 
-  it('los temas listos como muestras con nombre; sin tema propio, el original es el elegido', () => {
+  it('the preset themes as named swatches; with no custom theme, the original is the chosen one', () => {
     const html = panel();
     const names = buttonTexts(html).slice(FIRST_PRESET, FIRST_PRESET + THEME_PRESETS.length);
     expect(names).toEqual(['Forest', 'Ocean', 'Plum', 'Terracotta', 'Rose', 'Amber', 'Slate']);
     const presets = els(html, 'button').slice(FIRST_PRESET, FIRST_PRESET + THEME_PRESETS.length);
     expect(presets.map((b) => b['aria-pressed'])).toEqual(['true', 'false', 'false', 'false', 'false', 'false', 'false']);
-    // Cada muestra enseña sus tres colores.
+    // Each swatch shows its three colors.
     for (const preset of THEME_PRESETS) {
       expect(html).toContain(`background:${preset.colors.header}`);
       expect(html).toContain(`background:${preset.colors.accent}`);
@@ -1008,20 +1008,20 @@ describe('SettingsPanel', () => {
     has(els(html, 'div'), { role: 'group', 'aria-label': 'Themes' });
   });
 
-  it('tres colores con su valor hexadecimal y el botón de restablecer (apagado si no hay nada que restablecer)', () => {
+  it('three colors with their hex value and the reset button (disabled if there is nothing to reset)', () => {
     const html = panel();
     const colors = els(html, 'input').filter((i) => i.type === 'color');
     expect(colors.map((c) => c.value)).toEqual(['#2f7d52', '#1d1f1c', '#efeee8']);
     const t = text(html);
     expect(t).toContain('Accent #2f7d52 Header #1d1f1c Background #efeee8');
-    // Cada color tiene su etiqueta (la primera etiqueta del panel es la de la cuenta por defecto).
+    // Each color has its label (the panel's first label is the default account's).
     const labels = els(html, 'label').map((l) => l.for);
     expect(labels.slice(1)).toEqual(colors.map((c) => c.id));
     expect(buttonTexts(html).at(-1)).toBe('Reset to default');
     expect(els(html, 'button').at(-1)).toHaveProperty('disabled');
   });
 
-  it('con un tema propio: sus colores, su muestra marcada y restablecer disponible', () => {
+  it('with a custom theme: its colors, its swatch marked and reset available', () => {
     const ocean = THEME_PRESETS.find((p) => p.id === 'ocean')!.colors;
     const html = panel({ state: { ...seedState(), theme: ocean } });
     expect(els(html, 'input').filter((i) => i.type === 'color').map((c) => c.value)).toEqual([ocean.accent, ocean.header, ocean.background]);
@@ -1029,13 +1029,13 @@ describe('SettingsPanel', () => {
     expect(presets.map((b) => b['aria-pressed'])).toEqual(['false', 'true', 'false', 'false', 'false', 'false', 'false']);
     expect(els(html, 'button').at(-1)).not.toHaveProperty('disabled');
 
-    // Colores que no son de ningún tema listo: ninguna muestra marcada.
+    // Colors that belong to no preset theme: no swatch marked.
     const custom = panel({ state: { ...seedState(), theme: { ...ocean, accent: '#123456' } } });
     expect(els(custom, 'button').slice(FIRST_PRESET, FIRST_PRESET + THEME_PRESETS.length).every((b) => b['aria-pressed'] === 'false')).toBe(true);
     expect(text(custom)).toContain('Accent #123456');
   });
 
-  it('en español y en turco', () => {
+  it('in Spanish and in Turkish', () => {
     const es = text(panel({ lang: 'es' }));
     expect(es).toContain('Idioma');
     expect(es).toContain('Monedas Moneda principal DOP USD TRY Segunda moneda DOP USD TRY Ninguna Cuenta por defecto Automática (DR account)');
@@ -1052,7 +1052,7 @@ describe('SettingsPanel', () => {
 });
 
 describe('BottomTabs', () => {
-  it('marca la hoja activa y esconde las utilidades de desarrollo', () => {
+  it('marks the active sheet and hides the development utilities', () => {
     const html = render(<BottomTabs />, { shell: { sheet: 'ahorros' } });
     expect(els(html, 'button').map((b) => b['aria-current'])).toEqual([undefined, 'page']);
     expect(buttonTexts(html)).toEqual(['Month', 'Savings']);
@@ -1060,11 +1060,11 @@ describe('BottomTabs', () => {
     expect(html).not.toContain('Start blank');
   });
 
-  it('con devTools aparecen los dos botones', () => {
+  it('with devTools the two buttons appear', () => {
     expect(buttonTexts(render(<BottomTabs />, { shell: { devTools: true } }))).toEqual(['Month', 'Savings', 'Start blank', 'Restore sample data']);
   });
 
-  it('en español y en turco', () => {
+  it('in Spanish and in Turkish', () => {
     expect(buttonTexts(render(<BottomTabs />, { lang: 'es', shell: { devTools: true } }))).toEqual([
       'Mes',
       'Ahorros',
@@ -1077,21 +1077,21 @@ describe('BottomTabs', () => {
 
 describe('CloseMonthModal', () => {
   const open = { closeDialog: { key: '2026-10', busy: false } };
-  /** Las etiquetas de los campos (<Field>): su texto y el id del control al que apuntan. */
+  /** The field labels (<Field>): their text and the id of the control they point to. */
   const fieldLabels = (html: string) => [...html.matchAll(/<label\b[^>]*\bfor="([^"]*)"[^>]*>(.*?)<\/label>/g)].map((m) => [text(m[2]!).trim(), m[1]!]);
-  /** Las casillas con texto (<CheckField>): su texto y si están marcadas. */
+  /** The checkboxes with text (<CheckField>): their text and whether they are checked. */
   const checkTexts = (html: string) =>
     [...html.matchAll(/<label\b[^>]*><input\b([^>]*)\/><span>(.*?)<\/span><\/label>/g)].map((m) => [text(m[2]!).trim(), /\bchecked=""/.test(m[1]!)]);
 
-  it('cerrado no pinta nada', () => {
+  it('closed, it renders nothing', () => {
     expect(render(<CloseMonthModal />)).toBe('');
   });
 
-  it('abierto: diálogo con título, texto y los tres botones', () => {
+  it('open: dialog with title, text and the three buttons', () => {
     const html = render(<CloseMonthModal />, { shell: open });
     const [dialog] = els(html, 'div').filter((d) => d.role === 'dialog');
     expect(dialog).toMatchObject({ 'aria-modal': 'true', 'aria-busy': 'false' });
-    // El título etiqueta el diálogo y el texto lo describe.
+    // The title labels the dialog and the text describes it.
     has(els(html, 'h2'), { id: dialog!['aria-labelledby']! });
     has(els(html, 'p'), { id: dialog!['aria-describedby']! });
     const t = text(html);
@@ -1101,14 +1101,14 @@ describe('CloseMonthModal', () => {
     );
     expect(buttonTexts(html)).toEqual(['Cancel', 'Only on the page', 'Yes, add to Excel']);
     expect(els(html, 'button').every((b) => b.type === 'button')).toBe(true);
-    // Nada apagado: ni los botones ni los campos del presupuesto del mes siguiente.
+    // Nothing disabled: neither the buttons nor the next month's budget fields.
     expect(html).not.toContain('disabled');
     expect(html).not.toContain('aria-invalid');
-    // Sigue sin ser un formulario: cada botón cierra a su manera, no hay un "enviar".
+    // Still not a form: each button closes in its own way, there is no "submit".
     expect(html).not.toContain('<form');
   });
 
-  it('pregunta con qué presupuesto arranca el mes siguiente: un campo por cuenta con parte, con la de este mes', () => {
+  it("asks which budget the next month starts with: one field per account with a part, with this month's part", () => {
     const html = render(<CloseMonthModal />, { shell: open });
     const t = text(html);
     // Between the Excel text and the fields: the compact month summary (initial, added, total, spent, remaining).
@@ -1119,20 +1119,20 @@ describe('CloseMonthModal', () => {
     const inputs = els(html, 'input');
     expect(inputs.map((i) => i.type)).toEqual(['number', 'checkbox']);
     expect(inputs[0]).toMatchObject({ type: 'number', value: '70000', step: 'any', min: '0', inputMode: 'decimal', placeholder: '0.00', autoComplete: 'off' });
-    // El campo lleva su etiqueta visible, con la cuenta y su moneda.
+    // The field has its visible label, with the account and its currency.
     expect(fieldLabels(html)).toEqual([['Budget from DR account (DOP)', inputs[0]!.id]]);
-    // La línea de introducción no es la que describe el diálogo.
+    // The intro line is not the one that describes the dialog.
     const [dialog] = els(html, 'div').filter((d) => d.role === 'dialog');
     const described = new RegExp(`<p[^>]*id="${dialog!['aria-describedby']}"[^>]*>(.*?)</p>`).exec(html)![1]!;
     expect(described).not.toContain('budget starts');
   });
 
-  it('la casilla del sobrante: con lo que sobra de este mes, sin marcar', () => {
+  it('the leftover checkbox: with what is left over from this month, unchecked', () => {
     const html = render(<CloseMonthModal />, { shell: open });
-    // Octubre: 70,000 − 49,149.71.
+    // October: 70,000 − 49,149.71.
     expect(checkTexts(html)).toEqual([["Add this month's leftover (20,850.29 DOP) to November 2026's budget", false]]);
 
-    // Si el mes se pasó, lo que se ofrece sumar es negativo.
+    // If the month went over, what is offered to add is negative.
     const over = seedState();
     setBudgets(over.months['2026-10']!, { dr: 40000 });
     expect(checkTexts(render(<CloseMonthModal />, { shell: open, state: over }))).toEqual([
@@ -1140,7 +1140,7 @@ describe('CloseMonthModal', () => {
     ]);
   });
 
-  it('si no sobra nada, la casilla no sale; los campos, sí', () => {
+  it('if nothing is left over, the checkbox does not show; the fields do', () => {
     const state = seedState();
     setBudgets(state.months['2026-10']!, { dr: monthCalc(seedState(), '2026-10').used });
     const html = render(<CloseMonthModal />, { shell: open, state });
@@ -1149,7 +1149,7 @@ describe('CloseMonthModal', () => {
     expect(text(html)).toContain("November 2026's budget starts with these amounts per account:");
   });
 
-  it('varias cuentas con parte: un campo por cada una, en su moneda; lo que suman los ingresos no se hereda', () => {
+  it('several accounts with a part: one field for each, in its currency; what incomes add is not inherited', () => {
     const state = seedState();
     setBudgets(state.months['2026-10']!, { us: 200, dr: 58248.5 });
     state.incomes.push(budgetIncome({ id: 'in-dr', amount: 4000 }));
@@ -1163,7 +1163,7 @@ describe('CloseMonthModal', () => {
     expect(new Set(numbers.map((i) => i.id)).size).toBe(2);
   });
 
-  it('sin ninguna parte en el registro no hay campos ni introducción; el sobrante se sigue ofreciendo', () => {
+  it('with no part in the log there are no fields or intro; the leftover is still offered', () => {
     const state = seedState();
     setBudgets(state.months['2026-10']!, {});
     const html = render(<CloseMonthModal />, { shell: open, state });
@@ -1172,8 +1172,8 @@ describe('CloseMonthModal', () => {
     expect(checkTexts(html)).toEqual([["Add this month's leftover (-49,149.71 DOP) to November 2026's budget", false]]);
   });
 
-  it('si el mes siguiente ya existe no pregunta por su presupuesto: solo el texto del Excel y los botones', () => {
-    // Se cierra septiembre (reabierto) con octubre ya creado.
+  it('if the next month already exists it does not ask about its budget: only the Excel text and the buttons', () => {
+    // September (reopened) is being closed with October already created.
     const state = seedState();
     state.months['2026-09']!.closed = false;
     const html = render(<CloseMonthModal />, { monthKey: '2026-09', state, shell: { closeDialog: { key: '2026-09', busy: false } } });
@@ -1188,14 +1188,14 @@ describe('CloseMonthModal', () => {
     expect(html).not.toContain('disabled');
   });
 
-  it('los campos son los del mes que se cierra, sea o no el que se está viendo', () => {
-    // Se mira agosto y se cierra octubre.
+  it('the fields are those of the month being closed, whether or not it is the one being viewed', () => {
+    // August is being viewed and October is being closed.
     const html = render(<CloseMonthModal />, { monthKey: '2026-08', shell: open });
     expect(els(html, 'input').filter((i) => i.type === 'number').map((i) => i.value)).toEqual(['70000']);
     expect(checkTexts(html)[0]![0]).toContain('20,850.29 DOP');
   });
 
-  it('en español: el texto del prototipo', () => {
+  it("in Spanish: the prototype's text", () => {
     const html = render(<CloseMonthModal />, { lang: 'es', shell: open });
     const t = text(html);
     expect(t).toContain('Cerrar Octubre 2026');
@@ -1203,14 +1203,14 @@ describe('CloseMonthModal', () => {
       'Se creará Noviembre 2026 con los mismos gastos mensuales, sin marcar como pagados. ¿Lo agrego también al Excel? Se descargará el archivo con todos los meses, incluido Noviembre 2026.',
     );
     expect(buttonTexts(html)).toEqual(['Cancelar', 'Solo en la página', 'Sí, agregar al Excel']);
-    // El presupuesto del mes siguiente.
+    // The next month's budget.
     expect(t).toContain('El presupuesto de Noviembre 2026 arranca con estos montos por cuenta: Presupuesto de DR account (DOP)');
     expect(fieldLabels(html).map(([label]) => label)).toEqual(['Presupuesto de DR account (DOP)']);
     expect(checkTexts(html)).toEqual([['Sumar el sobrante de este mes (20,850.29 DOP) al presupuesto de Noviembre 2026', false]]);
     has(els(html, 'input'), { type: 'number', value: '70000' });
   });
 
-  it('en turco', () => {
+  it('in Turkish', () => {
     const html = render(<CloseMonthModal />, { lang: 'tr', shell: open });
     expect(text(html)).toContain('Ekim 2026 ayını kapat');
     expect(text(html)).toContain('Kasım 2026');
@@ -1220,10 +1220,10 @@ describe('CloseMonthModal', () => {
     expect(checkTexts(html)).toEqual([['Bu ayın kalanını (20,850.29 DOP) Kasım 2026 bütçesine ekle', false]]);
   });
 
-  it('mientras se cierra, los botones y los campos quedan deshabilitados', () => {
+  it('while closing, the buttons and the fields are disabled', () => {
     const html = render(<CloseMonthModal />, { shell: { closeDialog: { key: '2026-10', busy: true } } });
     expect(els(html, 'button').filter((b) => 'disabled' in b)).toHaveLength(3);
-    // El campo de la DR account y la casilla del sobrante.
+    // The DR account's field and the leftover checkbox.
     expect(els(html, 'input').map((i) => [i.type, 'disabled' in i])).toEqual([
       ['number', true],
       ['checkbox', true],
@@ -1235,11 +1235,11 @@ describe('CloseMonthModal', () => {
 describe('DeleteMonthModal', () => {
   const open = { deleteDialog: { key: '2026-10', busy: false } };
 
-  it('cerrado no pinta nada', () => {
+  it('closed, it renders nothing', () => {
     expect(render(<DeleteMonthModal />)).toBe('');
   });
 
-  it('abierto: pregunta por ese mes, dice qué se borra con sus cuentas y ofrece Cancel y Delete', () => {
+  it('open: asks about that month, says what gets deleted with its counts and offers Cancel and Delete', () => {
     const html = render(<DeleteMonthModal />, { shell: open });
     const [dialog] = els(html, 'div').filter((d) => d.role === 'dialog');
     expect(dialog).toMatchObject({ 'aria-modal': 'true', 'aria-busy': 'false' });
@@ -1247,20 +1247,20 @@ describe('DeleteMonthModal', () => {
     has(els(html, 'p'), { id: dialog!['aria-describedby']! });
     const t = text(html);
     expect(t).toContain('Delete October 2026?');
-    // Octubre de los datos de ejemplo: 11 gastos mensuales, 7 transacciones y 1 envío.
+    // October in the sample data: 11 fixed expenses, 7 transactions and 1 transfer.
     expect(t).toContain(
       'This deletes the month with its 11 monthly expenses, 7 transactions and 1 transfer. Account balances change accordingly. This cannot be undone.',
     );
     expect(buttonTexts(html)).toEqual(['Cancel', 'Delete']);
     expect(els(html, 'button').every((b) => b.type === 'button')).toBe(true);
-    // El que borra va en rojo: es la acción sin vuelta atrás.
+    // The one that deletes is in red: it is the action with no way back.
     expect(els(html, 'button')[1]!.class).toContain('destructive');
     expect(html).not.toContain('disabled');
     expect(html).not.toContain('<form');
   });
 
-  it('las cuentas son las del mes que se va a borrar, sea el que se está viendo o no', () => {
-    // Se mira octubre y se borra agosto (cerrado): 11 gastos, 10 transacciones y 2 envíos.
+  it('the counts are those of the month to be deleted, whether it is the one being viewed or not', () => {
+    // October is being viewed and August (closed) is being deleted: 11 expenses, 10 transactions and 2 transfers.
     const html = render(<DeleteMonthModal />, { shell: { deleteDialog: { key: '2026-08', busy: false } } });
     expect(text(html)).toContain('Delete August 2026?');
     expect(text(html)).toContain('its 11 monthly expenses, 10 transactions and 2 transfers.');
@@ -1271,7 +1271,7 @@ describe('DeleteMonthModal', () => {
     expect(text(render(<DeleteMonthModal />, { shell: open, state }))).toContain('its 1 monthly expense, 0 transactions and 1 transfer.');
   });
 
-  it('en español y en turco', () => {
+  it('in Spanish and in Turkish', () => {
     const es = render(<DeleteMonthModal />, { lang: 'es', shell: open });
     expect(text(es)).toContain('¿Eliminar Octubre 2026?');
     expect(text(es)).toContain(
@@ -1284,15 +1284,15 @@ describe('DeleteMonthModal', () => {
     expect(buttonTexts(tr)).toEqual(['İptal', 'Sil']);
   });
 
-  it('mientras se borra, los botones quedan deshabilitados', () => {
+  it('while deleting, the buttons are disabled', () => {
     const html = render(<DeleteMonthModal />, { shell: { deleteDialog: { key: '2026-10', busy: true } } });
     expect(els(html, 'button').filter((b) => 'disabled' in b)).toHaveLength(2);
     has(els(html, 'div'), { role: 'dialog', 'aria-busy': 'true' });
   });
 });
 
-describe('Dialog y campos de formulario', () => {
-  it('con onSubmit el contenido es un formulario, con su título, sus campos y su pie', () => {
+describe('Dialog and form fields', () => {
+  it('with onSubmit the content is a form, with its title, its fields and its footer', () => {
     const html = renderToStaticMarkup(
       <I18nProvider lang="es">
         <Dialog
@@ -1334,7 +1334,7 @@ describe('Dialog y campos de formulario', () => {
     has(els(html, 'h2'), { id: dialog!['aria-labelledby']! });
     expect(els(html, 'form')).toHaveLength(1);
     expect(els(html, 'form')[0]).toHaveProperty('noValidate');
-    // El formulario envuelve título, campos y pie: el botón de enviar queda dentro.
+    // The form wraps title, fields and footer: the submit button stays inside.
     expect(html.indexOf('<form')).toBeLessThan(html.indexOf('<h2'));
     expect(html.indexOf('</form>')).toBeGreaterThan(html.indexOf('Guardar'));
     expect(els(html, 'button').map((b) => b.type)).toEqual(['button', 'button', 'submit']);
@@ -1347,7 +1347,7 @@ describe('Dialog y campos de formulario', () => {
     expect(text(html)).toContain('Esta meta tiene un objetivo');
   });
 
-  it('MonthPicker: dos listas, con los meses en el idioma actual y el valor elegido', () => {
+  it('MonthPicker: two selects, with the months in the current language and the chosen value', () => {
     const picker = (lang: Language) =>
       renderToStaticMarkup(
         <I18nProvider lang={lang}>
@@ -1370,7 +1370,7 @@ describe('Dialog y campos de formulario', () => {
     has(els(picker('tr'), 'select'), { 'aria-label': 'Target month: Yıl' });
   });
 
-  it('Select: una lista con el estilo de los formularios; las opciones, como las de CellSelect', () => {
+  it("Select: a select with the forms' style; the options, like CellSelect's", () => {
     const html = renderToStaticMarkup(
       <>
         <Select id="cur" value="TRY" options={['DOP', 'USD', 'TRY']} onChange={() => {}} mono aria-label="Currency" />
@@ -1384,11 +1384,11 @@ describe('Dialog y campos de formulario', () => {
     expect(account).toHaveProperty('disabled');
     expect(html).toContain('<option value="DOP">DOP</option><option value="USD">USD</option><option value="TRY" selected="">TRY</option>');
     expect(html).toContain('<option value="us">US account</option><option value="dr" selected="">DR account</option>');
-    // Un valor que no está entre las opciones se conserva como una más (y es la elegida).
+    // A value that is not among the options is kept as one more (and is the chosen one).
     expect(html).toContain('<option value="gone" selected="">gone</option><option value="a">a</option>');
   });
 
-  it('MonthPicker: el año del valor está siempre en la lista, aunque caiga fuera del rango', () => {
+  it("MonthPicker: the value's year is always in the list, even if it falls outside the range", () => {
     const html = renderToStaticMarkup(<MonthPicker label="Start" value="2019-03" onChange={() => {}} fromYear={2026} toYear={2027} />);
     const years = [...html.matchAll(/<option value="(\d{4})"/g)].map((m) => m[1]);
     expect(years[0]).toBe('2019');
@@ -1399,7 +1399,7 @@ describe('Dialog y campos de formulario', () => {
 });
 
 describe('Notices', () => {
-  it('lista los avisos con su botón de cerrar', () => {
+  it('lists the notices with their close button', () => {
     const notices = [{ id: 1, text: 'Could not save. The change was undone. Could not reach the server.' }];
     const html = render(<Notices />, { shell: { notices } });
     expect(html).toContain('role="status"');
@@ -1409,7 +1409,7 @@ describe('Notices', () => {
   });
 });
 
-describe('primitivas de tabla', () => {
+describe('table primitives', () => {
   const table = (lang: Language) =>
     renderToStaticMarkup(
       <I18nProvider lang={lang}>
@@ -1460,7 +1460,7 @@ describe('primitivas de tabla', () => {
       </I18nProvider>,
     );
 
-  it('una fila editable y una fila de agregar dan el marcado esperado', () => {
+  it('an editable row and an add row produce the expected markup', () => {
     const html = table('en');
     has(els(html, 'table'), { style: 'min-width:980px', 'aria-label': 'Monthly expenses' });
 
@@ -1472,10 +1472,10 @@ describe('primitivas de tabla', () => {
     const inputs = els(html, 'input');
     has(inputs, { type: 'checkbox', 'aria-label': 'Paid: Netflix' });
     has(inputs, { type: 'text', style: 'min-width:120px', value: 'Netflix', 'aria-label': 'Item' });
-    // 1137.3, no "1,137.30": el input muestra el número tal cual, como el prototipo.
+    // 1137.3, not "1,137.30": the input shows the number as is, like the prototype.
     has(inputs, { type: 'number', step: 'any', value: '1137.3', 'aria-label': 'Amount' });
     has(inputs, { type: 'date', value: '2026-10-07', 'aria-label': 'Date' });
-    // blankZero: el 0 se muestra vacío para que se vea el placeholder.
+    // blankZero: the 0 is shown empty so the placeholder is visible.
     has(inputs, { type: 'number', value: '', placeholder: '0.00' });
 
     const buttons = els(html, 'button');
@@ -1485,11 +1485,11 @@ describe('primitivas de tabla', () => {
     expect(html).toContain('>Add</button>');
     has(els(html, 'td'), { colSpan: '2' });
 
-    // Un valor fuera de la lista se conserva como opción (y es el seleccionado).
+    // A value outside the list is kept as an option (and is the selected one).
     expect(html).toContain('<option value="Other" selected="">Other</option><option value="DOP">DOP</option>');
   });
 
-  it('los textos que ponen las propias primitivas salen en el idioma actual', () => {
+  it('the texts the primitives themselves add come out in the current language', () => {
     const es = table('es');
     expect(es).toContain('>Agregar</button>');
     has(els(es, 'button'), { title: 'Eliminar' });
@@ -1499,18 +1499,18 @@ describe('primitivas de tabla', () => {
     has(els(tr, 'button'), { title: 'Sil' });
   });
 
-  it('CellText con sugerencias: sigue siendo texto libre, con su lista de valores propuestos', () => {
+  it('CellText with suggestions: still free text, with its list of proposed values', () => {
     const html = renderToStaticMarkup(<CellText value="Western Union" label="Via" suggestions={['Remitly', 'PayPal']} maxLength={60} />);
     const [input] = els(html, 'input');
     expect(input).toMatchObject({ type: 'text', value: 'Western Union', 'aria-label': 'Via', maxLength: '60' });
     has(els(html, 'datalist'), { id: input!.list! });
     expect(html).toContain('<option value="Remitly"></option><option value="PayPal"></option>');
-    // Sin sugerencias, o en solo lectura, no hay lista.
+    // With no suggestions, or when read-only, there is no list.
     expect(renderToStaticMarkup(<CellText value="x" label="Item" />)).not.toContain('list');
     expect(renderToStaticMarkup(<CellText value="x" label="Via" suggestions={['Remitly']} readOnly />)).not.toContain('datalist');
   });
 
-  it('sin <I18nProvider>, lo que cuelga de FinanzasContext sale en el idioma de su estado', () => {
+  it("without <I18nProvider>, whatever sits under FinanzasContext comes out in its state's language", () => {
     const html = renderToStaticMarkup(
       <FinanzasContext value={finanzas('2026-10', { ...seedState(), language: 'es' })}>
         <AddButton />
@@ -1519,7 +1519,7 @@ describe('primitivas de tabla', () => {
     );
     expect(html).toContain('>Agregar</button>');
     expect(text(html)).toContain('Dinero total');
-    // Un proveedor explícito manda sobre el estado.
+    // An explicit provider overrides the state.
     const forced = renderToStaticMarkup(
       <I18nProvider lang="tr">
         <FinanzasContext value={finanzas('2026-10', { ...seedState(), language: 'es' })}>
@@ -1530,7 +1530,7 @@ describe('primitivas de tabla', () => {
     expect(forced).toContain('>Ekle</button>');
   });
 
-  it('sin proveedor de idioma ni estado salen en inglés, y un botón de eliminar sin etiqueta dice "Delete"', () => {
+  it('with no language provider or state they come out in English, and a delete button with no label says "Delete"', () => {
     const html = renderToStaticMarkup(
       <>
         <AddButton />
@@ -1542,8 +1542,8 @@ describe('primitivas de tabla', () => {
   });
 });
 
-describe('SummaryPanel · Month: partes del presupuesto pasadas', () => {
-  /** Un envío que mueve presupuesto saca 800 USD de la parte de la US account, que no tiene nada. */
+describe('SummaryPanel · Month: overrun budget parts', () => {
+  /** A transfer that moves budget takes 800 USD out of the US account's part, which has nothing. */
   function overrun(): AppState {
     const s = seedState();
     const m = s.months['2026-10']!;
@@ -1552,14 +1552,14 @@ describe('SummaryPanel · Month: partes del presupuesto pasadas', () => {
   }
   const panel = (opts: Opts = {}) => render(<SummaryPanel sheet="mes" />, opts);
 
-  it('una línea por cada parte en negativo, con su cuenta, y nada si ninguna lo está', () => {
+  it('one line per negative part, with its account, and nothing if none is', () => {
     const lines = (html: string) => [...html.matchAll(/<li>(.*?)<\/li>/g)].map((m) => text(m[1]!).trim());
     expect(lines(panel({ state: overrun() }))).toEqual(['Over budget by 800.00 USD · US account']);
     expect(text(panel())).not.toContain('Over budget by');
     expect(lines(panel())).toEqual([]);
   });
 
-  it('en español y en turco', () => {
+  it('in Spanish and in Turkish', () => {
     expect(text(panel({ state: overrun(), lang: 'es' }))).toContain('Sobrepasado por 800.00 USD · US account');
     expect(text(panel({ state: overrun(), lang: 'tr' }))).toContain('Bütçe aşıldı: 800.00 USD · US account');
   });

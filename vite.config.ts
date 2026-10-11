@@ -2,7 +2,7 @@
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vite';
 
-// En desarrollo, Vite sirve el frontend y reenvía /api y /mcp a `wrangler pages dev` (Pages Functions + D1 local).
+// In dev, Vite serves the frontend and forwards /api and /mcp to `wrangler pages dev` (Pages Functions + local D1).
 const API_ORIGIN = 'http://127.0.0.1:8788';
 
 export default defineConfig({

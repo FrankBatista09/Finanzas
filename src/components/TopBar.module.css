@@ -11,7 +11,7 @@
   padding: 10px 24px;
 }
 
-/* Marca y, a su lado, el selector de usuario. Ocupa lo que sobre: empuja el resto a la derecha. */
+/* Brand and, next to it, the user select. It takes whatever space is left: it pushes the rest to the right. */
 .lead {
   display: flex;
   flex-wrap: wrap;
@@ -44,7 +44,7 @@
   gap: 6px;
 }
 
-/* ‹ y › usan la fuente por defecto de los botones del navegador: el prototipo no les pone familia. */
+/* ‹ and › use the browser's default button font: the prototype sets no family on them. */
 .step {
   width: 30px;
   height: 30px;
@@ -62,7 +62,7 @@
   background: var(--bar-input);
 }
 
-/* Las dos listas de la barra: usuario y mes. */
+/* The two selects of the bar: user and month. */
 .select {
   height: 30px;
   padding: 0 30px 0 12px;
@@ -92,7 +92,7 @@
   cursor: pointer;
 }
 
-/* El input de archivo no se ve, pero sigue en el orden de tabulación (con display:none no se podría usar con teclado). */
+/* The file input is not visible, but it stays in the tab order (with display:none it could not be used with the keyboard). */
 .file {
   position: absolute;
   width: 1px;
@@ -105,7 +105,7 @@
   white-space: nowrap;
 }
 
-/* El foco de teclado del input oculto se enseña en la etiqueta. */
+/* The keyboard focus of the hidden input is shown on the label. */
 .upload:has(.file:focus-visible) {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
@@ -137,7 +137,7 @@
   cursor: pointer;
 }
 
-/* Con el panel abierto. Va después de .settings para ganarle el fondo. */
+/* With the panel open. It comes after .settings to override its background. */
 .settingsOn {
   background: var(--bar-input);
 }
@@ -160,12 +160,12 @@
   border-radius: var(--radius);
 }
 
-/* De dónde sale la tasa cuando no es la escrita para el mes (sus envíos, otro mes, cruzada): un apunte atenuado. */
+/* Where the rate comes from when it is not the one typed for the month (its transfers, another month, crossed): a muted note. */
 .rateHint {
   color: var(--text-light);
 }
 
-/* La tasa es el valor fijo de respaldo: nadie la ha escrito. Se avisa con el mismo color que "pasado de presupuesto". */
+/* The rate is the fixed default value: nobody has typed it. It is flagged with the same color as "over budget". */
 .chipWarn {
   border-color: var(--banner-over);
   color: var(--banner-over);

@@ -1,9 +1,9 @@
-// Lo que consumen las pantallas y los componentes comunes. Los contextos los llena FinanzasProvider;
-// se exportan para poder montar un componente suelto en una prueba con un valor fijo (buildFinanzas, en view.ts,
-// arma el de useFinanzas() a partir de un estado).
+// What the screens and the shared components consume. FinanzasProvider fills the contexts;
+// they are exported so a test can mount a standalone component with a fixed value (buildFinanzas, in view.ts,
+// builds the one for useFinanzas() from a state).
 //
-// Los textos no van aquí: salen de useI18n() y useStrings() (src/i18n), que siguen el idioma del usuario
-// (state.language) y traen los ayudantes atados a él (meses, categorías, métodos, origen de una tasa).
+// The texts do not live here: they come from useI18n() and useStrings() (src/i18n), which follow the user's language
+// (state.language) and bring the helpers bound to it (months, categories, methods, the source of a rate).
 
 import { createContext, useContext } from 'react';
 import type { CloseRequest, ContributionPatch, CreditCardPatch, FixedPatch, GoalPatch, IncomePatch, OutsidePatch, TransferPatch, TxPatch } from '../../shared/api';
@@ -25,262 +25,262 @@ import type { Sheet } from './url';
 import type { AccountOption, Money, PairRate } from './view';
 
 /**
- * Todas las escrituras, sobre los datos del usuario actual. Son optimistas: el cambio se ve en el acto y, si el
- * servidor lo rechaza, se deshace y aparece un aviso. Lo que el contrato (shared/api.ts) rechazaría se comprueba
- * antes y no llega a enviarse: las que agregan devuelven false, y las ediciones de celda ignoran el campo que no
- * vale (la celda recupera su valor al salir). El objeto es estable mientras no cambien el usuario, el mes
- * seleccionado ni el idioma (los avisos de los flujos salen en el idioma del momento).
+ * All the writes, on the current user's data. They are optimistic: the change shows at once and, if the
+ * server rejects it, it is undone and a notice appears. What the contract (shared/api.ts) would reject is checked
+ * beforehand and never gets sent: the ones that add return false, and cell edits ignore the field that is not
+ * valid (the cell gets its value back on leaving). The object is stable as long as the user, the selected
+ * month and the language do not change (the flows' notices come out in the language of the moment).
  */
 export interface Actions {
-  // ── Ajustes ────────────────────────────────────────────────────────────────
-  /** Cambia el idioma de la interfaz (y del Excel) de este usuario. Se guarda en el acto. */
+  // ── Settings ───────────────────────────────────────────────────────────────
+  /** Changes this user's interface (and Excel) language. Saved at once. */
   setLanguage(language: Language): void;
   /**
-   * Cambia los colores de este usuario; null (o los colores originales) vuelve a la paleta por defecto.
-   * Se ve en el acto y se guarda con el mismo retraso que una celda. Un tema con algún color no válido se ignora.
+   * Changes this user's colors; null (or the original colors) goes back to the default palette.
+   * It shows at once and is saved with the same delay as a cell. A theme with any invalid color is ignored.
    */
   setTheme(theme: ThemeColors | null): void;
   /**
-   * Cambia la moneda principal (la de presupuesto, totales y columnas). Elegir la que hoy es la segunda las
-   * intercambia, en una sola petición. Se guarda en el acto.
+   * Changes the main currency (the one for the budget, totals and columns). Picking the one that is currently the
+   * second swaps them, in a single request. Saved at once.
    */
   setMainCurrency(currency: Currency): void;
-  /** Cambia la segunda moneda (la de las líneas "≈"). Elegir la que hoy es la principal las intercambia. */
-  /** null = sin segunda moneda. */
+  /** Changes the second currency (the one for the "≈" lines). Picking the one that is currently the main one swaps them. */
+  /** null = no second currency. */
   setSecondCurrency(currency: Currency | null): void;
-  /** La cuenta de la que sale un gasto cuando no se indica otra: una cuenta visible de dinero (no de oro), o null para la automática. */
+  /** The account an expense comes out of when no other is given: a visible money account (not a gold one), or null for the automatic one. */
   setDefaultAccount(accountId: string | null): void;
   /**
-   * El precio del oro: lo que vale 1 gramo, en una de las tres monedas. Con él las cuentas de oro suman al dinero
-   * total; un monto 0 (el campo vacío) lo quita y vuelven a verse solo en gramos. false si el monto no es un
-   * número >= 0. Se guarda con el mismo retraso que una celda.
+   * The gold price: what 1 gram is worth, in one of the three currencies. With it the gold accounts add to the total
+   * money; an amount of 0 (the empty field) removes it and they show only in grams again. false if the amount is not
+   * a number >= 0. Saved with the same delay as a cell.
    */
   setGoldPrice(amount: number, currency: Currency): boolean;
 
-  // ── Cuentas ────────────────────────────────────────────────────────────────
-  /** Crea una cuenta al final de la lista. false si falta el nombre, la moneda no es una de las tres ni oro, o el saldo inicial no es un número. */
+  // ── Accounts ───────────────────────────────────────────────────────────────
+  /** Creates an account at the end of the list. false if the name is missing, the currency is neither one of the three nor gold, or the opening balance is not a number. */
   addAccount(input: AccountInput): boolean;
-  /** Un nombre en blanco se ignora (es obligatorio): la celda recupera su valor al salir. */
+  /** A blank name is ignored (it is required): the cell gets its value back on leaving. */
   renameAccount(id: string, name: string): void;
-  /** Oculta o vuelve a mostrar una cuenta. false si no existe o si es la última visible de dinero (esa no se puede ocultar). */
+  /** Hides an account or shows it again. false if it does not exist or if it is the last visible money account (that one cannot be hidden). */
   setAccountHidden(id: string, hidden: boolean): boolean;
-  /** Elimina una cuenta. false (y no hace nada) si no existe o algo la usa: esa se oculta. */
+  /** Deletes an account. false (and does nothing) if it does not exist or something uses it: that one is hidden instead. */
   removeAccount(id: string): boolean;
   /**
-   * Corrige el saldo de una cuenta: el usuario escribe el saldo que tiene de verdad y se guarda el saldo inicial
-   * que lo produce al final del mes seleccionado (shared/calc openingFor). false (y no hace nada) si el mes
-   * seleccionado no es el último del usuario (useFinanzas().latestMonth): los saldos pasados son historia.
+   * Corrects an account's balance: the user types the balance they really have, and the opening balance that
+   * produces it at the end of the selected month is stored (shared/calc openingFor). false (and does nothing) if the
+   * selected month is not the user's latest (useFinanzas().latestMonth): past balances are history.
    */
   setAccountBalance(id: string, balance: number): boolean;
 
-  // ── El mes seleccionado ────────────────────────────────────────────────────
+  // ── The selected month ─────────────────────────────────────────────────────
   /**
-   * La parte del presupuesto del mes seleccionado que sale de esa cuenta, en la moneda de la cuenta, tal como se
-   * ve (con lo que le suman los ingresos que suben el presupuesto). El presupuesto no se sobrescribe: el servidor
-   * añade a su registro la diferencia. 0 deja en cero lo que suma el registro. false si la cuenta no existe, el
-   * monto no es un número >= 0, queda por debajo de lo que ya suman esos ingresos o el mes está cerrado.
+   * The part of the selected month's budget that comes out of that account, in the account's currency, as it is
+   * shown (with what the incomes that raise the budget add to it). The budget is not overwritten: the server
+   * appends the difference to its log. 0 brings what the log adds up to down to zero. false if the account does not
+   * exist, the amount is not a number >= 0, it falls below what those incomes already add up to, or the month is closed.
    */
   setBudgetPart(accountId: string, amount: number): boolean;
   /**
-   * Añade un movimiento al registro del presupuesto del mes seleccionado (suma o resta a la parte de una cuenta).
-   * false si la cuenta no existe, el monto es 0 o no es un número, la fecha no cae en el mes o el mes está cerrado.
+   * Adds a movement to the selected month's budget log (it adds to or subtracts from an account's part). false if
+   * the account does not exist, the amount is 0 or not a number, the date is not in the month or the month is closed.
    */
   addBudgetEntry(input: BudgetEntryInput): boolean;
   /**
-   * Quita un movimiento del registro del presupuesto del mes seleccionado (no un ingreso: ese se edita como
-   * ingreso). false si no está, si el mes está cerrado o si se acaba de añadir y aún no tiene id del servidor.
+   * Removes a movement from the selected month's budget log (not an income: that one is edited as an
+   * income). false if it is not there, if the month is closed, or if it was just added and has no server id yet.
    */
   removeBudgetEntry(id: string): boolean;
   /**
-   * Suma al presupuesto del mes seleccionado lo que sobró del mes anterior (useFinanzas().leftover), una sola vez.
-   * false si no hay mes anterior, ya se sumó, sobró 0 o el mes está cerrado.
+   * Adds what was left over from the previous month (useFinanzas().leftover) to the selected month's budget, only once.
+   * false if there is no previous month, it was already added, the leftover was 0 or the month is closed.
    */
   addLeftover(): boolean;
   /**
-   * Escribe a mano la tasa de un par desde una fecha del mes seleccionado: 1 `from` = `rate` `to`. Hay una por par
-   * y fecha: sustituye a la de esa fecha, en el sentido que fuera; las de otras fechas siguen valiendo para lo
-   * registrado antes. false si las monedas son la misma, la tasa no es > 0 (una celda a medio escribir), la fecha
-   * no cae en el mes o el mes está cerrado.
+   * Types a pair's rate by hand, from a date in the selected month: 1 `from` = `rate` `to`. There is one per pair
+   * and date: it replaces the one for that date, whichever direction it had; the ones for other dates still apply to
+   * what was recorded earlier. false if the currencies are the same, the rate is not > 0 (a half-typed cell), the date
+   * is not in the month or the month is closed.
    */
   setMonthRate(from: Currency, to: Currency, rate: number, date: ISODate): boolean;
-  /** Quita la tasa escrita de ese par (en cualquiera de los dos sentidos) y esa fecha del mes seleccionado. */
+  /** Removes the typed rate for that pair (in either direction) and that date of the selected month. */
   removeMonthRate(from: Currency, to: Currency, date: ISODate): void;
 
-  /** Los «otros cargos» de una tarjeta de crédito en el mes seleccionado (en la moneda de la tarjeta, >= 0). false si el monto no es válido o el mes está cerrado. */
+  /** A credit card's "Other charges" in the selected month (in the credit card's currency, >= 0). false if the amount is not valid or the month is closed. */
   setCardOther(cardId: string, other: number): boolean;
   /**
-   * Añade un pago de esa tarjeta en el mes seleccionado: `amount` en la moneda de la tarjeta (> 0 y como mucho lo que falta,
-   * `CardCalc.remainder`) desde esa cuenta de dinero, con la fecha de hoy. Puede haber varios pagos en el mes. false si no se puede.
+   * Adds a payment on that credit card in the selected month: `amount` in the credit card's currency (> 0 and at most what is left,
+   * `CardCalc.remainder`) from that money account, dated today. There can be several payments in the month. false if it cannot be done.
    */
   payCard(cardId: string, amount: number, accountId: string): boolean;
-  /** Quita todos los pagos de esa tarjeta en el mes seleccionado. */
+  /** Removes all the payments on that credit card in the selected month. */
   unpayCard(cardId: string): void;
-  /** Quita un pago de esa tarjeta en el mes seleccionado. */
+  /** Removes one payment on that credit card in the selected month. */
   removeCardPayment(cardId: string, id: string): void;
 
-  /** Agrega una tarjeta de crédito (al final). false si falta el nombre, está repetido o algún dato no vale. */
+  /** Adds a credit card (at the end). false if the name is missing, it is a duplicate or some field is not valid. */
   addCard(input: CardInput): boolean;
-  /** Edita una tarjeta. false si no se puede (p. ej. apagarla debiendo algo: ver canTurnOffCard). */
+  /** Edits a credit card. false if it cannot be done (e.g. turning it off while something is owed on it: see canTurnOffCard). */
   patchCard(id: string, patch: CreditCardPatch): boolean;
-  /** Borra una tarjeta que nada usa. false si está en uso. */
+  /** Deletes a credit card that nothing uses. false if it is in use. */
   removeCard(id: string): boolean;
 
-  /** Agrega al mes seleccionado. false si falta el concepto, el monto no es > 0 o la cuenta indicada no existe. */
+  /** Adds to the selected month. false if the item is missing, the amount is not > 0 or the given account does not exist. */
   addFixed(input: FixedInput): boolean;
-  /** Se ignoran un `name` en blanco, un `amount` negativo y un `accountId` que no exista. */
+  /** A blank `name`, a negative `amount` and an `accountId` that does not exist are ignored. */
   patchFixed(id: string, patch: FixedPatch): void;
   removeFixed(id: string): void;
 
-  /** Agrega al mes seleccionado. false si falta la descripción, la fecha no es válida, el monto no es > 0 o la cuenta indicada no existe. */
+  /** Adds to the selected month. false if the description is missing, the date is not valid, the amount is not > 0 or the given account does not exist. */
   addTx(input: TxInput): boolean;
-  /** Se ignoran un `desc` en blanco, un `amount` negativo y un `accountId` que no exista. */
+  /** A blank `desc`, a negative `amount` and an `accountId` that does not exist are ignored. */
   patchTx(id: string, patch: TxPatch): void;
   removeTx(id: string): void;
 
-  /** Agrega al mes seleccionado un gasto fuera de presupuesto. false si falta el nombre, la fecha no es válida, el monto no es > 0 o la cuenta indicada no existe o es de oro. */
+  /** Adds an outside-budget expense to the selected month. false if the name is missing, the date is not valid, the amount is not > 0 or the given account does not exist or is a gold account. */
   addOutside(input: OutsideInput): boolean;
-  /** Se ignoran un `name` en blanco, un `amount` negativo y un `accountId` que no exista. */
+  /** A blank `name`, a negative `amount` and an `accountId` that does not exist are ignored. */
   patchOutside(id: string, patch: OutsidePatch): void;
   removeOutside(id: string): void;
-  /** Pasa una transacción del mes seleccionado a "fuera de presupuesto" (una sola llamada al servidor: no se duplica ni se pierde). */
+  /** Moves a transaction of the selected month to "Outside budget" (a single call to the server: it is neither duplicated nor lost). */
   moveTxOutside(id: string): void;
-  /** El camino inverso: categoría "Other", método "Transfer" y sin lugar. */
+  /** The reverse path: category "Other", method "Transfer" and no place. */
   moveOutsideToBudget(id: string): void;
 
   /**
-   * Agrega al mes seleccionado un envío de una cuenta a otra. false si la vía (texto libre) está en blanco, la fecha
-   * no es válida, el monto no es > 0, alguna cuenta no existe, las dos son la misma o la tasa indicada no es > 0.
-   * Sin `rate` se usa la tasa vigente en la fecha del envío para ese par; entre cuentas de la misma moneda siempre es 1.
+   * Adds a transfer from one account to another to the selected month. false if the via (free text) is blank, the date
+   * is not valid, the amount is not > 0, either account does not exist, both are the same or the given rate is not > 0.
+   * With no `rate`, the pair's rate in effect on the transfer's date is used; between same-currency accounts it is always 1.
    */
   addTransfer(input: TransferInput): boolean;
   /**
-   * Edita un envío. Se ignora lo que no vale: una vía en blanco, un monto negativo, una tasa que no sea > 0 y un
-   * cambio de cuenta que dejaría una cuenta que no existe o la misma en los dos lados. Si al cambiar de cuenta
-   * cambian las monedas del envío y no viene otra tasa, la tasa pasa a ser la del mes para el par nuevo.
+   * Edits a transfer. What is not valid is ignored: a blank via, a negative amount, a rate that is not > 0 and an
+   * account change that would leave an account that does not exist or the same one on both sides. If changing the account
+   * changes the transfer's currencies and no other rate comes with it, the rate becomes the month rate for the new pair.
    */
   patchTransfer(id: string, patch: TransferPatch): void;
   removeTransfer(id: string): void;
 
-  // ── Ingresos, metas y aportes (no pertenecen a un mes) ─────────────────────
+  // ── Incomes, goals and contributions (they do not belong to a month) ───────
   /**
-   * false si la fecha no es válida, el monto no es > 0 o la cuenta indicada no existe. Vale cualquier fecha, también
-   * de un mes cerrado. Con `budget: true` el ingreso sube además el presupuesto del mes de su fecha. A una cuenta
-   * de oro le entran gramos: el ingreso queda en XAU y nunca sube el presupuesto.
+   * false if the date is not valid, the amount is not > 0 or the given account does not exist. Any date is valid, even
+   * one in a closed month. With `budget: true` the income also raises the budget of the month of its date. A gold
+   * account takes in grams: the income stays in XAU and never raises the budget.
    */
   addIncome(input: IncomeInput): boolean;
   /**
-   * Se ignoran una fecha no válida, un `amount` negativo y un `accountId` que no exista. Al pasar el ingreso a una
-   * cuenta de oro queda en gramos y sin subir el presupuesto; al sacarlo de una, en la moneda de la cuenta nueva.
+   * An invalid date, a negative `amount` and an `accountId` that does not exist are ignored. Moving the income to a
+   * gold account leaves it in grams and not raising the budget; moving it out of one, in the new account's currency.
    */
   patchIncome(id: string, patch: IncomePatch): void;
   removeIncome(id: string): void;
 
-  /** false si la meta no existe, la fecha no es válida o el monto no es > 0. */
+  /** false if the goal does not exist, the date is not valid or the amount is not > 0. */
   addContribution(input: ContributionInput): boolean;
-  /** Se ignoran un `goalId` que no exista, una fecha no válida y un `amount` negativo. */
+  /** A `goalId` that does not exist, an invalid date and a negative `amount` are ignored. */
   patchContribution(id: string, patch: ContributionPatch): void;
   removeContribution(id: string): void;
 
   /**
-   * Crea una meta al final de la lista, en la moneda indicada (por defecto, la principal) y con su moneda "≈"
-   * (`approxCur`; null o sin indicar, la principal). false (y no hace nada)
-   * si falta el nombre o el plan no cumple la regla: sin plan (monthly, start y end en null o sin definir) o con
-   * los tres (monthly > 0, start <= end).
+   * Creates a goal at the end of the list, in the given currency (by default, the main one) and with its "≈" currency
+   * (`approxCur`; null or not given, the main one). false (and does nothing)
+   * if the name is missing or the plan breaks the rule: no plan (monthly, start and end null or undefined) or all
+   * three (monthly > 0, start <= end).
    */
   addGoal(input: GoalInput): boolean;
   /**
-   * Edita una meta. false (y no hace nada) si no existe, el nombre queda en blanco o el plan resultante no cumple
-   * la regla; para quitar el plan hay que mandar los tres campos en null. Un patch sin cambios devuelve true.
+   * Edits a goal. false (and does nothing) if it does not exist, the name ends up blank or the resulting plan breaks
+   * the rule; to remove the plan, all three fields must be sent as null. A patch with no changes returns true.
    */
   patchGoal(id: string, patch: GoalPatch): boolean;
-  /** Elimina una meta. false (y no hace nada) si no existe o tiene aportes. */
+  /** Deletes a goal. false (and does nothing) if it does not exist or has contributions. */
   removeGoal(id: string): boolean;
 
-  // ── Flujos ─────────────────────────────────────────────────────────────────
-  /** Abre el modal de cierre del mes seleccionado (el modal vive en App). */
+  // ── Flows ──────────────────────────────────────────────────────────────────
+  /** Opens the close-month dialog for the selected month (the dialog lives in App). */
   requestCloseMonth(): void;
-  /** Reabre un mes cerrado; por defecto, el seleccionado. */
+  /** Reopens a closed month; by default, the selected one. */
   reopenMonth(key?: MonthKey): void;
   /**
-   * Abre el diálogo para borrar un mes (por defecto, el seleccionado), abierto o cerrado. El diálogo vive en App:
-   * dice qué se va a borrar y, si se confirma, borra el mes y deja seleccionado el mes en curso del usuario.
+   * Opens the dialog to delete a month (by default, the selected one), open or closed. The dialog lives in App:
+   * it says what will be deleted and, if confirmed, deletes the month and leaves the user's current month selected.
    */
   requestDeleteMonth(key?: MonthKey): void;
 
-  /** Lee el .xlsx en el navegador, manda su contenido al servidor, recarga el estado y selecciona el último mes importado. Nunca rechaza. */
+  /** Reads the .xlsx in the browser, sends its content to the server, reloads the state and selects the last imported month. Never rejects. */
   importExcel(file: File): Promise<void>;
-  /** Guarda lo pendiente y descarga el Excel del usuario, generado en el navegador, en su idioma, con el estado del servidor. Nunca rechaza (si falla, avisa). */
+  /** Saves what is pending and downloads the user's Excel, generated in the browser, in their language, from the server's state. Never rejects (if it fails, it shows a notice). */
   downloadExcel(months?: readonly MonthKey[]): Promise<void>;
-  /** Solo si el servidor expone /api/dev/*: carga los datos de ejemplo del usuario actual. */
+  /** Only if the server exposes /api/dev/*: loads the current user's sample data. */
   devSeed(): Promise<void>;
-  /** Solo si el servidor expone /api/dev/*: deja en blanco al usuario actual. */
+  /** Only if the server exposes /api/dev/*: leaves the current user blank. */
   devReset(): Promise<void>;
 
-  /** Manda ya las ediciones de celda que esperaban su retraso. (Al perder el foco ya se hace solo.) */
+  /** Immediately sends the cell edits that were waiting out their delay. (Losing focus already does this by itself.) */
   flush(): void;
 }
 
 export interface Finanzas {
-  /** De quién son los datos que se ven (el del selector de la barra superior). */
+  /** Whose data is on screen (the one from the top bar's select). */
   user: AppUser;
-  /** Todo el histórico de ese usuario, con las ediciones optimistas ya aplicadas. Su idioma es state.language. */
+  /** That user's whole history, with the optimistic edits already applied. Their language is state.language. */
   state: AppState;
-  /** Mes seleccionado (?month=…; si falta o no existe, el mes en curso). */
+  /** Selected month (?month=…; if it is missing or does not exist, the current month). */
   monthKey: MonthKey;
   month: Month;
-  /** monthCalc(state, monthKey) de shared/calc.ts: las cifras del mes, en la moneda principal. */
+  /** monthCalc(state, monthKey) from shared/calc.ts: the month's figures, in the main currency. */
   calc: MonthCalc;
-  /** 1 segunda = `rate.rate` principal en el mes seleccionado (= calc.rate), con su origen (`rate.source`); null sin segunda moneda. */
+  /** 1 second = `rate.rate` main in the selected month (= calc.rate), with its source (`rate.source`); null with no second currency. */
   rate: RateInfo | null;
-  /** La tasa de la barra superior: segunda → principal o, sin segunda, la primera que hace falta; null si no hace falta ninguna. */
+  /** The top bar's rate: second → main or, with no second, the first one that is needed; null if none is needed. */
   barRate: PairRate | null;
 
-  /** Moneda principal del usuario (= state.mainCurrency): la de presupuesto, totales y la primera columna de importes. */
+  /** The user's main currency (= state.mainCurrency): the one for the budget, totals and the first amount column. */
   main: Currency;
-  /** Segunda moneda (= state.secondCurrency): la de las líneas "≈" y la segunda columna de importes; null = ninguna, no se muestra nada en ella. */
+  /** Second currency (= state.secondCurrency): the one for the "≈" lines and the second amount column; null = none, nothing is shown in it. */
   second: Currency | null;
   /**
-   * Un importe en la moneda principal y en la segunda, con las tasas de un mes (por defecto, el seleccionado):
-   * las dos columnas de una tabla salen de una llamada. Con `date`, con la tasa vigente ese día: es lo que toca a
-   * una fila con fecha propia (una transacción: `inBoth(t.amount, t.cur, undefined, t.date)`); sin ella, con la
-   * última del mes (un gasto fijo, un total).
-   * La función cambia con cada cambio de estado: a una fila memorizada se le pasan las cifras, no la función.
+   * An amount in the main currency and in the second one, with a month's rates (by default, the selected one):
+   * both columns of a table come from one call. With `date`, with the rate in effect that day: that is what a
+   * row with its own date gets (a transaction: `inBoth(t.amount, t.cur, undefined, t.date)`); without it, with the
+   * month's last one (a fixed expense, a total).
+   * The function changes with every state change: a memoized row is passed the figures, not the function.
    */
   inBoth(amount: number, cur: Currency, key?: MonthKey, date?: ISODate): Money;
-  /** Las tasas del mes seleccionado, una por par de monedas y ya resueltas, con el origen de cada una (view.ts pairRates). */
+  /** The selected month's rates, one per currency pair and already resolved, with the source of each one (view.ts pairRates). */
   rates: readonly PairRate[];
-  /** La tasa `from` → `to` de un mes (por defecto, el seleccionado; con `date`, la vigente ese día), con su origen: rateFor de shared/calc.ts. */
+  /** The `from` → `to` rate of a month (by default, the selected one; with `date`, the one in effect that day), with its source: rateFor from shared/calc.ts. */
   rateOf(from: Currency, to: Currency, key?: MonthKey, date?: ISODate): RateInfo;
-  /** Lo que sobró del mes anterior al seleccionado y si ya se sumó a su presupuesto (shared/calc leftoverFor). */
+  /** The leftover from the month before the selected one and whether it was already added to its budget (shared/calc leftoverFor). */
   leftover: Leftover;
 
-  /** Todas las cuentas del usuario, también las ocultas, en su orden. */
+  /** All of the user's accounts, hidden ones too, in their order. */
   accounts: readonly Account[];
   /**
-   * Las de dinero que se muestran en las listas y selectores de la hoja del mes y de los ajustes. Las de oro no
-   * están: solo se ven en "Savings" (salen de `balances`) y en los ingresos (`incomeAccountOptions`).
+   * The money accounts shown in the lists and selects of the Month sheet and of the settings. The gold ones are
+   * not here: they only show in "Savings" (they come from `balances`) and in the incomes (`incomeAccountOptions`).
    */
   visibleAccounts: readonly MoneyAccount[];
-  /** La cuenta de la que sale un gasto cuando no se indica otra (shared/calc defaultAccount); null solo si no hay cuentas de dinero. */
+  /** The account an expense comes out of when no other is given (shared/calc defaultAccount); null only if there are no money accounts. */
   defaultAccount: MoneyAccount | null;
   /**
-   * Opciones de un selector de cuenta ({ value: id, label: nombre }) para lo que es dinero (gastos, envíos): las
-   * visibles que no son de oro y, detrás, las que se pasen y no estén entre ellas (la cuenta de una fila que
-   * después se ocultó): `accountOptions(row.accountId)`.
+   * Options of an account select ({ value: id, label: name }) for what is money (expenses, transfers): the
+   * visible ones that are not gold and, after them, the ones passed in that are not among them (the account of a row
+   * that was hidden afterwards): `accountOptions(row.accountId)`.
    */
   accountOptions(...include: (string | null | undefined)[]): AccountOption[];
-  /** Como `accountOptions`, con las cuentas de oro también: a qué cuenta entra un ingreso. */
+  /** Like `accountOptions`, with the gold accounts too: which account an income goes into. */
   incomeAccountOptions(...include: (string | null | undefined)[]): AccountOption[];
-  /** Saldos de todas las cuentas al final del mes seleccionado y el "Total money" (shared/calc balances). */
+  /** Balances of all the accounts at the end of the selected month and the "Total money" (shared/calc balances). */
   balances: Balances;
-  /** El mes seleccionado es el último del usuario: solo entonces se puede corregir un saldo (actions.setAccountBalance). */
+  /** The selected month is the user's latest: only then can a balance be corrected (actions.setAccountBalance). */
   latestMonth: boolean;
 
-  /** El mes seleccionado está cerrado: celdas de solo lectura, sin filas de agregar ni botones ×. */
+  /** The selected month is closed: read-only cells, no add rows or × buttons. */
   readOnly: boolean;
-  /** Hoy en la zona horaria del usuario. */
+  /** Today in the user's time zone. */
   today: ISODate;
-  /** Fecha inicial de las filas de agregar: hoy si el mes seleccionado es el de hoy; si no, su día 1. */
+  /** Initial date of the add rows: today if the selected month is today's; otherwise, its day 1. */
   draftDate: ISODate;
   actions: Actions;
 }
@@ -290,48 +290,48 @@ export interface Notice {
   text: string;
 }
 
-/** En qué va la carga de un Excel; el texto lo pone la barra superior en el idioma actual. */
+/** How an Excel import is going; the top bar supplies the text in the current language. */
 export type ExcelStatus = { kind: 'reading' } | { kind: 'loaded'; file: string } | { kind: 'failed' };
 
-/** Un diálogo de confirmación abierto para ese mes; `busy` mientras la operación está en curso. */
+/** A confirmation dialog open for that month; `busy` while the operation is in progress. */
 export interface MonthDialog {
   key: MonthKey;
   busy: boolean;
 }
 
-/** Estado de la carcasa (cabecera, pestañas, modales, avisos). Existe siempre, haya datos o no. */
+/** State of the shell (top bar, tabs, dialogs, notices). It always exists, whether there is data or not. */
 export interface Shell {
-  /** 'ready' en cuanto hay datos, aunque un refresco posterior falle. */
+  /** 'ready' as soon as there is data, even if a later refresh fails. */
   status: 'loading' | 'error' | 'ready';
-  /** Vuelve a pedir el estado al servidor. */
+  /** Requests the state from the server again. */
   retry(): void;
   retrying: boolean;
 
-  /** Usuarios configurados (GET /api/session); vacío hasta que llega la sesión. */
+  /** Configured users (GET /api/session); empty until the session arrives. */
   users: readonly AppUser[];
-  /** Usuario actual; null hasta que llega la sesión. */
+  /** Current user; null until the session arrives. */
   user: AppUser | null;
-  /** Cambia de usuario: manda lo pendiente del anterior y carga los datos, el idioma y los colores del otro. */
+  /** Switches users: sends what the previous one had pending and loads the other one's data, language and colors. */
   goToUser(id: string): void;
-  /** Idioma en uso: el del usuario o, antes de tener sus datos, el último usado en este dispositivo. */
+  /** Language in use: the user's or, before their data is available, the last one used on this device. */
   language: Language;
 
   sheet: Sheet;
   goToSheet(sheet: Sheet): void;
   goToMonth(key: MonthKey): void;
 
-  /** SessionResponse.devTools: muestra "Start blank" y "Restore sample data". */
+  /** SessionResponse.devTools: shows "Start blank" and "Restore sample data". */
   devTools: boolean;
-  /** Estado del botón "Import Excel" tras una carga; null = el texto normal. */
+  /** State of the "Import Excel" button after an import; null = the normal text. */
   excelStatus: ExcelStatus | null;
 
-  /** Modal de cierre abierto para ese mes; `busy` mientras se está cerrando. */
+  /** Close-month dialog open for that month; `busy` while it is being closed. */
   closeDialog: MonthDialog | null;
-  /** `request`: las partes iniciales del mes siguiente y si se le suma el sobrante; sin él, el servidor copia las de este mes. */
+  /** `request`: the next month's initial parts and whether the leftover is added to it; without it, the server copies this month's. */
   confirmClose(withExcel: boolean, request?: CloseRequest): void;
   cancelClose(): void;
 
-  /** Diálogo de borrar mes abierto para ese mes; `busy` mientras se está borrando. */
+  /** Delete-month dialog open for that month; `busy` while it is being deleted. */
   deleteDialog: MonthDialog | null;
   confirmDelete(): void;
   cancelDelete(): void;
@@ -343,14 +343,14 @@ export interface Shell {
 export const FinanzasContext = createContext<Finanzas | null>(null);
 export const ShellContext = createContext<Shell | null>(null);
 
-/** Datos y acciones para las pantallas. Solo se puede usar con el estado ya cargado (dentro de las pantallas lo está). */
+/** Data and actions for the screens. It can only be used once the state is loaded (inside the screens it is). */
 export function useFinanzas(): Finanzas {
   const value = useContext(FinanzasContext);
   if (!value) throw new Error('useFinanzas() necesita el estado cargado: úsalo dentro de <FinanzasProvider>, en una pantalla.');
   return value;
 }
 
-/** Atajo de useFinanzas().actions. */
+/** Shortcut for useFinanzas().actions. */
 export function useActions(): Actions {
   return useFinanzas().actions;
 }

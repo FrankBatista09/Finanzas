@@ -11,27 +11,27 @@ import { SettingsPanel } from './SettingsPanel';
 import styles from './TopBar.module.css';
 
 /**
- * La tasa de la barra: dos decimales, como en toda la app. Una tasa menor que 1 (1 DOP = 0.0170 USD, cuando la
- * moneda principal es la fuerte) con dos decimales no diría nada: lleva cuatro.
+ * The rate in the bar: two decimals, as everywhere in the app. A rate below 1 (1 DOP = 0.0170 USD, when the
+ * main currency is the strong one) would say nothing with two decimals: it gets four.
  */
 const chipRate = (rate: number) => (rate > 0 && rate < 1 ? rate.toFixed(4) : fRate(rate));
 
-/** Marca o desmarca un mes de la selección, que queda siempre en el orden de `all`. */
+/** Checks or unchecks a month in the selection, which always stays in the order of `all`. */
 export function toggleMonth(all: readonly MonthKey[], picked: readonly MonthKey[], key: MonthKey, on: boolean): MonthKey[] {
   return on ? all.filter((x) => x === key || picked.includes(x)) : picked.filter((x) => x !== key);
 }
 
 export interface DownloadExcelDialogProps {
-  /** Los meses del usuario, del más antiguo al más reciente. */
+  /** The user's months, from oldest to most recent. */
   months: readonly MonthKey[];
-  /** Los que salen marcados al abrir: todos, si no se indica. */
+  /** The ones that are checked on open: all of them, if not given. */
   initial?: readonly MonthKey[];
   onCancel: () => void;
-  /** `undefined` = todos los meses (el libro completo, también con los que hayan llegado después al servidor). */
+  /** `undefined` = all the months (the whole workbook, including any that reached the server later). */
   onDownload: (months: readonly MonthKey[] | undefined) => void;
 }
 
-/** "Download Excel": qué meses van al libro. Una casilla por mes (el más reciente arriba) y otra para todos. */
+/** "Download Excel": which months go into the workbook. One checkbox per month (most recent on top) and one for all. */
 export function DownloadExcelDialog({ months, initial, onCancel, onDownload }: DownloadExcelDialogProps) {
   const { t, label } = useI18n();
   const [picked, setPicked] = useState<readonly MonthKey[]>(initial ?? months);
@@ -66,7 +66,7 @@ export function DownloadExcelDialog({ months, initial, onCancel, onDownload }: D
   );
 }
 
-/** Barra superior: marca, selector de usuario, selector de mes, Excel, tasa del mes y ajustes. */
+/** Top bar: brand, user select, month select, Excel, month rate and settings. */
 export function TopBar() {
   const { user, state, monthKey, barRate: bar, readOnly, actions } = useFinanzas();
   const { sheet, goToMonth, excelStatus, users, goToUser } = useShell();
@@ -77,8 +77,8 @@ export function TopBar() {
   const closeSettings = useCallback(() => setSettingsOpen(false), []);
   const [downloadOpen, setDownloadOpen] = useState(false);
 
-  // De dónde sale la tasa. Si no es la escrita para este mes se dice al lado; si es el valor fijo de respaldo
-  // se destaca: todas las cifras convertidas descansan entonces en una tasa que nadie ha escrito.
+  // Where the rate comes from. If it is not the one typed for this month, that is said next to it; if it is the fixed
+  // default value it is highlighted: every converted figure then rests on a rate nobody has typed.
   const hint = bar ? rateHint(bar, bar.from, bar.to) : '';
   const fallback = bar?.source === 'default';
 
@@ -101,7 +101,7 @@ export function TopBar() {
   const onFile = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) void actions.importExcel(file);
-    // Permite volver a elegir el mismo archivo.
+    // Lets the same file be picked again.
     e.target.value = '';
   };
 
@@ -112,7 +112,7 @@ export function TopBar() {
           <h1 className={styles.title}>{APP_NAME}</h1>
           <div className={styles.subtitle}>{subtitle}</div>
         </div>
-        {/* Con un solo usuario no hay nada que elegir. */}
+        {/* With a single user there is nothing to choose. */}
         {users.length > 1 && (
           <select className={styles.select} value={user.id} onChange={(e) => goToUser(e.target.value)} aria-label={t('user')}>
             {users.map((u) => (
@@ -140,7 +140,7 @@ export function TopBar() {
         </button>
       </div>
 
-      {/* title: el Excel sigue con el diseño original (USD, DOP y dos cuentas); la nota completa está en Settings. */}
+      {/* title: the Excel file still has the original design (USD, DOP and two accounts); the full note is in Settings. */}
       <label className={styles.upload} title={t('excelNote')}>
         <input type="file" accept=".xlsx" className={styles.file} onChange={onFile} />
         <span aria-live="polite">{upload}</span>
@@ -160,7 +160,7 @@ export function TopBar() {
         />
       )}
 
-      {/* Sin ninguna tasa que hacer falta (todo el dinero en una moneda) no hay nada que enseñar. */}
+      {/* With no rate needed (all the money in one currency) there is nothing to show. */}
       {bar && (
         <div className={styles.rate}>
           <span>{t('monthRate')}</span>

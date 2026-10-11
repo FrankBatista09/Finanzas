@@ -6,24 +6,24 @@ import styles from './AhorrosScreen.module.css';
 import { AHORROS } from './strings';
 
 export interface RateCellProps {
-  /** Moneda de la fila y moneda principal: la tasa es principal por 1 de la moneda de la fila. */
+  /** Row currency and main currency: the rate is main currency per 1 of the row's currency. */
   cur: Currency;
   main: Currency;
-  /** Tasa propia; null = la del mes. */
+  /** Own rate; null = the month rate. */
   rate: number | null;
-  /** La automática (la vigente en la fecha de la fila), o null si la fila no tiene control. */
+  /** The automatic one (the one in effect on the row's date), or null if the row has no control. */
   auto: number | null;
   onCommit: (rate: number | null) => void;
   disabled?: boolean;
 }
 
-// Las tasas bajas (TRY→DOP no, pero DOP→USD sí) necesitan más decimales para decir algo.
+// Low rates (not TRY→DOP, but DOP→USD) need more decimals to say anything.
 const show = (n: number) => (n > 0 && n < 1 ? n.toFixed(4) : fRate(n));
 
 /**
- * El control "Rate" de un ingreso o un aporte: «Month rate» (automática, con la tasa vigente atenuada al lado) o
- * «Manual» (un número: cuánto de la moneda principal vale 1 de la moneda de la fila). Sin control, una celda vacía,
- * cuando la moneda de la fila es la principal.
+ * The "Rate" control of an income or a contribution: "Month rate" (automatic, with the rate in effect dimmed next to
+ * it) or "Manual" (a number: how much of the main currency 1 of the row's currency is worth). No control, an empty
+ * cell, when the row's currency is the main one.
  */
 export function RateCell({ cur, main, rate, auto, onCommit, disabled }: RateCellProps) {
   const { t } = useI18n();
@@ -41,7 +41,7 @@ export function RateCell({ cur, main, rate, auto, onCommit, disabled }: RateCell
         <CellSelect
           value={manual ? 'manual' : 'auto'}
           options={options}
-          // Al pasar a Manual arranca con la tasa de hoy de la fila: se corrige en vez de teclear desde cero.
+          // Switching to Manual starts with the row's rate as of today: it gets corrected instead of typed from scratch.
           onCommit={(v) => onCommit(v === 'manual' ? Number(auto.toFixed(6)) : null)}
           disabled={disabled}
           dense
@@ -50,7 +50,7 @@ export function RateCell({ cur, main, rate, auto, onCommit, disabled }: RateCell
         {manual ? (
           <CellNumber
             value={rate}
-            // Una tasa vacía o 0 no vale: se queda la anterior.
+            // An empty or 0 rate is not valid: the previous one stays.
             onCommit={(v) => v > 0 && onCommit(v)}
             readOnly={disabled}
             dense

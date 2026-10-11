@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { todayISO } from '../../shared/month';
 import type { ISODate } from '../../shared/types';
 
-/** Hoy en la zona horaria del usuario. Se revisa cada minuto y al volver a la pestaña, por si pasó la medianoche. */
+/** Today in the user's time zone. Checked every minute and on returning to the tab, in case midnight has passed. */
 export function useToday(): ISODate {
   const [today, setToday] = useState(() => todayISO());
 

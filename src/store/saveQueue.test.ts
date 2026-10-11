@@ -21,8 +21,8 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe('SaveQueue · retraso', () => {
-  it('espera el retraso antes de enviar', () => {
+describe('SaveQueue · delay', () => {
+  it('waits for the delay before sending', () => {
     const { queue, sent } = setup();
     queue.push('tx:1', ['desc'], { desc: 'U' });
     vi.advanceTimersByTime(399);
@@ -33,7 +33,7 @@ describe('SaveQueue · retraso', () => {
     expect(queue.size).toBe(0);
   });
 
-  it('cada pulsación en el mismo campo reinicia la espera y solo sale el último valor', () => {
+  it('each keystroke in the same field restarts the wait and only the last value goes out', () => {
     const { queue, sent } = setup();
     for (const desc of ['U', 'Ub', 'Ube', 'Uber']) {
       queue.push('tx:1', ['desc'], { desc });
@@ -44,19 +44,19 @@ describe('SaveQueue · retraso', () => {
     expect(sent).toEqual([['tx:1', { desc: 'Uber' }]]);
   });
 
-  it('el retraso es por campo: escribir en otro campo no aplaza el primero', () => {
+  it('the delay is per field: typing in another field does not postpone the first one', () => {
     const { queue, sent } = setup();
     queue.push('tx:1', ['desc'], { desc: 'Uber' });
     vi.advanceTimersByTime(300);
     queue.push('tx:1', ['amount'], { amount: 850 });
     vi.advanceTimersByTime(100);
-    // Vence "desc" (400 ms): se va la fila entera, con "amount" incluido, en un solo envío.
+    // "desc" expires (400 ms): the whole row goes out, "amount" included, in a single send.
     expect(sent).toEqual([['tx:1', { desc: 'Uber', amount: 850 }]]);
     vi.advanceTimersByTime(1000);
     expect(sent).toHaveLength(1);
   });
 
-  it('filas distintas se envían por separado', () => {
+  it('different rows are sent separately', () => {
     const { queue, sent } = setup();
     queue.push('tx:1', ['desc'], { desc: 'A' });
     vi.advanceTimersByTime(200);
@@ -70,7 +70,7 @@ describe('SaveQueue · retraso', () => {
     ]);
   });
 
-  it('lo que se edita después de un envío empieza una espera nueva', () => {
+  it('what is edited after a send starts a new wait', () => {
     const { queue, sent } = setup();
     queue.push('tx:1', ['desc'], { desc: 'A' });
     vi.advanceTimersByTime(400);
@@ -83,8 +83,8 @@ describe('SaveQueue · retraso', () => {
   });
 });
 
-describe('SaveQueue · flush, immediate y drop', () => {
-  it('flush() envía ya todo lo pendiente, una vez por fila, y cancela los temporizadores', () => {
+describe('SaveQueue · flush, immediate and drop', () => {
+  it('flush() sends everything pending right away, once per row, and cancels the timers', () => {
     const { queue, sent } = setup();
     queue.push('tx:1', ['desc'], { desc: 'A' });
     queue.push('fixed:9', ['amount'], { amount: 5 });
@@ -99,7 +99,7 @@ describe('SaveQueue · flush, immediate y drop', () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it('flush(key) envía solo esa fila', () => {
+  it('flush(key) sends only that row', () => {
     const { queue, sent } = setup();
     queue.push('tx:1', ['desc'], { desc: 'A' });
     queue.push('tx:2', ['desc'], { desc: 'B' });
@@ -108,7 +108,7 @@ describe('SaveQueue · flush, immediate y drop', () => {
     expect(queue.pending()).toEqual([{ desc: 'A' }]);
   });
 
-  it('immediate sale en el acto y se lleva lo que la fila tuviera pendiente', () => {
+  it('immediate goes out at once and takes along whatever the row had pending', () => {
     const { queue, sent } = setup();
     queue.push('fixed:1', ['amount'], { amount: 100 });
     queue.push('fixed:1', ['paid'], { paid: true }, true);
@@ -117,14 +117,14 @@ describe('SaveQueue · flush, immediate y drop', () => {
     expect(sent).toHaveLength(1);
   });
 
-  it('immediate sin nada pendiente envía solo lo suyo', () => {
+  it('immediate with nothing pending sends only its own payload', () => {
     const { queue, sent } = setup();
     queue.push('fixed:1', ['paid'], { paid: true }, true);
     expect(sent).toEqual([['fixed:1', { paid: true }]]);
     expect(queue.size).toBe(0);
   });
 
-  it('drop() descarta lo pendiente sin enviarlo', () => {
+  it('drop() discards what is pending without sending it', () => {
     const { queue, sent } = setup();
     queue.push('tx:1', ['desc'], { desc: 'A' });
     expect(queue.drop('tx:1')).toBe(true);
@@ -134,7 +134,7 @@ describe('SaveQueue · flush, immediate y drop', () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it('pending() enseña lo que espera sin enviarlo', () => {
+  it('pending() shows what is waiting without sending it', () => {
     const { queue, sent } = setup();
     queue.push('tx:1', ['desc'], { desc: 'A' });
     queue.push('tx:1', ['desc'], { desc: 'AB' });

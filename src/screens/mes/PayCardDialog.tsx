@@ -9,9 +9,10 @@ import styles from './PayCardDialog.module.css';
 import { MES } from './strings';
 
 /**
- * «Pagar la tarjeta de crédito»: se abre al pulsar la casilla de su fila. Propone pagar lo que falta desde la cuenta
- * del último pago; se puede pagar solo una parte y volver más tarde (hay varios pagos por mes). Lista los pagos ya
- * hechos, cada uno con su ×. Con todo pagado solo sirve para revisarlos y quitar alguno. Se monta para abrirlo.
+ * "Pay credit card": opens when the checkbox of its row is clicked. It proposes paying what is left from the account
+ * of the last payment; you can pay only a part and come back later (there are several payments per month). It lists
+ * the payments already made, each with its ×. With everything paid it only serves to review them and remove one.
+ * Mount it to open it.
  */
 export function PayCardDialog({ cardId, onClose }: { cardId: string; onClose: () => void }) {
   const { state, monthKey, accountOptions, accounts, actions } = useFinanzas();
@@ -19,9 +20,9 @@ export function PayCardDialog({ cardId, onClose }: { cardId: string; onClose: ()
   const s = useStrings(MES);
   const id = useId();
   const cancelRef = useRef<HTMLButtonElement>(null);
-  // Se lee una vez, al abrir: un refresco de los datos no debe pisar lo que se esté escribiendo.
+  // Read once, on open: a data refresh must not overwrite what is being typed.
   const [form, setForm] = useState(() => payForm(state, monthKey, cardId));
-  // Los importes son de la moneda de la tarjeta.
+  // The amounts are in the credit card's currency.
   const { total, paid, payments, remainder: left, card } = cardCalc(state, monthKey, cardId);
   const main = card.cur;
   const fullyPaid = isFullyPaid(left);

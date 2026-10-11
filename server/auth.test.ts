@@ -21,7 +21,7 @@ async function newKey(kid: string): Promise<SigningKey> {
     ['sign', 'verify'],
   )) as CryptoKeyPair;
   const jwk = (await crypto.subtle.exportKey('jwk', pair.publicKey)) as JsonWebKey;
-  // Como el documento real de Access: kid, kty, alg, use, e, n.
+  // Like the real Access document: kid, kty, alg, use, e, n.
   return { kid, privateKey: pair.privateKey, jwk: { ...jwk, kid, alg: 'RS256', use: 'sig' } };
 }
 
@@ -52,7 +52,7 @@ let fetchMock: ReturnType<typeof vi.fn<(url: string) => Promise<Response>>>;
 
 beforeAll(async () => {
   key = await newKey('kid-1');
-  // Mismo kid, otra clave: para probar una firma que no corresponde.
+  // Same kid, another key: to test a signature that does not match.
   other = await newKey('kid-1');
 });
 
@@ -80,7 +80,7 @@ describe('checkBearer', () => {
   const request = (authorization?: string) =>
     new Request('https://app.example/mcp', authorization === undefined ? {} : { headers: { Authorization: authorization } });
 
-  it('true solo con el token exacto', async () => {
+  it('true only with the exact token', async () => {
     const env = { API_TOKEN: TOKEN };
     expect(await checkBearer(request(`Bearer ${TOKEN}`), env)).toBe(true);
     expect(await checkBearer(request(`bearer   ${TOKEN}`), env)).toBe(true);
@@ -91,7 +91,7 @@ describe('checkBearer', () => {
     expect(await checkBearer(request('Bearer'), env)).toBe(false);
   });
 
-  it('sin API_TOKEN nunca autoriza', async () => {
+  it('without API_TOKEN it never authorizes', async () => {
     expect(await checkBearer(request('Bearer '), {})).toBe(false);
     expect(await checkBearer(request('Bearer undefined'), {})).toBe(false);
     expect(await checkBearer(request(`Bearer ${TOKEN}`), { API_TOKEN: '' })).toBe(false);
@@ -99,13 +99,13 @@ describe('checkBearer', () => {
 });
 
 describe('accessAuth', () => {
-  it('sin configurar deja pasar (desarrollo local) y no pide claves', async () => {
+  it('when not configured it lets requests through (local development) and does not fetch keys', async () => {
     const { env } = makeEnv();
     expect((await client(env).get('/api/state')).status).toBe(200);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('un JWT válido pasa; las claves se piden una sola vez', async () => {
+  it('a valid JWT passes; the keys are fetched only once', async () => {
     const { env } = makeEnv(accessEnv);
     const api = client(env);
     const token = await sign(key, claims());
@@ -116,16 +116,16 @@ describe('accessAuth', () => {
     expect(fetchMock).toHaveBeenCalledWith(CERTS_URL);
   });
 
-  it('la sesión de Access no dice de quién son los datos: eso lo elige X-User, y se mira después de autenticar', async () => {
+  it('the Access session does not say whose data it is: X-User picks that, and it is checked after authenticating', async () => {
     const { env } = makeEnv(accessEnv);
     const anonymous = client(env, null);
     const token = await sign(key, claims());
-    // Sin sesión, ni la lista de usuarios ni el aviso de que falta la cabecera: 401 a secas.
+    // Without a session, neither the user list nor the notice that the header is missing: a plain 401.
     for (const r of [await anonymous.get('/api/session'), await anonymous.get('/api/state'), await client(env, 'pedro').get('/api/state')]) {
       expect(r.status).toBe(401);
       expect(JSON.stringify(r.body)).not.toContain('frank');
     }
-    // Con sesión: /api/session no pide X-User, el resto sí, y la misma sesión vale para cualquiera de los usuarios.
+    // With a session: /api/session does not ask for X-User, the rest do, and the same session works for any of the users.
     expect((await anonymous.get<{ users: unknown[] }>('/api/session', jwt(token))).body.users).toHaveLength(2);
     const missing = await anonymous.get('/api/state', jwt(token));
     expect(missing.status).toBe(400);
@@ -134,13 +134,13 @@ describe('accessAuth', () => {
     expect((await client(env, 'frank').get<{ user: { id: string } }>('/api/state', jwt(token))).body.user.id).toBe('frank');
   });
 
-  it('acepta el dominio escrito con https:// y aud como texto', async () => {
+  it('accepts the domain written with https:// and aud as a string', async () => {
     const { env } = makeEnv({ ACCESS_TEAM_DOMAIN: `https://${TEAM}/`, ACCESS_AUD: AUD });
     const token = await sign(key, claims({ aud: AUD }));
     expect((await client(env).get('/api/state', jwt(token))).status).toBe(200);
   });
 
-  it('sin cabecera: 401', async () => {
+  it('no header: 401', async () => {
     const { env } = makeEnv(accessEnv);
     const api = client(env);
     for (const r of [await api.get('/api/state'), await api.post('/api/goals', { name: 'x' }), await api.get('/api/nada')]) {
@@ -151,7 +151,7 @@ describe('accessAuth', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('caducado: 401 (con un minuto de margen)', async () => {
+  it('expired: 401 (with one minute of leeway)', async () => {
     const { env } = makeEnv(accessEnv);
     const api = client(env);
     const expired = await api.get('/api/state', jwt(await sign(key, claims({ exp: nowS() - 120 }))));
@@ -162,14 +162,14 @@ describe('accessAuth', () => {
     expect((await api.get('/api/state', jwt(await sign(key, claims({ exp: '9999999999' }))))).status).toBe(401);
   });
 
-  it('todavía no válido (nbf): 401', async () => {
+  it('not yet valid (nbf): 401', async () => {
     const { env } = makeEnv(accessEnv);
     const api = client(env);
     expect((await api.get('/api/state', jwt(await sign(key, claims({ nbf: nowS() + 600 }))))).status).toBe(401);
     expect((await api.get('/api/state', jwt(await sign(key, claims({ nbf: nowS() + 20 }))))).status).toBe(200);
   });
 
-  it('aud de otra aplicación: 403', async () => {
+  it('aud of another application: 403', async () => {
     const { env } = makeEnv(accessEnv);
     const api = client(env);
     for (const aud of [['otra-app'], 'otra-app', [], undefined, [`${AUD}x`]]) {
@@ -180,13 +180,13 @@ describe('accessAuth', () => {
     expect((await api.get('/api/state', jwt(await sign(key, claims({ aud: ['otra-app', AUD] }))))).status).toBe(200);
   });
 
-  it('emisor distinto: 403', async () => {
+  it('different issuer: 403', async () => {
     const { env } = makeEnv(accessEnv);
     const r = await client(env).get('/api/state', jwt(await sign(key, claims({ iss: 'https://otro.cloudflareaccess.com' }))));
     expect(r.status).toBe(403);
   });
 
-  it('firma que no corresponde o contenido manipulado: 401', async () => {
+  it('signature that does not match or tampered payload: 401', async () => {
     const { env } = makeEnv(accessEnv);
     const api = client(env);
     const forged = await api.get('/api/state', jwt(await sign(other, claims())));
@@ -200,7 +200,7 @@ describe('accessAuth', () => {
     expect((await api.get('/api/state', jwt(`${good.slice(0, -4)}AAAA`))).status).toBe(401);
   });
 
-  it('tokens ilegibles o con otro algoritmo: 401', async () => {
+  it('unreadable tokens or tokens with another algorithm: 401', async () => {
     const { env } = makeEnv(accessEnv);
     const api = client(env);
     const good = await sign(key, claims());
@@ -214,7 +214,7 @@ describe('accessAuth', () => {
     }
   });
 
-  it('kid desconocido: 401, sin pedir las claves en cada intento', async () => {
+  it('unknown kid: 401, without fetching the keys on every attempt', async () => {
     const { env } = makeEnv(accessEnv);
     const api = client(env);
     const stranger = await newKey('kid-desconocido');
@@ -225,29 +225,29 @@ describe('accessAuth', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it('rotación de claves: un kid nuevo hace que se vuelvan a pedir (una vez)', async () => {
+  it('key rotation: a new kid causes them to be fetched again (once)', async () => {
     const config = { teamDomain: TEAM, aud: AUD };
     const t0 = Date.now();
     expect((await verifyAccessJwt(await sign(key, claims()), config, t0)).ok).toBe(true);
     expect(fetchMock).toHaveBeenCalledTimes(1);
 
-    // Access publica una clave nueva y empieza a firmar con ella.
+    // Access publishes a new key and starts signing with it.
     const rotated = await newKey('kid-2');
     published = [key.jwk, rotated.jwk];
     const token = await sign(rotated, claims());
-    // Dentro del minuto de espera todavía no se vuelve a pedir.
+    // Within the one-minute wait they are not fetched again yet.
     expect(await verifyAccessJwt(token, config, t0 + 10_000)).toMatchObject({ ok: false, status: 401 });
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const later = await verifyAccessJwt(token, config, t0 + 120_000);
     expect(later.ok).toBe(true);
     expect(fetchMock).toHaveBeenCalledTimes(2);
-    // Ya en caché: ni la nueva ni la anterior provocan más peticiones.
+    // Now cached: neither the new one nor the previous one causes more requests.
     expect((await verifyAccessJwt(token, config, t0 + 130_000)).ok).toBe(true);
     expect((await verifyAccessJwt(await sign(key, claims()), config, t0 + 130_000)).ok).toBe(true);
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  it('la caché de claves caduca', async () => {
+  it('the key cache expires', async () => {
     const config = { teamDomain: TEAM, aud: AUD };
     const t0 = Date.now();
     const token = await sign(key, claims({ exp: nowS() + 3 * 3600 }));
@@ -258,12 +258,12 @@ describe('accessAuth', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  it('devuelve los datos de la sesión cuando es válida', async () => {
+  it('returns the session data when it is valid', async () => {
     const verdict = await verifyAccessJwt(await sign(key, claims()), { teamDomain: TEAM, aud: AUD });
     expect(verdict).toMatchObject({ ok: true, claims: { email: 'yo@example.com' } });
   });
 
-  it('si no se pueden obtener las claves no se deja pasar (500) y no se filtra el motivo', async () => {
+  it('if the keys cannot be fetched nothing is let through (500) and the reason is not leaked', async () => {
     const log = vi.spyOn(console, 'error').mockImplementation(() => {});
     fetchMock.mockImplementation(async () => new Response('caído', { status: 503 }));
     const { env } = makeEnv(accessEnv);
@@ -273,7 +273,7 @@ describe('accessAuth', () => {
     expect(log).toHaveBeenCalled();
   });
 
-  it('si Access deja de responder se sigue con las claves que ya había', async () => {
+  it('if Access stops responding it keeps using the keys it already had', async () => {
     const config = { teamDomain: TEAM, aud: AUD };
     const t0 = Date.now();
     const token = await sign(key, claims({ exp: nowS() + 3 * 3600 }));
@@ -284,7 +284,7 @@ describe('accessAuth', () => {
     expect((await verifyAccessJwt(token, config, t0 + 2 * 3600 * 1000)).ok).toBe(true);
   });
 
-  it('con una sola de las dos variables no se abre la API: 500', async () => {
+  it('with only one of the two variables the API does not open: 500', async () => {
     const log = vi.spyOn(console, 'error').mockImplementation(() => {});
     for (const extra of [{ ACCESS_TEAM_DOMAIN: TEAM }, { ACCESS_AUD: AUD }, { ACCESS_TEAM_DOMAIN: 'no es un host', ACCESS_AUD: AUD }]) {
       const { env } = makeEnv(extra);
@@ -295,12 +295,12 @@ describe('accessAuth', () => {
     expect(log).toHaveBeenCalledTimes(3);
   });
 
-  it('/api/ingest/* no pasa por Access: usa el Bearer', async () => {
+  it('/api/ingest/* does not go through Access: it uses the Bearer', async () => {
     const { env } = makeEnv(accessEnv);
     const api = client(env);
     const body = { user: 'frank', description: 'Uber', amount: 850 };
     expect((await api.post('/api/ingest/transaction', body, { Authorization: `Bearer ${TOKEN}` })).status).toBe(201);
-    // Y al revés: ni la sesión de Access sirve para ingest, ni el Bearer para el resto de la API.
+    // And the other way around: the Access session does not work for ingest, nor the Bearer for the rest of the API.
     expect((await api.post('/api/ingest/transaction', body, jwt(await sign(key, claims())))).status).toBe(401);
     expect((await api.get('/api/state', { Authorization: `Bearer ${TOKEN}` })).status).toBe(401);
     expect((await api.post('/api/dev/reset', undefined, { Authorization: `Bearer ${TOKEN}` })).status).toBe(401);

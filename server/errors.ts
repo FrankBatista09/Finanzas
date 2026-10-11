@@ -1,17 +1,17 @@
-// Error tipado de la API. Lo lanzan el repositorio (server/db.ts), la validación y la autenticación;
-// server/app.ts lo traduce a una respuesta HTTP y el servidor MCP a un error de herramienta.
+// Typed API error. Thrown by the repository (server/db.ts), validation and authentication;
+// server/app.ts turns it into an HTTP response and the MCP server into a tool error.
 
 import { ZodError } from 'zod';
 import type { ApiErrorBody, ApiErrorCode } from '../shared/api';
 import { label } from '../shared/month';
 import type { MonthKey } from '../shared/types';
 
-/** Estados HTTP con los que responde la API cuando algo falla. */
+/** HTTP statuses the API responds with when something fails. */
 export type ApiErrorStatus = 400 | 401 | 403 | 404 | 409 | 413 | 500;
 
 /**
- * `message` va siempre en inglés y nunca lleva detalles internos (SQL, trazas, valores de configuración).
- * La web no lo muestra tal cual: traduce por `code` y deja el mensaje como detalle. Claude (ingest, MCP) sí lo lee.
+ * `message` is always in English and never carries internal details (SQL, stack traces, configuration values). The web
+ * app does not show it as is: it translates by `code` and keeps the message as detail. Claude (ingest, MCP) does read it.
  */
 export class ApiError extends Error {
   readonly status: ApiErrorStatus;
@@ -47,7 +47,7 @@ export function monthNotFoundError(key: MonthKey): ApiError {
   return notFoundError(`Month ${key} does not exist.`);
 }
 
-/** Regla de escritura: un mes cerrado es de solo lectura. */
+/** Write rule: a closed month is read-only. */
 export function monthClosedError(key: MonthKey): ApiError {
   return new ApiError(409, 'month_closed', `${label(key)} is closed: it is read-only. Reopen it to make changes.`);
 }
@@ -57,21 +57,21 @@ export function conflictError(message: string): ApiError {
 }
 
 /**
- * Una fila nombra una cuenta que el usuario no tiene (o que es de otro, que es lo mismo). Es un dato inválido
- * del cuerpo de la petición: 400, no 404.
+ * A row names an account the user does not have (or one that belongs to someone else, which is the same thing).
+ * It is invalid data in the request body: 400, not 404.
  */
 export function unknownAccountError(id: string): ApiError {
   return validationError(`Unknown account "${id.slice(0, 64)}".`);
 }
 
-/** Una fila nombra una tarjeta de crédito que el usuario no tiene. Dato inválido del cuerpo: 400. */
+/** A row names a credit card the user does not have. Invalid data in the body: 400. */
 export function unknownCardError(id: string): ApiError {
   return validationError(`Unknown credit card "${id.slice(0, 64)}".`);
 }
 
 /**
- * Una fila de dinero (parte del presupuesto, gasto fijo, transacción, envío, cuenta por defecto) nombra una
- * cuenta de oro, que guarda gramos y no dinero. Como una cuenta desconocida, es un dato inválido: 400.
+ * A money row (budget part, fixed expense, transaction, transfer, default account) names a gold account,
+ * which holds grams and not money. Like an unknown account, it is invalid data: 400.
  */
 export function goldAccountError(name: string): ApiError {
   return validationError(
@@ -80,8 +80,8 @@ export function goldAccountError(name: string): ApiError {
 }
 
 /**
- * El usuario no tiene ninguna cuenta en la que registrar. Por la API no se llega aquí (siempre queda al menos
- * una: borrar la última está prohibido); es el aviso para quien se quedó sin cuentas por otro camino.
+ * The user has no account to record in. This cannot be reached through the API (there is always at least one left:
+ * deleting the last one is forbidden); it is the notice for whoever ended up without accounts some other way.
  */
 export function noAccountsError(): ApiError {
   return conflictError('There are no accounts yet: add one first.');
@@ -95,14 +95,14 @@ export function errorBody(code: ApiErrorCode, message: string): ApiErrorBody {
   return { error: { code, message } };
 }
 
-/** Prefijo de todo mensaje de validación de datos: "Invalid data: amount: must be greater than 0". */
+/** Prefix of every data validation message: "Invalid data: amount: must be greater than 0". */
 export function invalidData(detail: string): string {
   return `Invalid data: ${detail}`;
 }
 
 const MAX_ISSUES = 5;
 
-/** Resume los problemas de zod en una frase legible: "Invalid data: amount: must be greater than 0; desc: cannot be empty". */
+/** Summarizes the zod issues in one readable sentence: "Invalid data: amount: must be greater than 0; desc: cannot be empty". */
 export function zodMessage(err: ZodError): string {
   const parts = err.issues.slice(0, MAX_ISSUES).map((issue) => {
     const path = issue.path.map(String).join('.');
@@ -113,8 +113,8 @@ export function zodMessage(err: ZodError): string {
 }
 
 /**
- * Cualquier excepción → ApiError. Lo que no se reconoce pasa a 500 con un mensaje genérico:
- * quien llama decide si registra el error original (aquí no se filtra nada de él).
+ * Any exception → ApiError. Whatever is not recognized becomes a 500 with a generic message:
+ * the caller decides whether to log the original error (nothing from it leaks here).
  */
 export function toApiError(err: unknown): ApiError {
   if (err instanceof ApiError) return err;

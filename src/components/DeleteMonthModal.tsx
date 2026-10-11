@@ -4,7 +4,7 @@ import { useI18n } from '../i18n';
 import { useFinanzas, useShell } from '../store';
 import { Dialog, DialogButton, DialogText } from '../ui';
 
-/** Diálogo para borrar un mes. Lo abre actions.requestDeleteMonth(); Escape y un clic fuera equivalen a Cancelar. */
+/** Dialog to delete a month. actions.requestDeleteMonth() opens it; Escape and a click outside are the same as Cancel. */
 export function DeleteMonthModal() {
   const { deleteDialog } = useShell();
   if (!deleteDialog) return null;
@@ -16,7 +16,7 @@ function DeleteDialog({ monthKey, busy }: { monthKey: MonthKey; busy: boolean })
   const { state } = useFinanzas();
   const { t, label } = useI18n();
   const bodyId = useId();
-  // El foco entra en Cancelar: borrar no tiene vuelta atrás.
+  // Focus lands on Cancel: deleting cannot be undone.
   const cancelRef = useRef<HTMLButtonElement>(null);
   const month = state.months[monthKey];
 

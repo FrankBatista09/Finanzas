@@ -1,6 +1,6 @@
-// Ancla de las pruebas "golden": comprueba que el exportador original del prototipo, con los datos de
-// ejemplo en español (la entrada congelada tests/export-data-es.json), reproduce byte a byte los libros de
-// design_handoff/referencia/. El port (export.test.ts) se compara contra ese mismo exportador.
+// Anchor of the "golden" tests: it checks that the prototype's original exporter, with the sample data in
+// Spanish (the frozen input tests/export-data-es.json), reproduces byte for byte the workbooks in
+// design_handoff/referencia/. The port (export.test.ts) is compared against that same exporter.
 
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
@@ -18,20 +18,20 @@ const empty = (over: Partial<ExportData> = {}): ExportData => ({
   ...over,
 });
 
-describe('exportador de referencia (excel-export.js)', () => {
-  it('datos de ejemplo en español → Finanzas Personales v3.xlsx', async () => {
+describe('reference exporter (excel-export.js)', () => {
+  it('sample data in Spanish → Finanzas Personales v3.xlsx', async () => {
     const out = await buildWithReference(frozenExportData('es'));
     expect(Buffer.from(out).equals(Buffer.from(ref('Finanzas Personales v3.xlsx')))).toBe(true);
   });
 
-  it('las dos entradas congeladas son los mismos datos: solo cambian los textos', () => {
+  it('the two frozen inputs are the same data: only the texts change', () => {
     const es = frozenExportData('es');
     const en = frozenExportData('en');
-    // Cada llamada lee el archivo de nuevo: modificar una copia no toca la siguiente.
+    // Each call reads the file again: modifying one copy does not touch the next.
     es.months.length = 0;
     expect(frozenExportData('es').months.map((m) => m.key)).toEqual(['2026-08', '2026-09', '2026-10']);
 
-    /** Lo que no es texto: claves, cifras, fechas, monedas y marcas de pagado. */
+    /** What is not text: keys, figures, dates, currencies and paid marks. */
     const figures = (data: ExportData) => ({
       defaultRate: data.defaultRate,
       goals: data.goals.map((g) => [g.monthlyUSD, g.start, g.end]),
@@ -52,7 +52,7 @@ describe('exportador de referencia (excel-export.js)', () => {
       ['2026-09', 11, 2, 10],
       ['2026-10', 11, 1, 7],
     ]);
-    // Y los textos sí cambian: conceptos, descripciones, categorías, métodos y metas.
+    // And the texts do change: items, descriptions, categories, methods and goals.
     const oct = (data: ExportData) => data.months[2]!;
     expect([oct(en).fixed[0]!.name, oct(en).tx[0]!.desc, oct(en).tx[0]!.cat, oct(en).tx[0]!.method]).toEqual(['Electricity', 'Weekly groceries', 'Groceries', 'Card']);
     const esOct = oct(frozenExportData('es'));
@@ -60,13 +60,13 @@ describe('exportador de referencia (excel-export.js)', () => {
     expect(en.goals.map((g) => g.name)).toEqual(['Emergency fund', 'Personal savings', 'Trip to Turkey']);
   });
 
-  it('sin meses → Plantilla vacia.xlsx (mes actual: octubre 2026)', async () => {
+  it('no months → Plantilla vacia.xlsx (current month: October 2026)', async () => {
     const out = await buildWithReference(empty(), { now: new Date(2026, 9, 7) });
     expect(Buffer.from(out).equals(Buffer.from(ref('Plantilla vacia.xlsx')))).toBe(true);
   });
 
-  it('las metas de referencia son las del diseño original', () => {
-    // La entrada congelada en español y este ayudante describen las mismas tres metas.
+  it('the reference goals are those of the original design', () => {
+    // The frozen input in Spanish and this helper describe the same three goals.
     expect(referenceGoals()).toEqual(frozenExportData('es').goals);
     expect(referenceGoals().map((g) => g.name)).toEqual([...REFERENCE_GOAL_NAMES]);
     expect(referenceGoals()[2]).toMatchObject(REFERENCE_PLAN);
@@ -78,7 +78,7 @@ describe('exportador de referencia (excel-export.js)', () => {
     });
   });
 
-  it('el plan de la tercera meta llega al script: otro plan da otro libro', async () => {
+  it('the plan of the third goal reaches the script: a different plan gives a different workbook', async () => {
     const base = await buildWithReference(empty(), { now: new Date(2026, 9, 7) });
     const other = await buildWithReference(empty({ goals: referenceGoals({ monthlyUSD: 2500, start: '2027-01', end: '2029-06' }) }), {
       now: new Date(2026, 9, 7),
@@ -86,7 +86,7 @@ describe('exportador de referencia (excel-export.js)', () => {
     expect(Buffer.from(other).equals(Buffer.from(base))).toBe(false);
   });
 
-  describe('rechaza las metas que el script original no puede representar', () => {
+  describe('rejects the goals the original script cannot represent', () => {
     const [emergency, personal, trip] = referenceGoals();
     const cases: [why: string, goals: unknown, message: RegExp][] = [
       ['sin metas', [], /expected 3 goals, got 0/],
@@ -109,7 +109,7 @@ describe('exportador de referencia (excel-export.js)', () => {
       await expect(buildWithReference(data)).rejects.toThrow(/reference exporter can only represent the three goals/);
     });
 
-    it('los datos de ejemplo en inglés (otros nombres de meta)', async () => {
+    it('the sample data in English (other goal names)', async () => {
       await expect(buildWithReference(frozenExportData('en'))).rejects.toThrow(/goal 1 must be named/);
     });
   });

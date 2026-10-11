@@ -1,8 +1,8 @@
-// Primitivas de UI compartidas por el panel resumen y las dos pantallas.
-// Ninguna trae textos propios salvo los comunes ("Add", "Delete", "Actions"), que salen en el idioma actual;
-// las etiquetas (label, placeholder) se les pasan ya traducidas: `t` es el de useI18n() y `s` el de useStrings().
+// UI primitives shared by the summary panel and the two screens.
+// None has text of its own except the common strings ("Add", "Delete", "Actions"), shown in the current language;
+// labels (label, placeholder) are passed in already translated: `t` comes from useI18n() and `s` from useStrings().
 //
-// Fila editable (cada celda avisa con onCommit; la capa de datos agrupa y retrasa el guardado):
+// Editable row (each cell reports through onCommit; the data layer groups and delays the save):
 //
 //   <Tr unpaid={!f.paid}>
 //     <Td kind="center"><CellCheckbox checked={f.paid} onCommit={(paid) => actions.patchFixed(f.id, { paid })} disabled={readOnly} label={s('paidNamed', { name: f.name })} /></Td>
@@ -13,8 +13,8 @@
 //     <Td kind="action">{!readOnly && <DeleteButton kind="kindExpense" item={`${f.name} · ${f2(f.amount)} ${f.cur}`} onConfirm={() => actions.removeFixed(f.id)} label={t('deleteNamed', { name: f.name })} />}</Td>
 //   </Tr>
 //
-// Fila de agregar (el borrador vive en el estado de la pantalla; 0 = monto vacío; Enter o el botón llaman a onAdd).
-// No está a la vista: la abre el "+ Add …" de la cabecera (addRow.tsx) y Esc o ese mismo botón la cierran.
+// Add row (the draft lives in the screen's state; 0 = empty amount; Enter or the button call onAdd).
+// It is not in view: the header's "+ Add …" (addRow.tsx) opens it, and Esc or that same button closes it.
 //
 //   const adding = useAddRow(() => setDraft(EMPTY));
 //   <CardHeader title={…} action={<AddRowButton control={adding}>{s('addFixed')}</AddRowButton>} />
@@ -25,7 +25,7 @@
 //     <Td kind="add" colSpan={3}><AddButton /></Td>
 //   </AddRow>
 //
-// Diálogos y formularios: Dialog.tsx y form.tsx (cada uno con su ejemplo).
+// Dialogs and forms: Dialog.tsx and form.tsx (each with its own example).
 
 export { AddRowButton, useAddRow } from './addRow';
 export type { AddRowButtonProps } from './addRow';

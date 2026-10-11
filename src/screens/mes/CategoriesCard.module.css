@@ -4,7 +4,7 @@
   gap: 9px;
 }
 
-/* Nombre (110px, se recorta con puntos suspensivos), barra y cifra. */
+/* Name (110px, truncated with an ellipsis), bar and figure. */
 .row {
   display: grid;
   grid-template-columns: 110px 1fr auto;
@@ -33,7 +33,7 @@
   background: var(--accent);
 }
 
-/* "Gastos fijos": el mismo tono oscuro que su segmento de la dona. */
+/* "Fixed expenses": the same dark shade as its donut segment. */
 .barFixed {
   background: var(--donut-fixed);
 }

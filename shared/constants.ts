@@ -1,11 +1,11 @@
 import type { Account, AccountCurrency, Currency, Goal, Gold } from './types';
 
-/** Nombre de la app: marca de la barra superior, título de la pestaña y nombre del archivo de Excel. */
+/** App name: the brand in the top bar, the tab title and the Excel file name. */
 export const APP_NAME = 'FE Finance';
 
-// Los valores que se GUARDAN (categorías, métodos) son estos nombres canónicos en inglés, sea cual sea el idioma
-// de quien los registra; al mostrarlos se traducen (shared/i18n.ts catLabel / methodLabel). Un valor fuera de la
-// lista (texto libre, datos importados) se muestra tal cual.
+// The values that get STORED (categories, methods) are these canonical English names, whatever the language of
+// whoever records them; they are translated when shown (shared/i18n.ts catLabel / methodLabel). A value outside the
+// list (free text, imported data) is shown as is.
 
 export const CATS = [
   'Food',
@@ -24,61 +24,61 @@ export const CATS = [
 export const METHODS = ['Debit card', 'Credit card', 'Transfer', 'Bank app', 'Cash'] as const;
 
 /**
- * Método de pago que carga la transacción a la tarjeta de crédito: no sale de ninguna cuenta ni cuenta como usado
- * hasta que se paga la tarjeta (shared/calc.ts cardCalc). Con "Debit card" y el resto, todo sigue igual.
+ * Payment method that charges the transaction to the credit card: it comes out of no account and does not count as used
+ * until the credit card is paid (shared/calc.ts cardCalc). With "Debit card" and the rest, everything stays the same.
  */
 export const CREDIT_CARD_METHOD = 'Credit card';
 
-/** Categoría y método de la transacción que nace al pasar un gasto de "fuera de presupuesto" al presupuesto (no los tiene). */
+/** Category and method of the transaction created when an expense moves from "Outside budget" into the budget (it has neither). */
 export const MOVED_TO_BUDGET = { cat: 'Other', method: 'Transfer' } as const;
 
-/** Sugerencias para la vía de un envío. Es texto libre: se puede escribir cualquier otra. */
+/** Suggestions for the via of a transfer. It is free text: any other one can be typed. */
 export const VIAS = ['Remitly', 'PayPal'] as const;
 
-/** En el orden en que se ofrecen en los selectores. */
+/** In the order they are offered in the selects. */
 export const CURRENCIES: readonly Currency[] = ['DOP', 'USD', 'TRY'];
 
-/** El oro como "moneda" de una cuenta: se mide en gramos (shared/types.ts Gold). */
+/** Gold as the "currency" of an account: it is measured in grams (shared/types.ts Gold). */
 export const GOLD: Gold = 'XAU';
-/** Unidad en la que se muestran los saldos de oro: "125.50 g". Igual en los tres idiomas. */
+/** Unit in which gold balances are shown: "125.50 g". The same in all three languages. */
 export const GOLD_UNIT = 'g';
-/** Decimales que se aceptan y se muestran, como mucho, en una cantidad de oro. */
+/** Decimals accepted and shown, at most, in an amount of gold. */
 export const GOLD_DECIMALS = 3;
 
-/** Lo que se ofrece al crear o editar una CUENTA, y solo ahí: las monedas y el oro. */
+/** What is offered when creating or editing an ACCOUNT, and only there: the currencies and gold. */
 export const ACCOUNT_CURRENCIES: readonly AccountCurrency[] = [...CURRENCIES, GOLD];
 
 export function isGold(currency: AccountCurrency | null | undefined): currency is Gold {
   return currency === GOLD;
 }
 
-/** Monedas con las que arranca un usuario nuevo; cada quien las cambia en Settings. */
+/** Currencies a new user starts with; each user changes them in Settings. */
 export const DEFAULT_MAIN_CURRENCY: Currency = 'DOP';
 export const DEFAULT_SECOND_CURRENCY: Currency = 'USD';
 
 /**
- * Largo máximo de los textos. Lo exige la API (server/validate.ts) y lo aplican las celdas (maxLength),
- * para que un guardado no se rechace por un texto demasiado largo. `label` vale para categoría, método y vía.
+ * Maximum length of the texts. The API requires it (server/validate.ts) and the cells enforce it (maxLength),
+ * so that a save is not rejected over a text that is too long. `label` applies to category, method and via.
  */
 export const MAX_LEN = { name: 120, desc: 200, place: 120, label: 60, day: 20, notes: 1000 } as const;
 
-/** Tasa USD→DOP de referencia (Remitly): respaldo cuando ningún mes tiene tasa ni envíos para ese par. */
+/** Reference USD→DOP rate (Remitly): the fallback when no month has a rate or transfers for that pair. */
 export const DEFAULT_RATE = 58.76;
 
 /**
- * Último respaldo de las conversiones: cuántas unidades de cada moneda vale 1 USD. Solo se usa cuando ni el mes
- * ni ninguno anterior tiene tasa para el par; la interfaz avisa cuando una cifra sale de aquí (RateInfo.source
- * === 'default'), porque es un valor fijo y no el del mercado. El de DOP lo sustituye settings.default_rate.
+ * Last fallback for conversions: how many units of each currency 1 USD is worth. Only used when neither the month
+ * nor any earlier one has a rate for the pair; the interface warns when a figure comes from here (RateInfo.source
+ * === 'default'), because it is a fixed value and not the market's. The DOP one is replaced by settings.default_rate.
  */
 export const DEFAULT_USD_RATES: Readonly<Record<Currency, number>> = { USD: 1, DOP: DEFAULT_RATE, TRY: 42 };
 
-/** Los usuarios viven en República Dominicana (UTC-4, sin horario de verano): "hoy" se calcula en esta zona. */
+/** The users live in the Dominican Republic (UTC-4, no daylight saving time): "today" is computed in this zone. */
 export const TIMEZONE = 'America/Santo_Domingo';
 
 /**
- * Cuentas con las que arranca un usuario nuevo (las crea el servidor la primera vez que entra). Son las dos del
- * diseño original; cada quien agrega las suyas (PayPal, TR account…), las renombra u oculta las que no use.
- * El nombre de una cuenta es un dato del usuario y no se traduce.
+ * Accounts a new user starts with (the server creates them the first time the user signs in). They are the two from
+ * the original design; each user adds their own (PayPal, TR account…), renames them or hides the ones they do not use.
+ * An account's name is user data and is not translated.
  */
 export const DEFAULT_ACCOUNTS: readonly Account[] = [
   { id: 'us', name: 'US account', currency: 'USD', opening: 0, hidden: false, sort: 0 },
@@ -86,9 +86,9 @@ export const DEFAULT_ACCOUNTS: readonly Account[] = [
 ];
 
 /**
- * Metas con las que arranca un usuario nuevo (las crea el servidor la primera vez que entra).
- * Son de aportes variables; las metas con plan (monto objetivo y fechas) las agrega cada quien desde Savings.
- * El nombre de una meta es un dato del usuario (lo puede cambiar) y no se traduce.
+ * Goals a new user starts with (the server creates them the first time the user signs in).
+ * They take variable contributions; goals with a plan (target amount and dates) are added by each user from Savings.
+ * A goal's name is user data (the user can change it) and is not translated.
  */
 export const DEFAULT_GOALS: readonly Goal[] = [
   { id: 'emergency', name: 'Emergency fund', cur: 'USD', monthly: null, start: null, end: null, approxCur: null, sort: 0 },

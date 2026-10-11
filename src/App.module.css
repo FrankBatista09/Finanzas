@@ -16,13 +16,13 @@
   gap: var(--gap-20);
 }
 
-/* ── Carga y error de conexión (no están en el prototipo): la misma barra y una tarjeta sobria ─────────────── */
+/* ── Loading and connection error (not in the prototype): the same bar and a plain card ─────────────── */
 
 .bootBar {
   background: var(--bar);
   color: var(--bar-text);
   padding: 10px 24px;
-  /* Misma altura que la barra completa (su control más alto mide 32px): al llegar los datos nada salta. */
+  /* Same height as the full bar (its tallest control is 32px): nothing jumps when the data arrives. */
   min-height: 32px;
   display: flex;
   align-items: center;

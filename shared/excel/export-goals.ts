@@ -1,32 +1,32 @@
-// Dónde va la tarjeta de cada meta en la hoja de ahorros.
+// Where each goal's card goes on the savings sheet.
 //
-// El diseño original tenía tres tarjetas fijas en las filas 6 a 12: dos estrechas (B:D y E:G) para las metas
-// de aportes variables y una ancha (I:O) para la meta con plan. Con las metas que tenga el usuario, esa franja
-// se repite hacia abajo en "bandas" de 8 filas (7 de tarjeta y 1 de separación): la banda k ocupa las filas
-// 6+8k a 12+8k, y todo lo que hay debajo (ingresos por mes y aportes) baja 8 filas por cada banda de más.
+// The original design had three fixed cards in rows 6 to 12: two narrow ones (B:D and E:G) for the goals with
+// variable contributions and a wide one (I:O) for the goal with a plan. With whatever goals the user has, that
+// strip repeats downward in "bands" of 8 rows (7 for the card and 1 for spacing): band k takes rows
+// 6+8k to 12+8k, and everything below (income by month and contributions) moves down 8 rows per extra band.
 
 import { isMonthKey } from '../month';
 import type { MonthKey } from '../types';
 import { num } from './export-book';
 import type { ExportGoal } from './types';
 
-/** Primera fila de la banda 0. */
+/** First row of band 0. */
 export const BAND_TOP = 6;
-/** Filas de una banda, contando la de separación. */
+/** Rows in a band, counting the spacing row. */
 export const BAND_ROWS = 8;
-/** Alto de las ocho filas de una banda (las filas 6 a 13 del diseño original). */
+/** Heights of the eight rows of a band (rows 6 to 13 of the original design). */
 export const BAND_HEIGHTS: readonly number[] = [24, 16, 28, 16, 14, 20, 24, 10];
 
 /**
- * Columnas (primera, última) de los tres huecos de una banda: los dos estrechos, para metas sin plan, y el
- * ancho, para una meta con plan. El nombre de la meta va en la primera columna, en la primera fila de la banda.
+ * Columns (first, last) of the three slots of a band: the two narrow ones, for goals without a plan, and the
+ * wide one, for a goal with a plan. The goal's name goes in the first column, on the first row of the band.
  */
 export const GOAL_SLOTS: readonly (readonly [first: string, last: string])[] = [
   ['B', 'D'],
   ['E', 'G'],
   ['I', 'O'],
 ];
-/** Índice del hueco ancho en GOAL_SLOTS. */
+/** Index of the wide slot in GOAL_SLOTS. */
 export const WIDE_SLOT = 2;
 
 export interface GoalPlan {
@@ -36,8 +36,8 @@ export interface GoalPlan {
 }
 
 /**
- * Plan de la meta, o null si es de aportes variables. Un plan incompleto o incoherente (sin aporte mensual
- * mayor que cero, sin alguna de las dos fechas o con el fin antes del inicio) cuenta como que no hay plan.
+ * The goal's plan, or null if it has variable contributions. An incomplete or inconsistent plan (no monthly
+ * contribution greater than zero, either date missing, or the end before the start) counts as no plan.
  */
 export function goalPlan(goal: Pick<ExportGoal, 'monthlyUSD' | 'start' | 'end'>): GoalPlan | null {
   const monthlyUSD = num(goal.monthlyUSD);
@@ -48,24 +48,24 @@ export function goalPlan(goal: Pick<ExportGoal, 'monthlyUSD' | 'start' | 'end'>)
 
 export interface PlacedGoal {
   name: string;
-  /** Banda de la tarjeta, desde 0. */
+  /** The card's band, from 0. */
   band: number;
-  /** Hueco dentro de la banda: índice en GOAL_SLOTS. */
+  /** Slot within the band: index in GOAL_SLOTS. */
   slot: number;
   plan: GoalPlan | null;
 }
 
 export interface GoalLayout {
-  /** Número de bandas; al menos una, aunque no haya metas, para que las tablas no cambien de sitio. */
+  /** Number of bands; at least one, even with no goals, so the tables do not move. */
   bands: number;
-  /** Las metas, en el mismo orden en que llegaron. */
+  /** The goals, in the same order they came in. */
   goals: PlacedGoal[];
 }
 
 /**
- * Reparte las metas en orden: una sin plan ocupa el primer hueco estrecho libre de la banda en curso y una
- * con plan, el ancho; si el hueco que necesita ya está ocupado, se abre una banda nueva. No se vuelve a bandas
- * anteriores. [sin plan, sin plan, con plan] llena la banda 0 igual que el diseño original.
+ * Places the goals in order: one without a plan takes the first free narrow slot of the current band and one
+ * with a plan, the wide one; if the slot it needs is already taken, a new band is opened. It never goes back to
+ * earlier bands. [no plan, no plan, with plan] fills band 0 the same way as the original design.
  */
 export function placeGoals(goals: readonly ExportGoal[]): GoalLayout {
   const placed: PlacedGoal[] = [];

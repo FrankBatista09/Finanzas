@@ -8,13 +8,13 @@ import type { DeleteKind } from './confirmDelete';
 import { cx } from './cx';
 
 export interface AddButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'type'> {
-  /** Por defecto "Add", en el idioma actual. */
+  /** By default "Add", in the current language. */
   children?: ReactNode;
 }
 
 /**
- * Botón verde de las filas de agregar. Dentro de un <AddRow> ejecuta el onAdd de la fila: no hay que pasarle onClick
- * (si se le pasa, se usa ese y el de la fila no se llama).
+ * Green button of the add rows. Inside an <AddRow> it runs the row's onAdd: there is no need to pass it onClick
+ * (if one is passed, that one is used and the row's is not called).
  */
 export function AddButton({ children, className, onClick, ...rest }: AddButtonProps) {
   const { t } = useI18n();
@@ -31,9 +31,9 @@ export function AddButton({ children, className, onClick, ...rest }: AddButtonPr
 }
 
 export interface DeleteButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'type' | 'children' | 'title' | 'onClick'> {
-  /** Nombre accesible, ya traducido; conviene decir qué se elimina (t('deleteNamed', { name })). Por defecto "Delete". */
+  /** Accessible name, already translated; it is best to say what is deleted (t('deleteNamed', { name })). By default "Delete". */
   label?: string;
-  /** Padding 4px 6px en vez de 4px 8px (tablas de envíos y aportes). */
+  /** Padding 4px 6px instead of 4px 8px (transfers and contributions tables). */
   compact?: boolean;
   /** What is deleted, for the question "Delete {kind}?". */
   kind: DeleteKind;
@@ -43,7 +43,7 @@ export interface DeleteButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonE
   onConfirm: () => void;
 }
 
-/** La × de la última columna. Pregunta antes de eliminar: solo "Delete" en el diálogo llama a onConfirm. */
+/** The × in the last column. It asks before deleting: only "Delete" in the dialog calls onConfirm. */
 export function DeleteButton({ label, compact, className, kind, item = '', onConfirm, ...rest }: DeleteButtonProps) {
   const { t } = useI18n();
   const ref = useRef<HTMLButtonElement>(null);

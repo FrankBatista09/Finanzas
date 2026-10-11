@@ -1,5 +1,5 @@
-// Aritmética de color para derivar la paleta: mezcla en sRGB, tono/saturación/luz y contraste WCAG 2.
-// Todas las funciones reciben y devuelven '#rrggbb' en minúsculas.
+// Color arithmetic to derive the palette: mixing in sRGB, hue/saturation/lightness and WCAG 2 contrast.
+// All functions take and return lowercase '#rrggbb'.
 
 type Rgb = readonly [r: number, g: number, b: number];
 
@@ -16,7 +16,7 @@ function hex([r, g, b]: Rgb): string {
   return `#${part(r)}${part(g)}${part(b)}`;
 }
 
-/** Luminancia relativa (0 = negro, 1 = blanco), como la define WCAG. */
+/** Relative luminance (0 = black, 1 = white), as WCAG defines it. */
 export function luminance(color: string): number {
   const [r, g, b] = rgb(color).map((v) => {
     const c = v / 255;
@@ -25,21 +25,21 @@ export function luminance(color: string): number {
   return 0.2126 * r + 0.7152 * g + 0.0722 * b;
 }
 
-/** Razón de contraste WCAG entre dos colores: de 1 (iguales) a 21 (negro sobre blanco). */
+/** WCAG contrast ratio between two colors: from 1 (identical) to 21 (black on white). */
 export function contrast(a: string, b: string): number {
   const la = luminance(a);
   const lb = luminance(b);
   return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
 }
 
-/** Mezcla lineal: t = 0 da `a`, t = 1 da `b`. */
+/** Linear mix: t = 0 gives `a`, t = 1 gives `b`. */
 export function mix(a: string, b: string, t: number): string {
   const [ar, ag, ab] = rgb(a);
   const [br, bg, bb] = rgb(b);
   return hex([ar + (br - ar) * t, ag + (bg - ag) * t, ab + (bb - ab) * t]);
 }
 
-/** Tono (0..360) y saturación (0..1) del color. */
+/** Hue (0..360) and saturation (0..1) of the color. */
 export function hueSat(color: string): { h: number; s: number } {
   const [r, g, b] = rgb(color).map((v) => v / 255) as [number, number, number];
   const max = Math.max(r, g, b);
@@ -52,7 +52,7 @@ export function hueSat(color: string): { h: number; s: number } {
   return { h: (h * 60 + 360) % 360, s };
 }
 
-/** Color a partir de tono (0..360), saturación y luz (0..1). */
+/** Color from hue (0..360), saturation and lightness (0..1). */
 export function hsl(h: number, s: number, l: number): string {
   const c = (1 - Math.abs(2 * l - 1)) * s;
   const x = c * (1 - Math.abs(((h / 60) % 2) - 1));

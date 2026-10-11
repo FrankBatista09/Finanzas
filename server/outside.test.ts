@@ -1,5 +1,5 @@
-// Gastos fuera de presupuesto por el repositorio y la API: migración 0008, validación, mover en un solo paso,
-// cuentas en uso, mes cerrado, borrado del mes, importación y el Excel.
+// Outside-budget expenses through the repository and the API: migration 0008, validation, moving in a single step,
+// accounts in use, closed month, month deletion, import and the Excel workbook.
 
 import { describe, expect, it } from 'vitest';
 import type { StateResponse } from '../shared/api';
@@ -26,8 +26,8 @@ async function seeded() {
 const body = { monthKey: OCT, date: '2026-10-07', name: 'Car repair', amount: 1000 };
 const balanceOf = (state: Awaited<ReturnType<typeof loadState>>, id: string) => balances(state, OCT).accounts.find((a) => a.account.id === id)!.balance;
 
-describe('migración 0008', () => {
-  it('solo añade la tabla y no cambia ninguna fila existente', () => {
+describe('migration 0008', () => {
+  it('only adds the table and changes no existing row', () => {
     const files = migrationFiles();
     const at = files.indexOf('0008_outside_expenses.sql');
     expect(at).toBeGreaterThan(-1);
@@ -46,7 +46,7 @@ describe('migración 0008', () => {
     expect(db.sqlite.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
   });
 
-  it('la tabla exige moneda DOP/USD/TRY, mes y cuenta del mismo usuario, y se va con su mes', () => {
+  it('the table requires a DOP/USD/TRY currency, a month and an account of the same user, and goes away with its month', () => {
     const { sqlite } = makeEnv();
     sqlite.sqlite.exec(`
       INSERT INTO months (user_id, key) VALUES ('frank', '2026-10');
@@ -57,10 +57,10 @@ describe('migración 0008', () => {
         `INSERT INTO outside_expenses (user_id, id, month_key, date, name, account_id, amount, currency) VALUES ('${user}', '${id}', '${month}', '2026-10-01', 'n', '${account}', 1, '${currency}')`,
       );
     expect(() => insert('frank', 'o1', '2026-10', 'dr', 'XAU')).toThrow();
-    expect(() => insert('frank', 'o1', '2026-10', 'x', 'DOP')).toThrow(); // la cuenta es de Eda
-    expect(() => insert('frank', 'o1', '2026-11', 'dr', 'DOP')).toThrow(); // el mes no existe
+    expect(() => insert('frank', 'o1', '2026-10', 'x', 'DOP')).toThrow(); // the account is Eda's
+    expect(() => insert('frank', 'o1', '2026-11', 'dr', 'DOP')).toThrow(); // the month does not exist
     insert('frank', 'o1', '2026-10', 'dr', 'USD');
-    expect(() => insert('frank', 'o1', '2026-10', 'dr', 'USD')).toThrow(); // clave (user_id, id)
+    expect(() => insert('frank', 'o1', '2026-10', 'dr', 'USD')).toThrow(); // key (user_id, id)
     expect(sqlite.sqlite.prepare("SELECT description, sort FROM outside_expenses WHERE id = 'o1'").get()).toEqual({ description: '', sort: 0 });
     sqlite.sqlite.exec("DELETE FROM months WHERE user_id = 'frank'");
     expect(count(sqlite, 'outside_expenses')).toBe(0);
@@ -68,7 +68,7 @@ describe('migración 0008', () => {
 });
 
 describe('/api/outside-expenses', () => {
-  it('crear, leer en el mes y en el estado, editar y borrar; la moneda por defecto es la de la cuenta', async () => {
+  it('create, read in the month and in the state, edit and delete; the default currency is that of the account', async () => {
     const { api, db } = await seeded();
     const before = balanceOf(await loadState(db, F), 'dr');
     const created = await api.post<OutsideExpense>('/api/outside-expenses', { ...body, name: ' Car repair ', desc: ' radiator ' });
@@ -83,7 +83,7 @@ describe('/api/outside-expenses', () => {
     expect(month.outside?.map((o) => o.id)).toEqual([id, 'o-usd']);
     const state = (await api.get<StateResponse>('/api/state')).body.state;
     expect(state.months[OCT]!.outside).toHaveLength(2);
-    // Un mes sin gastos fuera de presupuesto conserva su forma de siempre.
+    // A month with no outside-budget expenses keeps its usual shape.
     expect('outside' in state.months['2026-09']!).toBe(false);
     expect(balanceOf(state, 'dr')).toBeCloseTo(before - 1000, 8);
 
@@ -95,7 +95,7 @@ describe('/api/outside-expenses', () => {
     expect((await api.patch(`/api/outside-expenses/${id}`, { amount: 1 })).status).toBe(404);
   });
 
-  it('valida: campos, cuenta desconocida, cuenta de oro, mes cerrado o inexistente, id repetido', async () => {
+  it('validates: fields, unknown account, gold account, closed or missing month, repeated id', async () => {
     const { api, db } = await seeded();
     await api.post('/api/accounts', { id: 'gold', name: 'Gold', currency: 'XAU', opening: 100 });
     const snapshot = JSON.stringify(await loadState(db, F));
@@ -118,14 +118,14 @@ describe('/api/outside-expenses', () => {
     expect(ok.status).toBe(201);
     expect((await api.post('/api/outside-expenses', { ...body, id: 'dup' })).status).toBe(409);
 
-    // Al editar: la cuenta también se comprueba, y el mes cerrado no se toca.
+    // On edit: the account is checked too, and the closed month is not touched.
     expect((await api.patch('/api/outside-expenses/dup', { accountId: 'gold' })).error?.message).toBe(GOLD_REJECTED);
     expect((await api.patch('/api/outside-expenses/dup', { accountId: 'nope' })).status).toBe(400);
     expect((await api.patch('/api/outside-expenses/dup', { amount: -1 })).status).toBe(400);
     expect(JSON.stringify((await loadState(db, F)).months['2026-09'])).toBe(JSON.stringify(JSON.parse(snapshot).months['2026-09']));
   });
 
-  it('no se toca en un mes cerrado, y reabrirlo lo devuelve', async () => {
+  it('cannot be touched in a closed month, and reopening the month gives it back', async () => {
     const { api } = await seeded();
     await api.post('/api/outside-expenses', { ...body, id: 'o1' });
     await api.post(`/api/months/${OCT}/close`);
@@ -136,7 +136,7 @@ describe('/api/outside-expenses', () => {
     expect((await api.patch('/api/outside-expenses/o1', { amount: 5 })).status).toBe(200);
   });
 
-  it('una cuenta con un gasto fuera de presupuesto no se elimina; sin él, sí', async () => {
+  it('an account with an outside-budget expense cannot be deleted; without it, it can', async () => {
     const { api } = await seeded();
     await api.post('/api/accounts', { id: 'extra', name: 'Extra', currency: 'DOP' });
     await api.post('/api/outside-expenses', { ...body, id: 'o1', accountId: 'extra' });
@@ -146,7 +146,7 @@ describe('/api/outside-expenses', () => {
     expect((await api.del('/api/accounts/extra')).status).toBe(200);
   });
 
-  it('es de cada usuario: otro no lo ve ni lo toca', async () => {
+  it('belongs to each user: another user cannot see or touch it', async () => {
     const { api, eda } = await seeded();
     await api.post('/api/outside-expenses', { ...body, id: 'mine' });
     expect((await eda.patch('/api/outside-expenses/mine', { amount: 1 })).status).toBe(404);
@@ -155,7 +155,7 @@ describe('/api/outside-expenses', () => {
     expect((await eda.get<Month>(`/api/months/${OCT}`)).body.outside).toBeUndefined();
   });
 
-  it('borrar el mes se lleva sus gastos fuera de presupuesto; reemplazar el estado los conserva', async () => {
+  it('deleting the month takes its outside-budget expenses with it; replacing the state keeps them', async () => {
     const { api, db, sqlite } = await seeded();
     await api.post('/api/outside-expenses', { ...body, id: 'o1', desc: 'x' });
     const state = await loadState(db, F);
@@ -168,10 +168,10 @@ describe('/api/outside-expenses', () => {
   });
 });
 
-describe('mover entre el historial y "fuera de presupuesto"', () => {
+describe('moving between the history and "Outside budget"', () => {
   const tx = { monthKey: OCT, date: '2026-10-07', desc: 'Uber', place: 'Downtown', cat: 'Transport', method: 'Cash', amount: 850, cur: 'DOP', notes: 'to work' };
 
-  it('POST move-outside: una sola llamada deja la fila en el otro lado, con los mismos datos, y los saldos no cambian', async () => {
+  it('POST move-outside: a single call leaves the row on the other side, with the same data, and the balances do not change', async () => {
     const { api, db, sqlite } = await seeded();
     const created = (await api.post<Transaction>('/api/transactions', { ...tx, id: 'tx1' })).body;
     const [txBefore, calcBefore, balBefore] = [count(sqlite, 'transactions', F), monthCalc(await loadState(db, F), OCT), balanceOf(await loadState(db, F), 'dr')];
@@ -184,13 +184,13 @@ describe('mover entre el historial y "fuera de presupuesto"', () => {
     expect((await api.del('/api/transactions/tx1')).status).toBe(404);
 
     const after = await loadState(db, F);
-    // El saldo es el mismo (sigue restando); lo usado y el conteo bajan: ya no es parte del presupuesto.
+    // The balance is the same (it still subtracts); used and the count go down: it is no longer part of the budget.
     expect(balanceOf(after, 'dr')).toBeCloseTo(balBefore, 8);
     expect(monthCalc(after, OCT).txCount).toBe(calcBefore.txCount - 1);
     expect(monthCalc(after, OCT).used).toBeCloseTo(calcBefore.used - 850, 8);
   });
 
-  it('sin cuerpo genera el id; y un id repetido deshace todo: la transacción sigue ahí', async () => {
+  it('without a body it generates the id; and a repeated id undoes everything: the transaction is still there', async () => {
     const { api, db, sqlite } = await seeded();
     await api.post('/api/transactions', { ...tx, id: 'tx1' });
     await api.post('/api/outside-expenses', { ...body, id: 'taken' });
@@ -205,7 +205,7 @@ describe('mover entre el historial y "fuera de presupuesto"', () => {
     expect((await getMonth(db, F, OCT))!.tx.some((t) => t.id === 'tx1')).toBe(false);
   });
 
-  it('POST move-to-budget: categoría Other, método Transfer, sin lugar; la descripción pasa a las notas', async () => {
+  it('POST move-to-budget: category Other, method Transfer, no place; the description goes to the notes', async () => {
     const { api, db, sqlite } = await seeded();
     await api.post('/api/outside-expenses', { ...body, id: 'o1', desc: 'radiator', accountId: 'us', cur: 'DOP', amount: 5876 });
     const moved = await api.post<Transaction>('/api/outside-expenses/o1/move-to-budget', { id: 'tx-new' });
@@ -229,13 +229,13 @@ describe('mover entre el historial y "fuera de presupuesto"', () => {
     expect((await getMonth(db, F, OCT))!.tx.at(-1)!.id).toBe('tx-new');
     expect((await api.post('/api/outside-expenses/o1/move-to-budget')).status).toBe(404);
 
-    // Se puede elegir otra categoría y método.
+    // Another category and method can be chosen.
     await api.post('/api/outside-expenses', { ...body, id: 'o2' });
     const custom = await api.post<Transaction>('/api/outside-expenses/o2/move-to-budget', { cat: 'Food', method: 'Cash' });
     expect(custom.body).toMatchObject({ cat: 'Food', method: 'Cash' });
   });
 
-  it('en un mes cerrado, o con otra clave de usuario, no mueve nada', async () => {
+  it('in a closed month, or with another user key, it moves nothing', async () => {
     const { api, db, sqlite } = await seeded();
     await api.post('/api/transactions', { ...tx, id: 'tx1' });
     await api.post('/api/outside-expenses', { ...body, id: 'o1' });
@@ -249,8 +249,8 @@ describe('mover entre el historial y "fuera de presupuesto"', () => {
   });
 });
 
-describe('importar y exportar con gastos fuera de presupuesto', () => {
-  it('el libro trae los saldos ya sin ellos, y una importación no los borra', async () => {
+describe('import and export with outside-budget expenses', () => {
+  it('the workbook carries the balances already net of them, and an import does not delete them', async () => {
     const { db, api } = await seeded();
     const base = await loadState(db, F);
     await api.post('/api/outside-expenses', { ...body, id: 'o1', amount: 5000 });
@@ -258,13 +258,13 @@ describe('importar y exportar con gastos fuera de presupuesto', () => {
 
     const [book0, book1] = [buildExportData(base), buildExportData(state)];
     const oct = (d: ReturnType<typeof buildExportData>) => d.months.find((m) => m.key === OCT)!;
-    // Los saldos del libro siguen a la app (restan 5,000 DOP) y lo demás del mes es igual: ni usado ni filas.
+    // The workbook balances follow the app (they subtract 5,000 DOP) and the rest of the month is the same: neither used nor rows.
     expect(oct(book1).accounts.dop).toBeCloseTo(oct(book0).accounts.dop! - 5000, 6);
     expect(oct(book1).accounts.usd).toBe(oct(book0).accounts.usd);
     expect(oct(book1).tx).toEqual(oct(book0).tx);
     expect(oct(book1).budget).toBe(oct(book0).budget);
 
-    // Reimportar el mismo libro: el gasto sigue y el saldo de la app no cambia.
+    // Re-importing the same workbook: the expense stays and the app balance does not change.
     const payload = {
       months: book1.months.map((m) => ({ key: m.key, closed: state.months[m.key]!.closed, budget: m.budget ?? 0, incomeUSD: m.incomeUSD ?? 0, accounts: { usd: m.accounts.usd ?? 0, dop: m.accounts.dop ?? 0 }, fixed: m.fixed, transfers: m.transfers, tx: m.tx })),
       contribs: null,

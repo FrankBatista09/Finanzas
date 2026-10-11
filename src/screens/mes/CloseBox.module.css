@@ -1,4 +1,4 @@
-/* La caja va directamente sobre el fondo de la página, que el usuario puede cambiar: borde y texto usan los tokens --page-*. */
+/* The box sits directly on the page background, which the user can change: border and text use the --page-* tokens. */
 .box {
   display: flex;
   flex-wrap: wrap;
@@ -28,7 +28,7 @@
   cursor: pointer;
 }
 
-/* Al pasar el ratón toma el fondo de acento, y con él el color de texto que se lee encima. */
+/* On hover it takes the accent background, and with it the text color that reads on top of it. */
 .button:hover {
   background: var(--accent);
   color: var(--on-accent);

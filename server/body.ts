@@ -1,9 +1,9 @@
-// Lectura acotada del cuerpo de una petición. La comparten la API (server/app.ts) y el servidor MCP
-// (server/mcp.ts); cada uno decide cómo responde cuando el cuerpo se pasa del tope.
+// Bounded read of a request body. Shared by the API (server/app.ts) and the MCP server
+// (server/mcp.ts); each one decides how to respond when the body goes over the limit.
 
 /**
- * Lee el cuerpo sin pasar de `maxBytes`: corta en cuanto se excede, sin fiarse solo de Content-Length.
- * Devuelve null si es demasiado grande.
+ * Reads the body without going past `maxBytes`: stops as soon as it is exceeded, without relying on Content-Length alone.
+ * Returns null if it is too large.
  */
 export async function readLimitedBody(request: Request, maxBytes: number): Promise<Uint8Array | null> {
   if (Number(request.headers.get('Content-Length')) > maxBytes) return null;

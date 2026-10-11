@@ -1,6 +1,6 @@
-// Textos del libro en turco. Los términos clave (Ay, Birikimler, Bütçe, Kur, Katkılar, Hedef…) son los de la
-// interfaz. Los nombres de tabla van sin letras turcas (Islem, Katkilar); lo que se lee en pantalla, con ellas.
-// En turco el signo de porcentaje va delante del número (%20), por eso algunas frases empiezan con él.
+// Workbook texts in Turkish. The key terms (Ay, Birikimler, Bütçe, Kur, Katkılar, Hedef…) are those of the
+// UI. Table names go without Turkish letters (Islem, Katkilar); what is read on screen has them.
+// In Turkish the percent sign goes before the number (%20), which is why some phrases start with it.
 
 import { APP_NAME } from '../constants';
 import { CAT_NAMES, FIXED_CATEGORY_NAMES, MONTH_NAMES } from '../i18n';
@@ -9,11 +9,11 @@ import type { ExcelLocale } from './locale';
 export const EXCEL_TR: ExcelLocale = {
   lang: 'tr',
   months: MONTH_NAMES.tr,
-  // La lista del libro son las diez categorías del diseño original; 'Other' se escribe en las filas pero no entra
-  // en la lista de la hoja Config (cambiaría el libro de referencia).
+  // The workbook's list is the ten categories of the original design; 'Other' is written in the rows but does not
+  // go into the Config sheet's list (it would change the reference workbook).
   cats: CAT_NAMES.tr.slice(0, 10),
-  // La lista del libro son los tres métodos del diseño original (no cambia el libro de referencia); las filas se
-  // escriben con el método de hoy ('Banka kartı'…) y al importar 'Kart' vale por la tarjeta de débito.
+  // The workbook's list is the three methods of the original design (the reference workbook does not change); the
+  // rows are written with today's method ('Banka kartı'…) and on import 'Kart' stands for the debit card.
   methods: ['Kart', 'Havale', 'Banka uygulaması'],
   yes: 'Evet',
   no: 'Hayır',

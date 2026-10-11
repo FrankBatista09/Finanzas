@@ -17,9 +17,9 @@ interface Props {
 }
 
 /**
- * The breakdown behind a credit card's row in "Monthly expenses", for the month being viewed: previous balance, other
- * charges (editable while the month is open), everything charged this month item by item, what was paid and what is left.
- * With a limit and a cutoff it also shows the utilization and the same 10 % hint as the "Credit cards" card.
+ * The breakdown behind a credit card's row in "Fixed monthly expenses", for the month being viewed: previous balance,
+ * other charges (editable while the month is open), everything charged this month item by item, what was paid and what
+ * is left. With a limit and a cutoff it also shows the utilization and the same 10 % hint as the "Credit cards" card.
  */
 export function CardDetailsDialog({ cardId, onClose, onPay }: Props) {
   const { state, monthKey, accounts, readOnly, latestMonth, today, actions } = useFinanzas();

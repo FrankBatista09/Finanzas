@@ -1,27 +1,27 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ChangeEvent } from 'react';
 
-/** Cuándo avisa la celda del nuevo valor: en cada pulsación, o al salir de ella (y con Enter). */
+/** When the cell reports the new value: on every keystroke, or on leaving it (and on Enter). */
 export type CommitOn = 'change' | 'blur';
 
 interface DraftOptions<T> {
   value: T;
   format: (value: T) => string;
-  /** undefined = el texto todavía no es un valor válido: no se confirma. Recibe el input por si hay que mirar su validez. */
+  /** undefined = the text is not a valid value yet: not committed. Gets the input in case its validity must be checked. */
   parse: (text: string, input: HTMLInputElement | null) => T | undefined;
   onCommit?: (value: T) => void;
   commitOn?: CommitOn;
 }
 
 /**
- * Borrador local de una celda. Mientras tiene el foco, el input muestra lo que el usuario escribe ("12.", vacío…)
- * y no lo que hay en la caché, que solo guarda el valor ya interpretado (12, 0). Al salir vuelve a mostrar la caché.
- * Sin esto, cada actualización optimista reescribiría el input a media edición.
+ * Local draft of a cell. While it has the focus, the input shows what the user types ("12.", empty…)
+ * and not what is in the cache, which only holds the already parsed value (12, 0). On leaving, it shows the cache again.
+ * Without this, every optimistic update would rewrite the input mid-edit.
  */
 export function useDraft<T>({ value, format, parse, onCommit, commitOn = 'change' }: DraftOptions<T>) {
   const ref = useRef<HTMLInputElement>(null);
   const [draft, setDraft] = useState<string | null>(null);
-  /** Último valor confirmado durante esta edición, para no avisar dos veces de lo mismo ("12" y "12."). */
+  /** Last value committed during this edit, so the same thing is not reported twice ("12" and "12."). */
   const last = useRef(value);
 
   const commit = (text: string) => {
@@ -37,8 +37,8 @@ export function useDraft<T>({ value, format, parse, onCommit, commitOn = 'change
     setDraft(null);
   };
 
-  // Si la fila cambia de sitio en la tabla, el navegador le quita el foco al input sin lanzar blur.
-  // El borrador no debe sobrevivir a eso: se quedaría tapando el valor real.
+  // If the row moves within the table, the browser takes the focus away from the input without firing blur.
+  // The draft must not survive that: it would stay there, covering the real value.
   useEffect(() => {
     if (draft !== null && document.activeElement !== ref.current) finish();
   });
@@ -53,7 +53,7 @@ export function useDraft<T>({ value, format, parse, onCommit, commitOn = 'change
       if (commitOn === 'change') commit(text);
     },
     onBlur: finish,
-    /** Confirma lo escrito sin salir de la celda (Enter). */
+    /** Commits what was typed without leaving the cell (Enter). */
     commitNow: () => {
       if (draft !== null) commit(draft);
     },

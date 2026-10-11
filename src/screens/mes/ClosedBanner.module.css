@@ -1,4 +1,4 @@
-/* Banner de mes cerrado: la misma barra oscura de la cabecera. */
+/* Closed-month banner: the same dark bar as the top bar. */
 .banner {
   display: flex;
   flex-wrap: wrap;
@@ -41,7 +41,7 @@
   color: var(--bar-text);
 }
 
-/* "Vs. presupuesto". Van después de .value para ganarle el color. */
+/* "Vs. budget". They come after .value to override its color. */
 .valueOver {
   color: var(--banner-over);
 }

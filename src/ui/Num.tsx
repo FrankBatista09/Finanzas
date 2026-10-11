@@ -4,12 +4,12 @@ import type { Tone } from './cx';
 import styles from './Num.module.css';
 
 export interface NumProps extends HTMLAttributes<HTMLSpanElement> {
-  /** 'ink' fuerza la tinta dentro de un texto atenuado (las cifras de la meta de las tarjetas). Sin tono, hereda. */
+  /** 'ink' forces the ink color inside muted text (the figures in the cards' meta). Without a tone, it inherits. */
   tone?: Tone | 'ink';
   weight?: 500 | 600;
 }
 
-/** Cifra: JetBrains Mono con tabular-nums. El tamaño lo hereda de donde esté. El texto va ya formateado (f2/f0/fRate). */
+/** Figure: JetBrains Mono with tabular-nums. It inherits its size from wherever it is. The text comes preformatted (f2/f0/fRate). */
 export function Num({ tone, weight, className, children, ...rest }: NumProps) {
   return (
     <span {...rest} className={cx(styles.num, tone && styles[tone], weight && styles[`w${weight}`], className)}>

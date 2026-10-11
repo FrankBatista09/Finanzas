@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Notice } from './context';
 
-/** Tiempo que un aviso permanece en pantalla. */
+/** How long a notice stays on screen. */
 export const NOTICE_MS = 7000;
 
-/** Avisos no bloqueantes que se quitan solos. Repetir un texto que ya está visible solo le renueva el tiempo. */
+/** Non-blocking notices that go away on their own. Repeating a text that is already visible only renews its time. */
 export function useNotices(): { notices: Notice[]; notify: (text: string) => void; dismiss: (id: number) => void } {
   const [notices, setNotices] = useState<Notice[]>([]);
   const timers = useRef(new Map<number, ReturnType<typeof setTimeout>>());

@@ -7,22 +7,22 @@ import styles from './SummaryPanel.module.css';
 const C = DONUT.size / 2;
 
 export interface DonutRing {
-  /** Color del trazo: una variable del tema (`var(--accent)`) o un color ya resuelto. */
+  /** Stroke color: a theme variable (`var(--accent)`) or an already resolved color. */
   color: string;
-  /** Sin segmento, el anillo entero: el fondo de la dona. */
+  /** With no segment, the whole ring: the donut's background. */
   segment?: DonutSegment;
 }
 
 export interface DonutProps {
-  /** Los anillos en el orden en que se pintan: cada uno queda encima de los anteriores. */
+  /** The rings in the order they are painted: each one sits on top of the previous ones. */
   rings: readonly DonutRing[];
-  /** Lo que dice la dona, para quien no la ve. */
+  /** What the donut says, for those who cannot see it. */
   label: string;
-  /** El centro: <DonutCenter>. */
+  /** The center: <DonutCenter>. */
   children: ReactNode;
 }
 
-/** Dona de 168px con su texto en el centro. Los segmentos salen de shared/calc.ts (donut, ring). */
+/** 168px donut with its text in the center. The segments come from shared/calc.ts (donut, ring). */
 export function Donut({ rings, label, children }: DonutProps) {
   return (
     <div className={styles.donut}>
@@ -48,11 +48,11 @@ export function Donut({ rings, label, children }: DonutProps) {
 
 export interface DonutCenterProps {
   label: string;
-  /** La cifra grande, ya formateada. */
+  /** The big figure, already formatted. */
   figure: string;
-  /** La línea pequeña de debajo. Va en una sola cadena, como en el prototipo: partirla en varios nodos de texto mueve las letras medio píxel. */
+  /** The small line below. It goes in a single string, as in the prototype: splitting it into several text nodes shifts the letters half a pixel. */
   note: string;
-  /** La cifra en rojo (pasado de presupuesto, dinero total en negativo). */
+  /** The figure in red (over budget, negative total money). */
   alert?: boolean;
 }
 
@@ -70,7 +70,7 @@ export interface LegendRowProps {
   color: string;
   name: string;
   value: string;
-  /** Muestra con borde: el color del fondo de la dona ("Free", una cuenta sin segmento). */
+  /** Swatch with a border: the color of the donut's background ("Free", an account with no segment). */
   outlined?: boolean;
 }
 

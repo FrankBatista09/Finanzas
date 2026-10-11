@@ -1,5 +1,5 @@
-// Campos para formularios dentro de un <Dialog> (el de metas) y del panel de ajustes. Las tablas no usan esto: sus
-// editores son las celdas.
+// Fields for forms inside a <Dialog> (the goals one) and in the settings panel. Tables don't use this: their
+// editors are the cells.
 //
 //   const nameId = useId();
 //   <DialogFields>
@@ -18,15 +18,15 @@ import { cx } from './cx';
 import styles from './form.module.css';
 
 export interface FieldProps {
-  /** Texto de la etiqueta, ya traducido. */
+  /** Label text, already translated. */
   label: ReactNode;
-  /** id del control al que pertenece la etiqueta (useId()). */
+  /** id of the control the label belongs to (useId()). */
   htmlFor?: string;
   className?: string;
   children: ReactNode;
 }
 
-/** Etiqueta encima de su control. */
+/** Label above its control. */
 export function Field({ label, htmlFor, className, children }: FieldProps) {
   return (
     <div className={cx(styles.field, className)}>
@@ -39,25 +39,25 @@ export function Field({ label, htmlFor, className, children }: FieldProps) {
 }
 
 export interface InputProps extends ComponentProps<'input'> {
-  /** Cifra: alineada a la derecha y en JetBrains Mono. */
+  /** Figure: right-aligned and in JetBrains Mono. */
   mono?: boolean;
 }
 
-/** <input> con el estilo de los formularios. Es un input corriente: value y onChange los lleva quien lo usa. */
+/** <input> with the form styling. It is a plain input: value and onChange are handled by whoever uses it. */
 export function Input({ mono, className, ...rest }: InputProps) {
   return <input autoComplete="off" {...rest} className={cx(styles.control, mono && styles.mono, className)} />;
 }
 
 export interface SelectProps<T extends string = string> extends Omit<ComponentProps<'select'>, 'value' | 'onChange' | 'children'> {
   value: T;
-  /** Como en CellSelect: el valor tal cual o { value, label } cuando lo que se ve no es lo que se guarda. */
+  /** As in CellSelect: the value as is, or { value, label } when what is shown is not what is stored. */
   options: readonly SelectOption<T>[];
   onChange: (value: T) => void;
-  /** JetBrains Mono (códigos de moneda). */
+  /** JetBrains Mono (currency codes). */
   mono?: boolean;
 }
 
-/** <select> con el estilo de los formularios. Un valor que no esté entre las opciones se conserva como una más. */
+/** <select> with the form styling. A value that is not among the options is kept as one more option. */
 export function Select<T extends string = string>({ value, options, onChange, mono, className, ...rest }: SelectProps<T>) {
   const items = options.map((o) => (typeof o === 'string' ? { value: o, label: o as string } : o));
   if (!items.some((o) => o.value === value)) items.unshift({ value, label: value });
@@ -77,11 +77,11 @@ export interface CheckFieldProps {
   onChange: (checked: boolean) => void;
   disabled?: boolean;
   className?: string;
-  /** El texto de la casilla, ya traducido. */
+  /** The checkbox text, already translated. */
   children: ReactNode;
 }
 
-/** Casilla con su texto al lado. */
+/** Checkbox with its text beside it. */
 export function CheckField({ checked, onChange, disabled, className, children }: CheckFieldProps) {
   return (
     <label className={cx(styles.check, className)}>
@@ -94,11 +94,11 @@ export function CheckField({ checked, onChange, disabled, className, children }:
 export interface MonthPickerProps {
   value: MonthKey;
   onChange: (value: MonthKey) => void;
-  /** Nombre accesible del par, ya traducido ("Start month"); cada lista le añade "Month" o "Year". */
+  /** Accessible name of the pair, already translated ("Start month"); each select appends "Month" or "Year" to it. */
   label: string;
-  /** id de la lista de meses, para el htmlFor de su <Field>. */
+  /** id of the month select, for the htmlFor of its <Field>. */
   id?: string;
-  /** Primer y último año de la lista. Por defecto, de 5 años atrás a 20 adelante; el año del valor está siempre. */
+  /** First and last year of the select. By default, from 5 years back to 20 ahead; the value's year is always there. */
   fromYear?: number;
   toYear?: number;
   disabled?: boolean;
@@ -106,8 +106,8 @@ export interface MonthPickerProps {
 }
 
 /**
- * Selector de mes y año: dos listas, con los nombres de los meses en el idioma actual.
- * (<input type="month"> no existe en todos los navegadores: Safari y Firefox de escritorio lo dejan en un campo de texto.)
+ * Month and year picker: two selects, with the month names in the current language.
+ * (<input type="month"> does not exist in every browser: desktop Safari and Firefox leave it as a text field.)
  */
 export function MonthPicker({ value, onChange, label, id, fromYear, toYear, disabled, className }: MonthPickerProps) {
   const { t, monthNames } = useI18n();

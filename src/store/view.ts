@@ -1,6 +1,6 @@
-// Lo que las pantallas leen ya calculado. Se arma una vez por cambio de estado, siempre con shared/calc.ts: aquí
-// no hay cuentas propias, solo se junta lo que cada pantalla pediría por su lado (saldos, tasas, conversiones).
-// Funciones puras: sirven igual en el proveedor que en una prueba o en el modelo de una pantalla.
+// What the screens read already computed. It is built once per state change, always with shared/calc.ts: there is
+// no math of its own here; it only gathers what each screen would ask for separately (balances, rates, conversions).
+// Pure functions: they work the same in the provider as in a test or in a screen's model.
 
 import { balances, convert, defaultAccount, leftoverFor, moneyAccounts, monthCalc, outsideOf, rateFor, visibleAccounts } from '../../shared/calc';
 import type { RateInfo } from '../../shared/calc';
@@ -10,17 +10,17 @@ import type { Account, AppState, AppUser, Currency, ISODate, MonthKey } from '..
 import type { Actions, Finanzas } from './context';
 import { latestKey } from './reducers';
 
-/** Un importe en las dos monedas del usuario. */
+/** An amount in the user's two currencies. */
 export interface Money {
-  /** En la moneda principal. */
+  /** In the main currency. */
   main: number;
-  /** En la segunda moneda; null si el usuario no tiene segunda moneda. */
+  /** In the second currency; null if the user has no second currency. */
   second: number | null;
 }
 
 /**
- * `amount` de `cur` en la moneda principal y en la segunda, con las tasas del mes `key`: la última del mes o, con
- * `date` (una fila con fecha propia), la vigente ese día.
+ * `amount` of `cur` in the main currency and in the second one, with the rates of month `key`: the last of the month
+ * or, with `date` (a row with its own date), the one in effect that day.
  */
 export function inBoth(state: AppState, key: MonthKey, amount: number, cur: Currency, date?: ISODate): Money {
   return {
@@ -29,17 +29,17 @@ export function inBoth(state: AppState, key: MonthKey, amount: number, cur: Curr
   };
 }
 
-/** La tasa de un par en un mes, ya resuelta: 1 `from` = `rate` `to`, con su origen (RateInfo.source). */
+/** The rate of a pair in a month, already resolved: 1 `from` = `rate` `to`, with its source (RateInfo.source). */
 export interface PairRate extends RateInfo {
   from: Currency;
   to: Currency;
 }
 
 /**
- * Las tasas del mes, una por cada par de monedas: la vigente al final del mes, con su origen. El par de la barra
- * superior (segunda → principal) va primero. Sentido de cada fila: el que el usuario escribió si la tasa es una
- * escrita en este mes (source === 'month'); si no, el que da un número >= 1 ("1 USD = 58.76 DOP" y no
- * "1 DOP = 0.017 USD"). Las demás tasas escritas del par en el mes (una por fecha) salen de Month.rates.
+ * The month rates, one per currency pair: the one in effect at the end of the month, with its source. The top bar
+ * pair (second → main) goes first. Direction of each row: the one the user typed if the rate is one typed in this
+ * month (source === 'month'); otherwise, the one that gives a number >= 1 ("1 USD = 58.76 DOP" and not
+ * "1 DOP = 0.017 USD"). The other typed rates of the pair in the month (one per date) come from Month.rates.
  */
 export function pairRates(state: AppState, key: MonthKey): PairRate[] {
   const typed = state.months[key]?.rates ?? [];
@@ -49,7 +49,7 @@ export function pairRates(state: AppState, key: MonthKey): PairRate[] {
 
   return pairs.map(([a, b]) => {
     const forward = rateFor(state, key, a, b);
-    // La escrita que está vigente: la de la fecha que dice rateFor (con la misma fecha vale la última).
+    // The typed one that is in effect: the one with the date rateFor reports (with the same date, the last one wins).
     const written =
       forward.source === 'month'
         ? typed.findLast((r) => r.rate > 0 && r.date === forward.date && ((r.from === a && r.to === b) || (r.from === b && r.to === a)))
@@ -59,7 +59,7 @@ export function pairRates(state: AppState, key: MonthKey): PairRate[] {
   });
 }
 
-/** Ids de las cuentas que alguna fila nombra (ingreso, envío, gasto, pago de tarjeta, aporte, presupuesto). */
+/** Ids of the accounts that some row names (income, transfer, expense, credit card payment, contribution, budget). */
 function namedAccountIds(state: AppState): Set<string> {
   const named = new Set<string>();
   for (const i of state.incomes) named.add(i.accountId);
@@ -76,9 +76,9 @@ function namedAccountIds(state: AppState): Set<string> {
 }
 
 /**
- * Las cuentas de dinero visibles que tienen algo: saldo distinto de cero en `key` o alguna fila que las nombra
- * (ingreso, envío, gasto, pago de tarjeta, aporte, presupuesto). Una cuenta vacía y sin movimientos no hace que
- * su moneda necesite una tasa: todavía no hay dinero en ella.
+ * The visible money accounts that hold something: a nonzero balance in `key` or some row that names them
+ * (income, transfer, expense, credit card payment, contribution, budget). An empty account with no movements does
+ * not make its currency need a rate: there is no money in it yet.
  */
 export function accountsInUse<T extends { id: string }>(state: AppState, key: MonthKey, visible: readonly T[]): T[] {
   const named = namedAccountIds(state);
@@ -87,8 +87,8 @@ export function accountsInUse<T extends { id: string }>(state: AppState, key: Mo
 }
 
 /**
- * Si el usuario tiene algo que convertir: dinero en alguna cuenta (saldo inicial o movimientos) o cualquier fila
- * (también un aporte a una meta sin cuenta). Sin esto, ni la segunda moneda pide una tasa: no hay importes.
+ * Whether the user has anything to convert: money in some account (opening balance or movements) or any row (also a
+ * goal contribution with no account). Without this, not even the second currency asks for a rate: there are no amounts.
  */
 export function hasActivity(state: AppState, key: MonthKey): boolean {
   if (state.contribs.length > 0 || namedAccountIds(state).size > 0) return true;
@@ -97,8 +97,8 @@ export function hasActivity(state: AppState, key: MonthKey): boolean {
 }
 
 /**
- * Las monedas que el usuario usa de verdad en este mes: la principal, la segunda (si hay), las de sus cuentas
- * visibles y las de los gastos del mes (un gasto en liras sin cuenta en liras también se convierte). En el orden de siempre.
+ * The currencies the user really uses in this month: the main one, the second one (if any), those of their visible
+ * accounts and those of the month's expenses (an expense in lira with no lira account is converted too). In the usual order.
  */
 export function usedCurrencies(
   main: Currency,
@@ -111,8 +111,8 @@ export function usedCurrencies(
 }
 
 /**
- * Las monedas que piden tasa en el mes `key` de ese estado. Sin actividad no hay nada que convertir: solo la
- * principal, y ni la segunda moneda hace falta (una tasa escrita se ve igual: shownRates).
+ * The currencies that ask for a rate in month `key` of that state. With no activity there is nothing to convert: only
+ * the main one, and not even the second currency is needed (a typed rate is shown anyway: shownRates).
  */
 export function currenciesInUse(state: AppState, key: MonthKey): Currency[] {
   const month = state.months[key];
@@ -121,18 +121,18 @@ export function currenciesInUse(state: AppState, key: MonthKey): Currency[] {
 }
 
 /**
- * Las tasas que hacen falta de verdad: con k monedas en uso, k-1 pares, cada moneda contra la principal. El par
- * que queda entre dos monedas que no son la principal sale cruzando por ella (calc.rateFor), no se pide.
- * Además, cualquier tasa escrita para este mes (si está escrita se tiene que poder ver, corregir y quitar).
- * Conserva el orden de `rates`.
+ * The rates that are really needed: with k currencies in use, k-1 pairs, each currency against the main one. The pair
+ * left between two currencies that are not the main one comes from crossing through it (calc.rateFor); it is not asked for.
+ * Plus any rate typed for this month (if it is typed, it must be possible to see, correct and remove it).
+ * Keeps the order of `rates`.
  */
 export function shownRates(rates: readonly PairRate[], used: readonly Currency[], main: Currency): PairRate[] {
   return rates.filter((r) => r.source === 'month' || ((r.from === main || r.to === main) && used.includes(r.from) && used.includes(r.to)));
 }
 
 /**
- * La tasa que enseña la barra superior: la de la segunda moneda contra la principal y, sin segunda, la primera tasa
- * que hace falta (null si ninguna: todo el dinero está en una moneda y no hay nada que enseñar).
+ * The rate the top bar shows: the second currency's against the main one and, with no second, the first rate
+ * that is needed (null if none: all the money is in one currency and there is nothing to show).
  */
 export function barRate(
   rates: readonly PairRate[],
@@ -147,9 +147,9 @@ export function barRate(
 }
 
 export interface AccountOption {
-  /** Id de la cuenta. */
+  /** Id of the account. */
   value: string;
-  /** Su nombre (lo escribe el usuario: no se traduce). */
+  /** Its name (the user types it: it is not translated). */
   label: string;
 }
 
@@ -163,15 +163,15 @@ function optionsOf(state: AppState, offered: readonly Account[], include: readon
 }
 
 /**
- * Opciones de un selector de cuenta para lo que es dinero (un gasto, un envío): las visibles que no son de oro,
- * en su orden, y detrás las de `include` que no estén entre ellas (la cuenta de una fila que después se ocultó
- * tiene que seguir viéndose con su nombre, no cambiarse sola por otra).
+ * Options of an account select for what is money (an expense, a transfer): the visible ones that are not gold accounts,
+ * in their order, followed by those in `include` that are not among them (a row's account that was later hidden must
+ * still show with its name, not switch to another one by itself).
  */
 export function accountOptions(state: AppState, ...include: (string | null | undefined)[]): AccountOption[] {
   return optionsOf(state, moneyAccounts(state), include);
 }
 
-/** Como accountOptions, con las cuentas de oro: un ingreso sí puede entrar a una (en gramos). */
+/** Like accountOptions, with the gold accounts: an income can indeed go into one (in grams). */
 export function incomeAccountOptions(state: AppState, ...include: (string | null | undefined)[]): AccountOption[] {
   return optionsOf(state, visibleAccounts(state), include);
 }
@@ -185,8 +185,8 @@ export interface FinanzasInput {
 }
 
 /**
- * El valor de useFinanzas() para ese usuario, ese estado y ese mes; null si el mes no existe. Es lo que arma
- * FinanzasProvider en cada cambio; las pruebas lo usan para montar un componente con un estado fijo.
+ * The value of useFinanzas() for that user, that state and that month; null if the month does not exist. It is what
+ * FinanzasProvider builds on every change; the tests use it to mount a component with a fixed state.
  */
 export function buildFinanzas({ user, state, monthKey, today, actions }: FinanzasInput): Finanzas | null {
   const month = state.months[monthKey];
@@ -201,7 +201,7 @@ export function buildFinanzas({ user, state, monthKey, today, actions }: Finanza
     month,
     calc,
     rate: calc.rate,
-    // Sin actividad no hay nada que convertir: la tasa de la segunda moneda tampoco se muestra (una escrita sí).
+    // With no activity there is nothing to convert: the second currency's rate is not shown either (a typed one is).
     barRate: hasActivity(state, monthKey)
       ? barRate(rates, currenciesInUse(state, monthKey), calc.main, calc.second, calc.rate)
       : barRate(rates, [calc.main], calc.main, null, null),

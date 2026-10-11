@@ -10,31 +10,31 @@ import { wholeAmount } from './model';
 import { AHORROS } from './strings';
 
 export interface GoalDialogProps {
-  /** La meta que se edita; null para crear una. */
+  /** The goal being edited; null to create one. */
   goal: Goal | null;
-  /** Se llama al guardar, al eliminar y al cancelar (Escape, clic fuera o el botón). */
+  /** Called on save, on delete and on cancel (Escape, a click outside or the button). */
   onClose: () => void;
 }
 
 /**
- * Diálogo "New goal" / "Edit goal". El formulario vive aquí hasta que se guarda; qué campo arrastra a cuál y qué
- * se puede guardar lo decide ./goalForm. Enter guarda y Escape cancela (lo pone <Dialog>). Una meta nueva nace en
- * la moneda principal del usuario, que es también la de su línea "≈" mientras no se elija otra; los rótulos de
- * los montos llevan el código de la moneda elegida.
+ * "New goal" / "Edit goal" dialog. The form lives here until it is saved; which field drags which along and what
+ * can be saved is decided by ./goalForm. Enter saves and Escape cancels (<Dialog> provides that). A new goal starts in
+ * the user's main currency, which is also the one of its "≈" line as long as no other is chosen; the labels of
+ * the amounts carry the code of the chosen currency.
  */
 export function GoalDialog({ goal, onClose }: GoalDialogProps) {
   const { state, today, main, actions } = useFinanzas();
   const { t } = useI18n();
   const s = useStrings(AHORROS);
   const [form, setForm] = useState(() => (goal ? goalToForm(goal, today, main) : newGoalForm(today, main)));
-  // Los avisos de "falta esto" esperan al primer intento de guardar: un diálogo recién abierto no nace con errores.
+  // The "this is missing" warnings wait for the first attempt to save: a freshly opened dialog does not start with errors.
   const [tried, setTried] = useState(false);
   const id = useId();
   const nameRef = useRef<HTMLInputElement>(null);
   const targetRef = useRef<HTMLInputElement>(null);
 
   const errors = goalFormErrors(form, state.goals, goal?.id ?? null);
-  // Un nombre repetido o unos meses al revés se avisan en cuanto ocurren: son algo que el usuario acaba de escribir.
+  // A repeated name or months in the wrong order are flagged as soon as they happen: they are something the user has just typed.
   const nameError = errors.includes('nameTaken') ? s('errorNameTaken') : tried && errors.includes('name') ? s('errorName') : null;
   const planError = errors.includes('months') ? s('errorMonths') : tried && errors.includes('amount') ? s('errorAmount') : null;
   const summary = planSummary(form);
@@ -66,7 +66,7 @@ export function GoalDialog({ goal, onClose }: GoalDialogProps) {
         <>
           {goal && (
             <div className={styles.remove}>
-              {/* Una meta con aportes no se puede eliminar (el servidor respondería 409): el botón lo dice en vez de fallar. */}
+              {/* A goal with contributions cannot be deleted (the server would answer 409): the button says so instead of failing. */}
               <DialogButton variant="danger" onClick={() => confirmRemove.request(goal.name)} disabled={contribCount > 0} aria-describedby={contribCount > 0 ? `${id}-blocked` : undefined}>
                 {s('deleteGoal')}
               </DialogButton>
@@ -78,7 +78,7 @@ export function GoalDialog({ goal, onClose }: GoalDialogProps) {
             </div>
           )}
           {confirmRemove.dialog('kindGoal')}
-          {/* Juntos, para que en una pantalla estrecha bajen los dos a la vez y no quede "Save" solo en otra línea. */}
+          {/* Together, so that on a narrow screen both wrap at once and "Save" is not left alone on another line. */}
           <div className={styles.actions}>
             <DialogButton variant="quiet" onClick={onClose}>
               {t('cancel')}
@@ -108,7 +108,7 @@ export function GoalDialog({ goal, onClose }: GoalDialogProps) {
           )}
         </Field>
 
-        {/* La moneda de la meta y, al lado, en cuál se enseña además lo ahorrado (la línea "≈" de la tarjeta). */}
+        {/* The goal's currency and, next to it, the one in which what is saved is also shown (the card's "≈" line). */}
         <div className={styles.pair}>
           <Field label={t('currency')} htmlFor={`${id}-cur`}>
             <Select id={`${id}-cur`} value={form.cur} options={CURRENCIES} onChange={(cur) => setForm((f) => setCur(f, cur))} mono />
@@ -168,7 +168,7 @@ export function GoalDialog({ goal, onClose }: GoalDialogProps) {
                 aria-describedby={`${id}-plan`}
               />
             </Field>
-            {/* Una sola línea para el plan: su resumen o, si no se puede guardar, por qué. */}
+            {/* A single line for the plan: its summary or, if it cannot be saved, why. */}
             <div id={`${id}-plan`} className={planError ? styles.error : styles.summary} role="status">
               {planError ?? (summary ? s('planSummary', { count: summary.months, amount: wholeAmount(summary.monthly), currency: summary.cur }) : '')}
             </div>

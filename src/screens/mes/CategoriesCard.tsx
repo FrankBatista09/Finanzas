@@ -6,7 +6,7 @@ import styles from './CategoriesCard.module.css';
 import { barWidth } from './rows';
 import { MES } from './strings';
 
-/** "Por categoría": lo gastado en el mes, en la moneda principal, de mayor a menor. Los gastos fijos pagados van primero, como una categoría más. */
+/** "By category": what was spent in the month, in the main currency, from largest to smallest. Paid fixed expenses go first, as one more category. */
 export function CategoriesCard() {
   const { calc, main } = useFinanzas();
   const { catLabel, fixedCategory } = useI18n();
@@ -16,11 +16,11 @@ export function CategoriesCard() {
       <CardHeader inset title={s('byCategory')} meta={main} />
       <div className={styles.list}>
         {calc.categories.map((c) => (
-          // La clave distingue la fila "Gastos fijos" de una categoría importada que se llame igual.
+          // The key tells the "Fixed expenses" row apart from an imported category with the same name.
           <div key={c.fixed ? 'fixed' : `cat:${c.name}`} className={styles.row}>
-            {/* Los nombres llegan canónicos (en inglés) y aquí se traducen; una categoría de fuera de la lista sale tal cual. */}
+            {/* The names arrive canonical (in English) and are translated here; a category from outside the list comes out as is. */}
             <span className={styles.name}>{c.fixed ? fixedCategory : catLabel(c.name)}</span>
-            {/* La barra repite la cifra de al lado: no aporta nada a un lector de pantalla. */}
+            {/* The bar repeats the figure next to it: it adds nothing for a screen reader. */}
             <span className={styles.track} aria-hidden="true">
               <span className={cx(styles.bar, c.fixed && styles.barFixed)} style={{ width: barWidth(c.value, calc.catMax) }} />
             </span>

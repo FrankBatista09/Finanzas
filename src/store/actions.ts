@@ -48,17 +48,17 @@ import {
 import type { FinanzasStore } from './store';
 import { newId } from './util';
 
-/** Los flujos que no son una simple escritura: los implementa FinanzasProvider (necesitan navegación y avisos). */
+/** The flows that are not a plain write: FinanzasProvider implements them (they need navigation and notices). */
 export type Flows = Pick<Actions, 'requestCloseMonth' | 'requestDeleteMonth' | 'importExcel' | 'downloadExcel' | 'devSeed' | 'devReset'>;
 
 const sameTheme = (a: ThemeColors | null, b: ThemeColors | null) =>
   a === b || (a !== null && b !== null && a.accent === b.accent && a.header === b.header && a.background === b.background);
 
 /**
- * La API de acciones de las pantallas, atada a la capa de datos de un usuario y al mes seleccionado. Todo se
- * valida aquí (con las reglas de reducers.ts), contra el estado que se ve en ese momento: lo que el servidor
- * rechazaría no llega a enviarse. Las filas nuevas salen con un id generado en el cliente. `today` da la fecha de
- * los movimientos del presupuesto que se escriben ahora: la misma que les pondrá el servidor (su zona horaria).
+ * The screens' actions API, bound to one user's data layer and to the selected month. Everything is
+ * validated here (with the rules in reducers.ts), against the state on screen at that moment: what the server
+ * would reject never gets sent. New rows go out with an id generated on the client. `today` gives the date of
+ * the budget movements written now: the same one the server will give them (its time zone).
  */
 export function createActions(
   store: FinanzasStore,
@@ -84,7 +84,7 @@ export function createActions(
       const state = store.state;
       const colors = theme === null ? null : normalizeTheme(theme);
       if (!state || (theme !== null && !colors)) return;
-      // La paleta original se guarda como null, para que siga los cambios del diseño.
+      // The original palette is stored as null, so that it follows the design's changes.
       const next = isDefaultTheme(colors) ? null : colors;
       if (!sameTheme(next, state.theme)) settings({ theme: next });
     },
@@ -152,7 +152,7 @@ export function createActions(
     removeBudgetEntry(id) {
       const state = store.state;
       if (!state || !monthKey || !budgetEntry(state, monthKey, id)) return false;
-      // Una parte que aún esperaba su retraso se calculó contando con este movimiento: sale antes que el borrado.
+      // A part still waiting out its delay was computed counting on this movement: it goes out before the deletion.
       store.flush();
       store.dispatch({ type: 'budget/remove', key: monthKey, id });
       return true;
@@ -161,7 +161,7 @@ export function createActions(
       const state = store.state;
       const row = state && monthKey ? leftoverEntry(state, monthKey, `${LOCAL_ENTRY}${makeId()}`, today()) : null;
       if (!row || !monthKey) return false;
-      // El sobrante sale de las cifras del mes anterior y de este: lo pendiente tiene que haber llegado antes.
+      // The leftover comes from the previous month's figures and this one's: what is pending must have arrived first.
       store.flush();
       store.dispatch({ type: 'budget/leftover', key: monthKey, row });
       return true;
@@ -175,7 +175,7 @@ export function createActions(
     },
     removeMonthRate(from, to, date) {
       const state = store.state;
-      // Se pide con el sentido en que se guardó: es el que nombra la tasa en el servidor.
+      // It is requested in the direction it was stored in: that is the one that names the rate on the server.
       const typed = state && monthKey ? typedRate(state, monthKey, from, to, date) : null;
       if (typed && monthKey) store.dispatch({ type: 'rate/remove', key: monthKey, from: typed.from, to: typed.to, date: typed.date });
     },

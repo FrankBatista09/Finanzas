@@ -23,8 +23,8 @@ function clientWith(respond: (seen: Seen) => Response | Promise<Response>) {
 const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 const header = (init: RequestInit, name: string) => new Headers(init.headers).get(name);
 
-describe('cliente HTTP', () => {
-  it('GET /api/session no lleva usuario y devuelve el cuerpo tal cual', async () => {
+describe('HTTP client', () => {
+  it('GET /api/session carries no user and returns the body as is', async () => {
     const body = { users: [{ id: 'frank', name: 'Frank' }, { id: 'eda', name: 'Eda' }], devTools: true };
     const { root, seen } = clientWith(() => json(200, body));
     await expect(root.getSession()).resolves.toEqual(body);
@@ -33,7 +33,7 @@ describe('cliente HTTP', () => {
     expect(header(seen[0]!.init, USER_HEADER)).toBeNull();
   });
 
-  it('GET /api/state devuelve el cuerpo tal cual', async () => {
+  it('GET /api/state returns the body as is', async () => {
     const body = { user: { id: 'frank', name: 'Frank' }, state: seedState() };
     const { api, seen } = clientWith(() => json(200, body));
     await expect(api.getState()).resolves.toEqual(body);
@@ -43,7 +43,7 @@ describe('cliente HTTP', () => {
     expect(header(seen[0]!.init, USER_HEADER)).toBe('frank');
   });
 
-  it('las escrituras mandan JSON y codifican el id en la ruta', async () => {
+  it('writes send JSON and encode the id in the route', async () => {
     const { api, seen } = clientWith(() => json(200, {}));
     await api.patchTransaction('a/b c', { amount: 12.5 });
     await api.createFixed({ id: 'x', monthKey: '2026-10', name: 'Gym', amount: 10, cur: 'DOP' });
@@ -71,7 +71,7 @@ describe('cliente HTTP', () => {
     expect(JSON.parse(seen[5]!.init.body as string)).toEqual({ id: 'g1', name: 'Car', cur: 'TRY', monthly: 500, start: '2026-10', end: '2027-09', approxCur: 'USD' });
   });
 
-  it('cuentas, tasas del mes, ingresos y borrar un mes: cada ruta del contrato con su método y su cuerpo', async () => {
+  it('accounts, month rates, income and deleting a month: each route of the contract with its method and body', async () => {
     const { api, seen } = clientWith(() => json(200, {}));
     await api.listAccounts();
     await api.createAccount({ id: 'tr', name: 'TR account', currency: 'TRY', opening: 1500 });
@@ -96,7 +96,7 @@ describe('cliente HTTP', () => {
       'DELETE /api/accounts/tr',
       'PATCH /api/months/2026-10',
       'PUT /api/months/2026-10/rates',
-      // La fecha de la tasa va en la consulta: así la pide la ruta.
+      // The rate's date goes in the query: the route asks for it that way.
       'DELETE /api/months/2026-10/rates/USD/TRY?date=2026-10-07',
       'DELETE /api/months/2026-09',
       'GET /api/incomes',
@@ -113,13 +113,13 @@ describe('cliente HTTP', () => {
     expect(body(4)).toEqual({ budgets: { dr: 60000, us: 200 } });
     expect(body(5)).toEqual({ from: 'USD', to: 'DOP', rate: 59.1, date: '2026-10-07' });
     expect(body(9)).toEqual({ id: 'i1', date: '2026-10-01', desc: 'Salary', accountId: 'us', amount: 5800, cur: 'USD', budget: true });
-    // Sin tasa: la pone el servidor (la del mes para ese par).
+    // No rate: the server sets it (the month rate for that pair).
     expect(body(12)).toEqual({ id: 't1', monthKey: '2026-10', date: '2026-10-02', via: 'Remitly', fromAccountId: 'us', toAccountId: 'dr', amount: 1500 });
-    // Los borrados no llevan cuerpo.
+    // Deletes carry no body.
     for (const i of [3, 6, 7, 11]) expect(seen[i]!.init.body, String(i)).toBeUndefined();
   });
 
-  it('registro del presupuesto y sobrante: añadir y quitar un movimiento, y sumar lo que sobró del mes anterior', async () => {
+  it('budget log and leftover: adding and removing a movement, and adding what was left over from the previous month', async () => {
     const { api, seen } = clientWith(() => json(201, {}));
     const entry = { id: 'b1', date: '2026-10-09', accountId: 'dr', amount: -2500, kind: 'adjust', note: 'Less eating out' } as const;
     await api.addBudgetEntry('2026-10', entry);
@@ -133,20 +133,20 @@ describe('cliente HTTP', () => {
     ]);
     expect(JSON.parse(seen[0]!.init.body as string)).toEqual(entry);
     expect(header(seen[0]!.init, 'Content-Type')).toBe('application/json');
-    // Ni el borrado ni el sobrante llevan cuerpo: la cifra del sobrante la calcula el servidor.
+    // Neither the delete nor the leftover carries a body: the server computes the leftover figure.
     for (const i of [1, 2]) {
       expect(seen[i]!.init.body, String(i)).toBeUndefined();
       expect(header(seen[i]!.init, 'Content-Type'), String(i)).toBeNull();
     }
   });
 
-  it('cerrar un mes: sin petición no hay cuerpo; con ella viaja como JSON', async () => {
+  it('closing a month: without a request there is no body; with one it travels as JSON', async () => {
     const { api, seen } = clientWith(() => json(200, {}));
     const controller = new AbortController();
     await api.closeMonth('2026-10');
     await api.closeMonth('2026-10', { budgets: { dr: 65000, us: 0 }, addLeftover: true });
     await api.closeMonth('2026-10', {});
-    // Las opciones de la petición van detrás: sin cuerpo no se confunden con él.
+    // The request options go after it: without a body they are not mistaken for it.
     await api.closeMonth('2026-10', undefined, { signal: controller.signal });
 
     for (const s of seen) expect(`${s.init.method} ${s.url}`).toBe('POST /api/months/2026-10/close');
@@ -159,7 +159,7 @@ describe('cliente HTTP', () => {
     expect(seen[3]!.init.signal).toBe(controller.signal);
   });
 
-  it('la fecha de la tasa que se quita va codificada en la consulta, y las opciones detrás', async () => {
+  it('the date of the rate being removed is encoded in the query, and the options go after it', async () => {
     const { api, seen } = clientWith(() => json(200, {}));
     const controller = new AbortController();
     await api.deleteMonthRate('2026-10', 'DOP', 'USD', '2026-10-01', { signal: controller.signal, keepalive: true });
@@ -168,12 +168,12 @@ describe('cliente HTTP', () => {
     expect(seen[0]!.init.body).toBeUndefined();
     expect(seen[0]!.init.signal).toBe(controller.signal);
     expect(seen[0]!.init.keepalive).toBe(true);
-    // Lo que no sea una fecha no rompe la ruta.
+    // Anything that is not a date does not break the route.
     await api.deleteMonthRate('2026-10', 'DOP', 'USD', '2026-10-01&x=1');
     expect(seen[1]!.url).toBe('/api/months/2026-10/rates/DOP/USD?date=2026-10-01%26x%3D1');
   });
 
-  it('pasa signal y keepalive', async () => {
+  it('passes signal and keepalive', async () => {
     const { api, seen } = clientWith(() => json(200, {}));
     const controller = new AbortController();
     await api.patchMonth('2026-10', { budgets: { dr: 1 } }, { signal: controller.signal, keepalive: true });
@@ -181,26 +181,26 @@ describe('cliente HTTP', () => {
     expect(seen[0]!.init.keepalive).toBe(true);
   });
 
-  it('un no-2xx con cuerpo de la API se convierte en ApiError con su código, estado y mensaje', async () => {
+  it('a non-2xx with an API body becomes an ApiError with its code, status and message', async () => {
     const { api } = clientWith(() => json(409, { error: { code: 'month_closed', message: 'October 2026 is closed.' } }));
     const error = await api.patchFixed('f1', { paid: true }).catch((e: unknown) => e);
     expect(error).toBeInstanceOf(ApiError);
     expect(error).toMatchObject({ name: 'ApiError', status: 409, code: 'month_closed', message: 'October 2026 is closed.' });
   });
 
-  it('un no-2xx sin el cuerpo de la API (página de un proxy) también es ApiError', async () => {
+  it('a non-2xx without the API body (a proxy page) is also an ApiError', async () => {
     const { api } = clientWith(() => new Response('<html>Bad gateway</html>', { status: 502 }));
     await expect(api.getState()).rejects.toMatchObject({ name: 'ApiError', status: 502, code: 'internal' });
     const { api: api404 } = clientWith(() => new Response('', { status: 404 }));
     await expect(api404.getMonth('2020-01')).rejects.toMatchObject({ status: 404, code: 'not_found' });
   });
 
-  it('un 2xx que no es JSON es un ApiError, no un error de sintaxis', async () => {
+  it('a 2xx that is not JSON is an ApiError, not a syntax error', async () => {
     const { api } = clientWith(() => new Response('<html>login</html>', { status: 200 }));
     await expect(api.getState()).rejects.toMatchObject({ name: 'ApiError', code: 'internal' });
   });
 
-  it('si fetch falla, el error es NetworkError (distinto de ApiError)', async () => {
+  it('if fetch fails, the error is a NetworkError (distinct from ApiError)', async () => {
     const cause = new TypeError('Failed to fetch');
     const { api, root } = clientWith(() => {
       throw cause;
@@ -212,7 +212,7 @@ describe('cliente HTTP', () => {
     await expect(root.getSession()).rejects.toBeInstanceOf(NetworkError);
   });
 
-  it('una cancelación se deja pasar tal cual', async () => {
+  it('a cancellation is let through as is', async () => {
     const abort = new DOMException('The operation was aborted.', 'AbortError');
     const { api } = clientWith(() => {
       throw abort;
@@ -223,7 +223,7 @@ describe('cliente HTTP', () => {
     expect(isAbortError(new TypeError('x'))).toBe(false);
   });
 
-  it('exportar devuelve un Blob', async () => {
+  it('export returns a Blob', async () => {
     const { api, seen } = clientWith(() => new Response(new Uint8Array([80, 75, 3, 4]), { status: 200, headers: { 'Content-Type': XLSX_MIME } }));
     const blob = await api.exportExcel();
     expect(blob).toBeInstanceOf(Blob);
@@ -232,7 +232,7 @@ describe('cliente HTTP', () => {
     expect(header(seen[0]!.init, 'Accept')).toBe(XLSX_MIME);
   });
 
-  it('importar manda el archivo crudo con su tipo de contenido', async () => {
+  it('import sends the raw file with its content type', async () => {
     const { api, seen } = clientWith(() => json(200, { months: ['2026-10'], contributions: 0 }));
     const file = new Blob([new Uint8Array([1, 2, 3])], { type: XLSX_MIME });
     await expect(api.importExcel(file)).resolves.toEqual({ months: ['2026-10'], contributions: 0 });
@@ -240,12 +240,12 @@ describe('cliente HTTP', () => {
     expect(seen[0]!.init.body).toBe(file);
     expect(header(seen[0]!.init, 'Content-Type')).toBe(XLSX_MIME);
 
-    // Algunos sistemas no informan el tipo del archivo: se asume .xlsx.
+    // Some systems do not report the file's type: .xlsx is assumed.
     await api.importExcel(new Blob([new Uint8Array([1])]));
     expect(header(seen[1]!.init, 'Content-Type')).toBe(XLSX_MIME);
   });
 
-  it('la ingesta lleva el Bearer y el usuario en el cuerpo, no en la cabecera', async () => {
+  it('ingest carries the Bearer, and the user in the body, not in the header', async () => {
     const { root, seen } = clientWith(() => json(201, {}));
     await root.ingestTransaction({ user: 'eda', description: 'Uber', amount: 850 }, 'secreto');
     expect(header(seen[0]!.init, 'Authorization')).toBe('Bearer secreto');
@@ -254,7 +254,7 @@ describe('cliente HTTP', () => {
   });
 });
 
-describe('cabecera X-User', () => {
+describe('X-User header', () => {
   const file = new Blob([new Uint8Array([1])], { type: XLSX_MIME });
   const fixed = { id: 'x', monthKey: '2026-10', name: 'Gym', amount: 10, cur: 'DOP' } as const;
   const tx = { id: 'x', monthKey: '2026-10', date: '2026-10-07', desc: 'Uber', cat: 'Transport', method: 'Card', amount: 1, cur: 'DOP' } as const;
@@ -262,7 +262,7 @@ describe('cabecera X-User', () => {
   const income = { id: 'x', date: '2026-10-07', accountId: 'us', amount: 1, cur: 'USD' } as const;
   const contribution = { id: 'x', goalId: 'personal', date: '2026-10-07', amount: 1, cur: 'USD' } as const;
 
-  /** Una llamada por cada ruta de datos. Record: una ruta nueva en el cliente no compila hasta estar aquí. */
+  /** One call per data route. Record: a new route in the client does not compile until it is here. */
   const CALLS: Record<Exclude<keyof UserApi, 'userId'>, (api: UserApi) => Promise<unknown>> = {
     getState: (api) => api.getState(),
     patchSettings: (api) => api.patchSettings({ theme: null }),
@@ -322,11 +322,11 @@ describe('cabecera X-User', () => {
     devReset: (api) => api.devReset(),
   };
 
-  it('va en todas y cada una de las llamadas de forUser(), con el id de ese usuario', async () => {
+  it('goes in each and every forUser() call, with the id of that user', async () => {
     const { root, seen } = clientWith(() => json(200, {}));
     const eda = root.forUser('eda');
     expect(eda.userId).toBe('eda');
-    // La tabla cubre el objeto entero: no hay rutas que se queden sin comprobar.
+    // The table covers the whole object: no route is left unchecked.
     expect(Object.keys(CALLS).sort()).toEqual(Object.keys(eda).filter((k) => k !== 'userId').sort());
 
     for (const [name, call] of Object.entries(CALLS)) {
@@ -337,7 +337,7 @@ describe('cabecera X-User', () => {
     }
   });
 
-  it('cada forUser() manda el suyo aunque se usen a la vez', async () => {
+  it('each forUser() sends its own even when they are used at the same time', async () => {
     const { root, seen } = clientWith(() => json(200, {}));
     const frank = root.forUser('frank');
     const eda = root.forUser('eda');
@@ -349,7 +349,7 @@ describe('cabecera X-User', () => {
     ]);
   });
 
-  it('las cabeceras propias de una llamada no la pisan', async () => {
+  it('headers set by a call itself do not overwrite it', async () => {
     const { api, seen } = clientWith(() => json(200, {}));
     await api.importExcel(file);
     expect(header(seen[0]!.init, USER_HEADER)).toBe('frank');

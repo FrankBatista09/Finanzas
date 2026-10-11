@@ -8,21 +8,21 @@ interface NotesCellProps {
   value: string;
   onCommit: (text: string) => void;
   readOnly: boolean;
-  /** El nombre de la fila, para las etiquetas accesibles ("Description of Coffee") y el título del diálogo. */
+  /** The row's name, for the accessible labels ("Description of Coffee") and the dialog title. */
   name: string;
 }
 
 /**
- * La celda de descripción de una fila del historial: el texto en una línea y, al lado, "⋯", que abre la
- * descripción entera en un diálogo para leerla o editarla con espacio. La comparten las transacciones y los gastos
- * fuera de presupuesto.
+ * The description cell of a history row: the text on one line and, next to it, "⋯", which opens the
+ * whole description in a dialog with room to read or edit it. Transactions and outside-budget expenses
+ * share it.
  */
 export function NotesCell({ value, onCommit, readOnly, name }: NotesCellProps) {
   const s = useStrings(MES);
   const named = { name };
   const [open, setOpen] = useState(false);
   const [text, setText] = useState(value);
-  // Al cerrar se guarda lo editado; al abrir se parte de lo que haya guardado.
+  // Closing saves what was edited; opening starts from whatever is saved.
   const close = () => {
     setOpen(false);
     if (!readOnly && text !== value) onCommit(text);
@@ -32,7 +32,7 @@ export function NotesCell({ value, onCommit, readOnly, name }: NotesCellProps) {
     <Td kind="edit">
       <div style={{ display: 'flex', alignItems: 'center' }}>
         <CellText value={value} onCommit={onCommit} readOnly={readOnly} small tone="muted" maxLength={MAX_LEN.notes} label={s('notesOf', named)} />
-        {/* La celda es estrecha: una descripción larga se abre aparte para leerla o editarla con espacio. */}
+        {/* The cell is narrow: a long description opens separately, with room to read or edit it. */}
         <button
           type="button"
           onClick={() => setOpen(true)}

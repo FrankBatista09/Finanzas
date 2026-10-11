@@ -5,8 +5,8 @@ import type { UrlState } from './url';
 const sameUrl = (a: UrlState, b: UrlState) => a.user === b.user && a.mes === b.mes && a.hoja === b.hoja;
 
 /**
- * Usuario, mes y hoja en la URL. `navigate` hace pushState (la navegación del usuario entra en el historial)
- * y el botón atrás del navegador llega por popstate.
+ * User, month and sheet in the URL. `navigate` calls pushState (the user's navigation goes into the history)
+ * and the browser's back button arrives through popstate.
  */
 export function useUrlState(): [UrlState, (next: Partial<UrlState>) => void] {
   const [url, setUrl] = useState(() => parseUrl(window.location.search));

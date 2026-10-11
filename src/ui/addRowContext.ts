@@ -2,39 +2,39 @@ import { createContext } from 'react';
 import type { RefObject } from 'react';
 
 export interface AddRowApi {
-  /** Ejecuta el "agregar" de la fila. Si se agregó, el foco vuelve al primer campo, listo para la siguiente. */
+  /** Runs the row's "add". If something was added, the focus goes back to the first field, ready for the next one. */
   submit: () => void;
 }
 
-/** Lo provee <AddRow>. Las celdas y el botón "Agregar" lo usan para saber que están en una fila de agregar. */
+/** Provided by <AddRow>. The cells and the "Add" button use it to know they are in an add row. */
 export const AddRowContext = createContext<AddRowApi | null>(null);
 
 /**
- * Una fila de agregar que se abre a petición (useAddRow): cerrada no se pinta. La comparten el botón "+ Add …"
- * de la cabecera (<AddRowButton>) y la fila (<AddRow control>).
+ * An add row that opens on demand (useAddRow): closed, it is not rendered. Shared by the "+ Add …" button
+ * in the header (<AddRowButton>) and the row (<AddRow control>).
  */
 export interface AddRowControl {
   open: boolean;
   show: () => void;
-  /** Cierra la fila y descarta su borrador. */
+  /** Closes the row and discards its draft. */
   hide: () => void;
-  /** El botón que la abre: al cerrarla con Esc el foco vuelve a él. */
+  /** The button that opens it: when it is closed with Esc the focus goes back to it. */
   buttonRef: RefObject<HTMLButtonElement | null>;
 }
 
 /**
- * true: las filas de agregar nacen abiertas. En la app nadie lo provee (nacen cerradas); lo usan las pruebas, que
- * pintan a HTML sin poder pulsar el botón.
+ * true: add rows start open. In the app nobody provides it (they start closed); the tests use it, since they
+ * render to HTML and cannot press the button.
  */
 export const AddRowsOpenContext = createContext(false);
 
-/** Lo que hace una tecla dentro de una fila de agregar. */
+/** What a key does inside an add row. */
 export type AddRowKeyAction = 'submit' | 'cancel' | null;
 
 /**
- * Enter en un campo de texto, número o fecha agrega la fila (los select y los botones ya tienen su propio Enter;
- * a media composición de un IME no cuenta). Esc, desde cualquier control de una fila que se puede cerrar, la
- * cierra y descarta el borrador.
+ * Enter in a text, number or date field adds the row (selects and buttons already have their own Enter;
+ * in the middle of an IME composition it does not count). Esc, from any control of a row that can be closed,
+ * closes it and discards the draft.
  */
 export function addRowKeyAction(e: { key: string; isComposing: boolean; inInput: boolean; closable: boolean }): AddRowKeyAction {
   if (e.isComposing) return null;
