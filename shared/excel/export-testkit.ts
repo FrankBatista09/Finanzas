@@ -1,11 +1,11 @@
-// Solo para pruebas (export-*.test.ts): abre un .xlsx y deja ver sus partes, celdas y textos, sea el que
-// genera el exportador o ese mismo libro recalculado y guardado por LibreOffice. No es un lector de Excel
-// general (para eso está import-xlsx.ts): entiende lo justo de esos dos orígenes, y a propósito no comparte
-// código con el importador, para que las pruebas del exportador no dependan de él.
+// For tests only (export-*.test.ts): opens an .xlsx and exposes its parts, cells and texts, whether it is the
+// one the exporter generates or that same workbook recalculated and saved by LibreOffice. It is not a general
+// Excel reader (import-xlsx.ts is for that): it understands just enough of those two sources, and on purpose
+// shares no code with the importer, so that the exporter's tests do not depend on it.
 
 import { strFromU8, unzipSync } from 'fflate';
 
-/** Partes del zip (ruta → texto), en el orden en que están en el archivo. */
+/** Parts of the zip (path → text), in the order they are in the file. */
 export function unzipText(bytes: Uint8Array): Map<string, string> {
   const parts = new Map<string, string>();
   for (const [name, data] of Object.entries(unzipSync(bytes))) parts.set(name, strFromU8(data));
@@ -24,8 +24,8 @@ export function unescapeXml(s: string): string {
 }
 
 /**
- * Comprueba que `xml` está bien formado; devuelve el primer problema o null. Es más estricto que la norma en
- * una cosa: no admite '>' sin escapar dentro de un atributo (el exportador siempre lo escapa).
+ * Checks that `xml` is well formed; returns the first problem or null. It is stricter than the standard in
+ * one respect: it does not allow an unescaped '>' inside an attribute (the exporter always escapes it).
  */
 export function xmlProblem(xml: string): string | null {
   const bad = /[\u0000-\u0008\u000b\u000c\u000e-\u001f￾￿]/.exec(xml);
@@ -67,48 +67,48 @@ export function xmlProblem(xml: string): string | null {
   return null;
 }
 
-// ── Libro ────────────────────────────────────────────────────────────────────
+// ── Workbook ─────────────────────────────────────────────────────────────────
 
 export interface TestCell {
   ref: string;
-  /** Índice de estilo (atributo s). */
+  /** Style index (the s attribute). */
   style: number | null;
-  /** Atributo t: 's' texto compartido, 'str' texto de una fórmula, 'e' error, 'b' booleano; null = número. */
+  /** The t attribute: 's' shared string, 'str' text of a formula, 'e' error, 'b' boolean; null = number. */
   type: string | null;
-  /** Fórmula sin el '=', si la celda tiene. */
+  /** Formula without the '=', if the cell has one. */
   formula: string | null;
-  /** Texto, número o booleano de la celda; null si no guarda valor (nuestras fórmulas no lo guardan). */
+  /** The cell's text, number or boolean; null if it stores no value (our formulas do not store one). */
   value: string | number | boolean | null;
 }
 
 export interface TestSheet {
   name: string;
-  /** Ruta de la parte: xl/worksheets/sheetN.xml. */
+  /** Path of the part: xl/worksheets/sheetN.xml. */
   path: string;
   xml: string;
   cells: Map<string, TestCell>;
-  /** Rangos combinados ("B8:D8"), en el orden del archivo. */
+  /** Merged ranges ("B8:D8"), in file order. */
   merges: string[];
-  /** Alto de las filas que lo fijan, por número de fila. */
+  /** Height of the rows that set one, by row number. */
   rowHeights: Map<number, number>;
-  /** Desplegables: rango y fórmula de la lista. */
+  /** Dropdowns: range and formula of the list. */
   validations: { sqref: string; formula: string }[];
-  /** Formatos condicionales: rango y prioridad de cada regla. */
+  /** Conditional formats: range and priority of each rule. */
   conditional: { sqref: string; priorities: number[] }[];
 }
 
 export interface TestTable {
   name: string;
-  /** Rango de la tabla, encabezado incluido ("I15:O33"). */
+  /** Range of the table, header included ("I15:O33"). */
   ref: string;
   columns: string[];
-  /** Fórmula de cada columna calculada, por nombre de columna. */
+  /** Formula of each calculated column, by column name. */
   formulas: Map<string, string>;
 }
 
 export interface TestBook {
   parts: Map<string, string>;
-  /** Textos compartidos, cada uno con sus tramos unidos. */
+  /** Shared strings, each with its runs joined. */
   strings: string[];
   sheets: TestSheet[];
   tables: TestTable[];
@@ -119,7 +119,7 @@ export interface TestBook {
 const attrsOf = (s: string) =>
   new Map([...s.matchAll(/([\w:]+)="([^"]*)"/g)].map((m) => [m[1]!, unescapeXml(m[2]!)] as const));
 
-/** Texto de un <si> o de un <is>: sus <t>, unidos. */
+/** Text of an <si> or an <is>: its <t> elements, joined. */
 const runsText = (xml: string) => [...xml.matchAll(/<t(?:\s[^>]*)?>([\s\S]*?)<\/t>/g)].map((m) => unescapeXml(m[1]!)).join('');
 
 function readSheet(name: string, path: string, xml: string, strings: readonly string[]): TestSheet {
@@ -130,7 +130,7 @@ function readSheet(name: string, path: string, xml: string, strings: readonly st
     const ref = a.get('r');
     if (!ref) continue;
     const type = a.get('t') ?? null;
-    // LibreOffice escribe las fórmulas compartidas como <f t="shared" si="0"/>: hay fórmula, aunque sin texto.
+    // LibreOffice writes shared formulas as <f t="shared" si="0"/>: there is a formula, though without text.
     const f = /<f(?:\s[^>]*?)?(?:\/>|>([\s\S]*?)<\/f>)/.exec(inner);
     const v = /<v>([\s\S]*?)<\/v>/.exec(inner);
     const raw = v ? unescapeXml(v[1]!) : null;
@@ -179,7 +179,7 @@ function readTable(xml: string): TestTable {
   return { name: head.get('name') ?? '', ref: head.get('ref') ?? '', columns, formulas };
 }
 
-/** Abre un .xlsx. Las hojas salen en el orden del libro; cada una se localiza por su relación (rId). */
+/** Opens an .xlsx. Sheets come out in workbook order; each one is located by its relationship (rId). */
 export function readBook(bytes: Uint8Array): TestBook {
   const parts = unzipText(bytes);
   const part = (path: string) => {
@@ -209,19 +209,19 @@ export function readBook(bytes: Uint8Array): TestBook {
   return { parts, strings, sheets, tables, sheet: (name) => find(sheets, 'sheet', name), table: (name) => find(tables, 'table', name) };
 }
 
-// ── Fórmulas ─────────────────────────────────────────────────────────────────
+// ── Formulas ─────────────────────────────────────────────────────────────────
 
-/** Contenido de los literales de texto de una fórmula ("…"), con las comillas dobladas ya resueltas. */
+/** Contents of a formula's text literals ("…"), with doubled quotes already resolved. */
 export function formulaLiterals(formula: string): string[] {
   return [...formula.matchAll(/"((?:[^"]|"")*)"/g)].map((m) => m[1]!.replace(/""/g, '"'));
 }
 
-/** La fórmula sin sus literales de texto: lo que queda son referencias, funciones y operadores. */
+/** The formula without its text literals: what is left is references, functions and operators. */
 export function withoutLiterals(formula: string): string {
   return formula.replace(/"(?:[^"]|"")*"/g, '""');
 }
 
-/** Todas las fórmulas del libro: celdas, columnas calculadas, desplegables y formatos condicionales. */
+/** Every formula in the workbook: cells, calculated columns, dropdowns and conditional formats. */
 export function bookFormulas(book: TestBook): string[] {
   const out: string[] = [];
   for (const sh of book.sheets) {

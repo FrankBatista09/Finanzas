@@ -1,13 +1,13 @@
-/* Diálogo de una meta. El panel, los campos y los botones salen de src/ui; aquí va solo lo propio del formulario. */
+/* Dialog for a goal. The panel, the fields and the buttons come from src/ui; only what is specific to the form goes here. */
 
-/* Dos campos uno al lado del otro (moneda y moneda "≈"; mes de inicio y mes objetivo); en una pantalla estrecha, uno debajo del otro. */
+/* Two fields side by side (currency and "≈" currency; start month and target month); on a narrow screen, one below the other. */
 .pair {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: var(--gap-14) var(--gap-12);
 }
 
-/* Resumen del plan ("15 months · 3,000 USD / month"). La altura mínima es la de una línea: al aparecer no mueve los botones. */
+/* Plan summary ("15 months · 3,000 USD / month"). The minimum height is that of one line: when it appears it does not move the buttons. */
 .summary,
 .error {
   min-height: 16px;
@@ -24,7 +24,7 @@
   color: var(--error);
 }
 
-/* "Delete goal" a la izquierda del pie, con el motivo debajo cuando no se puede. */
+/* "Delete goal" on the left of the footer, with the reason below it when it cannot be done. */
 .remove {
   margin-right: auto;
   display: flex;
@@ -33,7 +33,7 @@
   gap: 2px;
 }
 
-/* Alineado con el texto del botón, que lleva 14px de padding. */
+/* Aligned with the button's text, which has 14px of padding. */
 .removeHint {
   padding: 0 14px;
   font-size: 11.5px;

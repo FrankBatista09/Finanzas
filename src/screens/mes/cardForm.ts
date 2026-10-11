@@ -1,5 +1,5 @@
-// El formulario del diálogo de una tarjeta de crédito: qué escribe el usuario (todo como texto, un campo a medio escribir
-// no es un número), qué falta o está mal y cómo queda el dato que se guarda. Sin React ni textos.
+// The form of a credit card's dialog: what the user types (everything as text, a half-typed field
+// is not a number), what is missing or wrong, and what the saved data looks like. No React and no UI text.
 
 import type { Currency, CreditCard } from '../../../shared/types';
 import type { CardInput } from '../../store';
@@ -17,7 +17,7 @@ export interface CardForm {
 
 export type CardFormError = 'name' | 'nameTaken' | 'last4' | 'limit' | 'cutoffDay' | 'dueDay';
 
-/** Una tarjeta nueva nace en la moneda principal del usuario, encendida y sin más datos. */
+/** A new credit card starts in the user's main currency, turned on and with no other data. */
 export function newCardForm(main: Currency): CardForm {
   return { name: '', bank: '', last4: '', cur: main, limit: '', cutoffDay: '', dueDay: '', active: true };
 }
@@ -38,10 +38,10 @@ export function cardToForm(card: CreditCard): CardForm {
 const blank = (text: string) => text.trim() === '';
 const fold = (t: string) => t.trim().normalize('NFC').toLowerCase();
 
-/** Un día del mes escrito: vacío vale (es opcional); si no, un entero de 1 a 31. */
+/** A typed day of the month: empty is valid (it is optional); otherwise, an integer from 1 to 31. */
 const dayOk = (text: string) => blank(text) || (/^\d{1,2}$/.test(text.trim()) && Number(text) >= 1 && Number(text) <= 31);
 
-/** Lo que impide guardar. `id` es la tarjeta que se edita (su propio nombre no cuenta como repetido). */
+/** What blocks saving. `id` is the credit card being edited (its own name does not count as repeated). */
 export function cardFormErrors(form: CardForm, cards: readonly CreditCard[], id: string | null): CardFormError[] {
   const errors: CardFormError[] = [];
   if (blank(form.name)) errors.push('name');
@@ -53,7 +53,7 @@ export function cardFormErrors(form: CardForm, cards: readonly CreditCard[], id:
   return errors;
 }
 
-/** El dato a guardar: lo vacío es null (sin dato). Solo con un formulario sin errores. */
+/** The data to save: empty is null (no data). Only with a form that has no errors. */
 export function formToInput(form: CardForm): CardInput {
   const num = (text: string) => (blank(text) ? null : Number(text));
   return {

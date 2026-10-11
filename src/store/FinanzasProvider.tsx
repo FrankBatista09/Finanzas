@@ -1,6 +1,6 @@
-// Conecta la capa de datos con React: la sesión (usuarios), el usuario, el mes y la hoja de la URL, la consulta
-// con los datos de ese usuario, su idioma y sus colores, los flujos (cerrar y borrar mes, Excel, utilidades de
-// desarrollo) y los avisos. Las pantallas solo ven useFinanzas() y, para los textos, useI18n().
+// Connects the data layer to React: the session (users), the user, the month and the sheet from the URL, the query
+// with that user's data, their language and colors, the flows (close and delete a month, Excel, development
+// utilities) and the notices. The screens only see useFinanzas() and, for the texts, useI18n().
 
 import { skipToken, useQuery } from '@tanstack/react-query';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
@@ -48,26 +48,26 @@ export function FinanzasProvider({ stores, api, children }: FinanzasProviderProp
   const [deleting, setDeleting] = useState(false);
   const [excelStatus, setExcelStatus] = useState<ExcelStatus | null>(null);
 
-  // ── Sesión y usuario ───────────────────────────────────────────────────────
+  // ── Session and user ───────────────────────────────────────────────────────
   const session = useQuery({
     queryKey: SESSION_KEY,
     queryFn: ({ signal }) => api.getSession({ signal }),
     retry: 1,
-    // La lista de usuarios solo cambia con un despliegue.
+    // The user list only changes with a deploy.
     staleTime: Infinity,
   });
   const users = session.data?.users ?? NO_USERS;
   const user = useMemo(() => resolveUser(users, url.user, device.user()), [users, url.user, device]);
   const userId = user?.id ?? null;
-  // Cada usuario tiene su capa de datos; al cambiar de usuario cambia la store, no lo que cada una tiene pendiente.
+  // Each user has their own data layer; switching users changes the store, not what each one has pending.
   const store = userId ? stores.for(userId) : null;
 
   const query = useQuery({
     queryKey: stateKey(userId ?? ''),
     queryFn: store ? store.queryFn : skipToken,
-    // Un reintento basta: si el servidor no está, mejor enseñar pronto el botón de reintentar.
+    // One retry is enough: if the server is down, better to show the retry button soon.
     retry: 1,
-    // Volver a la pestaña refresca (Claude pudo registrar algo desde el chat), pero no en cada cambio de foco seguido.
+    // Returning to the tab refreshes (Claude may have recorded something from the chat), but not on every rapid focus change.
     staleTime: 5000,
   });
 
@@ -75,8 +75,8 @@ export function FinanzasProvider({ stores, api, children }: FinanzasProviderProp
   const monthKey = state ? resolveMonth(url.mes, state) : null;
   const sheet = url.hoja;
 
-  // ── Idioma y colores ───────────────────────────────────────────────────────
-  // Antes de tener los datos del usuario (carga, error, cambio de usuario) manda el último idioma usado aquí.
+  // ── Language and colors ────────────────────────────────────────────────────
+  // Before the user's data is available (loading, error, switching users) the last language used here wins.
   const [deviceLanguage, setDeviceLanguage] = useState<Language>(() => device.language() ?? DEFAULT_LANGUAGE);
   const userLanguage = state?.language;
   const language = userLanguage ?? deviceLanguage;
@@ -100,13 +100,13 @@ export function FinanzasProvider({ stores, api, children }: FinanzasProviderProp
     document.title = title;
   }, [language, title]);
 
-  // Antes de pintar: al cambiar de usuario no llega a verse un fotograma con los colores del anterior.
+  // Before painting: when switching users, no frame with the previous user's colors gets shown.
   useLayoutEffect(() => applyTheme(theme), [theme]);
 
-  // ── Cuándo se manda lo pendiente ───────────────────────────────────────────
+  // ── When pending writes are sent ───────────────────────────────────────────
   useEffect(() => {
     let unloading = false;
-    // Al salir de cualquier celda.
+    // On leaving any cell.
     const onFocusOut = () => stores.flush({ unload: unloading });
     const onVisibility = () => {
       if (document.visibilityState === 'hidden') stores.flush();
@@ -114,8 +114,8 @@ export function FinanzasProvider({ stores, api, children }: FinanzasProviderProp
     const onPageHide = () => {
       unloading = true;
       try {
-        // El blur hace que la celda activa confirme lo que tuviera a medias (las fechas confirman al salir);
-        // su focusout pasa por onFocusOut, que en este momento ya manda con keepalive.
+        // The blur makes the active cell commit whatever it had half-typed (dates commit on leaving);
+        // its focusout goes through onFocusOut, which at this point already sends with keepalive.
         if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
         stores.flush({ unload: true });
       } finally {
@@ -132,29 +132,29 @@ export function FinanzasProvider({ stores, api, children }: FinanzasProviderProp
     };
   }, [stores]);
 
-  // Al cambiar de usuario, de mes o de hoja (también con el botón atrás): se guarda lo pendiente —cada escritura
-  // con el usuario para el que se hizo— y se cierran los modales.
+  // On switching users, months or sheets (also with the back button): what is pending is saved—each write
+  // with the user it was made for—and the dialogs are closed.
   useEffect(() => {
     stores.flush();
     setCloseFor(null);
     setDeleteFor(null);
   }, [stores, userId, monthKey, sheet]);
 
-  // El estado de la carga de Excel es del usuario que la hizo.
+  // The Excel import status belongs to the user who ran it.
   useEffect(() => setExcelStatus(null), [userId]);
 
   useEffect(
     () =>
       stores.onError((failure) => {
         const text = `${t('saveFailed')} ${describeError(failure.error, t)}`;
-        // Puede ser una escritura que quedó en cola de otro usuario: se dice de quién.
+        // It may be a write left in another user's queue: the notice says whose it is.
         const owner = failure.userId === userId ? null : users.find((u) => u.id === failure.userId);
         notify(owner ? `${owner.name}: ${text}` : text);
       }),
     [stores, notify, t, userId, users],
   );
 
-  // ── Navegación ─────────────────────────────────────────────────────────────
+  // ── Navigation ─────────────────────────────────────────────────────────────
   const go = useCallback(
     (change: Partial<UrlState>) => {
       stores.flush();
@@ -167,15 +167,15 @@ export function FinanzasProvider({ stores, api, children }: FinanzasProviderProp
     (id: string) => {
       if (!users.some((u) => u.id === id)) return;
       device.rememberUser(id);
-      // El mes se conserva en la URL; si el otro usuario no lo tiene, resolveMonth cae en su mes en curso.
+      // The month stays in the URL; if the other user does not have it, resolveMonth falls back to their current month.
       go({ user: id });
     },
     [users, device, go],
   );
 
-  // ── Flujos ─────────────────────────────────────────────────────────────────
-  // Son asíncronos y trabajan con la store del usuario para el que empezaron. Si entretanto se cambió de usuario,
-  // terminan lo suyo con esos datos, pero ya no tocan la navegación ni el estado de la pantalla.
+  // ── Flows ──────────────────────────────────────────────────────────────────
+  // They are asynchronous and work with the store of the user they started for. If the user was switched meanwhile,
+  // they finish their work with that data, but no longer touch the navigation or the screen state.
   const shown = useRef(store);
   useEffect(() => {
     shown.current = store;
@@ -187,8 +187,8 @@ export function FinanzasProvider({ stores, api, children }: FinanzasProviderProp
     if (!store) return;
     try {
       await store.settle();
-      // El libro sale de lo que tiene el servidor en este momento (incluye lo que Claude haya registrado
-      // desde el chat), no de la caché; se arma aquí, en el navegador, en el idioma del usuario.
+      // The workbook comes from what the server holds right now (including whatever Claude has recorded
+      // from the chat), not from the cache; it is built here, in the browser, in the user's language.
       const fresh = await store.api.getState();
       saveBlob(excelBlob(fresh.state, months), excelFilename(fresh.user));
     } catch (e) {
@@ -203,7 +203,7 @@ export function FinanzasProvider({ stores, api, children }: FinanzasProviderProp
       setExcelStatus({ kind: 'reading' });
       try {
         await store.settle();
-        // El archivo se lee en el navegador y al servidor solo va su contenido, ya como JSON.
+        // The file is read in the browser and only its content goes to the server, already as JSON.
         const res = await store.api.importPayload(await readExcel(file));
         await store.refetch();
         if (!here()) return;
@@ -271,7 +271,7 @@ export function FinanzasProvider({ stores, api, children }: FinanzasProviderProp
 
   const requestDeleteMonth = useCallback(
     (key?: MonthKey) => {
-      // Si llega otra cosa (el evento de un onClick directo), cuenta como "el mes seleccionado".
+      // If anything else arrives (the event of a direct onClick), it counts as "the selected month".
       const target = typeof key === 'string' ? key : monthKey;
       if (target && store?.state?.months[target]) setDeleteFor(target);
     },
@@ -285,7 +285,7 @@ export function FinanzasProvider({ stores, api, children }: FinanzasProviderProp
       await store.deleteMonth(deleteFor);
       if (shown.current === store) {
         setDeleteFor(null);
-        // Sin mes en la URL se sigue el mes en curso del usuario (resolveMonth).
+        // With no month in the URL, the user's current month is followed (resolveMonth).
         go({ mes: null });
       }
       await store.refetch();
@@ -300,7 +300,7 @@ export function FinanzasProvider({ stores, api, children }: FinanzasProviderProp
     if (!deleting) setDeleteFor(null);
   }, [deleting]);
 
-  // ── Valores de contexto ────────────────────────────────────────────────────
+  // ── Context values ─────────────────────────────────────────────────────────
   const actions = useMemo(
     () =>
       store ? createActions(store, monthKey, { requestCloseMonth, requestDeleteMonth, importExcel, downloadExcel, devSeed, devReset }) : null,
@@ -315,8 +315,8 @@ export function FinanzasProvider({ stores, api, children }: FinanzasProviderProp
   const { refetch: refetchSession } = session;
   const { refetch: refetchState } = query;
   const shell: Shell = {
-    // Un estado sin ningún mes no debería llegar (GET /api/state crea el mes actual), ni una sesión sin usuarios:
-    // se tratan como error de carga.
+    // A state with no months should not arrive (GET /api/state creates the current month), nor a session with no users:
+    // they are treated as a load error.
     status: finanzas ? 'ready' : session.isPending || (user !== null && query.isPending) ? 'loading' : 'error',
     retry: () => void (store ? refetchState() : refetchSession()),
     retrying: session.isFetching || query.isFetching,

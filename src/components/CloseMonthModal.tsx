@@ -8,27 +8,27 @@ import { CheckField, Dialog, DialogButton, DialogFields, DialogText, Field, Inpu
 import { closeBudgetForm, closeFieldInvalid, closeRequest } from './budgetModel';
 import { BudgetSummaryList } from './BudgetSummaryList';
 
-/** Modal de cierre de mes. Lo abre actions.requestCloseMonth(); Escape y un clic fuera equivalen a Cancelar. */
+/** Close-month dialog. actions.requestCloseMonth() opens it; Escape and a click outside are the same as Cancel. */
 export function CloseMonthModal() {
   const { closeDialog } = useShell();
   if (!closeDialog) return null;
-  // key: si el diálogo se abre para otro mes, sus campos arrancan con las partes de ese mes.
+  // key: if the dialog opens for another month, its fields start with that month's parts.
   return <CloseDialog key={closeDialog.key} monthKey={closeDialog.key} busy={closeDialog.busy} />;
 }
 
 /**
- * Pregunta dos cosas: si el mes se añade también al Excel (los dos botones de siempre) y con qué presupuesto
- * arranca el mes siguiente: una parte por cuenta, que nace con la de este mes, y si se le suma lo que sobró.
- * Si el mes siguiente ya existe el cierre no lo toca, así que lo segundo no se pregunta.
+ * Asks two things: whether the month is also added to the Excel workbook (the two usual buttons) and what budget
+ * the next month starts with: one part per account, which starts out as this month's, and whether what was left
+ * over is added to it. If the next month already exists the close does not touch it, so the second is not asked.
  */
 function CloseDialog({ monthKey, busy }: { monthKey: MonthKey; busy: boolean }) {
   const { confirmClose, cancelClose } = useShell();
   const { state, main } = useFinanzas();
   const { t, label } = useI18n();
   const id = useId();
-  // El foco entra en Cancelar: la opción que no cambia nada.
+  // Focus lands on Cancel: the option that changes nothing.
   const cancelRef = useRef<HTMLButtonElement>(null);
-  // Las partes se leen una vez, al abrir: un refresco de los datos no debe pisar lo que se esté escribiendo.
+  // The parts are read once, on open: a data refresh must not overwrite what is being typed.
   const [form] = useState(() => closeBudgetForm(state, monthKey));
   const [fields, setFields] = useState(form.fields);
   const [addLeftover, setAddLeftover] = useState(false);

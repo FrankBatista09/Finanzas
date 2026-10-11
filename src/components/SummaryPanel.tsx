@@ -3,8 +3,8 @@ import { BudgetPanel } from './BudgetPanel';
 import { MoneyPanel } from './MoneyPanel';
 
 /**
- * Panel resumen: va arriba en las dos hojas, con lo propio de cada una. En "Mes", el presupuesto (por cuenta, su
- * dona y su lista); en "Savings", el dinero total y su reparto por cuenta. Ninguna enseña lo de la otra.
+ * Summary panel: it sits at the top of both sheets, with each one's own content. In "Month", the budget (by account,
+ * its donut and its list); in "Savings", the total money and its split by account. Neither shows the other's.
  */
 export function SummaryPanel({ sheet }: { sheet: Sheet }) {
   return sheet === 'ahorros' ? <MoneyPanel /> : <BudgetPanel />;

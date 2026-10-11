@@ -1,4 +1,4 @@
-/* Editores de celda: ocupan toda la celda, sin borde ni fondo, y al enfocarse se marcan como la selección de Excel. */
+/* Cell editors: they fill the whole cell, no border or background, and on focus are marked like the Excel selection. */
 
 .input,
 .select {
@@ -28,13 +28,13 @@
   cursor: default;
 }
 
-/* Texto monoespaciado: la columna "Día". */
+/* Monospaced text: the "Day" column. */
 .mono {
   font: var(--fs-num) var(--font-mono);
   font-variant-numeric: tabular-nums;
 }
 
-/* Texto pequeño en la fuente de la UI: la columna "Notas". */
+/* Small text in the UI font: the "Notes" column. */
 .small {
   font: var(--fs-num) var(--font-ui);
 }
@@ -55,7 +55,7 @@
   font: var(--fs-meta) var(--font-mono);
 }
 
-/* Celdas estrechas (envíos, columna de moneda). */
+/* Narrow cells (transfers, currency column). */
 .dense {
   padding: 7px 8px;
 }
@@ -81,7 +81,7 @@
   field-sizing: content;
 }
 
-/* Tonos. Van al final para ganar a `color: inherit` de la base. */
+/* Tones. They go last so they beat the base's `color: inherit`. */
 .soft {
   color: var(--text-soft);
 }

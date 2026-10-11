@@ -1,9 +1,9 @@
-/* La comisión de un envío, entre las transacciones: una fila de solo lectura (texto, sin campos). */
+/* A transfer's fee, among the transactions: a read-only row (text, no fields). */
 .feeRow {
   background: var(--add-row);
 }
 
-/* "transfer": la marca de que la fila sale de un envío y no se edita aquí. */
+/* "transfer": the mark that the row comes from a transfer and is not edited here. */
 .feeTag {
   margin-left: 8px;
   padding: 1px 6px;
@@ -14,7 +14,7 @@
   white-space: nowrap;
 }
 
-/* El nombre de la cuenta, en una línea y recortado como el de las listas de las demás filas. */
+/* The account name, on one line and truncated like the one in the selects of the other rows. */
 .feeRow .feeAccount {
   max-width: 130px;
   overflow: hidden;
@@ -22,7 +22,7 @@
   text-overflow: ellipsis;
 }
 
-/* "Mover fuera del presupuesto" / "devolver al presupuesto": una flecha discreta junto a la ×. */
+/* "Move outside the budget" / "move back to the budget": a discreet arrow next to the ×. */
 .moveButton {
   border: 0;
   background: transparent;
@@ -36,7 +36,7 @@
   color: var(--accent-text);
 }
 
-/* Método y, si es de crédito, la tarjeta debajo: así la columna no se ensancha y la tabla sigue cabiendo a 1440px. */
+/* Method and, if it is credit, the credit card below: that way the column does not widen and the table still fits at 1440px. */
 .methodCell {
   display: flex;
   flex-direction: column;

@@ -1,34 +1,34 @@
-/* Tokens de diseño (design_handoff/README.md, "Design Tokens") más los literales sueltos del prototipo.
-   Los valores son finales: no se ajustan aquí por gusto, solo se nombran.
+/* Design tokens (design_handoff/README.md, "Design Tokens") plus the prototype's stray literals.
+   The values are final: they are not adjusted here to taste, only named.
 
-   Esta es la paleta original. Un usuario con colores propios sustituye en el elemento raíz las variables de
-   acento, barra oscura y página (src/theme/derive.ts lista cuáles, y su prueba vigila que coincidan con estas). */
+   This is the original palette. A user with their own colors overrides the accent, dark bar and page variables
+   on the root element (src/theme/derive.ts lists which ones, and its test checks that they match these). */
 
 :root {
-  /* Tinta y texto */
+  /* Ink and text */
   --ink: #1d1f1c;
-  --text-soft: #45473f; /* texto secundario */
+  --text-soft: #45473f; /* secondary text */
   --text-muted: #6b6d66;
-  --text-light: #a9aba3; /* gris claro, sobre la barra oscura */
-  --text-faint: #a3a59d; /* glifos × y + */
+  --text-light: #a9aba3; /* light gray, on the dark bar */
+  --text-faint: #a3a59d; /* × and + glyphs */
 
-  /* Página: el fondo y lo que va directamente sobre él, fuera de las tarjetas (caja de cerrar mes, "Cargando…").
-     Con un fondo personalizado estos cambian con él; los de arriba no, porque las tarjetas siguen claras. */
+  /* Page: the background and what sits directly on it, outside the cards (close-month box, "Loading…").
+     With a custom background these change with it; the ones above do not, because the cards stay light. */
   --page: #efeee8;
   --page-text: #1d1f1c;
   --page-text-soft: #45473f;
   --page-text-muted: #6b6d66;
   --page-border: #cfccc1;
 
-  /* Superficies */
+  /* Surfaces */
   --surface: #fffefa;
-  --th-bg: #f6f5f0; /* encabezado de tabla y fondo del input de presupuesto */
-  --add-row: #f9f8f3; /* fila para agregar y pie del modal */
-  --unpaid-row: #fbfaf5; /* gasto fijo sin pagar */
-  --track: #f1efe9; /* fondo de las barras de progreso */
+  --th-bg: #f6f5f0; /* table header and background of the budget input */
+  --add-row: #f9f8f3; /* add row and dialog footer */
+  --unpaid-row: #fbfaf5; /* unpaid fixed expense */
+  --track: #f1efe9; /* background of the progress bars */
   --focus-bg: #fff;
 
-  /* Bordes */
+  /* Borders */
   --border: #e3e1d8;
   --border-th: #ebe9e2;
   --border-row: #eeece5;
@@ -36,53 +36,53 @@
   --border-dashed: #cfccc1;
   --border-swatch: #dcdad1;
 
-  /* Acento y dona */
+  /* Accent and donut */
   --accent: #2f7d52;
   --accent-hover: #23613f;
-  --accent-text: #23613f; /* el acento usado como texto sobre una superficie (cifras en positivo, enlaces) */
+  --accent-text: #23613f; /* the accent used as text on a surface (positive figures, links) */
   --donut-fixed: #2b3a33;
   --donut-pending: #c9d3c9;
   --donut-free: #ebe9e1;
   --error: #b23a2a;
   --error-hover: #96301f;
-  --on-error: #fff; /* texto sobre el rojo: el botón que confirma un borrado */
+  --on-error: #fff; /* text on the red: the button that confirms a deletion */
   --on-accent: #fff;
 
-  /* Barra oscura (cabecera, banner de mes cerrado, botón de cerrar mes) */
+  /* Dark bar (top bar, closed-month banner, close-month button) */
   --bar: #1d1f1c;
   --bar-text: #f4f3ee;
   --bar-input: #2b2e29;
   --bar-border: #3a3d38;
-  --bar-border-strong: #4a4d47; /* botón "Reabrir mes" */
-  --banner-over: #f0a596; /* "Vs. presupuesto" pasado */
-  --banner-ok: #9fd3b2; /* "Vs. presupuesto" dentro */
+  --bar-border-strong: #4a4d47; /* "Reopen month" button */
+  --banner-over: #f0a596; /* "Vs. budget" over */
+  --banner-ok: #9fd3b2; /* "Vs. budget" within */
 
-  /* Pestañas de hoja */
+  /* Sheet tabs */
   --tabs-bg: #e4e2da;
   --tabs-text: #6b6d66;
   --tabs-border: #cfccc1;
   --tabs-height: 38px;
 
-  /* Modal */
+  /* Dialog */
   --overlay: rgba(29, 31, 28, 0.45);
   --shadow-modal: 0 12px 40px rgba(0, 0, 0, 0.18);
 
-  /* Tipografía. Los paquetes @fontsource-variable registran las familias con el sufijo "Variable". */
+  /* Typography. The @fontsource-variable packages register the families with the "Variable" suffix. */
   --font-ui: 'Schibsted Grotesk Variable', 'Schibsted Grotesk', system-ui, sans-serif;
   --font-mono: 'JetBrains Mono Variable', 'JetBrains Mono', ui-monospace, monospace;
 
-  --fs-label: 11px; /* etiquetas en mayúsculas */
+  --fs-label: 11px; /* uppercase labels */
   --fs-meta: 12px;
-  --fs-num: 12.5px; /* celdas numéricas */
-  --fs-body: 13px; /* cuerpo y tablas */
-  --fs-title: 15px; /* títulos de tarjeta */
+  --fs-num: 12.5px; /* numeric cells */
+  --fs-body: 13px; /* body and tables */
+  --fs-title: 15px; /* card titles */
   --fs-brand: 16px;
   --fs-figure-s: 19px;
   --fs-figure-m: 24px;
   --fs-figure-l: 28px;
   --tracking-label: 0.06em;
 
-  /* Espaciado */
+  /* Spacing */
   --gap-6: 6px;
   --gap-8: 8px;
   --gap-10: 10px;
@@ -93,10 +93,10 @@
   --pad-cell: 7px 10px;
   --content-max: 1320px;
 
-  /* Radios */
-  --radius: 3px; /* botones e inputs */
+  /* Radii */
+  --radius: 3px; /* buttons and inputs */
   --radius-card: 4px;
 
-  /* Foco de celda, como la selección de Excel */
+  /* Cell focus, like Excel's selection */
   --focus-ring: inset 0 0 0 2px var(--accent);
 }

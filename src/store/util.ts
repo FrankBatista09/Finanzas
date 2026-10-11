@@ -5,10 +5,10 @@ import type { ImportErrorCode } from '../../shared/excel/import-error';
 import { ApiError, NetworkError } from '../api/client';
 import type { CoreKey, CoreTranslator } from '../i18n';
 
-/** Id para una fila nueva; viaja en el POST, así la fila optimista y la del servidor son la misma. */
+/** Id for a new row; it travels in the POST, so the optimistic row and the server's row are the same one. */
 export function newId(): string {
   if (typeof crypto.randomUUID === 'function') return crypto.randomUUID();
-  // randomUUID solo existe en contextos seguros; probando desde el móvil por http://192.168… no lo es.
+  // randomUUID only exists in secure contexts; testing from a phone over http://192.168… is not one.
   const bytes = crypto.getRandomValues(new Uint8Array(16));
   bytes[6] = (bytes[6]! & 0x0f) | 0x40;
   bytes[8] = (bytes[8]! & 0x3f) | 0x80;
@@ -16,7 +16,7 @@ export function newId(): string {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
-/** La frase de cada código de error de la API. Record: un código nuevo en el contrato no compila hasta tener la suya. */
+/** The phrase for each API error code. Record: a new code in the contract does not compile until it has its own. */
 const ERROR_KEYS: Record<ApiErrorCode, CoreKey> = {
   validation: 'errorValidation',
   not_found: 'errorNotFound',
@@ -27,7 +27,7 @@ const ERROR_KEYS: Record<ApiErrorCode, CoreKey> = {
   internal: 'errorInternal',
 };
 
-/** La frase de cada motivo por el que el lector de Excel no pudo con un archivo (su mensaje va siempre en inglés). */
+/** The phrase for each reason the Excel reader could not handle a file (its message is always in English). */
 const IMPORT_KEYS: Record<ImportErrorCode, CoreKey> = {
   not_xlsx: 'importNotXlsx',
   old_format: 'importOldFormat',
@@ -38,9 +38,9 @@ const IMPORT_KEYS: Record<ImportErrorCode, CoreKey> = {
 };
 
 /**
- * Frase para el usuario, en su idioma. Los errores de la API se traducen por su código; el mensaje del servidor
- * (en inglés) solo se añade como detalle en los de validación, donde dice qué dato estaba mal.
- * Los del lector de Excel (el archivo se lee en el navegador) se traducen igual, por su código.
+ * Phrase for the user, in their language. API errors are translated by their code; the server's message
+ * (in English) is only added as a detail on validation errors, where it says which value was wrong.
+ * Those from the Excel reader (the file is read in the browser) are translated the same way, by their code.
  */
 export function describeError(e: unknown, t: CoreTranslator): string {
   if (e instanceof NetworkError) return t('errorNetwork');
@@ -52,7 +52,7 @@ export function describeError(e: unknown, t: CoreTranslator): string {
   return t('errorUnexpected');
 }
 
-/** Descarga un Blob con ese nombre de archivo (enlace temporal, como en el prototipo). */
+/** Downloads a Blob with that file name (temporary link, as in the prototype). */
 export function saveBlob(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');

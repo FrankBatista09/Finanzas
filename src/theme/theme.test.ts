@@ -9,12 +9,12 @@ import type { ThemeVar } from './derive';
 
 const NAMES = Object.keys(DEFAULT_VARS) as ThemeVar[];
 
-/** El valor efectivo de cada variable con ese tema: lo que sustituye, y tokens.css para lo demás. */
+/** The effective value of each variable with that theme: what it overrides, and tokens.css for the rest. */
 function palette(theme: ThemeColors | null): Record<ThemeVar, string> {
   return { ...DEFAULT_VARS, ...themeVars(theme) };
 }
 
-/** Los pares texto/fondo que tienen que leerse, sea cual sea el tema. */
+/** The text/background pairs that have to be readable, whatever the theme. */
 const READABLE: readonly [text: ThemeVar | string, bg: ThemeVar | string][] = [
   ['--on-accent', '--accent'],
   ['--on-accent', '--accent-hover'],
@@ -39,18 +39,18 @@ function expectReadable(theme: ThemeColors, name: string): void {
   }
 }
 
-describe('aritmética de color', () => {
-  it('luminancia y contraste WCAG', () => {
+describe('color arithmetic', () => {
+  it('WCAG luminance and contrast', () => {
     expect(luminance('#000000')).toBe(0);
     expect(luminance('#ffffff')).toBeCloseTo(1, 10);
     expect(contrast('#000000', '#ffffff')).toBeCloseTo(21, 10);
     expect(contrast('#2f7d52', '#2f7d52')).toBe(1);
-    // Valor de referencia: #767676 es el gris más claro que pasa AA sobre blanco.
+    // Reference value: #767676 is the lightest gray that passes AA on white.
     expect(contrast('#767676', '#ffffff')).toBeCloseTo(4.54, 2);
     expect(contrast('#ffffff', '#2f7d52')).toBe(contrast('#2f7d52', '#ffffff'));
   });
 
-  it('mezcla, tono y saturación', () => {
+  it('mix, hue and saturation', () => {
     expect(mix('#000000', '#ffffff', 0)).toBe('#000000');
     expect(mix('#000000', '#ffffff', 1)).toBe('#ffffff');
     expect(mix('#000000', '#ffffff', 0.5)).toBe('#808080');
@@ -64,15 +64,15 @@ describe('aritmética de color', () => {
 });
 
 describe('themeVars', () => {
-  it('sin tema, o con el original, no sustituye nada', () => {
+  it('with no theme, or with the original one, it overrides nothing', () => {
     expect(themeVars(null)).toEqual({});
     expect(themeVars(DEFAULT_THEME)).toEqual({});
     expect(themeVars(THEME_PRESETS[0]!.colors)).toEqual({});
-    // Mayúsculas o forma corta del mismo color: sigue siendo el original.
+    // Uppercase or short form of the same color: it is still the original.
     expect(themeVars({ accent: '#2F7D52', header: '#1D1F1C', background: '#EFEEE8' })).toEqual({});
   });
 
-  it('los valores por defecto son los de tokens.css', () => {
+  it('the default values are the ones in tokens.css', () => {
     const css = readFileSync(new URL('../styles/tokens.css', import.meta.url), 'utf8');
     for (const name of NAMES) {
       const declared = new RegExp(`^\\s*${name}:\\s*([^;]+);`, 'm').exec(css)?.[1];
@@ -81,7 +81,7 @@ describe('themeVars', () => {
     }
   });
 
-  it('un tema no válido se ignora entero', () => {
+  it('an invalid theme is ignored entirely', () => {
     for (const bad of [
       undefined,
       'ocean',
@@ -97,7 +97,7 @@ describe('themeVars', () => {
     }
   });
 
-  it('cada color solo cambia lo suyo', () => {
+  it('each color only changes what belongs to it', () => {
     const accentOnly = themeVars({ ...DEFAULT_THEME, accent: '#2a6f97' });
     expect(Object.keys(accentOnly).sort()).toEqual(
       ['--accent', '--accent-hover', '--accent-text', '--banner-ok', '--donut-fixed', '--donut-pending', '--on-accent'].sort(),
@@ -117,7 +117,7 @@ describe('themeVars', () => {
     expect(backgroundOnly['--page']).toBe('#eef1f4');
   });
 
-  it('nunca toca superficies, colores de tabla ni el rojo de error', () => {
+  it('never touches surfaces, table colors or the error red', () => {
     for (const preset of THEME_PRESETS) {
       for (const name of Object.keys(themeVars(preset.colors))) expect(NAMES, name).toContain(name);
     }
@@ -127,13 +127,13 @@ describe('themeVars', () => {
     expect(NAMES).not.toContain('--th-bg');
   });
 
-  it('todo lo que devuelve es un color #rrggbb', () => {
+  it('everything it returns is a #rrggbb color', () => {
     for (const preset of THEME_PRESETS) {
       for (const [name, value] of Object.entries(themeVars(preset.colors))) expect(value, `${preset.id} ${name}`).toMatch(/^#[0-9a-f]{6}$/);
     }
   });
 
-  it('la paleta original ya cumple en los pares que importan', () => {
+  it('the original palette already passes on the pairs that matter', () => {
     const vars = palette(null);
     expect(contrast(vars['--on-accent'], vars['--accent'])).toBeGreaterThanOrEqual(MIN_CONTRAST);
     expect(contrast(vars['--bar-text'], vars['--bar'])).toBeGreaterThanOrEqual(MIN_CONTRAST);
@@ -142,7 +142,7 @@ describe('themeVars', () => {
     expect(contrast(vars['--page-text-muted'], vars['--page'])).toBeGreaterThanOrEqual(MIN_CONTRAST);
   });
 
-  it('cada tema listo da texto legible sobre el acento, sobre la barra y sobre la página', () => {
+  it('every preset theme gives readable text on the accent, on the bar and on the page', () => {
     for (const preset of THEME_PRESETS.slice(1)) {
       const vars = palette(preset.colors);
       expect(contrast(vars['--on-accent'], preset.colors.accent), `${preset.id}: texto sobre acento`).toBeGreaterThanOrEqual(MIN_CONTRAST);
@@ -151,8 +151,8 @@ describe('themeVars', () => {
     }
   });
 
-  it('elige texto claro u oscuro según el fondo', () => {
-    // Acento oscuro → texto claro; acento claro → texto oscuro. Lo mismo la barra.
+  it('picks light or dark text depending on the background', () => {
+    // Dark accent → light text; light accent → dark text. The same for the bar.
     expect(luminance(palette({ ...DEFAULT_THEME, accent: '#14324a' })['--on-accent'])).toBeGreaterThan(0.8);
     expect(luminance(palette({ ...DEFAULT_THEME, accent: '#f2c94c' })['--on-accent'])).toBeLessThan(0.1);
     expect(luminance(palette({ ...DEFAULT_THEME, header: '#101418' })['--bar-text'])).toBeGreaterThan(0.8);
@@ -160,11 +160,11 @@ describe('themeVars', () => {
     expect(luminance(palette({ ...DEFAULT_THEME, background: '#15171a' })['--page-text'])).toBeGreaterThan(0.8);
   });
 
-  it('con cualquier combinación de colores el texto se sigue leyendo', () => {
+  it('with any combination of colors the text stays readable', () => {
     const levels = ['00', '3c', '7f', 'b4', 'ff'];
     const colors: string[] = [];
     for (const r of levels) for (const g of levels) for (const b of levels) colors.push(`#${r}${g}${b}`);
-    // Cada color en los tres papeles, combinado con dos colores muy distintos en los otros dos.
+    // Each color in the three roles, combined with two very different colors in the other two.
     colors.forEach((c, i) => {
       const other = colors[(i * 7 + 31) % colors.length]!;
       const third = colors[(i * 13 + 59) % colors.length]!;
@@ -173,7 +173,7 @@ describe('themeVars', () => {
     });
   });
 
-  it('los segmentos de la dona se distinguen del acento', () => {
+  it('the donut segments can be told apart from the accent', () => {
     for (const accent of ['#2a6f97', '#0b1220', '#101010', '#f2c94c', '#f5f0e6', '#808080', ...THEME_PRESETS.map((p) => p.colors.accent)]) {
       const vars = palette({ ...DEFAULT_THEME, accent });
       expect(contrast(vars['--donut-fixed'], accent), `${accent}: fijos pagados`).toBeGreaterThanOrEqual(1.5);
@@ -182,7 +182,7 @@ describe('themeVars', () => {
     }
   });
 
-  it('el hover se aleja del color del texto: nunca pierde contraste', () => {
+  it('the hover moves away from the text color: it never loses contrast', () => {
     for (const accent of ['#2a6f97', '#f2c94c', '#a8741a', '#7a4b8c']) {
       const vars = palette({ ...DEFAULT_THEME, accent });
       expect(vars['--accent-hover']).not.toBe(accent);
@@ -191,8 +191,8 @@ describe('themeVars', () => {
   });
 });
 
-describe('ringShades: los tonos de la dona del dinero por cuenta', () => {
-  it('tantos tonos como segmentos, todos #rrggbb; con uno solo, el acento', () => {
+describe('ringShades: the shades of the money-by-account donut', () => {
+  it('as many shades as segments, all #rrggbb; with only one, the accent', () => {
     expect(ringShades(null, 0)).toEqual([]);
     expect(ringShades(null, -3)).toEqual([]);
     expect(ringShades(null, 1)).toEqual(['#2f7d52']);
@@ -204,18 +204,18 @@ describe('ringShades: los tonos de la dona del dinero por cuenta', () => {
     }
   });
 
-  it('van del tono oscuro de la dona al acento y de ahí al claro', () => {
-    // Con la paleta original: de #2b3a33 (fijos pagados) a #2f7d52 (acento) y a #c9d3c9 (pendientes).
+  it('they go from the dark donut shade to the accent and from there to the light one', () => {
+    // With the original palette: from #2b3a33 (paid fixed expenses) to #2f7d52 (accent) and to #c9d3c9 (pending).
     const five = ringShades(null, 5);
     expect(five[2]).toBe(DEFAULT_VARS['--accent']);
     for (let i = 1; i < five.length; i++) expect(luminance(five[i]!)).toBeGreaterThan(luminance(five[i - 1]!));
     expect(luminance(five[0]!)).toBeGreaterThanOrEqual(luminance(DEFAULT_VARS['--donut-fixed']));
     expect(luminance(five[4]!)).toBeLessThanOrEqual(luminance(DEFAULT_VARS['--donut-pending']));
-    // Con dos, uno a cada lado del acento.
+    // With two, one on each side of the accent.
     expect(ringShades(null, 2)).toEqual([mix('#2b3a33', '#2f7d52', 0.5), mix('#2f7d52', '#c9d3c9', 0.5)]);
   });
 
-  it('siguen los colores del usuario: salen de las mismas variables que su dona de presupuesto', () => {
+  it("they follow the user's colors: they come from the same variables as the user's budget donut", () => {
     for (const preset of THEME_PRESETS.slice(1)) {
       const vars = palette(preset.colors);
       const three = ringShades(preset.colors, 3);
@@ -227,11 +227,11 @@ describe('ringShades: los tonos de la dona del dinero por cuenta', () => {
       ]);
       expect(three, preset.id).not.toEqual(ringShades(null, 3));
     }
-    // Un tema no válido cuenta como la paleta original.
+    // An invalid theme counts as the original palette.
     expect(ringShades({ accent: 'red' }, 3)).toEqual(ringShades(null, 3));
   });
 
-  it('con hasta ocho cuentas, dos segmentos vecinos se siguen distinguiendo, sea cual sea el tema', () => {
+  it('with up to eight accounts, two neighboring segments can still be told apart, whatever the theme', () => {
     for (const preset of THEME_PRESETS) {
       for (const n of [2, 3, 4, 6, 8]) {
         const shades = ringShades(preset.colors, n);
@@ -255,7 +255,7 @@ describe('applyTheme', () => {
     };
   }
 
-  it('pone las variables del tema y el color de la barra del navegador', () => {
+  it('sets the theme variables and the color of the browser bar', () => {
     const p = page();
     const ocean = THEME_PRESETS.find((t) => t.id === 'ocean')!.colors;
     applyTheme(ocean, p.target);
@@ -264,7 +264,7 @@ describe('applyTheme', () => {
     expect(p.meta.content).toBe('#16202a');
   });
 
-  it('con null no deja nada puesto: manda tokens.css', () => {
+  it('with null it leaves nothing set: tokens.css is in charge', () => {
     const p = page();
     applyTheme(THEME_PRESETS[1]!.colors, p.target);
     applyTheme(null, p.target);
@@ -272,7 +272,7 @@ describe('applyTheme', () => {
     expect(p.meta.content).toBe('#1d1f1c');
   });
 
-  it('al cambiar de tema quita lo que el nuevo no sustituye', () => {
+  it('when the theme changes it removes what the new one does not override', () => {
     const p = page();
     applyTheme({ accent: '#2a6f97', header: '#16202a', background: '#eef1f4' }, p.target);
     applyTheme({ ...DEFAULT_THEME, accent: '#7a4b8c' }, p.target);
@@ -282,7 +282,7 @@ describe('applyTheme', () => {
     expect(p.meta.content).toBe('#1d1f1c');
   });
 
-  it('funciona sin <meta name="theme-color">', () => {
+  it('works without <meta name="theme-color">', () => {
     const p = page();
     expect(() => applyTheme(THEME_PRESETS[2]!.colors, { root: p.target.root, meta: null })).not.toThrow();
     expect(p.props.get('--accent')).toBe('#7a4b8c');

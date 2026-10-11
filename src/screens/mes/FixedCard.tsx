@@ -34,23 +34,23 @@ import { MAX_LEN, parsePayWith, payWithOptions, payWithValue, rowAccountOptions,
 import { MES } from './strings';
 
 /**
- * "Gastos mensuales": los mismos conceptos cada mes, con su casilla de pagado y la cuenta de la que se pagan.
- * Los importes calculados van en la moneda principal y en la segunda. Las filas de las tarjetas van primero; la fila para
- * agregar va tras los gastos (ahí cae el gasto nuevo) y la abre el botón de la cabecera.
+ * "Fixed monthly expenses": the same items every month, each with its paid checkbox and the account it is paid from.
+ * The computed amounts go in the main currency and in the second one. The credit card rows come first; the add
+ * row comes after the expenses (that is where the new expense lands) and the header button opens it.
  */
 export function FixedCard({ className, cardClassName }: { className?: string; cardClassName?: string }) {
   const { state, month, calc, main, second, inBoth, accounts, defaultAccount, accountOptions, readOnly, actions } = useFinanzas();
-  // La tarjeta cuyo diálogo de pago está abierto, y la de la que se ve el detalle. Los diálogos se pintan fuera de la
-  // tarjeta expandible, para no montarlos dos veces.
+  // The credit card whose payment dialog is open, and the one whose details are shown. The dialogs render outside the
+  // expandable card, so they are not mounted twice.
   const [paying, setPaying] = useState<string | null>(null);
   const [viewing, setViewing] = useState<string | null>(null);
   const { t } = useI18n();
   const s = useStrings(MES);
-  // App monta la hoja de nuevo al cambiar de usuario o de mes (key): el borrador no pasa de uno a otro.
+  // App remounts the sheet when the user or the month changes (key): the draft does not carry over from one to the other.
   const [draft, setDraft] = useState(EMPTY_FIXED);
   const adding = useAddRow(() => setDraft(EMPTY_FIXED));
-  // Las cuentas visibles, la misma lista mientras no cambien las cuentas: accountOptions es nueva en cada cambio
-  // de estado y, pasada tal cual, repintaría todas las filas memorizadas con cada tecla.
+  // The visible accounts, the same list as long as the accounts do not change: accountOptions is new on every state
+  // change and, passed as is, would re-render every memoized row on each keystroke.
   const visible = useMemo(() => accountOptions(), [state.accounts]);
   const ctx = { accounts, defaultAccount, main };
   const draftAccountId = draftAccount(draft, ctx)?.id ?? '';
@@ -94,7 +94,7 @@ export function FixedCard({ className, cardClassName }: { className?: string; ca
             <Th align="right" width={AMOUNT_W}>
               {t('amount')}
             </Th>
-            {/* En una línea: "Para birimi" (turco) son dos palabras y partiría la cabecera en dos renglones. */}
+            {/* On one line: "Para birimi" (Turkish) is two words and would break the header into two lines. */}
             <Th width={64} className={styles.currency}>
               {t('currency')}
             </Th>
@@ -106,7 +106,7 @@ export function FixedCard({ className, cardClassName }: { className?: string; ca
           </tr>
         </thead>
         <tbody>
-          {/* Derived card rows come first, in the cards' sort order, so adding a card pushes every regular expense down one row. */}
+          {/* Derived credit card rows come first, in the credit cards' sort order, so adding a credit card pushes every regular expense down one row. */}
           {calc.cards.map((card) => (
             <CardRow
               key={card.card.id}
@@ -167,7 +167,7 @@ export function FixedCard({ className, cardClassName }: { className?: string; ca
                 />
               </Td>
               <Td kind="edit">
-                {/* Mientras no se toque, la moneda es la de la cuenta elegida. */}
+                {/* Until it is touched, the currency is that of the chosen account. */}
                 <CellSelect
                   value={draftCurrency(draft, ctx)}
                   options={CURRENCIES}
@@ -211,7 +211,7 @@ export function FixedCard({ className, cardClassName }: { className?: string; ca
   );
 }
 
-/** Ancho mínimo del selector «Pagar con»: lo justo para que se lea «Account» sin ensanchar la tabla en pantallas de 1440px. */
+/** Minimum width of the "Pay with" select: just enough for "Account" to be readable without widening the table on 1440px screens. */
 const PAY_WITH_WIDTH = 70;
 
 /** Width hint for the checkbox column; the column is never narrower than its header word. */
@@ -229,17 +229,18 @@ const ITEM_W = 60;
 interface CardRowProps {
   card: CardCalc;
   readOnly: boolean;
-  /** Nombres de las cuentas de las que salieron los pagos, si ya se pagó algo. */
+  /** Names of the accounts the payments came from, if something has already been paid. */
   accountName: string | undefined;
   onPay: () => void;
   onDetails: () => void;
 }
 
 /**
- * La fila de la tarjeta de crédito, al pie de «Gastos mensuales» en todos los meses. Su total (saldo anterior + otros
- * cargos + lo cargado este mes) va en las columnas de importes; el monto es ese mismo total (los «otros cargos» se editan en el desglose).
- * Su casilla está marcada solo con todo pagado; con un pago parcial queda a medias y la fila dice cuánto falta. Pulsarla
- * siempre abre el diálogo: allí se paga lo que falta o se quita algún pago. El nombre abre el desglose del mes.
+ * The credit card's row, at the bottom of "Fixed monthly expenses" in every month. Its total (previous balance + other
+ * charges + what was charged this month) goes in the amount columns; the Amount column is that same total (the "other
+ * charges" are edited in the breakdown). Its checkbox is checked only when everything is paid; with a partial payment
+ * it is half-checked and the row says how much is left. Clicking it always opens the dialog: there you pay what is
+ * left or remove a payment. The name opens the month's breakdown.
  */
 function CardRow({ card, readOnly, accountName, onPay, onDetails }: CardRowProps) {
   const { inBoth } = useFinanzas();
@@ -247,7 +248,7 @@ function CardRow({ card, readOnly, accountName, onPay, onDetails }: CardRowProps
   const started = card.payments.length > 0;
   const paid = started && isFullyPaid(card.remainder);
   const partial = started && !paid;
-  // Con la tarjeta en cero y sin pagos no hay nada que pagar (el servidor lo rechazaría): la casilla no sirve.
+  // With the credit card at zero and no payments there is nothing to pay (the server would reject it): the checkbox is of no use.
   const canTick = readOnly ? false : started || card.total > 0;
   const named = { name: card.card.name };
   const cur = card.cur;
@@ -298,23 +299,23 @@ function CardRow({ card, readOnly, accountName, onPay, onDetails }: CardRowProps
 
 interface FixedRowProps {
   row: FixedExpense;
-  /** El importe en la moneda principal y en la segunda, con las tasas del mes. */
+  /** The amount in the main currency and in the second one, at the month rates. */
   inMain: number;
   inSecond: number | null;
-  /** Opciones del selector de cuenta (rows.ts rowAccountOptions). */
+  /** Options for the account select (rows.ts rowAccountOptions). */
   accounts: readonly AccountOption[];
-  /** Todas las tarjetas (también las apagadas: la de la fila se queda en su selector) y la primera activa, a la que va un gasto que no dice cuál. */
+  /** All the credit cards (the turned-off ones too: the row's own stays in its select) and the first active one, the one an expense goes to when it does not say which. */
   cards: readonly CreditCard[];
   firstCard: string | null;
   readOnly: boolean;
   actions: Actions;
 }
 
-/** memo: al editar una celda solo se vuelve a pintar su fila; las demás conservan su identidad en la caché. */
+/** memo: editing a cell re-renders only its row; the others keep their identity in the cache. */
 const FixedRow = memo(function FixedRow({ row: f, inMain, inSecond, accounts, cards, firstCard, readOnly, actions }: FixedRowProps) {
   const { t } = useI18n();
   const s = useStrings(MES);
-  // El nombre del gasto, para las etiquetas de sus celdas ("Amount of Netflix").
+  // The expense's name, for the labels of its cells ("Amount of Netflix").
   const named = { name: f.name };
   return (
     <Tr unpaid={!f.paid}>
@@ -370,7 +371,7 @@ const FixedRow = memo(function FixedRow({ row: f, inMain, inSecond, accounts, ca
           label={s('payWithOf', named)}
         />
       </Td>
-      {/* Un gasto en tarjeta no sale de ninguna cuenta: se paga con la tarjeta. */}
+      {/* An expense on a credit card does not come out of any account: it is paid with the credit card. */}
       {f.onCard ? (
         <Td kind="center" tone="faint">
           —

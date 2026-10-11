@@ -14,21 +14,21 @@ import type { ExcelLocale } from './locale';
 export { ImportError };
 export type { ImportErrorCode } from './import-error';
 
-// ── Idiomas ──────────────────────────────────────────────────────────────────
-// El libro puede venir en cualquiera de los idiomas de la app (y todos los anteriores a esos idiomas, en
-// español). Cada cosa que se reconoce por su texto —hojas, encabezados, el "Sí" de Pagado— se compara con
-// los textos de los tres ExcelLocale a la vez, no con los de un idioma elegido para todo el libro: así
-// también se lee un libro que los mezcla (una hoja renombrada, una tabla pegada de otro archivo).
+// ── Languages ────────────────────────────────────────────────────────────────
+// The workbook can come in any of the app's languages (and every workbook from before those languages, in
+// Spanish). Everything recognized by its text — sheets, headers, the "Yes" under Paid — is compared against
+// the texts of the three ExcelLocale at once, not against those of one language chosen for the whole
+// workbook: that way a workbook that mixes them (a renamed sheet, a table pasted from another file) is read too.
 
 const LOCALES = Object.values(EXCEL_LOCALES);
 
-/** Sin espacios sobrantes y en forma compuesta, para que "Vía" sea igual venga como venga escrito. */
+/** No stray whitespace and in composed form, so that "Vía" is the same however it was written. */
 const tidy = (s: string) => s.trim().normalize('NFC');
 
-/** Sin tildes y en minúsculas: "Sí", "SI" y " si " son lo mismo. */
+/** No accents and in lower case: "Sí", "SI" and " si " are the same. */
 const fold = (s: string) => s.trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 
-/** Los textos que puede tener un mismo sitio del libro, uno por idioma. */
+/** The texts a given spot in the workbook can have, one per language. */
 function inAnyLanguage(pick: (L: ExcelLocale) => string): ReadonlySet<string> {
   return new Set(LOCALES.map((L) => tidy(pick(L))));
 }
@@ -44,9 +44,9 @@ const HEAD = {
 const YES = new Set(LOCALES.map((L) => fold(L.yes)));
 
 /**
- * Una función de texto a texto que recuerda lo que ya respondió. canonicalCat y canonicalMethod recorren las
- * listas de los tres idiomas en cada llamada, y en una hoja las mismas pocas categorías se repiten miles de
- * veces. El tope evita que crezca sin fin con categorías escritas a mano, distintas en cada fila.
+ * A text-to-text function that remembers what it already answered. canonicalCat and canonicalMethod walk the
+ * lists of the three languages on every call, and in a sheet the same few categories repeat thousands of
+ * times. The cap keeps it from growing without end with hand-typed categories, different in every row.
  */
 function remembering(fn: (text: string) => string): (text: string) => string {
   const seen = new Map<string, string>();
@@ -60,24 +60,24 @@ function remembering(fn: (text: string) => string): (text: string) => string {
   };
 }
 
-/** El libro trae categorías y métodos en su idioma; se guardan con el nombre canónico. Lo que no es de la lista queda igual. */
+/** The workbook has categories and methods in its language; they are stored by canonical name. Unlisted values stay as is. */
 const toCat = remembering(canonicalCat);
 const toMethod = remembering(canonicalMethod);
 
-// ── Valores por defecto ──────────────────────────────────────────────────────
+// ── Default values ───────────────────────────────────────────────────────────
 
-/** Presupuesto cuando la celda O6 está vacía (la plantilla sin datos), igual que en el prototipo. */
+/** Budget when cell O6 is empty (the template with no data), same as in the prototype. */
 const DEFAULT_BUDGET = 70000;
 
-/** Meta a la que el prototipo asignaba un aporte sin meta: la de ahorro personal. */
+/** Goal the prototype assigned a contribution with no goal to: the personal savings one. */
 const FALLBACK_GOAL = DEFAULT_GOALS.find((g) => g.id === 'personal')?.name ?? 'Personal savings';
 
 /**
- * Las tres metas fijas del libro de la versión 1 (siempre en español) y la meta de hoy que le corresponde a
- * cada una: las dos con las que arranca un usuario y la del viaje. Solo en un libro con esa forma se cambia el
- * nombre de una meta (ver `isLegacyBook`); en cualquier otro, el nombre es un dato del usuario y no se toca.
- * Se exporta para el servidor: al aplicar la importación, quien conserva una meta con el nombre de entonces
- * la sigue usando (server/db.ts applyImport).
+ * The three fixed goals of the version 1 workbook (always in Spanish) and today's goal that corresponds to
+ * each one: the two a user starts with and the trip one. Only in a workbook with that shape is a goal
+ * renamed (see `isLegacyBook`); in any other, the name is the user's data and is left untouched.
+ * It is exported for the server: when applying the import, whoever still has a goal with the name from back
+ * then keeps using it (server/db.ts applyImport).
  */
 export const LEGACY_GOALS: readonly (readonly [before: string, now: string])[] = [
   ['Fondo de emergencia', DEFAULT_GOALS.find((g) => g.id === 'emergency')?.name ?? 'Emergency fund'],
@@ -85,30 +85,30 @@ export const LEGACY_GOALS: readonly (readonly [before: string, now: string])[] =
   ['Viaje a Turquía', 'Trip to Turkey'],
 ];
 
-// ── Hoja de ahorros ──────────────────────────────────────────────────────────
-// La disposición es la del exportador (export.ts `savingsSheet` y export-goals.ts).
+// ── Savings sheet ────────────────────────────────────────────────────────────
+// The layout is the exporter's (export.ts `savingsSheet` and export-goals.ts).
 
-/** Fila del encabezado de la tabla de aportes en el diseño original (una sola banda de tarjetas). */
+/** Header row of the contributions table in the original design (a single band of cards). */
 const CONTRIB_HEAD = BAND_TOP + BAND_ROWS + 1;
-/** Hasta cuántas bandas de tarjetas se busca ese encabezado. La API admite 200 metas; esto va muy sobrado. */
+/** Maximum number of bands of cards searched for that header. The API allows 200 goals; this leaves ample room. */
 const MAX_BANDS = 1000;
-/** Dentro de una banda, fila de los tres datos de una meta con plan: aporte (J), inicio (L) y fin (N). */
+/** Within a band, the row of the three values of a goal with a plan: contribution (J), start (L) and end (N). */
 const PLAN_ROW = 6;
-/** Lista de metas de la hoja Config (el desplegable de los aportes): columna G, de la fila 4 hacia abajo. */
+/** Goal list of the Config sheet (the contributions' dropdown): column G, from row 4 down. */
 const CONFIG_GOALS_ROW = 4;
 const CONFIG_GOALS_MAX = 5000;
 
-/** Filas seguidas sin datos que dan por terminada una tabla. */
+/** Consecutive rows with no data that mark a table as finished. */
 const TX_GAP = 40;
 const TRANSFER_GAP = 80;
 const CONTRIB_GAP = 40;
 
-/** Ningún número ni fecha escritos como texto pasa de este largo; lo demás ni se intenta interpretar. */
+/** No number or date written as text is longer than this; anything else is not even parsed. */
 const MAX_LITERAL = 40;
 
-// Número escrito como texto: "1337.15", "1,337.15", "-20", "1e3". Coma solo como separador de miles (formato es-DO).
+// Number written as text: "1337.15", "1,337.15", "-20", "1e3". Comma only as a thousands separator (es-DO format).
 const NUM_TEXT_RE = /^[+-]?(?:\d{1,3}(?:,\d{3})+(?:\.\d*)?|(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?)$/;
-// Fechas escritas como texto. La forma con el día primero es la que usa la hoja (dd/mm/yyyy).
+// Dates written as text. The day-first form is the one the sheet uses (dd/mm/yyyy).
 const YMD_RE = /^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})(?:[T ].*)?$/;
 const DMY_RE = /^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})(?:[T ].*)?$/;
 const YM_RE = /^(\d{4})[-/.](\d{1,2})$/;
@@ -125,7 +125,7 @@ function toNumber(v: CellValue | undefined): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-/** El texto tal como está en la celda; lo que solo son espacios cuenta como vacío. */
+/** The text as it is in the cell; text that is only whitespace counts as empty. */
 function toText(v: CellValue | undefined): string {
   if (typeof v === 'string') return v.trim() === '' ? '' : v;
   if (typeof v === 'number') return String(v);
@@ -133,13 +133,13 @@ function toText(v: CellValue | undefined): string {
   return '';
 }
 
-/** "Sí", "Yes" o "Evet", con o sin tilde y en cualquier combinación de mayúsculas; también una casilla marcada (Numbers). */
+/** "Sí", "Yes" or "Evet", with or without the accent and in any letter case; also a checked checkbox (Numbers). */
 function isYes(v: CellValue | undefined): boolean {
   if (typeof v === 'boolean') return v;
   return typeof v === 'string' && YES.has(fold(v));
 }
 
-/** `empty` es la moneda por defecto de la tabla cuando la celda está vacía; cualquier otro texto es DOP. */
+/** `empty` is the table's default currency when the cell is empty; any other text is DOP. */
 function toCurrency(v: CellValue | undefined, empty: Currency): Currency {
   const t = toText(v).trim().toUpperCase();
   if (t === '') return empty;
@@ -147,13 +147,13 @@ function toCurrency(v: CellValue | undefined, empty: Currency): Currency {
 }
 
 /**
- * Serial de Excel → fecha, con la misma cuenta que `iso()` en el prototipo (25569 es el 1970-01-01).
- * En el sistema 1904 los seriales empiezan 1462 días después.
+ * Excel serial → date, with the same arithmetic as `iso()` in the prototype (25569 is 1970-01-01).
+ * In the 1904 system the serials start 1462 days later.
  */
 function serialToISO(serial: number, date1904: boolean): ISODate | null {
   const days = date1904 ? serial + 1462 : serial;
-  // Fuera de 1900-01-01..9999-12-31 no es una fecha de Excel (y toISOString fallaría).
-  // El serial 1 es 1899-12-31, que la app no admite como fecha.
+  // Outside 1900-01-01..9999-12-31 it is not an Excel date (and toISOString would throw).
+  // Serial 1 is 1899-12-31, which the app does not accept as a date.
   if (!(days >= 2 && days < 2958466)) return null;
   return new Date(Math.round((days - 25569) * 864e5)).toISOString().slice(0, 10);
 }
@@ -175,7 +175,7 @@ function toISODate(v: CellValue | undefined, date1904: boolean): ISODate | null 
   return isISODate(iso) ? iso : null;
 }
 
-/** Mes de una celda de fecha (inicio y fin de una meta con plan, con formato mm/yyyy). */
+/** Month of a date cell (start and end of a goal with a plan, formatted mm/yyyy). */
 function toMonthKey(v: CellValue | undefined, date1904: boolean): MonthKey | null {
   const iso = toISODate(v, date1904);
   if (iso) return iso.slice(0, 7);
@@ -194,7 +194,7 @@ function toMonthKey(v: CellValue | undefined, date1904: boolean): MonthKey | nul
   return isMonthKey(key) ? key : null;
 }
 
-/** ¿Tiene la celda uno de esos textos de encabezado? */
+/** Does the cell hold one of those header texts? */
 function isHeader(sheet: SheetCells, col: string, row: number, names: ReadonlySet<string>): boolean {
   const v = sheet.get(col, row);
   return typeof v === 'string' && names.has(tidy(v));
@@ -204,9 +204,9 @@ function readMonth(sheet: SheetCells, key: MonthKey, closed: boolean, date1904: 
   const g = (col: string, row: number) => sheet.get(col, row);
   const firstDay = `${key}-01`;
 
-  // Las tablas se localizan por sus encabezados: con más de 15 fijos o más de 5 envíos el historial baja.
-  // Vale la primera fila que coincide: más abajo, un gasto que se llame "Item" o "Concepto" es un gasto.
-  // Si no aparecen, valen las filas del diseño original.
+  // Tables are located by their headers: with more than 15 fixed expenses or more than 5 transfers the history
+  // moves down. The first matching row wins: further down, an expense named "Item" or "Concepto" is an expense.
+  // If they do not show up, the rows of the original design apply.
   let fh = 0;
   let eh = 0;
   let th = 0;
@@ -222,7 +222,7 @@ function readMonth(sheet: SheetCells, key: MonthKey, closed: boolean, date1904: 
   eh ||= 29;
   th ||= 38;
 
-  // Gastos mensuales: entre su encabezado y el del historial. Una fila cuenta si tiene concepto y monto.
+  // Fixed expenses: between their header and the history's. A row counts if it has an item and an amount.
   const fixed: ImportMonth['fixed'] = [];
   for (let r = fh + 1; r < th; r++) {
     const name = toText(g('C', r));
@@ -231,7 +231,7 @@ function readMonth(sheet: SheetCells, key: MonthKey, closed: boolean, date1904: 
     fixed.push({ name, day: toText(g('D', r)), amount, cur: toCurrency(g('F', r), 'DOP'), paid: isYes(g('B', r)) });
   }
 
-  // Envíos: una fila cuenta si tiene USD. El prototipo miraba 80 filas fijas; aquí se sigue mientras haya datos.
+  // Transfers: a row counts if it has USD. The prototype looked at 80 fixed rows; here it goes on while there is data.
   const transfers: ImportMonth['transfers'] = [];
   for (let r = eh + 1, gap = 0; r <= sheet.maxRow && gap < TRANSFER_GAP; r++) {
     const usd = toNumber(g('O', r));
@@ -242,15 +242,15 @@ function readMonth(sheet: SheetCells, key: MonthKey, closed: boolean, date1904: 
     gap = 0;
     transfers.push({
       date: toISODate(g('M', r), date1904) ?? firstDay,
-      // La vía es texto libre: va como esté escrita.
+      // The via is free text: it goes in as written.
       via: toText(g('N', r)) || VIAS[0],
       usd,
       rate: toNumber(g('P', r)) ?? 0,
     });
   }
 
-  // Historial: una fila cuenta si tiene descripción o un monto numérico. Las filas en blanco del final de la
-  // tabla (o intercaladas) no son transacciones; tras 40 seguidas se da la tabla por terminada.
+  // History: a row counts if it has a description or a numeric amount. The blank rows at the end of the
+  // table (or in between) are not transactions; after 40 in a row the table is taken as finished.
   const tx: ImportMonth['tx'] = [];
   for (let r = th + 1, gap = 0; r <= sheet.maxRow && gap < TX_GAP; r++) {
     const desc = toText(g('C', r));
@@ -285,11 +285,11 @@ function readMonth(sheet: SheetCells, key: MonthKey, closed: boolean, date1904: 
 }
 
 /**
- * Tarjetas de metas, en el orden de la hoja: banda a banda y, dentro de cada una, los dos huecos estrechos
- * (metas de aportes variables) y el ancho (meta con plan). El nombre está en la primera celda del hueco; un
- * hueco sin nombre está vacío. Si los datos del plan no se pueden leer o no forman un plan (aporte que no es
- * mayor que cero, falta una fecha, el fin va antes del inicio), la meta queda como de aportes variables: es
- * el mismo criterio con el que el exportador decide qué tarjeta dibuja (`goalPlan`).
+ * Goal cards, in sheet order: band by band and, within each one, the two narrow slots (variable-contribution
+ * goals) and the wide one (goal with a plan). The name is in the slot's first cell; a slot with no name is
+ * empty. If the plan's values cannot be read or do not make a plan (a contribution that is not greater than
+ * zero, a missing date, the end before the start), the goal stays a variable-contribution one: it is the
+ * same rule the exporter uses to decide which card it draws (`goalPlan`).
  */
 function readGoalCards(sheet: SheetCells, bands: number, date1904: boolean): ImportGoal[] {
   const goals: ImportGoal[] = [];
@@ -313,9 +313,9 @@ function readGoalCards(sheet: SheetCells, bands: number, date1904: boolean): Imp
 }
 
 /**
- * Las metas en el orden de la lista de Config, que es el orden en que las tenía el usuario: en la hoja de
- * ahorros, una meta con plan y otra sin plan de la misma banda no dicen cuál iba primero. Las tarjetas que
- * la lista no nombra van al final, en el orden de la hoja; un nombre de la lista sin tarjeta no es una meta.
+ * The goals in the order of the Config list, which is the order the user had them in: on the savings
+ * sheet, a goal with a plan and one without a plan in the same band do not say which came first. The cards
+ * the list does not name go last, in sheet order; a name in the list with no card is not a goal.
  */
 function inConfigOrder(cards: ImportGoal[], config: SheetCells | null): ImportGoal[] {
   if (!config || cards.length < 2) return cards;
@@ -328,7 +328,7 @@ function inConfigOrder(cards: ImportGoal[], config: SheetCells | null): ImportGo
   const listed = new Set<ImportGoal>();
   const last = Math.min(config.maxRow, CONFIG_GOALS_ROW + CONFIG_GOALS_MAX);
   for (let r = CONFIG_GOALS_ROW; r <= last; r++) {
-    // Con nombres repetidos, cada aparición en la lista se lleva la siguiente tarjeta con ese nombre.
+    // With repeated names, each occurrence in the list takes the next card with that name.
     const card = byName.get(tidy(toText(config.get('G', r))))?.shift();
     if (card) listed.add(card);
   }
@@ -336,9 +336,9 @@ function inConfigOrder(cards: ImportGoal[], config: SheetCells | null): ImportGo
 }
 
 /**
- * ¿Es el libro de la versión 1? Aquel exportador solo sabía dibujar tres metas, siempre las mismas y en
- * español; cualquier libro de hoy con otras metas, o en otro idioma, se distingue de él. (Uno de hoy en
- * español con exactamente esas tres metas es, byte a byte, el de antes: no hay forma de distinguirlo.)
+ * Is it the version 1 workbook? That exporter could only draw three goals, always the same ones and in Spanish;
+ * any of today's workbooks with other goals, or in another language, can be told apart from it. (One of today's
+ * in Spanish with exactly those three goals is, byte for byte, the old one: there is no way to tell them apart.)
  */
 function isLegacyBook(sheetName: string, bands: number, cards: readonly ImportGoal[]): boolean {
   return (
@@ -357,8 +357,8 @@ function readSavings(
 ): Pick<ImportPayload, 'contribs' | 'goals'> {
   const g = (col: string, row: number) => sheet.get(col, row);
 
-  // La tabla de aportes baja 8 filas por cada banda de tarjetas de más: se localiza por su encabezado
-  // (Fecha en I, Meta en K) y, de paso, su fila dice cuántas bandas hay. Si no aparece, vale la del diseño original.
+  // The contributions table moves down 8 rows for each extra band of cards: it is located by its header
+  // (Date in I, Goal in K) and its row also says how many bands there are. If missing, the original design's row applies.
   let head = CONTRIB_HEAD;
   const lastHead = Math.min(sheet.maxRow, BAND_TOP + BAND_ROWS * MAX_BANDS + 1);
   for (let r = 1; r <= lastHead; r++) {
@@ -371,7 +371,7 @@ function readSavings(
 
   const cards = readGoalCards(sheet, bands, date1904);
 
-  // Aportes: fecha en I, meta en K, monto en L, moneda en M. Cuenta la fila que tiene monto.
+  // Contributions: date in I, goal in K, amount in L, currency in M. A row counts if it has an amount.
   const contribs: NonNullable<ImportPayload['contribs']> = [];
   for (let r = head + 1, gap = 0; r <= sheet.maxRow && gap < CONTRIB_GAP; r++) {
     const amount = toNumber(g('L', r));
@@ -384,14 +384,14 @@ function readSavings(
       date: toISODate(g('I', r), date1904) ?? fallbackDate,
       goalName: toText(g('K', r)) || FALLBACK_GOAL,
       amount,
-      // El exportador y el prototipo dan por USD el aporte sin moneda.
+      // The exporter and the prototype treat a contribution with no currency as USD.
       cur: toCurrency(g('M', r), 'USD'),
     });
   }
 
   const goals = inConfigOrder(cards, config);
   if (isLegacyBook(name, bands, cards)) {
-    // Así, al importar un libro de la versión 1, sus aportes caen en las metas con las que arranca el usuario.
+    // That way, when a version 1 workbook is imported, its contributions land in the goals the user starts with.
     const renamed = new Map(LEGACY_GOALS);
     for (const goal of goals) goal.name = renamed.get(tidy(goal.name)) ?? goal.name;
     for (const c of contribs) c.goalName = renamed.get(tidy(c.goalName)) ?? c.goalName;
@@ -400,14 +400,14 @@ function readSavings(
 }
 
 /**
- * Lee un .xlsx con el formato de la app, esté en el idioma que esté (inglés, español o turco, o una mezcla).
- * Localiza las tablas por sus encabezados (p. ej. "Item", "Date"+"Via", "Date"+"Description") y las tarjetas de
- * metas por su sitio en la hoja de ahorros. Equivale a `importExcel()` del prototipo, pero devuelve datos ya
- * normalizados y sin idioma (números, fechas ISO, moneda DOP/USD, categorías y métodos con su nombre
- * canónico) y sin ids. Los textos que escribió el usuario salen tal cual.
+ * Reads an .xlsx in the app's format, whatever language it is in (English, Spanish or Turkish, or a mix).
+ * It locates the tables by their headers (e.g. "Item", "Date"+"Via", "Date"+"Description") and the goal cards
+ * by their place on the savings sheet. Equivalent to the prototype's `importExcel()`, but it returns data
+ * already normalized and language-free (numbers, ISO dates, DOP/USD currency, categories and methods under
+ * their canonical name) and without ids. The texts the user typed come out as is.
  *
- * Lanza ImportError (mensaje en inglés y `code` estable) si los bytes no son un .xlsx o el libro no tiene
- * hojas de mes ("October 2026", "Octubre 2026", "Ekim 2026").
+ * Throws ImportError (message in English and a stable `code`) if the bytes are not an .xlsx or the workbook
+ * has no month sheets ("October 2026", "Octubre 2026", "Ekim 2026").
  */
 export function parseFinanzasXlsx(bytes: Uint8Array): ImportPayload {
   try {
@@ -416,7 +416,7 @@ export function parseFinanzasXlsx(bytes: Uint8Array): ImportPayload {
     const isConfig = (name: string) => tidy(name) === CONFIG_SHEET;
     const book = readXlsx(bytes, (name) => monthKeyOf(name) !== null || isSavings(name) || isConfig(name));
 
-    // Si dos hojas dan el mismo mes ("Octubre 2026" y "October 2026"), vale la última, como en el prototipo.
+    // If two sheets give the same month ("Octubre 2026" and "October 2026"), the last one wins, as in the prototype.
     const byKey = new Map<MonthKey, SheetCells>();
     let savings: XlsxSheet | null = null;
     let config: SheetCells | null = null;
@@ -431,18 +431,18 @@ export function parseFinanzasXlsx(bytes: Uint8Array): ImportPayload {
       throw new ImportError(`The file is not in the ${APP_NAME} format: it has no month sheets.`, { code: 'no_month_sheets' });
     }
 
-    // Todos los meses quedan cerrados salvo el último, que pasa a ser el mes en curso.
+    // Every month ends up closed except the last one, which becomes the current month.
     const lastKey = keys[keys.length - 1]!;
     const months = keys.map((key) => readMonth(byKey.get(key)!, key, key !== lastKey, book.date1904));
 
-    // Un aporte sin fecha legible se anota en el mes en curso.
+    // A contribution with no readable date is recorded in the current month.
     const { contribs, goals } = savings
       ? readSavings(savings, config, book.date1904, `${lastKey}-01`)
       : { contribs: null, goals: null };
     return { months, contribs, goals };
   } catch (e) {
     if (e instanceof ImportError) throw e;
-    // Los bytes vienen de un archivo del usuario: cualquier otra falla al leerlos es un archivo ilegible.
+    // The bytes come from a user's file: any other failure while reading them is an unreadable file.
     throw new ImportError('Could not read the file.', { code: 'unreadable', cause: e });
   }
 }

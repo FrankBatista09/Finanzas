@@ -1,4 +1,4 @@
-// Pages Function que atiende /mcp (el servidor MCP remoto que usa Claude). Vive en server/mcp.ts para poder probarlo sin wrangler.
+// Pages Function that serves /mcp (the remote MCP server Claude uses). It lives in server/mcp.ts so it can be tested without wrangler.
 import type { Env } from '../server/env';
 import { handleMcp } from '../server/mcp';
 

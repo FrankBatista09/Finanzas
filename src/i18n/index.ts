@@ -1,10 +1,10 @@
-// Punto de entrada de las traducciones para componentes y pantallas.
+// Entry point of the translations for components and screens.
 //
-//   const { t, lang, label, catLabel, methodLabel, rateHint } = useI18n();   // textos comunes y ayudantes del idioma actual
-//   const s = useStrings(MES);                                      // textos propios, declarados con defineStrings
+//   const { t, lang, label, catLabel, methodLabel, rateHint } = useI18n();   // common strings and current-language helpers
+//   const s = useStrings(MES);                                      // the screen's own strings, declared with defineStrings
 //
-// Fuera de React (funciones puras, pruebas): createI18n(lang) y translator(MES, lang); el idioma de un usuario
-// es state.language. Las claves comunes están en en.ts; cada pantalla declara las suyas en su carpeta.
+// Outside React (pure functions, tests): createI18n(lang) and translator(MES, lang); a user's language
+// is state.language. The common keys are in en.ts; each screen declares its own in its folder.
 
 export { CORE, createI18n } from './core';
 export type { CoreKey, CoreStrings, CoreTranslator, I18n } from './core';

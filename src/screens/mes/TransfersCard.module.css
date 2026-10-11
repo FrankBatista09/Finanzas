@@ -1,5 +1,5 @@
-/* Origen → destino en una sola celda. Si las dos listas no caben en una línea, el destino baja a la segunda y la
-   flecha se queda arriba, junto al origen. */
+/* Origin → destination in a single cell. If the two selects do not fit on one line, the destination drops to the second
+   and the arrow stays above, next to the origin. */
 .route {
   display: flex;
   flex-wrap: wrap;
@@ -7,8 +7,8 @@
   min-width: 108px;
 }
 
-/* La tarjeta mide su propio hueco: con la tarjeta a todo el ancho (apilada, o en una pantalla muy ancha) las dos
-   listas van en una sola línea. */
+/* The card measures its own space: with the card at full width (stacked, or on a very wide screen) the two
+   selects go on a single line. */
 .fit {
   container-type: inline-size;
 }
@@ -25,9 +25,9 @@
   align-items: center;
 }
 
-/* Ancha para un nombre corriente ("US account") sin recortarlo; crece si sobra sitio. width: 0 hace que el ancho
-   de la columna no dependa del nombre más largo de la lista: uno largo ("Bank Of America") se recorta con puntos
-   suspensivos en vez de ensanchar la tabla hasta sacarla de su media tarjeta. */
+/* Wide enough for an ordinary name ("US account") without truncating it; it grows if there is room to spare. width: 0
+   makes the column width independent of the longest name in the select: a long one ("Bank Of America") is truncated
+   with an ellipsis instead of widening the table until it overflows its half card. */
 .route .account {
   flex: 1 1 92px;
   width: 0;
@@ -41,7 +41,7 @@
   color: var(--text-muted);
 }
 
-/* Monto de un envío: el campo y, pegado a su derecha, el código de la moneda de la cuenta de origen. */
+/* Amount of a transfer: the field and, flush against its right, the currency code of the origin account. */
 .withCode {
   display: flex;
   align-items: center;
@@ -53,7 +53,7 @@
   color: var(--text-muted);
 }
 
-/* Lo recibido (monto × tasa), bajo el monto: una cifra calculada, atenuada. */
+/* The amount received (amount × rate), under the amount: a computed figure, muted. */
 .received {
   padding: 0 8px 6px 2px;
   text-align: right;
@@ -63,7 +63,7 @@
   color: var(--text-muted);
 }
 
-/* La tarjeta ocupa media fila: la columna de la casilla y la del botón van justas para dejarle el ancho a las cuentas. */
+/* The card takes half a row: the checkbox column and the button column are kept tight to leave the width to the accounts. */
 .budgetTh {
   padding-left: 6px;
   padding-right: 6px;
@@ -78,7 +78,7 @@
   padding-right: 8px;
 }
 
-/* La comisión, bajo la tasa: un rótulo atenuado y su campo, más pequeños que la tasa. */
+/* The fee, under the rate: a muted label and its field, smaller than the rate. */
 .fee {
   display: flex;
   align-items: center;

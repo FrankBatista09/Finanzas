@@ -1,5 +1,5 @@
-// Diálogo modal: fondo, panel, título, cuerpo y pie con botones. Lo usan el cierre de mes, el borrado de mes y el
-// formulario de metas.
+// Modal dialog: backdrop, panel, title, body and a footer with buttons. Used by the month close, the month deletion and
+// the goal form.
 //
 //   <Dialog title={t('closeMonth', { month })} onCancel={cancel} busy={busy} describedBy={bodyId} initialFocus={cancelRef}
 //     footer={<>
@@ -9,8 +9,8 @@
 //     <DialogText id={bodyId}>…</DialogText>
 //   </Dialog>
 //
-// Con onSubmit el contenido va dentro de un <form>: Enter en un campo, o un <DialogButton type="submit">, lo envían.
-// El cuerpo de un formulario es <DialogFields> con <Field>, <Input>, <MonthPicker>… (form.tsx).
+// With onSubmit the content goes inside a <form>: Enter in a field, or a <DialogButton type="submit">, submits it.
+// The body of a form is <DialogFields> with <Field>, <Input>, <MonthPicker>… (form.tsx).
 
 import { useEffect, useId, useRef } from 'react';
 import type { ComponentProps, FormEvent, HTMLAttributes, MouseEvent, ReactNode, RefObject } from 'react';
@@ -20,33 +20,33 @@ import styles from './Dialog.module.css';
 const FOCUSABLE = 'button:enabled, input:enabled:not([type="hidden"]), select:enabled, textarea:enabled, a[href]';
 
 export interface DialogProps {
-  /** Título del diálogo (le da su nombre accesible). */
+  /** Title of the dialog (it gives it its accessible name). */
   title: ReactNode;
-  /** El cuerpo: <DialogText> o <DialogFields>. */
+  /** The body: <DialogText> or <DialogFields>. */
   children: ReactNode;
-  /** Los botones del pie (<DialogButton>), de izquierda a derecha. */
+  /** The footer buttons (<DialogButton>), from left to right. */
   footer: ReactNode;
-  /** Escape o un clic en el fondo. No se llama mientras `busy`. */
+  /** Escape or a click on the backdrop. Not called while `busy`. */
   onCancel: () => void;
-  /** Convierte el contenido en un formulario y se llama al enviarlo (salvo mientras `busy`). */
+  /** Turns the content into a form and is called when it is submitted (except while `busy`). */
   onSubmit?: () => void;
-  /** Hay una operación en curso: se anuncia (aria-busy) y el diálogo no se puede cancelar. Los botones los deshabilita quien los pinta. */
+  /** An operation is in progress: it is announced (aria-busy) and the dialog cannot be canceled. The buttons are disabled by whoever renders them. */
   busy?: boolean;
-  /** Qué recibe el foco al abrir (y al dejar de estar `busy`); por defecto, el primer control del diálogo. */
+  /** What gets the focus on open (and when it stops being `busy`); by default, the first control of the dialog. */
   initialFocus?: RefObject<HTMLElement | null>;
-  /** id del elemento del cuerpo que describe el diálogo. */
+  /** id of the body element that describes the dialog. */
   describedBy?: string;
-  /** Ancho máximo en px; 440 por defecto. */
+  /** Maximum width in px; 440 by default. */
   maxWidth?: number;
   /** 'large': about 92vw by 88vh, the body scrolls inside (the expanded view of a table card). */
   size?: 'large';
 }
 
-// Open dialogs, oldest first: a dialog opened from another one (pay a card from an expanded table) gets Escape and
-// Tab alone, the one underneath waits.
+// Open dialogs, oldest first: a dialog opened from another one (pay a credit card from an expanded table) gets Escape
+// and Tab alone, the one underneath waits.
 const openDialogs: symbol[] = [];
 
-/** Se monta para abrirlo y se desmonta para cerrarlo; al cerrar, el foco vuelve a donde estaba. */
+/** Mount it to open it and unmount it to close it; on close, the focus goes back to where it was. */
 export function Dialog({ title, children, footer, onCancel, onSubmit, busy = false, initialFocus, describedBy, maxWidth, size }: DialogProps) {
   const titleId = useId();
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -61,7 +61,7 @@ export function Dialog({ title, children, footer, onCancel, onSubmit, busy = fal
     };
   }, []);
 
-  // Al cerrar, el foco vuelve a donde estaba (el botón que abrió el diálogo, si sigue en pantalla).
+  // On close, the focus goes back to where it was (the button that opened the dialog, if it is still on screen).
   useEffect(() => {
     const opener = document.activeElement;
     return () => {
@@ -69,14 +69,14 @@ export function Dialog({ title, children, footer, onCancel, onSubmit, busy = fal
     };
   }, []);
 
-  // El foco entra al abrir. Mientras `busy` los botones suelen quedar deshabilitados y lo pierden: al terminar, vuelve a entrar.
+  // The focus moves in on open. While `busy` the buttons are usually disabled and lose it: when it ends, it moves in again.
   useEffect(() => {
     const dialog = dialogRef.current;
     if (busy || !dialog || dialog.contains(document.activeElement)) return;
     (initialFocus?.current ?? dialog.querySelector<HTMLElement>(FOCUSABLE))?.focus();
   }, [busy, initialFocus]);
 
-  // En el documento y no en el diálogo: tiene que funcionar aunque el foco se haya quedado fuera.
+  // On the document and not on the dialog: it has to work even if the focus was left outside.
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (openDialogs[openDialogs.length - 1] !== self.current) return;
@@ -88,7 +88,7 @@ export function Dialog({ title, children, footer, onCancel, onSubmit, busy = fal
         return;
       }
       if (e.key !== 'Tab') return;
-      // Tab no sale del diálogo: da la vuelta entre sus controles.
+      // Tab does not leave the dialog: it cycles through its controls.
       const controls = [...(dialogRef.current?.querySelectorAll<HTMLElement>(FOCUSABLE) ?? [])];
       const first = controls[0];
       const last = controls[controls.length - 1];
@@ -110,7 +110,7 @@ export function Dialog({ title, children, footer, onCancel, onSubmit, busy = fal
     return () => document.removeEventListener('keydown', onKeyDown);
   }, [busy, onCancel]);
 
-  // Solo cuenta el clic que empieza y termina en el fondo (no el arrastre de una selección de texto).
+  // Only a click that starts and ends on the backdrop counts (not the drag of a text selection).
   const onMouseDown = (e: MouseEvent<HTMLDivElement>) => {
     pressedOutside.current = e.target === e.currentTarget;
   };
@@ -157,7 +157,7 @@ export function Dialog({ title, children, footer, onCancel, onSubmit, busy = fal
   );
 }
 
-/** Cuerpo de texto de un diálogo. Con `id`, sirve de descripción (Dialog describedBy). */
+/** Text body of a dialog. With `id`, it serves as the description (Dialog describedBy). */
 export function DialogText({ className, children, ...rest }: HTMLAttributes<HTMLParagraphElement>) {
   return (
     <p {...rest} className={cx(styles.text, className)}>
@@ -166,7 +166,7 @@ export function DialogText({ className, children, ...rest }: HTMLAttributes<HTML
   );
 }
 
-/** Cuerpo de formulario de un diálogo: una columna de campos. */
+/** Form body of a dialog: a column of fields. */
 export function DialogFields({ className, children, ...rest }: HTMLAttributes<HTMLDivElement>) {
   return (
     <div {...rest} className={cx(styles.fields, className)}>
@@ -177,18 +177,18 @@ export function DialogFields({ className, children, ...rest }: HTMLAttributes<HT
 
 export interface DialogButtonProps extends ComponentProps<'button'> {
   /**
-   * primary      verde: la acción principal
-   * secondary    con borde (por defecto)
-   * quiet        solo texto: Cancelar
-   * danger       solo texto, rojo al pasar el cursor: eliminar (una opción más del pie)
-   * destructive  rojo: la acción principal de un diálogo que confirma un borrado sin vuelta atrás
+   * primary      green: the main action
+   * secondary    with a border (the default)
+   * quiet        text only: Cancel
+   * danger       text only, red on hover: delete (one more option in the footer)
+   * destructive  red: the main action of a dialog that confirms a deletion with no way back
    */
   variant?: 'primary' | 'secondary' | 'quiet' | 'danger' | 'destructive';
-  /** Lo deja al principio del pie, separado de los demás (un "Delete goal" a la izquierda). */
+  /** Puts it at the start of the footer, apart from the others (a "Delete goal" on the left). */
   start?: boolean;
 }
 
-/** Botón del pie de un diálogo. type="button" salvo que se pida "submit". */
+/** Footer button of a dialog. type="button" unless "submit" is asked for. */
 export function DialogButton({ variant = 'secondary', start, type = 'button', className, children, ...rest }: DialogButtonProps) {
   return (
     <button {...rest} type={type} className={cx(styles.button, styles[variant], start && styles.start, className)}>

@@ -37,7 +37,7 @@ import {
 } from './rows';
 
 describe('sortFixed', () => {
-  it('ordena por `sort` sin tocar la lista original', () => {
+  it('sorts by `sort` without touching the original list', () => {
     const rows = [
       { id: 'c', sort: 2 },
       { id: 'a', sort: 0 },
@@ -47,7 +47,7 @@ describe('sortFixed', () => {
     expect(rows.map((r) => r.id)).toEqual(['c', 'a', 'b']);
   });
 
-  it('los empates conservan el orden de llegada', () => {
+  it('ties keep their arrival order', () => {
     const rows = [
       { id: 'x', sort: 5 },
       { id: 'primero', sort: 1 },
@@ -57,7 +57,7 @@ describe('sortFixed', () => {
     expect(sortFixed(rows).map((r) => r.id)).toEqual(['primero', 'segundo', 'tercero', 'x']);
   });
 
-  it('los datos de ejemplo salen en el orden de la hoja', () => {
+  it('the sample data comes out in the order of the sheet', () => {
     const fixed = seedState().months['2026-10']!.fixed;
     expect(sortFixed([...fixed].reverse()).map((f) => f.name)).toEqual([
       'Electricity',
@@ -76,7 +76,7 @@ describe('sortFixed', () => {
 });
 
 describe('sortTxDesc', () => {
-  it('de la más reciente a la más antigua, sin tocar la lista original', () => {
+  it('from the most recent to the oldest, without touching the original list', () => {
     const rows = [
       { id: 'a', date: '2026-10-01' },
       { id: 'b', date: '2026-10-07' },
@@ -87,7 +87,7 @@ describe('sortTxDesc', () => {
     expect(rows.map((r) => r.id)).toEqual(['a', 'b', 'c', 'd']);
   });
 
-  it('es estable: las del mismo día quedan como estaban (la recién agregada, debajo)', () => {
+  it('is stable: those of the same day stay as they were (the newly added one, below)', () => {
     const rows = [
       { id: 'vieja', date: '2026-10-05' },
       { id: 'hoy-1', date: '2026-10-07' },
@@ -97,7 +97,7 @@ describe('sortTxDesc', () => {
     expect(sortTxDesc(rows).map((r) => r.id)).toEqual(['hoy-1', 'hoy-2', 'recién-agregada', 'vieja']);
   });
 
-  it('una fecha vacía (dato importado incompleto) va al final', () => {
+  it('an empty date (incomplete imported data) goes last', () => {
     const rows = [
       { id: 'sin-fecha', date: '' },
       { id: 'a', date: '2026-10-02' },
@@ -105,7 +105,7 @@ describe('sortTxDesc', () => {
     expect(sortTxDesc(rows).map((r) => r.id)).toEqual(['a', 'sin-fecha']);
   });
 
-  it('las transacciones de ejemplo de octubre: del 7 al 1', () => {
+  it('the sample transactions of October: from the 7th to the 1st', () => {
     const tx = seedState().months['2026-10']!.tx;
     expect(sortTxDesc(tx).map((t) => t.desc)).toEqual([
       'Coffee',
@@ -120,32 +120,32 @@ describe('sortTxDesc', () => {
 });
 
 describe('optionsWith', () => {
-  it('un valor de la lista la deja tal cual (la misma, sin copiar)', () => {
+  it('a value in the list leaves it as is (the same one, not a copy)', () => {
     expect(optionsWith(CATS, 'Health')).toBe(CATS);
     expect(optionsWith(METHODS, 'Debit card')).toBe(METHODS);
   });
 
-  it('un valor de fuera se agrega al final, sin tocar la lista base', () => {
+  it('a value from outside is added at the end, without touching the base list', () => {
     expect(optionsWith(CATS, 'Pets')).toEqual([...CATS, 'Pets']);
     expect(optionsWith(METHODS, 'Cheque')).toEqual(['Debit card', 'Credit card', 'Transfer', 'Bank app', 'Cash', 'Cheque']);
-    // La tarjeta de antes ('Card') ya no está en la lista: una fila vieja que la traiga la conserva como opción.
+    // The former 'Card' method is no longer in the list: an old row that carries it keeps it as an option.
     expect(optionsWith(METHODS, 'Card')).toEqual([...METHODS, 'Card']);
     expect(CATS).toHaveLength(11);
     expect(METHODS).toHaveLength(5);
   });
 
-  it('distingue mayúsculas y espacios: no adivina a qué opción se parece', () => {
+  it('is sensitive to case and spaces: it does not guess which option it resembles', () => {
     expect(optionsWith(CATS, 'food')).toEqual([...CATS, 'food']);
     expect(optionsWith(CATS, '')).toEqual([...CATS, '']);
   });
 
-  it('un nombre traducido no es el valor guardado: también va aparte', () => {
+  it('a translated name is not the stored value: it also goes separately', () => {
     expect(optionsWith(CATS, 'Comida')).toEqual([...CATS, 'Comida']);
   });
 });
 
 describe('labelled', () => {
-  it('el valor es el canónico y el texto, el del idioma', () => {
+  it('the value is the canonical one and the text, that of the language', () => {
     expect(labelled(METHODS, createI18n('es').methodLabel)).toEqual([
       { value: 'Debit card', label: 'Tarjeta de débito' },
       { value: 'Credit card', label: 'Tarjeta de crédito' },
@@ -155,7 +155,7 @@ describe('labelled', () => {
     ]);
     expect(labelled(METHODS, createI18n('tr').methodLabel).map((o) => o.label)).toEqual(['Banka kartı', 'Kredi kartı', 'Havale', 'Banka uygulaması', 'Nakit']);
     expect(labelled(METHODS, createI18n('en').methodLabel).map((o) => o.label)).toEqual(['Debit card', 'Credit card', 'Transfer', 'Bank app', 'Cash']);
-    // El valor guardado es el mismo en los tres idiomas.
+    // The stored value is the same in all three languages.
     expect(labelled(METHODS, createI18n('tr').methodLabel).map((o) => o.value)).toEqual([...METHODS]);
     expect(labelled(CATS, createI18n('tr').catLabel).slice(0, 2)).toEqual([
       { value: 'Food', label: 'Yemek' },
@@ -164,28 +164,28 @@ describe('labelled', () => {
     expect(labelled(CATS, createI18n('en').catLabel).map((o) => o.label)).toEqual([...CATS]);
   });
 
-  it('un valor de fuera de la lista sale tal cual en cualquier idioma', () => {
+  it('a value from outside the list shows as is in any language', () => {
     for (const lang of ['en', 'es', 'tr'] as const) {
       expect(labelled(optionsWith(CATS, 'Pets'), createI18n(lang).catLabel).at(-1)).toEqual({ value: 'Pets', label: 'Pets' });
-      // Un nombre traducido ('Efectivo') no es el valor guardado ('Cash'): va aparte y no se traduce.
+      // A translated name ('Efectivo') is not the stored value ('Cash'): it goes separately and is not translated.
       expect(labelled(optionsWith(METHODS, 'Efectivo'), createI18n(lang).methodLabel).at(-1)).toEqual({ value: 'Efectivo', label: 'Efectivo' });
-      // Tampoco la tarjeta de antes: 'Card' se ve tal cual, no como la de débito.
+      // Nor is the former 'Card' method: 'Card' shows as is, not as the debit card.
       expect(labelled(optionsWith(METHODS, 'Card'), createI18n(lang).methodLabel).at(-1)).toEqual({ value: 'Card', label: 'Card' });
     }
   });
 });
 
-describe('withMoney: las dos columnas calculadas de una fila', () => {
+describe('withMoney: the two computed columns of a row', () => {
   const state = seedState();
   const both = (amount: number, cur: Currency) => inBoth(state, '2026-10', amount, cur);
 
-  it('cada fila lleva su importe en la moneda principal y en la segunda, con las tasas del mes', () => {
+  it('each row carries its amount in the main currency and in the second one, with the month rates', () => {
     const fixed = state.months['2026-10']!.fixed;
     const rows = withMoney(fixed, both);
     expect(rows).toHaveLength(fixed.length);
     expect(rows.map((r) => r.row)).toEqual(fixed);
     const claude = rows.find((r) => r.row.name === 'Claude')!;
-    // 106 USD × 58.76 (la tasa escrita de octubre).
+    // 106 USD × 58.76 (the typed rate of October).
     expect(claude.main).toBeCloseTo(6228.56, 6);
     expect(claude.second).toBe(106);
     const light = rows.find((r) => r.row.name === 'Electricity')!;
@@ -193,7 +193,7 @@ describe('withMoney: las dos columnas calculadas de una fila', () => {
     expect(light.second).toBeCloseTo(1337.15 / 58.76, 6);
   });
 
-  it('sigue a las monedas del usuario: con USD de principal y TRY de segunda', () => {
+  it('follows the currencies of the user: with USD as main and TRY as second', () => {
     const other = { ...seedState(), mainCurrency: 'USD' as const, secondCurrency: 'TRY' as const };
     other.months['2026-10']!.rates.push({ from: 'USD', to: 'TRY', rate: 40, date: '2026-10-01' });
     const [row] = withMoney([{ amount: 5876, cur: 'DOP' as const }], (amount, cur) => inBoth(other, '2026-10', amount, cur));
@@ -201,25 +201,25 @@ describe('withMoney: las dos columnas calculadas de una fila', () => {
     expect(row!.second).toBeCloseTo(4000, 6);
   });
 
-  it('sin filas, nada', () => {
+  it('no rows, nothing', () => {
     expect(withMoney([], both)).toEqual([]);
   });
 
-  it('pasa la fecha de la fila: una sin fecha (gasto fijo) pide la última tasa del mes', () => {
+  it('passes the date of the row: one with no date (fixed expense) asks for the last rate of the month', () => {
     const calls: unknown[][] = [];
     const spy = (...args: [number, Currency, string?, string?]) => {
       calls.push(args);
       return { main: 0, second: 0 };
     };
     withMoney([{ amount: 10, cur: 'USD' as const, date: '2026-10-03' }, { amount: 20, cur: 'DOP' as const }], spy);
-    // El mes no se indica (el seleccionado); la fecha, la de la fila o ninguna.
+    // The month is not given (the selected one); the date, that of the row or none.
     expect(calls).toEqual([
       [10, 'USD', undefined, '2026-10-03'],
       [20, 'DOP', undefined, undefined],
     ]);
   });
 
-  it('con dos tasas escritas en el mes, cada transacción se convierte con la vigente en su fecha', () => {
+  it('with two typed rates in the month, each transaction is converted with the one in effect on its date', () => {
     const dated = seedState();
     dated.months['2026-10']!.rates = [
       { from: 'USD', to: 'DOP', rate: 58, date: '2026-10-01' },
@@ -236,9 +236,9 @@ describe('withMoney: las dos columnas calculadas de una fila', () => {
       (amount, cur, key = '2026-10', date) => inBoth(dated, key, amount, cur, date),
     );
     const main = Object.fromEntries(rows.map((r) => [r.row.id, r.main]));
-    // La tasa nueva vale desde su fecha, incluida; la fila anterior conserva la que tenía.
+    // The new rate applies from its date, inclusive; the earlier row keeps the one it had.
     expect(main).toEqual({ antes: 580, 'el-dia': 600, despues: 600, 'en-dop': 1200, 'sin-fecha': 600 });
-    // 1,200 DOP del día 2, a 58.
+    // 1,200 DOP from day 2, at 58.
     expect(rows.find((r) => r.row.id === 'en-dop')!.second).toBeCloseTo(1200 / 58, 9);
   });
 });
@@ -248,7 +248,7 @@ describe('rowAccountOptions', () => {
   state.accounts.push({ id: 'old', name: 'Old wallet', currency: 'TRY', opening: 0, hidden: true, sort: 9 });
   const base = accountOptions(state);
 
-  it('la cuenta visible de una fila no cambia la lista: es la misma para todas (las filas memorizadas no se repintan)', () => {
+  it('the visible account of a row does not change the list: it is the same for all of them (memoized rows do not repaint)', () => {
     expect(base).toEqual([
       { value: 'us', label: 'US account' },
       { value: 'dr', label: 'DR account' },
@@ -258,71 +258,71 @@ describe('rowAccountOptions', () => {
     expect(rowAccountOptions(base, state.accounts, '')).toBe(base);
   });
 
-  it('la cuenta de la fila que se ocultó después va detrás, con su nombre', () => {
+  it('the account of the row that was hidden afterwards goes at the end, with its name', () => {
     expect(rowAccountOptions(base, state.accounts, 'old')).toEqual([...base, { value: 'old', label: 'Old wallet' }]);
     expect(base).toHaveLength(2);
-    // Lo mismo que arma la capa de datos.
+    // The same thing the data layer builds.
     expect(rowAccountOptions(base, state.accounts, 'old')).toEqual(accountOptions(state, 'old'));
   });
 
-  it('una cuenta que ya no existe sale con una raya', () => {
+  it('an account that no longer exists shows as a dash', () => {
     expect(rowAccountOptions(base, state.accounts, 'gone').at(-1)).toEqual({ value: 'gone', label: '—' });
   });
 });
 
-describe('tasas del mes: qué pares se ven', () => {
+describe('month rates: which pairs are shown', () => {
   const acc = (currency: Currency): { currency: Currency } => ({ currency });
   const none = { fixed: [], tx: [] };
 
-  it('usedCurrencies: la principal, la segunda, las de las cuentas visibles y las de los gastos del mes, en el orden de siempre', () => {
+  it('usedCurrencies: the main one, the second one, those of the visible accounts and those of the expenses of the month, in the usual order', () => {
     expect(usedCurrencies('DOP', 'USD', [], none)).toEqual(['DOP', 'USD']);
     expect(usedCurrencies('USD', 'DOP', [acc('USD'), acc('DOP')], none)).toEqual(['DOP', 'USD']);
     expect(usedCurrencies('DOP', 'USD', [acc('TRY')], none)).toEqual(['DOP', 'USD', 'TRY']);
     expect(usedCurrencies('TRY', 'USD', [acc('USD')], none)).toEqual(['USD', 'TRY']);
-    // Un gasto en liras sin cuenta en liras también cuenta.
+    // An expense in liras with no account in liras also counts.
     expect(usedCurrencies('DOP', 'USD', [acc('DOP')], { fixed: [{ cur: 'TRY' }], tx: [] })).toEqual(['DOP', 'USD', 'TRY']);
     expect(usedCurrencies('DOP', 'USD', [acc('DOP')], { fixed: [], tx: [{ cur: 'TRY' }] })).toEqual(['DOP', 'USD', 'TRY']);
   });
 
-  it('con los datos de ejemplo (DOP y USD) solo se ve el par de la barra superior', () => {
+  it('with the sample data (DOP and USD) only the pair of the top bar is shown', () => {
     const state = seedState();
     const october = shownRates(pairRates(state, '2026-10'), ['DOP', 'USD'], 'DOP');
-    // Octubre tiene dos escritas (el 1 y el 6): la fila es la vigente al final del mes, con su fecha.
+    // October has two typed ones (on the 1st and the 6th): the row is the one in effect at the end of the month, with its date.
     expect(october).toEqual([{ from: 'USD', to: 'DOP', rate: 58.76, source: 'month', monthKey: '2026-10', date: '2026-10-06' }]);
     const september = shownRates(pairRates(state, '2026-09'), ['DOP', 'USD'], 'DOP');
     expect(september).toHaveLength(1);
-    // No sale de una tasa escrita: no trae fecha.
+    // It does not come from a typed rate: it carries no date.
     expect(september[0]).toMatchObject({ from: 'USD', to: 'DOP', source: 'transfers', monthKey: '2026-09', date: null });
     expect(september[0]!.rate).toBeCloseTo(134721 / 2300, 9);
   });
 
-  it('con las tres monedas en uso solo se piden k-1 pares: cada una contra la principal; el tercero se cruza', () => {
+  it('with the three currencies in use only k-1 pairs are asked for: each one against the main one; the third is crossed', () => {
     const rates = pairRates(seedState(), '2026-10');
     expect(shownRates(rates, ['DOP', 'USD', 'TRY'], 'DOP').map((r) => `${r.from}>${r.to}:${r.source}`)).toEqual(['USD>DOP:month', 'TRY>DOP:default']);
-    // Con otra principal los pares son otros: USD>TRY y DOP>TRY; el que queda (USD>DOP, escrito) sale por ser escrito.
+    // With another main currency the pairs are different: USD>TRY and DOP>TRY; the remaining one (USD>DOP, typed) shows because it is typed.
     expect(shownRates(rates, ['DOP', 'USD', 'TRY'], 'TRY').map((r) => `${r.from}>${r.to}`).sort()).toEqual(['TRY>DOP', 'USD>DOP', 'USD>TRY']);
   });
 
-  it('con principal TRY y cuentas en DOP y USD: dos filas pedidas y el par cruzado no es una fila, salvo que esté escrito', () => {
+  it('with TRY as main and accounts in DOP and USD: two rows asked for and the crossed pair is not a row, unless it is typed', () => {
     const state = seedState();
     state.months['2026-10']!.rates = [];
-    // Sin los envíos del ejemplo (que dan USD/DOP directo), el par USD/DOP solo puede salir cruzando.
+    // Without the sample transfers (which give USD/DOP directly), the USD/DOP pair can only come from crossing.
     state.months['2026-10']!.transfers = [];
     for (const key of Object.keys(state.months)) if (key !== '2026-10') delete state.months[key];
     const rows = shownRates(pairRates(state, '2026-10'), ['DOP', 'USD', 'TRY'], 'TRY');
     expect(rows.map((r) => [r.from, r.to].sort().join('-')).sort()).toEqual(['DOP-TRY', 'TRY-USD']);
-    // Con las dos escritas, el par DOP/USD se resuelve cruzando por la principal.
+    // With both typed, the DOP/USD pair is resolved by crossing through the main currency.
     state.months['2026-10']!.rates = [
       { from: 'USD', to: 'TRY', rate: 40, date: '2026-10-01' },
       { from: 'DOP', to: 'TRY', rate: 0.8, date: '2026-10-01' },
     ];
-    // Un objeto de estado nuevo: calc memoriza por objeto, y el anterior ya se consultó.
+    // A new state object: calc memoizes by object, and the previous one was already queried.
     const rates = pairRates({ ...state }, '2026-10');
     expect(rates.find((r) => [r.from, r.to].sort().join('-') === 'DOP-USD')).toMatchObject({ source: 'cross' });
     expect(shownRates(rates, ['DOP', 'USD', 'TRY'], 'TRY')).toHaveLength(2);
   });
 
-  it('sin segunda moneda: usedCurrencies no la cuenta y sin otra moneda en uso no hace falta ninguna tasa', () => {
+  it('no second currency: usedCurrencies does not count it and with no other currency in use no rate is needed', () => {
     expect(usedCurrencies('DOP', null, [acc('DOP')], none)).toEqual(['DOP']);
     expect(usedCurrencies('DOP', null, [acc('DOP'), acc('USD')], none)).toEqual(['DOP', 'USD']);
     const rates = pairRates({ ...seedState(), secondCurrency: null }, '2026-09');
@@ -330,9 +330,9 @@ describe('tasas del mes: qué pares se ven', () => {
     expect(noRatesNeeded(shownRates(rates, ['DOP', 'USD'], 'DOP'))).toBe(false);
   });
 
-  it('barRate: segunda → principal; sin segunda, la primera tasa que hace falta; ninguna si no hace falta', () => {
+  it('barRate: second → main; with no second, the first rate that is needed; none if none is needed', () => {
     const state = seedState();
-    // Septiembre no tiene tasas escritas: con una sola moneda en uso no hay nada que enseñar.
+    // September has no typed rates: with a single currency in use there is nothing to show.
     const rates = pairRates(state, '2026-09');
     const info = rates[0]!;
     expect(barRate(rates, ['DOP', 'USD'], 'DOP', 'USD', info)).toMatchObject({ from: 'USD', to: 'DOP' });
@@ -340,18 +340,18 @@ describe('tasas del mes: qué pares se ven', () => {
     expect(barRate(rates, ['DOP'], 'DOP', null, null)).toBeNull();
   });
 
-  it('una tasa escrita para el mes se ve siempre, aunque su par no esté en uso', () => {
+  it('a rate typed for the month is always shown, even if its pair is not in use', () => {
     const state = seedState();
     state.months['2026-10']!.rates.push({ from: 'USD', to: 'TRY', rate: 41.5, date: '2026-10-01' });
     const shown = shownRates(pairRates(state, '2026-10'), ['DOP', 'USD'], 'DOP');
     expect(shown.map((r) => `${r.from}>${r.to}:${r.source}`)).toEqual(['USD>DOP:month', 'USD>TRY:month']);
-    // El tercer par (cruzado por USD) no se usa y no está escrito: no sale.
+    // The third pair (crossed through USD) is not used and is not typed: it does not show.
     expect(pairRates(state, '2026-10').find((r) => r.source === 'cross')).toBeDefined();
   });
 });
 
-describe('tasas del mes: una cuenta vacía no pide tasa', () => {
-  // Un usuario nuevo: principal TRY, segunda USD, y una cuenta en DOP sin dinero ni filas.
+describe('month rates: an empty account needs no rate', () => {
+  // A new user: main TRY, second USD, and an account in DOP with no money and no rows.
   const empty = (): AppState => {
     const state = seedState();
     state.mainCurrency = 'TRY';
@@ -373,7 +373,7 @@ describe('tasas del mes: una cuenta vacía no pide tasa', () => {
   };
   const rowsOf = (state: AppState) => shownRates(pairRates(state, '2026-10'), used(state), 'TRY').map((r) => `${r.from}>${r.to}`);
 
-  it('la cuenta en DOP sin saldo ni filas no cuenta: una sola fila (USD>TRY) y la barra la sigue', () => {
+  it('the account in DOP with no balance and no rows does not count: a single row (USD>TRY) and the bar follows it', () => {
     const state = empty();
     expect(used(state)).toEqual(['USD', 'TRY']);
     expect(rowsOf(state)).toEqual(['USD>TRY']);
@@ -382,14 +382,14 @@ describe('tasas del mes: una cuenta vacía no pide tasa', () => {
     expect(barRate(rates, used(state), 'TRY', 'USD', info)).toMatchObject({ from: 'USD', to: 'TRY' });
   });
 
-  it('con saldo inicial distinto de cero, la moneda cuenta', () => {
+  it('with a nonzero opening balance, the currency counts', () => {
     const state = empty();
     state.accounts[2]!.opening = 500;
     expect(used(state)).toEqual(['DOP', 'USD', 'TRY']);
     expect(rowsOf(state).sort()).toEqual(['TRY>DOP', 'USD>TRY']);
   });
 
-  it('solo con un ingreso, un envío, un gasto fijo o una transacción que nombra la cuenta, cuenta', () => {
+  it('with only an income, a transfer, a fixed expense or a transaction that names the account, it counts', () => {
     const base = empty();
     const income = { id: 'i', date: '2026-10-02', desc: '', accountId: 'dop', amount: 0, cur: 'DOP', budget: false } as const;
     const withIncome = { ...base, incomes: [{ ...income }] } as AppState;
@@ -408,20 +408,20 @@ describe('tasas del mes: una cuenta vacía no pide tasa', () => {
     expect(used(withFixed)).toContain('DOP');
   });
 
-  it('una tasa escrita para el mes se ve siempre, aunque su moneda no esté en uso', () => {
+  it('a rate typed for the month is always shown, even if its currency is not in use', () => {
     const state = empty();
     state.months['2026-10']!.rates = [{ from: 'DOP', to: 'TRY', rate: 0.7, date: '2026-10-01' }];
     expect(rowsOf(state).sort()).toEqual(['DOP>TRY', 'USD>TRY']);
   });
 
-  it('una cuenta oculta sigue sin contar', () => {
+  it('a hidden account still does not count', () => {
     const state = empty();
     state.accounts[2]!.hidden = true;
     expect(used(state)).toEqual(['USD', 'TRY']);
   });
 });
 
-describe('tasas del mes: sin actividad no hace falta ninguna tasa', () => {
+describe('month rates: with no activity no rate is needed', () => {
   // A brand-new user: main TRY, second USD, accounts at zero and no rows.
   const fresh = (): AppState => {
     const state = seedState();
@@ -439,7 +439,7 @@ describe('tasas del mes: sin actividad no hace falta ninguna tasa', () => {
   const bar = (state: AppState) => buildFinanzas({ user: { id: 'eda', name: 'Eda' }, state, monthKey: '2026-10', today: '2026-10-07', actions: {} as Actions })!.barRate;
   const rowsOf = (state: AppState) => shownRates(pairRates(state, '2026-10'), currenciesInUse(state, '2026-10'), 'TRY').map((r) => `${r.from}>${r.to}:${r.source}`);
 
-  it('sin filas ni dinero: solo la principal, ninguna fila y la barra superior vacía', () => {
+  it('no rows and no money: only the main currency, no rows and an empty top bar', () => {
     const state = fresh();
     expect(hasActivity(state, '2026-10')).toBe(false);
     expect(currenciesInUse(state, '2026-10')).toEqual(['TRY']);
@@ -447,21 +447,21 @@ describe('tasas del mes: sin actividad no hace falta ninguna tasa', () => {
     expect(bar(state)).toBeNull();
   });
 
-  it('un gasto fijo en la moneda principal trae el par principal-segunda con su valor por defecto', () => {
+  it('a fixed expense in the main currency brings the main-second pair with its default value', () => {
     const state = fresh();
     state.months['2026-10']!.fixed = [{ id: 'f', monthKey: '2026-10', name: 'Rent', day: '', amount: 100, cur: 'TRY', paid: false, accountId: 'try', sort: 0 }];
     expect(rowsOf(state)).toEqual(['USD>TRY:default']);
     expect(bar(state)).toMatchObject({ from: 'USD', to: 'TRY', source: 'default' });
   });
 
-  it('una cuenta con saldo inicial distinto de cero cuenta como actividad', () => {
+  it('an account with a nonzero opening balance counts as activity', () => {
     const state = fresh();
     state.accounts[1]!.opening = 50;
     expect(rowsOf(state)).toEqual(['USD>TRY:default']);
     expect(bar(state)).toMatchObject({ from: 'USD', to: 'TRY' });
   });
 
-  it('una tasa escrita se ve siempre, aunque no haya actividad', () => {
+  it('a typed rate is always shown, even with no activity', () => {
     const state = fresh();
     state.months['2026-10']!.rates = [{ from: 'USD', to: 'TRY', rate: 41.5, date: '2026-10-01' }];
     expect(hasActivity(state, '2026-10')).toBe(false);
@@ -470,21 +470,21 @@ describe('tasas del mes: sin actividad no hace falta ninguna tasa', () => {
   });
 });
 
-describe('tasas del mes: las filas de la tarjeta', () => {
-  /** Las filas de un mes de ese estado, como las arma la tarjeta. */
+describe('month rates: the rows of the card', () => {
+  /** The rows of a month of that state, as the card builds them. */
   const rowsOf = (state: AppState, key: MonthKey, draftDate: ISODate, used: Currency[] = ['DOP', 'USD']) => {
     const rates = pairRates(state, key);
     return rateRows(shownRates(rates, used, 'DOP'), state.months[key]!.rates, rates, key, draftDate);
   };
 
-  it('datos de ejemplo: octubre tiene dos tasas escritas del mismo par, una fila por fecha', () => {
+  it('sample data: October has two typed rates for the same pair, one row per date', () => {
     expect(rowsOf(seedState(), '2026-10', '2026-10-07')).toEqual([
       { kind: 'typed', key: 'DOP-USD:2026-10-01', from: 'USD', to: 'DOP', rate: 58.76, date: '2026-10-01' },
       { kind: 'typed', key: 'DOP-USD:2026-10-06', from: 'USD', to: 'DOP', rate: 58.76, date: '2026-10-06' },
     ]);
   });
 
-  it('las escritas de un par van por fecha, lleguen como lleguen, cada una en el sentido en que se escribió', () => {
+  it('the typed rates of a pair go by date, however they arrive, each in the direction it was typed', () => {
     const state = seedState();
     state.months['2026-10']!.rates = [
       { from: 'USD', to: 'DOP', rate: 60, date: '2026-10-20' },
@@ -497,13 +497,13 @@ describe('tasas del mes: las filas de la tarjeta', () => {
       'typed 2026-10-08 USD>DOP 59',
       'typed 2026-10-20 USD>DOP 60',
     ]);
-    // La clave no depende del sentido: es el par y la fecha.
+    // The key does not depend on the direction: it is the pair and the date.
     expect(rows.map((r) => r.key)).toEqual(['DOP-USD:2026-10-01', 'DOP-USD:2026-10-08', 'DOP-USD:2026-10-20']);
     expect(new Set(rows.map((r) => r.key)).size).toBe(3);
   });
 
-  it('un par sin ninguna escrita en el mes da UNA fila con la vigente y su origen', () => {
-    // Septiembre: la tasa sale de sus envíos. Nadie ha escrito ninguna: la fila propone el primer día del mes.
+  it('a pair with no typed rate in the month gives ONE row with the one in effect and its source', () => {
+    // September: the rate comes from its transfers. Nobody has typed one: the row proposes the first day of the month.
     const [row, ...rest] = rowsOf(seedState(), '2026-09', '2026-09-01');
     expect(rest).toEqual([]);
     expect(row).toMatchObject({ kind: 'resolved', key: 'DOP-USD:2026-09-01', from: 'USD', to: 'DOP', date: '2026-09-01' });
@@ -511,80 +511,80 @@ describe('tasas del mes: las filas de la tarjeta', () => {
     expect(row!.kind === 'resolved' && row.info).toMatchObject({ source: 'transfers', monthKey: '2026-09', date: null });
   });
 
-  it('las tres monedas en uso: las escritas con su fecha y, de los otros pares, la vigente', () => {
+  it('the three currencies in use: the typed rates with their date and, for the other pairs, the one in effect', () => {
     const rows = rowsOf(seedState(), '2026-10', '2026-10-07', ['DOP', 'USD', 'TRY']);
     expect(rows.map((r) => `${r.kind} ${r.from}>${r.to} ${r.date}`)).toEqual([
       'typed USD>DOP 2026-10-01',
       'typed USD>DOP 2026-10-06',
-      // Sin ninguna escrita nunca: desde el primer día del mes, aunque hoy sea el 7. USD>TRY ya no es una fila: se cruza.
+      // With none ever typed: from the first day of the month, even though today is the 7th. USD>TRY is no longer a row: it is crossed.
       'resolved TRY>DOP 2026-10-01',
     ]);
     expect(rows.slice(2).map((r) => r.kind === 'resolved' && r.info.source)).toEqual(['default']);
   });
 
-  it('un par cuya tasa vigente es una escrita en un mes anterior: la fila es la vigente, y escribir en ella crea una desde hoy', () => {
+  it('a pair whose rate in effect is one typed in an earlier month: the row is the one in effect, and typing in it creates one from today', () => {
     const state = seedState();
     state.months['2026-11'] = { ...state.months['2026-10']!, key: '2026-11', rates: [], fixed: [], transfers: [], tx: [], budgetLog: [], budgets: {} };
     const [row, ...rest] = rowsOf(state, '2026-11', '2026-11-12');
     expect(rest).toEqual([]);
     expect(row).toMatchObject({ kind: 'resolved', from: 'USD', to: 'DOP', rate: 58.76, date: '2026-11-12', key: 'DOP-USD:2026-11-12' });
-    // El origen es la del 6 de octubre.
+    // The source is the one from October 6.
     expect(row!.kind === 'resolved' && row.info).toMatchObject({ source: 'previous', monthKey: '2026-10', date: '2026-10-06' });
   });
 
-  it('una tasa escrita que no vale (0 o negativa) no es una fila: el par sale con la vigente', () => {
+  it('a typed rate that is not valid (0 or negative) is not a row: the pair shows with the one in effect', () => {
     const state = seedState();
     state.months['2026-10']!.rates = [{ from: 'USD', to: 'DOP', rate: 0, date: '2026-10-01' }];
     const rows = rowsOf(state, '2026-10', '2026-10-07');
     expect(rows.map((r) => r.kind)).toEqual(['resolved']);
   });
 
-  it('solo salen los pares que se ven', () => {
+  it('only the pairs that are shown come out', () => {
     const state = seedState();
     state.months['2026-10']!.rates.push({ from: 'USD', to: 'TRY', rate: 41.5, date: '2026-10-03' });
     const rates = pairRates(state, '2026-10');
-    // Con solo el par de la barra a la vista, la escrita de USD → TRY no sale aunque esté en el mes.
+    // With only the pair of the bar in view, the typed USD → TRY rate does not show even though it is in the month.
     const rows = rateRows(rates.slice(0, 1), state.months['2026-10']!.rates, rates, '2026-10', '2026-10-07');
     expect(rows.map((r) => `${r.from}>${r.to}`)).toEqual(['USD>DOP', 'USD>DOP']);
     expect(rateRows([], state.months['2026-10']!.rates, rates, '2026-10', '2026-10-07')).toEqual([]);
   });
 });
 
-describe('newRateDate: desde cuándo vale una tasa nueva', () => {
+describe('newRateDate: from when a new rate applies', () => {
   const state = seedState();
   const october = pairRates(state, '2026-10');
 
-  it('el par ya tiene una escrita vigente y el mes es el actual: hoy', () => {
+  it('the pair already has a typed rate in effect and the month is the current one: today', () => {
     expect(newRateDate('USD', 'DOP', october, '2026-10', '2026-10-07')).toBe('2026-10-07');
-    // En cualquiera de los dos sentidos.
+    // In either direction.
     expect(newRateDate('DOP', 'USD', october, '2026-10', '2026-10-07')).toBe('2026-10-07');
   });
 
-  it('el par ya tiene una escrita vigente y el mes no es el actual: su primer día (la fecha de sus borradores)', () => {
+  it('the pair already has a typed rate in effect and the month is not the current one: its first day (the date of its drafts)', () => {
     expect(newRateDate('USD', 'DOP', october, '2026-10', '2026-10-01')).toBe('2026-10-01');
   });
 
-  it('el par no tiene ninguna escrita: el primer día del mes, para que cubra también las filas anteriores', () => {
+  it('the pair has no typed rate: the first day of the month, so that it also covers the earlier rows', () => {
     expect(newRateDate('USD', 'TRY', october, '2026-10', '2026-10-07')).toBe('2026-10-01');
     expect(newRateDate('TRY', 'DOP', october, '2026-10', '2026-10-07')).toBe('2026-10-01');
-    // Septiembre: la tasa de USD → DOP sale de los envíos, no de una escrita.
+    // September: the USD → DOP rate comes from the transfers, not from a typed one.
     expect(newRateDate('USD', 'DOP', pairRates(state, '2026-09'), '2026-09', '2026-09-15')).toBe('2026-09-01');
   });
 
-  it('una escrita en un mes anterior también cuenta como vigente', () => {
+  it('one typed in an earlier month also counts as in effect', () => {
     const next = seedState();
     next.months['2026-11'] = { ...next.months['2026-10']!, key: '2026-11', rates: [], fixed: [], transfers: [], tx: [], budgetLog: [], budgets: {} };
     expect(newRateDate('USD', 'DOP', pairRates(next, '2026-11'), '2026-11', '2026-11-12')).toBe('2026-11-12');
   });
 
-  it('un par que no está en la lista (o la misma moneda dos veces): el primer día del mes', () => {
+  it('a pair that is not in the list (or the same currency twice): the first day of the month', () => {
     expect(newRateDate('USD', 'DOP', [], '2026-10', '2026-10-07')).toBe('2026-10-01');
     expect(newRateDate('USD', 'USD', october, '2026-10', '2026-10-07')).toBe('2026-10-01');
   });
 });
 
 describe('viaSuggestions', () => {
-  /** Meses con un envío por cada vía de la lista, en ese orden. */
+  /** Months with one transfer for each via in the list, in that order. */
   const months = (vias: Record<string, string[]>) =>
     Object.fromEntries(
       Object.entries(vias).map(([key, list]) => [
@@ -606,12 +606,12 @@ describe('viaSuggestions', () => {
       ]),
     );
 
-  it('sin envíos, las de siempre', () => {
+  it('with no transfers, the usual ones', () => {
     expect(viaSuggestions({}, '2026-10')).toEqual(['Remitly', 'PayPal']);
     expect(viaSuggestions(months({ '2026-10': [] }), '2026-10')).toEqual(['Remitly', 'PayPal']);
   });
 
-  it('después van las ya usadas en este mes y en los anteriores, de la más reciente a la más antigua', () => {
+  it('then come those already used in this month and in the earlier ones, from the most recent to the oldest', () => {
     const all = months({
       '2026-08': ['Western Union', 'Remitly'],
       '2026-09': ['Wise'],
@@ -619,33 +619,33 @@ describe('viaSuggestions', () => {
       '2026-11': ['Revolut'],
     });
     expect(viaSuggestions(all, '2026-10')).toEqual(['Remitly', 'PayPal', 'Banco Popular', 'Zelle', 'Wise', 'Western Union']);
-    // Un mes anterior no ve las de los posteriores; el último las ve todas.
+    // An earlier month does not see those of the later ones; the last one sees them all.
     expect(viaSuggestions(all, '2026-08')).toEqual(['Remitly', 'PayPal', 'Western Union']);
     expect(viaSuggestions(all, '2026-11')).toEqual(['Remitly', 'PayPal', 'Revolut', 'Banco Popular', 'Zelle', 'Wise', 'Western Union']);
   });
 
-  it('no repite: ni las de siempre, ni la misma con otras mayúsculas o espacios; una vacía no se ofrece', () => {
+  it('does not repeat: neither the usual ones, nor the same one with different case or spaces; an empty one is not offered', () => {
     const all = months({ '2026-09': ['paypal', ' Wise '], '2026-10': ['Wise', 'WISE', '', '   ', 'PayPal'] });
     expect(viaSuggestions(all, '2026-10')).toEqual(['Remitly', 'PayPal', 'WISE']);
   });
 
-  it('los datos de ejemplo no agregan nada: solo usan Remitly y PayPal', () => {
+  it('the sample data adds nothing: it only uses Remitly and PayPal', () => {
     expect(viaSuggestions(seedState().months, '2026-10')).toEqual(['Remitly', 'PayPal']);
   });
 });
 
-describe('formatos', () => {
-  it('shortDate: día/mes', () => {
+describe('formats', () => {
+  it('shortDate: day/month', () => {
     expect(shortDate('2026-10-02')).toBe('02/10');
     expect(shortDate('2027-01-31')).toBe('31/01');
   });
 
-  it('transferName: vía y fecha corta, para las etiquetas de las celdas de un envío', () => {
+  it('transferName: via and short date, for the labels of the cells of a transfer', () => {
     expect(transferName({ via: 'Remitly', date: '2026-10-02' })).toBe('Remitly 02/10');
     expect(transferName({ via: '', date: '2026-10-02' })).toBe('02/10');
   });
 
-  it('showRate: dos decimales; cuatro cuando la tasa es menor que 1', () => {
+  it('showRate: two decimals; four when the rate is lower than 1', () => {
     expect(showRate(58.76)).toBe('58.76');
     expect(showRate(134721 / 2300)).toBe('58.57');
     expect(showRate(1)).toBe('1.00');
@@ -655,7 +655,7 @@ describe('formatos', () => {
     expect(showRate(Number.NaN)).toBe('0.00');
   });
 
-  it('rateText: dos decimales al menos, sin recortar lo que se haya escrito de más', () => {
+  it('rateText: at least two decimals, without trimming whatever extra was typed', () => {
     expect(rateText(58.7)).toBe('58.70');
     expect(rateText(58)).toBe('58.00');
     expect(rateText(58.76)).toBe('58.76');
@@ -663,26 +663,26 @@ describe('formatos', () => {
     expect(rateText(58.755)).toBe('58.755');
     expect(rateText(58.5743)).toBe('58.5743');
     expect(rateText(Number.NaN)).toBe('0.00');
-    // Una tasa menor que 1 se queda entera.
+    // A rate lower than 1 stays whole.
     expect(rateText(0.01702)).toBe('0.01702');
   });
 
-  it('barWidth: porcentaje del valor mayor', () => {
+  it('barWidth: percentage of the largest value', () => {
     expect(barWidth(38304.71, 38304.71)).toBe('100%');
     expect(barWidth(50, 200)).toBe('25%');
     expect(barWidth(0, 1)).toBe('0%');
   });
 });
 
-describe('historyRows: transacciones y comisiones de envíos, juntas', () => {
-  it('de la más reciente a la más antigua; con la misma fecha, primero las transacciones', () => {
+describe('historyRows: transactions and transfer fees, together', () => {
+  it('from the most recent to the oldest; on the same date, transactions first', () => {
     const tx = seedState().months['2026-10']!.tx;
     const account = seedState().accounts[0]! as TransferFee['account'];
     const fee = (transferId: string, date: ISODate): TransferFee => ({ transferId, date, via: 'Remitly', account, amount: 2.99, cur: 'USD' });
     const rows = historyRows(tx, [fee('a', '2026-10-02'), fee('b', '2026-10-07')]);
     expect(rows).toHaveLength(tx.length + 2);
     expect(rows.map((r) => r.date)).toEqual([...rows.map((r) => r.date)].sort().reverse());
-    // El 7 hay una transacción (Coffee) y una comisión: la transacción va antes.
+    // On the 7th there is a transaction (Coffee) and a fee: the transaction goes first.
     expect(rows.slice(0, 2).map((r) => [r.kind, r.key])).toEqual([
       ['tx', tx.find((t) => t.date === '2026-10-07')!.id],
       ['fee', 'fee:b'],
@@ -692,14 +692,14 @@ describe('historyRows: transacciones y comisiones de envíos, juntas', () => {
   });
 });
 
-describe('lastFee: la comisión que se propone para un envío nuevo', () => {
+describe('lastFee: the fee proposed for a new transfer', () => {
   const months = () => {
     const s = seedState();
     s.months['2026-09']!.transfers.at(-1)!.fee = 2.99;
     return s.months;
   };
 
-  it('la del envío más reciente por esa vía, sin distinguir mayúsculas ni espacios, hasta el mes que se mira', () => {
+  it('that of the most recent transfer through that via, ignoring case and spaces, up to the month being viewed', () => {
     expect(lastFee(months(), '2026-10', 'Remitly')).toBe(0);
     const m = months();
     m['2026-10']!.transfers = [];
@@ -711,11 +711,11 @@ describe('lastFee: la comisión que se propone para un envío nuevo', () => {
   });
 });
 
-describe('tarjetas de crédito en los selectores', () => {
+describe('credit cards in the selects', () => {
   const card = (id: string, name: string, over: Partial<CreditCard> = {}): CreditCard => ({ id, name, bank: null, last4: null, cur: 'DOP', limit: null, cutoffDay: null, dueDay: null, active: true, sort: 0, ...over });
   const cards = [card('a', 'Visa'), card('b', 'Master', { sort: 1 }), card('c', 'Old', { sort: 2, active: false })];
 
-  it('«Pagar con»: la cuenta y una opción por tarjeta activa; la de la fila se queda aunque esté apagada', () => {
+  it('"Pay with": the account and one option per active credit card; that of the row stays even if it is turned off', () => {
     expect(payWithOptions('Account', cards)).toEqual([
       { value: 'account', label: 'Account' },
       { value: 'card:a', label: 'Visa' },
@@ -725,7 +725,7 @@ describe('tarjetas de crédito en los selectores', () => {
     expect(payWithOptions('Account', [])).toEqual([{ value: 'account', label: 'Account' }]);
   });
 
-  it('el valor del selector y su vuelta', () => {
+  it('the value of the select and its way back', () => {
     expect(payWithValue(false, 'a', 'a')).toBe('account');
     expect(payWithValue(true, 'b', 'a')).toBe('card:b');
     expect(payWithValue(true, null, 'a')).toBe('card:a');
@@ -733,7 +733,7 @@ describe('tarjetas de crédito en los selectores', () => {
     expect(parsePayWith('card:b')).toEqual({ onCard: true, cardId: 'b' });
   });
 
-  it('sin tarjetas activas no se ofrece «Credit card» (salvo que la fila ya la tenga)', () => {
+  it('with no active credit cards "Credit card" is not offered (unless the row already has it)', () => {
     expect(methodChoices(true)).toContain('Credit card');
     expect(methodChoices(false)).not.toContain('Credit card');
     expect(methodChoices(false, 'Credit card')).toContain('Credit card');

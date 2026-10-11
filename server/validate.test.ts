@@ -44,7 +44,7 @@ function messageOf(fn: () => unknown): string {
 }
 
 describe('parse', () => {
-  it('devuelve el valor normalizado: textos recortados y nada más que lo declarado', () => {
+  it('returns the normalized value: trimmed text and nothing beyond what is declared', () => {
     expect(parse(txCreateSchema, { ...tx, desc: '  Uber  ', place: ' Centro ', notes: '  ' })).toEqual({
       ...tx,
       place: 'Centro',
@@ -52,7 +52,7 @@ describe('parse', () => {
     });
   });
 
-  it('los mensajes son legibles y en inglés', () => {
+  it('the messages are readable and in English', () => {
     expect(messageOf(() => parse(txCreateSchema, { ...tx, amount: 0 }))).toBe('Invalid data: amount: must be greater than 0');
     expect(messageOf(() => parse(txCreateSchema, { ...tx, desc: ' ' }))).toBe('Invalid data: desc: cannot be empty');
     expect(messageOf(() => parse(txCreateSchema, { ...tx, desc: 'x'.repeat(201) }))).toBe('Invalid data: desc: allows up to 200 characters');
@@ -76,11 +76,11 @@ describe('parse', () => {
     );
   });
 
-  it('también los mensajes que no se escribieron a mano, aunque zod esté configurado en otro idioma', () => {
+  it('also the messages that were not written by hand, even when zod is configured in another language', () => {
     const unknownKey = 'Invalid data: Unrecognized key: "otra"';
     expect(messageOf(() => parse(txCreateSchema, { ...tx, otra: 1 }))).toBe(unknownKey);
     expect(messageOf(() => parse(txCreateSchema, null))).toBe('Invalid data: Invalid input: expected object, received null');
-    // La API responde siempre en inglés: no depende de la configuración global de zod.
+    // The API always answers in English: it does not depend on zod's global configuration.
     z.config(es());
     try {
       expect(messageOf(() => parse(txCreateSchema, { ...tx, otra: 1 }))).toBe(unknownKey);
@@ -89,13 +89,13 @@ describe('parse', () => {
     }
   });
 
-  it('resume cuando hay muchos problemas', () => {
+  it('summarizes when there are many issues', () => {
     const message = messageOf(() => parse(txCreateSchema, {}));
     expect(message).toContain('monthKey: is required; date: is required; desc: is required');
     expect(message).toMatch(/\(and 2 more\)$/);
   });
 
-  it('montos: finitos; > 0 al crear, ≥ 0 al editar', () => {
+  it('amounts: finite; > 0 on create, ≥ 0 on edit', () => {
     for (const amount of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY, 0, -1, 1e13, '1', null]) {
       expect(() => parse(txCreateSchema, { ...tx, amount }), String(amount)).toThrow(ApiError);
     }
@@ -105,29 +105,29 @@ describe('parse', () => {
     expect(() => parse(txPatchSchema, { amount: Number.POSITIVE_INFINITY })).toThrow(ApiError);
   });
 
-  it('envíos: monto y tasa mayores que 0, dos cuentas distintas; la tasa puede faltar y la vía es texto libre', () => {
+  it('transfers: amount and rate greater than 0, two different accounts; the rate can be missing and via is free text', () => {
     const transfer = { monthKey: '2026-10', date: '2026-10-02', via: 'Remitly', fromAccountId: 'us', toAccountId: 'dr', amount: 1500, rate: 58.76 };
     expect(parse(transferCreateSchema, transfer)).toEqual(transfer);
-    // Sin tasa: la pone el servidor con la del mes para las monedas de las dos cuentas.
+    // Without a rate: the server fills it in with the month rate for the currencies of the two accounts.
     const { rate: _rate, ...noRate } = transfer;
     expect(parse(transferCreateSchema, noRate)).toEqual(noRate);
     expect(() => parse(transferCreateSchema, { ...transfer, amount: 0 })).toThrow(ApiError);
     expect(() => parse(transferCreateSchema, { ...transfer, rate: 0 })).toThrow(ApiError);
     expect(() => parse(transferCreateSchema, { ...transfer, rate: null })).toThrow(ApiError);
-    // La comisión: opcional, >= 0, en la moneda de la cuenta de origen.
+    // The fee: optional, >= 0, in the currency of the origin account.
     expect(parse(transferCreateSchema, { ...transfer, fee: 2.99 })).toEqual({ ...transfer, fee: 2.99 });
     expect(parse(transferCreateSchema, { ...transfer, fee: 0 })).toEqual({ ...transfer, fee: 0 });
     expect(messageOf(() => parse(transferCreateSchema, { ...transfer, fee: -1 }))).toBe('Invalid data: fee: cannot be negative');
     expect(() => parse(transferCreateSchema, { ...transfer, fee: '2.99' })).toThrow(ApiError);
     expect(parse(transferPatchSchema, { fee: 3.49 })).toEqual({ fee: 3.49 });
     expect(messageOf(() => parse(transferPatchSchema, { fee: -0.01 }))).toBe('Invalid data: fee: cannot be negative');
-    // El formato anterior (solo dólares, sin cuentas) ya no existe.
+    // The previous format (dollars only, no accounts) no longer exists.
     expect(messageOf(() => parse(transferCreateSchema, { ...transfer, usd: 1500 }))).toContain('Unrecognized key: "usd"');
     expect(messageOf(() => parse(transferCreateSchema, { ...noRate, toAccountId: undefined }))).toBe('Invalid data: toAccountId: is required');
     const same = 'Invalid data: toAccountId: must be different from fromAccountId';
     expect(messageOf(() => parse(transferCreateSchema, { ...transfer, toAccountId: 'us' }))).toBe(same);
     expect(messageOf(() => parse(transferPatchSchema, { fromAccountId: 'dr', toAccountId: 'dr' }))).toBe(same);
-    // Una sola cuenta en un patch pasa: si choca con la otra lo dice el repositorio, que es quien la conoce.
+    // A single account in a patch passes: if it clashes with the other one, the repository says so, since it is the one that knows it.
     expect(parse(transferPatchSchema, { toAccountId: 'us' })).toEqual({ toAccountId: 'us' });
     expect(parse(transferPatchSchema, { fromAccountId: 'dr', toAccountId: 'us', amount: 5, rate: 0.017 })).toEqual({
       fromAccountId: 'dr',
@@ -137,14 +137,14 @@ describe('parse', () => {
     });
     expect(() => parse(transferPatchSchema, { amount: 0 })).toThrow(ApiError);
     expect(() => parse(transferPatchSchema, { fromAccountId: 'con espacios' })).toThrow(ApiError);
-    // Remitly y PayPal son sugerencias: vale cualquier nombre, recortado, que no esté vacío ni pase de 60.
+    // Remitly and PayPal are suggestions: any name works, trimmed, as long as it is not empty and no longer than 60.
     expect(parse(transferCreateSchema, { ...transfer, via: '  Banco BHD (ventanilla) ' }).via).toBe('Banco BHD (ventanilla)');
     expect(parse(transferPatchSchema, { via: 'Efectivo de mamá' })).toEqual({ via: 'Efectivo de mamá' });
     expect(messageOf(() => parse(transferCreateSchema, { ...transfer, via: '   ' }))).toBe('Invalid data: via: cannot be empty');
     expect(messageOf(() => parse(transferPatchSchema, { via: 'x'.repeat(61) }))).toBe('Invalid data: via: allows up to 60 characters');
   });
 
-  it('ids: letras, números, "-" y "_", de 1 a 64', () => {
+  it('ids: letters, numbers, "-" and "_", from 1 to 64', () => {
     const fixed = { monthKey: '2026-10', name: 'Luz', amount: 1, cur: 'DOP' };
     for (const id of ['a', 'seed-fx-2026-10-1', 'A_b-9', 'x'.repeat(64), '3f2b8c1e-0d4a-4f6b-9c7d-1e2f3a4b5c6d']) {
       expect(ID_RE.test(id)).toBe(true);
@@ -155,7 +155,7 @@ describe('parse', () => {
     }
   });
 
-  it('meses y fechas se validan con shared/month', () => {
+  it('months and dates are validated with shared/month', () => {
     for (const monthKey of ['2026-00', '2026-13', '2026-1', '26-10', '2026-10-01', '']) {
       expect(() => parse(txCreateSchema, { ...tx, monthKey }), monthKey).toThrow(ApiError);
     }
@@ -165,13 +165,13 @@ describe('parse', () => {
     expect(parse(txCreateSchema, { ...tx, date: '2028-02-29' }).date).toBe('2028-02-29');
   });
 
-  it('categoría y método son texto libre y no se traducen: la web manda el valor canónico', () => {
+  it('category and method are free text and are not translated: the web app sends the canonical value', () => {
     expect(parse(txCreateSchema, { ...tx, cat: 'Mascotas', method: 'Efectivo' })).toMatchObject({ cat: 'Mascotas', method: 'Efectivo' });
-    // "Market" es Groceries en turco, pero aquí puede ser una categoría propia de quien escribe en inglés.
+    // "Market" is Groceries in Turkish, but here it can be a custom category of someone who writes in English.
     expect(parse(txPatchSchema, { cat: 'Market' })).toEqual({ cat: 'Market' });
   });
 
-  it('monedas: DOP, USD y TRY, en todo lo que lleva moneda', () => {
+  it('currencies: DOP, USD and TRY, in everything that carries a currency', () => {
     for (const cur of ['EUR', 'usd', 'try', '', null, 1]) expect(() => parse(txCreateSchema, { ...tx, cur }), String(cur)).toThrow(ApiError);
     for (const cur of ['DOP', 'USD', 'TRY']) {
       expect(parse(txCreateSchema, { ...tx, cur }).cur).toBe(cur);
@@ -184,7 +184,7 @@ describe('parse', () => {
     }
   });
 
-  it('la cuenta de un gasto es un id: opcional al crear (sin ella, la de por defecto) y editable', () => {
+  it('the account of an expense is an id: optional on create (without it, the default one) and editable', () => {
     expect(parse(txCreateSchema, { ...tx, accountId: 'dr' }).accountId).toBe('dr');
     expect(parse(txCreateSchema, tx)).not.toHaveProperty('accountId');
     expect(parse(txPatchSchema, { accountId: 'us' })).toEqual({ accountId: 'us' });
@@ -196,8 +196,8 @@ describe('parse', () => {
   });
 });
 
-describe('meses: presupuesto por cuenta y tasas', () => {
-  it('presupuesto: cuenta → monto no negativo (0 quita la parte); el formato anterior ya no existe', () => {
+describe('months: budget per account and rates', () => {
+  it('budget: account → non-negative amount (0 removes the part); the previous format no longer exists', () => {
     expect(parse(monthPatchSchema, { budgets: { dr: 70000, us: 0, 'a-b_9': 12.5 } })).toEqual({ budgets: { dr: 70000, us: 0, 'a-b_9': 12.5 } });
     expect(parse(monthPatchSchema, { budgets: {} })).toEqual({ budgets: {} });
     expect(parse(monthPatchSchema, {})).toEqual({});
@@ -214,7 +214,7 @@ describe('meses: presupuesto por cuenta y tasas', () => {
     expect(messageOf(() => parse(monthPatchSchema, { budgets: many }))).toBe('Invalid data: budgets: allows up to 100 accounts');
   });
 
-  it('tasa: dos monedas distintas, tasa mayor que 0 y la fecha desde la que vale', () => {
+  it('rate: two different currencies, rate greater than 0 and the date it applies from', () => {
     expect(parse(monthRateSchema, { from: 'USD', to: 'DOP', rate: 58.76, date: '2026-10-08' })).toEqual({ from: 'USD', to: 'DOP', rate: 58.76, date: '2026-10-08' });
     expect(parse(monthRateSchema, { from: 'TRY', to: 'USD', rate: 0.025, date: '2026-10-01' })).toEqual({ from: 'TRY', to: 'USD', rate: 0.025, date: '2026-10-01' });
     const ok = { from: 'USD', to: 'DOP', rate: 58, date: '2026-10-08' };
@@ -226,7 +226,7 @@ describe('meses: presupuesto por cuenta y tasas', () => {
     for (const body of [{ from: 'USD', to: 'DOP', date: ok.date }, { from: 'USD', rate: 1, date: ok.date }, { ...ok, rate: -1 }, { ...ok, rate: '58' }, { ...ok, monthKey: '2026-10' }, { ...ok, date: '2026-10' }, { ...ok, date: 20261008 }]) {
       expect(() => parse(monthRateSchema, body), JSON.stringify(body)).toThrow(ApiError);
     }
-    // El par y la fecha de la ruta de borrado.
+    // The pair and the date of the delete route.
     expect(parse(ratePairSchema, { from: 'DOP', to: 'TRY', date: '2026-10-08' })).toEqual({ from: 'DOP', to: 'TRY', date: '2026-10-08' });
     expect(messageOf(() => parse(ratePairSchema, { from: 'DOP', to: 'TRY' }))).toBe('Invalid data: date: is required');
     for (const pair of [{ from: 'DOP', to: 'DOP' }, { from: 'dop', to: 'USD' }, { from: 'DOP' }, { from: 'DOP', to: 'EUR' }]) {
@@ -235,7 +235,7 @@ describe('meses: presupuesto por cuenta y tasas', () => {
     expect(() => parse(ratePairSchema, { from: 'DOP', to: 'TRY', date: 'hoy' })).toThrow(ApiError);
   });
 
-  it('movimiento del presupuesto: cuenta y monto con signo (no 0); tipo inicial o ajuste; el sobrante no se escribe a mano', () => {
+  it('budget movement: account and signed amount (not 0); kind initial or adjustment; the leftover is not written by hand', () => {
     expect(parse(budgetEntryCreateSchema, { accountId: 'dr', amount: 5000 })).toEqual({ accountId: 'dr', amount: 5000 });
     expect(parse(budgetEntryCreateSchema, { id: 'b-1', date: '2026-10-05', accountId: 'dr', amount: -1200.5, kind: 'initial', note: '  Car repair ' })).toEqual({
       id: 'b-1', date: '2026-10-05', accountId: 'dr', amount: -1200.5, kind: 'initial', note: 'Car repair',
@@ -249,7 +249,7 @@ describe('meses: presupuesto por cuenta y tasas', () => {
     }
   });
 
-  it('cierre de mes: cuerpo opcional con las partes iniciales del mes siguiente y si se suma el sobrante', () => {
+  it('month close: optional body with the initial parts of the next month and whether the leftover is added', () => {
     expect(parse(closeRequestSchema, {})).toEqual({});
     expect(parse(closeRequestSchema, { budgets: { dr: 80000, us: 0 }, addLeftover: true })).toEqual({ budgets: { dr: 80000, us: 0 }, addLeftover: true });
     expect(messageOf(() => parse(closeRequestSchema, { budgets: { dr: -1 } }))).toBe('Invalid data: budgets.dr: cannot be negative');
@@ -259,8 +259,8 @@ describe('meses: presupuesto por cuenta y tasas', () => {
   });
 });
 
-describe('cuentas e ingresos', () => {
-  it('cuenta: nombre recortado y no vacío, moneda y saldo inicial (que puede ser negativo)', () => {
+describe('accounts and incomes', () => {
+  it('account: trimmed, non-empty name, currency and opening balance (which can be negative)', () => {
     expect(parse(accountCreateSchema, { name: '  PayPal ', currency: 'USD' })).toEqual({ name: 'PayPal', currency: 'USD' });
     expect(parse(accountCreateSchema, { id: 'tr', name: 'TR account', currency: 'TRY', opening: -250.5 })).toEqual({
       id: 'tr',
@@ -273,7 +273,7 @@ describe('cuentas e ingresos', () => {
     expect(messageOf(() => parse(accountCreateSchema, { name: 'x'.repeat(121), currency: 'USD' }))).toBe('Invalid data: name: allows up to 120 characters');
     expect(messageOf(() => parse(accountCreateSchema, { name: 'x' }))).toBe('Invalid data: currency: must be DOP, USD, TRY or XAU (gold, in grams)');
     expect(messageOf(() => parse(accountCreateSchema, { name: 'x', currency: 'USD', opening: 1e13 }))).toBe('Invalid data: opening: is too large');
-    // Oculta y orden no se eligen al crear, y el saldo no viaja: se calcula.
+    // Hidden and order are not chosen on create, and the balance does not travel: it is calculated.
     for (const extra of [{ hidden: true }, { sort: 3 }, { balance: 100 }]) {
       expect(() => parse(accountCreateSchema, { name: 'x', currency: 'USD', ...extra }), JSON.stringify(extra)).toThrow(ApiError);
     }
@@ -291,7 +291,7 @@ describe('cuentas e ingresos', () => {
     }
   });
 
-  it('ingreso: fecha, monto y moneda; la descripción y la cuenta pueden faltar', () => {
+  it('income: date, amount and currency; the description and the account can be missing', () => {
     expect(parse(incomeCreateSchema, { date: '2026-10-01', amount: 5800, cur: 'USD' })).toEqual({ date: '2026-10-01', amount: 5800, cur: 'USD' });
     expect(parse(incomeCreateSchema, { id: 'in-1', date: '2026-10-01', desc: '  Salary ', accountId: 'us', amount: 5800, cur: 'USD' })).toEqual({
       id: 'in-1',
@@ -308,9 +308,9 @@ describe('cuentas e ingresos', () => {
     expect(messageOf(() => parse(incomeCreateSchema, { date: '2026-10-01', amount: 1, cur: 'USD', desc: 'x'.repeat(201) }))).toBe(
       'Invalid data: desc: allows up to 200 characters',
     );
-    // No pertenece a un mes: no lleva monthKey.
+    // It does not belong to a month: it carries no monthKey.
     expect(() => parse(incomeCreateSchema, { date: '2026-10-01', amount: 1, cur: 'USD', monthKey: '2026-10' })).toThrow(ApiError);
-    // Al editar el monto puede quedar en 0 y la descripción, vacía.
+    // On edit, the amount can end up at 0 and the description empty.
     expect(parse(incomePatchSchema, { amount: 0, desc: ' ', accountId: 'dr', date: '2030-01-01', cur: 'TRY' })).toEqual({
       amount: 0,
       desc: '',
@@ -322,7 +322,7 @@ describe('cuentas e ingresos', () => {
     expect(() => parse(incomePatchSchema, { id: 'otro' })).toThrow(ApiError);
   });
 
-  it('ingreso que sube el presupuesto: `budget` es opcional y solo true o false', () => {
+  it('income that raises the budget: `budget` is optional and only true or false', () => {
     expect(parse(incomeCreateSchema, { date: '2026-10-01', amount: 1, cur: 'USD', budget: true }).budget).toBe(true);
     expect(parse(incomeCreateSchema, { date: '2026-10-01', amount: 1, cur: 'USD', budget: false }).budget).toBe(false);
     expect(parse(incomeCreateSchema, { date: '2026-10-01', amount: 1, cur: 'USD' }).budget).toBeUndefined();
@@ -333,7 +333,7 @@ describe('cuentas e ingresos', () => {
     }
   });
 
-  it('meta: la moneda "≈" es una de las tres o null, también la de la propia meta', () => {
+  it('goal: the "≈" currency is one of the three or null, even the currency of the goal itself', () => {
     for (const approxCur of ['DOP', 'USD', 'TRY', null]) {
       expect(parse(goalCreateSchema, { name: 'x', cur: 'USD', approxCur }).approxCur).toBe(approxCur);
       expect(parse(goalPatchSchema, { approxCur })).toEqual({ approxCur });
@@ -344,8 +344,8 @@ describe('cuentas e ingresos', () => {
   });
 });
 
-describe('ajustes (PATCH /api/settings)', () => {
-  it('idioma: uno de los de la app', () => {
+describe('settings (PATCH /api/settings)', () => {
+  it('language: one of the app languages', () => {
     for (const language of ['en', 'es', 'tr']) expect(parse(settingsUpdateSchema, { language })).toEqual({ language });
     for (const language of ['fr', 'EN', 'español', '', null, 1]) {
       expect(messageOf(() => parse(settingsUpdateSchema, { language })), String(language)).toBe(
@@ -354,7 +354,7 @@ describe('ajustes (PATCH /api/settings)', () => {
     }
   });
 
-  it('colores: null o los tres, que salen normalizados y sin nada más', () => {
+  it('colors: null or all three, which come out normalized and with nothing else', () => {
     expect(parse(settingsUpdateSchema, { theme: null })).toEqual({ theme: null });
     expect(parse(settingsUpdateSchema, { theme: { accent: '#ABC', header: ' #000000', background: '#FFFFFF', extra: 1 } })).toEqual({
       theme: { accent: '#aabbcc', header: '#000000', background: '#ffffff' },
@@ -365,10 +365,10 @@ describe('ajustes (PATCH /api/settings)', () => {
     }
   });
 
-  it('monedas: cada una es DOP, USD o TRY; si vienen las dos, distintas', () => {
+  it('currencies: each one is DOP, USD or TRY; if both are sent, they must differ', () => {
     expect(parse(settingsUpdateSchema, { mainCurrency: 'TRY' })).toEqual({ mainCurrency: 'TRY' });
     expect(parse(settingsUpdateSchema, { secondCurrency: 'DOP' })).toEqual({ secondCurrency: 'DOP' });
-    // Intercambiarlas es mandar las dos.
+    // Swapping them means sending both.
     expect(parse(settingsUpdateSchema, { mainCurrency: 'USD', secondCurrency: 'DOP' })).toEqual({ mainCurrency: 'USD', secondCurrency: 'DOP' });
     expect(messageOf(() => parse(settingsUpdateSchema, { mainCurrency: 'USD', secondCurrency: 'USD' }))).toBe(
       'Invalid data: secondCurrency: must be different from mainCurrency',
@@ -383,13 +383,13 @@ describe('ajustes (PATCH /api/settings)', () => {
     }
   });
 
-  it('segunda moneda opcional: null o "none" la quitan, y con ninguna no hay par que comparar', () => {
+  it('optional second currency: null or "none" remove it, and with none there is no pair to compare', () => {
     expect(parse(settingsUpdateSchema, { secondCurrency: null })).toEqual({ secondCurrency: null });
     expect(parse(settingsUpdateSchema, { secondCurrency: 'none' })).toEqual({ secondCurrency: null });
     expect(parse(settingsUpdateSchema, { mainCurrency: 'USD', secondCurrency: 'none' })).toEqual({ mainCurrency: 'USD', secondCurrency: null });
   });
 
-  it('cuenta por defecto: un id o null (la automática)', () => {
+  it('default account: an id or null (the automatic one)', () => {
     expect(parse(settingsUpdateSchema, { defaultAccountId: 'dr' })).toEqual({ defaultAccountId: 'dr' });
     expect(parse(settingsUpdateSchema, { defaultAccountId: null })).toEqual({ defaultAccountId: null });
     for (const defaultAccountId of ['', 'con espacios', 7, {}]) {
@@ -397,7 +397,7 @@ describe('ajustes (PATCH /api/settings)', () => {
     }
   });
 
-  it('solo cambia lo que viene: tiene que venir algo, y nada desconocido', () => {
+  it('only changes what is sent: something has to be sent, and nothing unknown', () => {
     expect(parse(settingsUpdateSchema, { language: 'tr', theme: null })).toEqual({ language: 'tr', theme: null });
     expect(messageOf(() => parse(settingsUpdateSchema, {}))).toBe(
       'Invalid data: nothing to change: send theme, language, mainCurrency, secondCurrency, defaultAccountId or goldPrice',
@@ -407,9 +407,9 @@ describe('ajustes (PATCH /api/settings)', () => {
   });
 });
 
-describe('metas', () => {
-  it('goalPlanIssue: los tres juntos (mensual > 0, inicio <= fin) o los tres null', () => {
-    // El mensual se llama `monthly` en la API y `monthlyUSD` en el libro de Excel: el mensaje usa el que toque.
+describe('goals', () => {
+  it('goalPlanIssue: all three together (monthly > 0, start <= end) or all three null', () => {
+    // The monthly amount is called `monthly` in the API and `monthlyUSD` in the Excel workbook: the message uses whichever applies.
     expect(goalPlanIssue({ monthly: 3000, start: null, end: null }, 'monthlyUSD')).toEqual({
       kind: 'partial',
       path: 'monthlyUSD',
@@ -431,13 +431,13 @@ describe('metas', () => {
     expect(goalPlanIssue({ monthly: 0, start: '2026-08', end: '2027-10' })).toMatchObject({ kind: 'amount', path: 'monthly' });
     expect(goalPlanIssue({ monthly: -5, start: '2026-08', end: '2027-10' })).toMatchObject({ kind: 'amount' });
     expect(goalPlanIssue({ monthly: 3000, start: '2027-11', end: '2027-10' })).toMatchObject({ kind: 'order', path: 'end' });
-    // El año cuenta: diciembre de 2026 va antes que enero de 2027.
+    // The year counts: December 2026 comes before January 2027.
     expect(goalPlanIssue({ monthly: 3000, start: '2026-12', end: '2027-01' })).toBeNull();
   });
 
-  it('crear: el plan se exige completo; sin plan, los tres null o ausentes', () => {
+  it('create: the plan is required in full; without a plan, all three null or absent', () => {
     expect(parse(goalCreateSchema, { name: ' Car ' })).toEqual({ name: 'Car' });
-    // La moneda es opcional: sin ella, la principal del usuario.
+    // The currency is optional: without it, the user's main currency.
     expect(parse(goalCreateSchema, { name: 'Car', cur: 'TRY' })).toEqual({ name: 'Car', cur: 'TRY' });
     expect(messageOf(() => parse(goalCreateSchema, { name: 'Car', monthlyUSD: 100 }))).toContain('Unrecognized key: "monthlyUSD"');
     expect(parse(goalCreateSchema, { name: 'Car', monthly: null, start: null, end: null })).toEqual({
@@ -456,15 +456,15 @@ describe('metas', () => {
     expect(messageOf(() => parse(goalCreateSchema, { ...planned, start: '2027-11' }))).toBe(
       'Invalid data: end: the start month cannot be after the end month',
     );
-    // Un campo mal escrito se señala una vez, sin sumarle la regla del plan.
+    // A malformed field is reported once, without adding the plan rule to it.
     expect(messageOf(() => parse(goalCreateSchema, { ...planned, monthly: 0 }))).toBe('Invalid data: monthly: must be greater than 0');
     expect(messageOf(() => parse(goalCreateSchema, { ...planned, start: 'zz' }))).toBe('Invalid data: start: is not a valid month (YYYY-MM)');
-    // El monto objetivo no viaja (es mensual × meses) y el orden lo pone el servidor.
+    // The target amount does not travel (it is monthly × months) and the server sets the order.
     expect(() => parse(goalCreateSchema, { ...planned, target: 45000 })).toThrow(ApiError);
     expect(() => parse(goalCreateSchema, { ...planned, sort: 0 })).toThrow(ApiError);
   });
 
-  it('nombre: recortado, no vacío y de hasta 120 caracteres', () => {
+  it('name: trimmed, non-empty and up to 120 characters', () => {
     expect(parse(goalCreateSchema, { name: 'x'.repeat(120) }).name).toHaveLength(120);
     expect(messageOf(() => parse(goalCreateSchema, { name: '  ' }))).toBe('Invalid data: name: cannot be empty');
     expect(messageOf(() => parse(goalCreateSchema, { name: 'x'.repeat(121) }))).toBe('Invalid data: name: allows up to 120 characters');
@@ -472,15 +472,15 @@ describe('metas', () => {
     expect(parse(goalPatchSchema, { name: ' Viaje a Turquía ' })).toEqual({ name: 'Viaje a Turquía' });
   });
 
-  it('editar: cada campo por separado; la regla completa la aplica el repositorio sobre la meta resultante', () => {
+  it('edit: each field separately; the repository applies the full rule to the resulting goal', () => {
     expect(parse(goalPatchSchema, { monthly: null, start: null, end: null })).toEqual({ monthly: null, start: null, end: null });
-    // Una sola parte del plan pasa la validación del cuerpo: si vale o no depende de la meta que haya.
+    // A single part of the plan passes body validation: whether it is valid or not depends on the existing goal.
     expect(parse(goalPatchSchema, { end: '2027-12' })).toEqual({ end: '2027-12' });
     expect(parse(goalPatchSchema, { monthly: 100 })).toEqual({ monthly: 100 });
     expect(parse(goalPatchSchema, {})).toEqual({});
     expect(parse(goalPatchSchema, { cur: 'DOP' })).toEqual({ cur: 'DOP' });
     expect(() => parse(goalPatchSchema, { cur: null })).toThrow(ApiError);
-    // Lo que ya se contradice solo, no.
+    // What already contradicts itself does not.
     expect(messageOf(() => parse(goalPatchSchema, { start: '2027-02', end: '2027-01' }))).toBe(
       'Invalid data: end: the start month cannot be after the end month',
     );
@@ -489,8 +489,8 @@ describe('metas', () => {
   });
 });
 
-describe('registro desde Claude e importación', () => {
-  it('ingest: null y vacío se toman como ausentes; lo demás, estricto', () => {
+describe('recording from Claude and import', () => {
+  it('ingest: null and empty are taken as absent; everything else, strict', () => {
     expect(parse(ingestSchema, { description: ' Pan ', amount: 90, date: null, category: '', notes: ' algo ', user: null })).toEqual({
       description: 'Pan',
       amount: 90,
@@ -500,13 +500,13 @@ describe('registro desde Claude e importación', () => {
     expect(() => parse(ingestSchema, { description: null, amount: 90 })).toThrow(ApiError);
   });
 
-  it('ingest: `user` es texto; quién es lo decide server/ingest.ts con los usuarios configurados', () => {
+  it('ingest: `user` is text; server/ingest.ts decides who it is with the configured users', () => {
     expect(parse(ingestSchema, { description: 'Pan', amount: 90, user: ' Eda ' })).toEqual({ description: 'Pan', amount: 90, user: 'Eda' });
     expect(messageOf(() => parse(ingestSchema, { description: 'Pan', amount: 90, user: 7 }))).toBe('Invalid data: user: must be text');
     expect(() => parse(ingestSchema, { description: 'Pan', amount: 90, user: ['eda'] })).toThrow(ApiError);
   });
 
-  it('ingest: `account` es texto (un id o un nombre; cuál es lo decide server/ingest.ts) y la moneda puede ser TRY', () => {
+  it('ingest: `account` is text (an id or a name; server/ingest.ts decides which one it is) and the currency can be TRY', () => {
     expect(parse(ingestSchema, { description: 'Pan', amount: 90, account: ' DR account ', currency: 'TRY' })).toEqual({
       description: 'Pan',
       amount: 90,
@@ -522,7 +522,7 @@ describe('registro desde Claude e importación', () => {
     expect(messageOf(() => parse(ingestSchema, { description: 'Pan', amount: 90, accountId: 'dr' }))).toContain('Unrecognized key: "accountId"');
   });
 
-  it('importación: meses repetidos y límites de tamaño', () => {
+  it('import: repeated months and size limits', () => {
     const month = { key: '2026-10', closed: false, budget: 0, incomeUSD: 0, accounts: { usd: 0, dop: 0 }, fixed: [], transfers: [], tx: [] };
     const base = { months: [month], contribs: null, goals: null };
     expect(parse(importSchema, base)).toEqual(base);
@@ -535,7 +535,7 @@ describe('registro desde Claude e importación', () => {
     expect(messageOf(() => parse(importSchema, { ...base, goals }))).toBe('Invalid data: goals: allows up to 200 items');
   });
 
-  it('importación: el libro conserva el formato original, que solo conoce DOP y USD', () => {
+  it('import: the workbook keeps the original format, which only knows DOP and USD', () => {
     const month = { key: '2026-10', closed: false, budget: 0, incomeUSD: 0, accounts: { usd: 0, dop: 0 }, fixed: [], transfers: [], tx: [] };
     const fixed = [{ name: 'x', day: '', amount: 1, cur: 'TRY', paid: false }];
     expect(messageOf(() => parse(importSchema, { months: [{ ...month, fixed }], contribs: null, goals: null }))).toBe(
@@ -543,14 +543,14 @@ describe('registro desde Claude e importación', () => {
     );
     const contribs = [{ date: '2026-10-01', goalName: 'x', amount: 1, cur: 'TRY' }];
     expect(messageOf(() => parse(importSchema, { months: [], contribs, goals: null }))).toBe('Invalid data: contribs.0.cur: must be DOP or USD');
-    // Y sigue trayendo el presupuesto, el ingreso y los dos saldos del mes: no las partes por cuenta.
+    // And it still carries the budget, the income and the two balances of the month: not the parts per account.
     expect(() => parse(importSchema, { months: [{ ...month, budgets: {} }], contribs: null, goals: null })).toThrow(ApiError);
   });
 
-  it('importación: `goals` es obligatorio (null si el libro no trae hoja de ahorros) y cada meta trae su plan completo o ninguno', () => {
+  it('import: `goals` is required (null if the workbook has no savings sheet) and each goal carries its full plan or none', () => {
     const base = { months: [], contribs: null };
     expect(() => parse(importSchema, base)).toThrow(ApiError);
-    // El formato de la versión anterior, con los parámetros de una sola meta, ya no se acepta.
+    // The format of the previous version, with the parameters of a single goal, is no longer accepted.
     expect(messageOf(() => parse(importSchema, { ...base, goals: null, turkey: null }))).toContain('Unrecognized key: "turkey"');
 
     const goals = [
@@ -576,7 +576,7 @@ describe('registro desde Claude e importación', () => {
 });
 
 describe('toApiError', () => {
-  it('deja pasar los ApiError, traduce los de zod y oculta todo lo demás', () => {
+  it('lets ApiErrors through, translates the zod ones and hides everything else', () => {
     const api = new ApiError(409, 'month_closed', 'closed');
     expect(toApiError(api)).toBe(api);
 

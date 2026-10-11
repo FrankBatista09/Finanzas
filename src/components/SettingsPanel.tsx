@@ -12,7 +12,7 @@ import { useFinanzas } from '../store';
 import { cx, Select } from '../ui';
 import styles from './SettingsPanel.module.css';
 
-/** Nombre traducido de cada tema de shared/theme.ts; uno que no esté aquí se muestra con su `name`. */
+/** Translated name of each theme in shared/theme.ts; one that is not listed here is shown with its `name`. */
 const PRESET_NAMES: Record<string, CoreKey> = {
   forest: 'themeForest',
   ocean: 'themeOcean',
@@ -33,18 +33,18 @@ const sameColors = (a: ThemeColors, b: ThemeColors) => a.accent === b.accent && 
 
 export interface SettingsPanelProps {
   id: string;
-  /** El botón que lo abre: un clic en él no cuenta como "fuera" (ya lo cierra el botón) y recupera el foco con Escape. */
+  /** The button that opens it: a click on it does not count as "outside" (the button already closes it), and it gets the focus back on Escape. */
   opener: RefObject<HTMLElement | null>;
   onClose: () => void;
 }
 
-/** Valor de la lista "Default account" para la cuenta automática (ningún id de cuenta es una cadena vacía). */
+/** Value of the "Default account" select for the automatic account (no account id is an empty string). */
 const AUTOMATIC = '';
 
 /**
- * Ajustes del usuario actual: idioma, monedas, cuenta por defecto y colores. Cada cambio se ve en el acto y se
- * guarda solo (actions.setLanguage, setMainCurrency, setSecondCurrency, setDefaultAccount, setTheme). Escape y un
- * clic fuera lo cierran. Va dentro de la barra superior, que es su referencia de posición.
+ * Settings of the current user: language, currencies, default account and colors. Each change shows at once and
+ * saves itself (actions.setLanguage, setMainCurrency, setSecondCurrency, setDefaultAccount, setTheme). Escape and a
+ * click outside close it. It lives inside the top bar, which is its positioning reference.
  */
 export function SettingsPanel({ id, opener, onClose }: SettingsPanelProps) {
   const { state, main, second, visibleAccounts, actions } = useFinanzas();
@@ -59,8 +59,8 @@ export function SettingsPanel({ id, opener, onClose }: SettingsPanelProps) {
   const excelId = useId();
   const colors = state.theme ?? DEFAULT_THEME;
 
-  // La cuenta elegida solo cuenta mientras siga visible (shared/calc defaultAccount); si no, manda la automática,
-  // y la lista dice cuál es para que "Automatic" no sea un misterio.
+  // The chosen account only counts while it is still visible (shared/calc defaultAccount); otherwise the automatic one
+  // wins, and the select says which one it is so that "Automatic" is not a mystery.
   const chosen = visibleAccounts.some((a) => a.id === state.defaultAccountId) ? state.defaultAccountId : null;
   const automatic = defaultAccount({ ...state, defaultAccountId: null });
   const accountOptions = [
@@ -100,7 +100,7 @@ export function SettingsPanel({ id, opener, onClose }: SettingsPanelProps) {
         </h2>
         <div className={styles.languages}>
           {LANGUAGES.map((l) => (
-            // Cada idioma se llama a sí mismo en su idioma: `lang` hace que un lector de pantalla lo pronuncie bien.
+            // Each language names itself in its own language: `lang` makes a screen reader pronounce it correctly.
             <button
               key={l.id}
               type="button"
@@ -119,7 +119,7 @@ export function SettingsPanel({ id, opener, onClose }: SettingsPanelProps) {
         <h2 id={currenciesId} className={styles.heading}>
           {t('currencies')}
         </h2>
-        {/* Las dos tienen que ser distintas: elegir como segunda la principal las intercambia; elegir como principal la segunda deja la segunda en "None". */}
+        {/* The two must differ: choosing the main one as the second swaps them; choosing the second one as the main leaves the second at "None". */}
         <CurrencyRow id={mainId} name={t('mainCurrency')} value={main} onPick={(c) => c && actions.setMainCurrency(c)} />
         <CurrencyRow id={secondId} name={t('secondCurrency')} value={second} onPick={actions.setSecondCurrency} none={t('noSecondCurrency')} />
         <div className={styles.field}>
@@ -176,7 +176,7 @@ export function SettingsPanel({ id, opener, onClose }: SettingsPanelProps) {
   );
 }
 
-/** Una moneda a elegir entre las tres, como el idioma: los códigos se ven igual en todos los idiomas. */
+/** One currency to choose among the three, like the language: the codes look the same in every language. */
 function CurrencyRow({
   id,
   name,
@@ -188,7 +188,7 @@ function CurrencyRow({
   name: string;
   value: Currency | null;
   onPick: (currency: Currency | null) => void;
-  /** Texto de la opción "ninguna"; sin él la fila no la ofrece. */
+  /** Text of the "none" option; without it the row does not offer it. */
   none?: string;
 }) {
   return (
@@ -215,7 +215,7 @@ function ColorRow({ name, value, onChange }: { name: string; value: string; onCh
   return (
     <>
       <label htmlFor={id}>{name}</label>
-      {/* El selector nativo avisa en cada movimiento: los colores de la página lo siguen en directo. */}
+      {/* The native picker reports every movement: the page colors follow it live. */}
       <input id={id} type="color" className={styles.colorInput} value={value} onChange={(e) => onChange(e.target.value)} />
       <span className={styles.hex}>{value}</span>
     </>

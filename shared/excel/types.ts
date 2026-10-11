@@ -1,13 +1,13 @@
 import type { Currency, ISODate, MonthKey } from '../types';
 
 /**
- * Entrada del generador de .xlsx. Parte de la forma que armaba `downloadExcel()` en el prototipo para
- * `window.buildFinanzasXlsx(data)`, con una diferencia: el prototipo tenía tres metas fijas y mandaba solo los
- * parámetros de la única con plan (`turkey`); aquí va la lista de metas del usuario, las que sean.
+ * Input of the .xlsx generator. It starts from the shape `downloadExcel()` built in the prototype for
+ * `window.buildFinanzasXlsx(data)`, with one difference: the prototype had three fixed goals and sent only the
+ * parameters of the only one with a plan (`turkey`); here it carries the user's list of goals, whatever they are.
  */
 export interface ExportData {
   months: ExportMonth[];
-  /** Metas en el orden en que se muestran. Cada una tiene su tarjeta en la hoja de ahorros. */
+  /** Goals in the order they are shown. Each one has its card on the savings sheet. */
   goals: ExportGoal[];
   contribs: { date: ISODate; goalName: string; amount: number; cur: Currency }[];
   defaultRate: number;
@@ -16,8 +16,8 @@ export interface ExportData {
 export interface ExportGoal {
   name: string;
   /**
-   * Plan (los tres juntos) o los tres null para una meta de aportes variables. Un plan incompleto o
-   * incoherente se exporta como meta de aportes variables (export-goals.ts `goalPlan`).
+   * Plan (all three together) or all three null for a variable-contribution goal. An incomplete or
+   * inconsistent plan is exported as a variable-contribution goal (export-goals.ts `goalPlan`).
    */
   monthlyUSD: number | null;
   start: MonthKey | null;

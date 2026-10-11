@@ -1,4 +1,4 @@
-/* Diálogo de una tarjeta de crédito: lo mismo que el de una meta (src/screens/ahorros/GoalDialog.module.css). */
+/* Dialog of a credit card: the same as a goal's (src/screens/ahorros/GoalDialog.module.css). */
 .pair {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));

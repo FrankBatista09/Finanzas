@@ -1,15 +1,15 @@
-// SOLO PARA PRUEBAS. Expone la superficie de D1Database que usa server/ sobre el SQLite que trae Node
-// (node:sqlite), para probar el repositorio y las rutas sin levantar wrangler. No se importa desde functions/.
+// FOR TESTS ONLY. Exposes the D1Database surface that server/ uses, on top of the SQLite that ships with Node
+// (node:sqlite), to test the repository and the routes without starting wrangler. It is not imported from functions/.
 //
-// Imita a D1 en lo que afecta a las pruebas:
-//   · claves foráneas activas;
-//   · batch() es una transacción: si una sentencia falla, no queda nada escrito;
-//   · como mucho 100 parámetros por sentencia, `undefined` no se puede enlazar y los booleanos pasan a 0/1;
-//   · first() da null si no hay fila; all()/run() dan { results, success, meta } con meta.changes;
-//   · no admite BEGIN/COMMIT/SAVEPOINT escritos a mano;
-//   · los errores de SQLite salen como "D1_ERROR: <mensaje>: SQLITE_…".
-// Diferencia conocida: en sentencias con RETURNING, meta.changes cuenta también las filas tocadas por
-// acciones de clave foránea (ON DELETE CASCADE).
+// It mimics D1 in the ways that affect the tests:
+//   · foreign keys enabled;
+//   · batch() is a transaction: if one statement fails, nothing stays written;
+//   · at most 100 parameters per statement, `undefined` cannot be bound and booleans become 0/1;
+//   · first() returns null when there is no row; all()/run() return { results, success, meta } with meta.changes;
+//   · it does not accept hand-written BEGIN/COMMIT/SAVEPOINT;
+//   · SQLite errors come out as "D1_ERROR: <message>: SQLITE_…".
+// Known difference: in statements with RETURNING, meta.changes also counts the rows touched by
+// foreign key actions (ON DELETE CASCADE).
 
 import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -17,7 +17,7 @@ import { DatabaseSync } from 'node:sqlite';
 import type { SQLInputValue } from 'node:sqlite';
 import { fileURLToPath } from 'node:url';
 
-/** Límite de D1 (el de SQLite es mucho mayor): hay que respetarlo al armar INSERT multi-fila. */
+/** D1's limit (SQLite's is much higher): it must be respected when building multi-row INSERTs. */
 export const D1_MAX_BOUND_PARAMS = 100;
 
 const MIGRATIONS_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'migrations');
@@ -29,7 +29,7 @@ function d1Error(err: unknown): Error {
   if (err instanceof Error && err.message.startsWith('D1_')) return err;
   const message = err instanceof Error ? err.message : String(err);
   const errcode = (err as { errcode?: unknown } | null)?.errcode;
-  // El código primario de SQLite va en el byte bajo del código extendido; 19 = SQLITE_CONSTRAINT.
+  // SQLite's primary code is in the low byte of the extended code; 19 = SQLITE_CONSTRAINT.
   const kind = typeof errcode === 'number' && (errcode & 0xff) === 19 ? 'SQLITE_CONSTRAINT' : 'SQLITE_ERROR';
   return new Error(`D1_ERROR: ${message}: ${kind}`, { cause: err });
 }
@@ -80,7 +80,7 @@ class NodeD1Statement {
 }
 
 export class NodeD1Database {
-  /** La base de node:sqlite, por si una prueba necesita mirar o preparar algo sin pasar por la API de D1. */
+  /** The node:sqlite database, in case a test needs to inspect or set up something without going through the D1 API. */
   readonly sqlite: DatabaseSync;
 
   constructor(sqlite: DatabaseSync = new DatabaseSync(':memory:')) {
@@ -89,7 +89,7 @@ export class NodeD1Database {
   }
 
   prepare(query: string): NodeD1Statement {
-    // Como en D1, la sentencia no se compila hasta ejecutarla: un SQL inválido falla en run()/all()/first().
+    // As in D1, the statement is not compiled until it runs: invalid SQL fails in run()/all()/first().
     return new NodeD1Statement(this, query);
   }
 
@@ -105,7 +105,7 @@ export class NodeD1Database {
     }
   }
 
-  /** Como en D1: una sentencia por línea, sin parámetros. */
+  /** As in D1: one statement per line, without parameters. */
   async exec(query: string): Promise<D1ExecResult> {
     const started = performance.now();
     let count = 0;
@@ -138,9 +138,9 @@ export class NodeD1Database {
       let changes: number;
       let lastRowId: number;
       if (st.columns().length > 0) {
-        // SELECT o escritura con RETURNING: node:sqlite no da `changes` junto con las filas.
+        // SELECT or a write with RETURNING: node:sqlite does not give `changes` along with the rows.
         const before = this.counters();
-        // Copia a objetos normales (node:sqlite los crea sin prototipo; D1 los entrega como JSON).
+        // Copy to plain objects (node:sqlite creates them without a prototype; D1 delivers them as JSON).
         results = st.all(...stmt.params).map((row) => ({ ...row })) as T[];
         const after = this.counters();
         changes = after.total - before.total;
@@ -197,12 +197,12 @@ export class NodeD1Database {
   }
 }
 
-/** Para pasar el adaptador donde se espera el binding (env.DB). */
+/** To pass the adapter where the binding (env.DB) is expected. */
 export function asD1(db: NodeD1Database): D1Database {
   return db as unknown as D1Database;
 }
 
-/** Los archivos de migrations/*.sql, en el orden en que se aplican. */
+/** The migrations/*.sql files, in the order they are applied. */
 export function migrationFiles(): string[] {
   return readdirSync(MIGRATIONS_DIR)
     .filter((f) => f.endsWith('.sql'))
@@ -210,8 +210,8 @@ export function migrationFiles(): string[] {
 }
 
 /**
- * Aplica esos archivos de migración, en orden. Como en D1, cada uno va en su propia transacción y con las
- * claves foráneas activas: `PRAGMA defer_foreign_keys = true` las difiere hasta el final del archivo.
+ * Applies those migration files, in order. As in D1, each one runs in its own transaction and with
+ * foreign keys enabled: `PRAGMA defer_foreign_keys = true` defers them until the end of the file.
  */
 export function applyMigrations(db: NodeD1Database, files: readonly string[] = migrationFiles()): void {
   for (const file of files) {
@@ -227,8 +227,8 @@ export function applyMigrations(db: NodeD1Database, files: readonly string[] = m
 }
 
 /**
- * Base en memoria recién creada con las migraciones de migrations/*.sql aplicadas, en orden: todas, o solo las
- * que se indiquen (para probar una migración sobre una base que se quedó en una anterior).
+ * Freshly created in-memory database with the migrations from migrations/*.sql applied, in order: all of them, or
+ * only the given ones (to test a migration on a database that stopped at an earlier one).
  */
 export function createTestDb(files: readonly string[] = migrationFiles()): NodeD1Database {
   const db = new NodeD1Database();

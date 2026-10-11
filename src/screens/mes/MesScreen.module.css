@@ -1,4 +1,4 @@
-/* Gastos mensuales a la izquierda; categorías y tasas a la derecha (los envíos van debajo, a todo el ancho). Cuando no caben, se apilan (flex-wrap). */
+/* Fixed monthly expenses on the left; categories and rates on the right (transfers go below, full width). When they do not fit, they stack (flex-wrap). */
 .columns {
   display: flex;
   flex-wrap: wrap;
@@ -6,7 +6,7 @@
   align-items: flex-start;
 }
 
-/* min-width: 0 deja que la tarjeta encoja por debajo del ancho de su tabla, que entonces hace scroll. */
+/* min-width: 0 lets the card shrink below the width of its table, which then scrolls. */
 .fixed {
   flex: 1 1 600px;
   min-width: 0;
@@ -28,7 +28,7 @@
   gap: var(--gap-20);
 }
 
-/* Dos tarjetas iguales: la rejilla las estira al alto de la más larga. min-width: 0 deja que su tabla haga scroll. */
+/* Two equal cards: the grid stretches them to the height of the tallest. min-width: 0 lets their table scroll. */
 .pair {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 520px), 1fr));
@@ -45,7 +45,7 @@
   justify-content: flex-end;
 }
 
-/* "Eliminar mes": un texto atenuado sobre el fondo de la página (tokens --page-*), que solo se pone rojo al ir a usarlo. */
+/* "Delete month": muted text on the page background (--page-* tokens), which only turns red when about to be used. */
 .deleteMonth {
   padding: 2px 0;
   border: 0;

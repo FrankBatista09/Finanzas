@@ -1,5 +1,5 @@
-// Registro de un gasto dictado a Claude. Lo usan POST /api/ingest/transaction y la herramienta
-// add_transaction del servidor MCP, así que no sabe nada de HTTP y valida su propia entrada.
+// Recording of an expense dictated to Claude. Used by POST /api/ingest/transaction and the add_transaction
+// tool of the MCP server, so it knows nothing about HTTP and validates its own input.
 
 import type { IngestResponse, IngestTransaction } from '../shared/api';
 import { isMoneyAccount } from '../shared/calc';
@@ -12,10 +12,10 @@ import { goldAccountError, invalidData, monthClosedError, noAccountsError, valid
 import { userFromBody } from './users';
 import { ingestSchema, parse } from './validate';
 
-// ── Cuentas dichas de palabra ────────────────────────────────────────────────
+// ── Accounts named out loud ──────────────────────────────────────────────────
 
 /**
- * Para comparar nombres como los dice una persona: sin mayúsculas, sin acentos y sin espacios de más
+ * To compare names the way a person says them: no capitals, no accents and no extra spaces
  * ("Cuenta Dólares" = "cuenta dolares", "İş Bankası" = "is bankasi").
  */
 function fold(text: string): string {
@@ -28,12 +28,12 @@ function fold(text: string): string {
     .trim();
 }
 
-/** El texto viene de fuera: se recorta para que el mensaje no crezca con lo que mande el cliente. */
+/** The text comes from outside: it is trimmed so the message does not grow with whatever the client sends. */
 function shown(text: string): string {
   return text.trim().slice(0, 60);
 }
 
-/** Los nombres que se le ofrecen a quien se equivocó: las cuentas que ve (o todas, si las tiene todas ocultas). */
+/** The names offered to whoever got it wrong: the accounts they see (or all of them, if every one is hidden). */
 function accountNames(accounts: readonly Account[]): string {
   const sorted = [...accounts].sort((a, b) => a.sort - b.sort);
   const visible = sorted.filter((a) => !a.hidden);
@@ -41,12 +41,12 @@ function accountNames(accounts: readonly Account[]): string {
 }
 
 /**
- * La cuenta que nombra `text`, entre las del usuario: su id tal cual o su nombre, sin distinguir mayúsculas ni
- * acentos; primero el nombre completo y, si ninguna se llama así, un comienzo que solo tenga una ("us" → "US
- * account"). Las cuentas ocultas solo se miran cuando ninguna visible coincide.
- * Lanza ApiError 400 `validation` si no hay ninguna o hay varias, con los nombres de las cuentas en el mensaje
- * para que Claude pueda corregirse. `field` es el nombre del campo en ese mensaje.
- * La usan el registro de gastos de aquí abajo y las herramientas del servidor MCP.
+ * The account that `text` names, among the user's: its id as is or its name, ignoring case and accents; first
+ * the full name and, if none is called that, a prefix that only one has ("us" → "US account"). Hidden accounts
+ * are only looked at when no visible one matches.
+ * Throws ApiError 400 `validation` if there is none or there are several, with the account names in the message
+ * so Claude can correct itself. `field` is the name of the field in that message.
+ * Used by the expense recording below and by the tools of the MCP server.
  */
 export function matchAccount(accounts: readonly Account[], text: string, field = 'account'): Account {
   const byId = accounts.find((a) => a.id === text.trim());
@@ -75,9 +75,9 @@ export function matchAccount(accounts: readonly Account[], text: string, field =
 }
 
 /**
- * La tarjeta de crédito que nombra `text`: su id o su nombre (sin distinguir mayúsculas ni acentos), primero el nombre
- * completo y, si ninguna se llama así, un comienzo que solo tenga una. Las apagadas solo se miran si ninguna activa
- * coincide. 400 `validation` con los nombres de las tarjetas si no hay ninguna o hay varias.
+ * The credit card that `text` names: its id or its name (ignoring case and accents), first the full name and, if
+ * none is called that, a prefix that only one has. The ones turned off are only looked at if no active one
+ * matches. 400 `validation` with the credit card names if there is none or there are several.
  */
 export function matchCard(cards: readonly CreditCard[], text: string, field = 'card'): CreditCard {
   const byId = cards.find((c) => c.id === text.trim());
@@ -99,20 +99,20 @@ export function matchCard(cards: readonly CreditCard[], text: string, field = 'c
   );
 }
 
-// ── Registro ─────────────────────────────────────────────────────────────────
+// ── Recording ────────────────────────────────────────────────────────────────
 
 /**
- * Guarda la transacción en las finanzas del usuario `input.user`, que tiene que ser uno de `users` (los
- * configurados, ver server/users.ts configuredUsers); si `users` trae uno solo, es ese y `user` puede faltar.
- * Aplica los valores por defecto del contrato (fecha: hoy en la zona horaria del usuario; categoría 'Food';
- * método 'Debit card'; cuenta: la cuenta por defecto del usuario; moneda: la de esa cuenta) y la guarda en el mes de
- * su fecha, creándolo si no existe. `account` es el id de una cuenta o su nombre (ver matchAccount).
- * Claude habla con cada persona en su idioma: una categoría o un método dichos en español o en turco
- * ('Comida', 'Kredi kartı') se guardan con su nombre canónico; 'Tarjeta' o 'Kart' a secas, como 'Debit card';
- * lo que no es de la lista se guarda tal cual.
- * Si el usuario nunca abrió la web, antes se le crean sus cuentas y metas iniciales.
- * Lanza ApiError: 400 `validation` si la entrada no cumple, el usuario falta o no existe o la cuenta no se
- * reconoce; 409 `month_closed` si ese mes está cerrado.
+ * Saves the transaction in the finances of the user `input.user`, who has to be one of `users` (the configured
+ * ones, see server/users.ts configuredUsers); if `users` holds a single one, it is that one and `user` may be missing.
+ * Applies the contract's defaults (date: today in the user's time zone; category 'Food'; method 'Debit card';
+ * account: the user's default account; currency: that account's) and saves it in the month of its date,
+ * creating it if it does not exist. `account` is the id of an account or its name (see matchAccount).
+ * Claude talks to each person in their language: a category or a method said in Spanish or in Turkish
+ * ('Comida', 'Kredi kartı') is saved under its canonical name; a bare 'Tarjeta' or 'Kart', as 'Debit card';
+ * whatever is not on the list is saved as is.
+ * If the user never opened the web app, their initial accounts and goals are created first.
+ * Throws ApiError: 400 `validation` if the input is invalid, the user is missing or does not exist or the
+ * account is not recognized; 409 `month_closed` if that month is closed.
  */
 export async function ingestTransaction(
   db: D1Database,
@@ -125,15 +125,15 @@ export async function ingestTransaction(
   const date = data.date ?? todayISO(now);
   const monthKey = monthOf(date);
 
-  // La cuenta se resuelve antes de tocar nada: una que no se reconoce no llega a crear el mes.
+  // The account is resolved before touching anything: one that is not recognized never gets to create the month.
   const { accounts, defaultAccount } = await userAccounts(db, user.id);
   const account = data.account === undefined ? defaultAccount : matchAccount(accounts, data.account);
   if (!account) throw noAccountsError();
-  // Una cuenta de oro guarda gramos: de ella no sale ningún gasto.
+  // A gold account holds grams: no expense comes out of it.
   if (!isMoneyAccount(account)) throw goldAccountError(account.name);
 
-  // Un año mal puesto dejaría un mes fantasma: solo se crea un mes cercano a hoy (6 atrás, 1 adelante).
-  // A un mes que ya existe se puede escribir sea cual sea su fecha.
+  // A wrong year would leave a ghost month: only a month close to today is created (6 back, 1 ahead).
+  // A month that already exists can be written to, whatever its date.
   const offset = monthSpan(currentMonthKey(now), monthKey) - 1;
   if ((offset < -6 || offset > 1) && !(await getMonth(db, user.id, monthKey))) {
     throw validationError(
@@ -141,7 +141,7 @@ export async function ingestTransaction(
     );
   }
 
-  // La tarjeta, solo si el pago es con tarjeta de crédito; sin nombre, createTransaction usa la primera activa.
+  // The credit card, only if the payment is by credit card; with no name, createTransaction uses the first active one.
   const method = data.method ? canonicalMethod(data.method) : METHODS[0];
   const cardId = method === CREDIT_CARD_METHOD && data.card !== undefined ? matchCard(await listCards(db, user.id), data.card).id : undefined;
 

@@ -12,21 +12,21 @@ import { Donut, DonutCenter, LegendRow } from './Donut';
 import styles from './SummaryPanel.module.css';
 
 /**
- * El saldo dentro de su campo, en centavos: el saldo es una suma de movimientos convertidos y puede traer
- * decimales de más (220641.93000000002), que en un campo editable serían ruido.
+ * The balance inside its field, in cents: the balance is a sum of converted movements and can carry
+ * extra decimals (220641.93000000002), which would be noise in an editable field.
  */
 const cents = (n: number) => Math.round(n * 100) / 100;
 
-/** Lo mismo para los gramos de una cuenta de oro, que admiten un decimal más. */
+/** The same for the grams of a gold account, which allow one more decimal. */
 const milligrams = (n: number) => Math.round(n * 10 ** GOLD_DECIMALS) / 10 ** GOLD_DECIMALS;
 
-/** El saldo de una cuenta con su unidad: "1,250.00 USD"; de una de oro, sus gramos: "125.50 g". */
+/** An account's balance with its unit: "1,250.00 USD"; for a gold one, its grams: "125.50 g". */
 const withUnit = (balance: number, currency: AccountCurrency) => (isGold(currency) ? `${fGrams(balance)} ${GOLD_UNIT}` : `${f2(balance)} ${currency}`);
 
 /**
- * Panel resumen de la hoja "Savings": el dinero total con el saldo de cada cuenta (aquí se renombran, se ocultan,
- * se agregan y se les corrige el saldo) y la dona del dinero por cuenta. Los saldos son los del final del mes
- * seleccionado (shared/calc balances): no se escriben mes a mes, salen de los movimientos.
+ * Summary panel of the "Savings" sheet: the total money with each account's balance (here they are renamed, hidden,
+ * added and have their balance corrected) and the donut of the money by account. The balances are those at the end
+ * of the selected month (shared/calc balances): they are not typed month by month, they come from the movements.
  */
 export function MoneyPanel() {
   const { state, monthKey, main, second, balances } = useFinanzas();
@@ -34,8 +34,8 @@ export function MoneyPanel() {
   const visible = balances.accounts.filter((b) => !b.account.hidden);
   const hidden = balances.accounts.filter((b) => b.account.hidden);
 
-  // Un segmento por cuenta visible con dinero; una en cero o en negativo no ocupa nada en la dona, y una de oro
-  // sin precio tampoco: no se sabe cuánto vale.
+  // One segment per visible account with money; one at zero or negative takes up nothing in the donut, and neither
+  // does a gold one with no price: there is no telling what it is worth.
   const funded = visible.filter((b) => b.valued && b.inMain > 0);
   const shades = ringShades(state.theme, funded.length);
   const segments = ring(funded.map((b) => b.inMain));
@@ -56,7 +56,7 @@ export function MoneyPanel() {
           )}
           {balances.goldExcluded && <div className={styles.totalNote}>{t('goldNotIncluded')}</div>}
         </div>
-        {/* key: al cambiar de mes los campos se montan de nuevo y no arrastran un borrador a medias. */}
+        {/* key: on switching months the fields mount again and do not carry over a half-typed draft. */}
         <AccountsTable key={monthKey} rows={visible} />
         {hidden.length > 0 && <HiddenAccounts rows={hidden} />}
       </div>
@@ -87,22 +87,22 @@ export function MoneyPanel() {
 
 const NEW_ACCOUNT = { name: '', opening: 0 };
 
-// En pantallas estrechas la tabla de cuentas no cabe: sin este mínimo el saldo se quedaba sin sitio (solo se veían
-// las flechas del campo). Con él, la tabla se desplaza en horizontal dentro de su marco.
+// On narrow screens the accounts table does not fit: without this minimum the balance was left with no room (only
+// the field's arrows showed). With it, the table scrolls horizontally inside its frame.
 const BALANCE_MIN_WIDTH = 104;
 
-/** Las cuentas visibles con su saldo y, al final, la fila para agregar otra, que abre el "+ Add account" de debajo del marco. */
+/** The visible accounts with their balance and, at the end, the add row for another one, which the "+ Add account" below the frame opens. */
 function AccountsTable({ rows }: { rows: readonly AccountBalance[] }) {
   const { state, main, latestMonth, actions } = useFinanzas();
   const { t } = useI18n();
   const [draft, setDraft] = useState(NEW_ACCOUNT);
-  // La moneda de la cuenta nueva arranca en la principal; null = el usuario no la ha tocado.
+  // The new account's currency starts as the main one; null = the user has not touched it.
   const [currency, setCurrency] = useState<AccountCurrency | null>(null);
   const adding = useAddRow(() => {
     setDraft(NEW_ACCOUNT);
     setCurrency(null);
   });
-  // Solo aquí se ofrece el oro: una cuenta es lo único que puede estar en gramos.
+  // Gold is offered only here: an account is the only thing that can be in grams.
   const currencyOptions = ACCOUNT_CURRENCIES.map((c) => (isGold(c) ? { value: c, label: t('goldGrams') } : c));
   const hasGold = state.accounts.some((a) => isGold(a.currency));
 
@@ -131,7 +131,7 @@ function AccountsTable({ rows }: { rows: readonly AccountBalance[] }) {
                 />
               </Td>
               <Td kind="edit" className={styles.amountCol}>
-                {/* Escribir aquí corrige el saldo. Solo en el último mes: los saldos de meses pasados son historia. */}
+                {/* Typing here corrects the balance. Only in the latest month: the balances of past months are history. */}
                 <CellNumber
                   value={gold ? milligrams(balance) : cents(balance)}
                   onCommit={(value) => actions.setAccountBalance(account.id, value)}
@@ -152,7 +152,7 @@ function AccountsTable({ rows }: { rows: readonly AccountBalance[] }) {
                     {t('hide')}
                   </button>
                 )}
-                {/* Una cuenta que nada usa se puede eliminar directamente; con movimientos solo se oculta. */}
+                {/* An account nothing uses can be deleted directly; one with movements can only be hidden. */}
                 {canRemoveAccount(state, account.id) && (
                   <DeleteButton compact kind="kindAccount" item={account.name} onConfirm={() => actions.removeAccount(account.id)} label={t('deleteNamed', { name: account.name })} />
                 )}
@@ -194,7 +194,7 @@ function AccountsTable({ rows }: { rows: readonly AccountBalance[] }) {
     <AddRowButton control={adding} variant="link" className={styles.reveal}>
       {t('addAccount')}
     </AddRowButton>
-    {/* Aparte de las cuentas: dentro de la tabla parecía una cuenta más a medio llenar. */}
+    {/* Separate from the accounts: inside the table it looked like one more account, half filled in. */}
     {hasGold && (
       <div className={`${styles.accounts} ${styles.goldPrice}`}>
         <SheetTable label={t('goldPriceAmount')}>
@@ -209,15 +209,15 @@ function AccountsTable({ rows }: { rows: readonly AccountBalance[] }) {
 }
 
 /**
- * El precio del oro, junto a las cuentas: lo que vale 1 gramo, escrito a mano en la moneda que se elija. Con él
- * las cuentas de oro suman al dinero total; vacío, se ven solo en gramos. Solo sale si el usuario tiene alguna
- * cuenta de oro.
+ * The gold price, next to the accounts: what 1 gram is worth, typed by hand in the chosen currency. With it
+ * the gold accounts add to the total money; when empty, they show only in grams. It only shows if the user has
+ * a gold account.
  */
 function GoldPriceRow() {
   const { state, main, actions } = useFinanzas();
   const { t } = useI18n();
   const price = state.goldPrice;
-  // Mientras no haya precio, la moneda elegida vive aquí: no hay nada que guardar todavía.
+  // While there is no price, the chosen currency lives here: there is nothing to save yet.
   const [picked, setPicked] = useState<Currency | null>(null);
   const currency = price?.currency ?? picked ?? main;
 
@@ -251,7 +251,7 @@ function GoldPriceRow() {
   );
 }
 
-/** Las cuentas ocultas, plegadas: se vuelven a mostrar y, si nada las usa, se pueden eliminar. */
+/** The hidden accounts, collapsed: they can be shown again and, if nothing uses them, deleted. */
 function HiddenAccounts({ rows }: { rows: readonly AccountBalance[] }) {
   const { state, actions } = useFinanzas();
   const { t } = useI18n();
@@ -276,7 +276,7 @@ function HiddenAccounts({ rows }: { rows: readonly AccountBalance[] }) {
               >
                 {t('show')}
               </button>
-              {/* Una cuenta con movimientos no se elimina (el servidor respondería 409): se queda oculta. */}
+              {/* An account with movements is not deleted (the server would respond 409): it stays hidden. */}
               {canRemoveAccount(state, account.id) && (
                 <HiddenDelete name={account.name} onConfirm={() => actions.removeAccount(account.id)} />
               )}

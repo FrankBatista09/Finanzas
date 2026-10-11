@@ -1,5 +1,5 @@
-// Tarjeta de crédito en los reductores: otros cargos, pagar y deshacer, las reglas que el servidor también exige,
-// el gasto fijo «en tarjeta» y la cuenta que paga como cuenta en uso.
+// Credit card in the reducers: other charges, paying and undoing, the rules the server also enforces,
+// the "on card" fixed expense and the paying account as an account in use.
 
 import { describe, expect, it } from 'vitest';
 import { balances, cardCalc, monthCalc } from '../../shared/calc';
@@ -10,20 +10,20 @@ import type { Action } from './reducers';
 
 const OCT = '2026-10';
 const CARD: CreditCard = { id: 'card', name: 'Credit card', bank: null, last4: null, cur: 'DOP', limit: null, cutoffDay: null, dueDay: null, active: true, sort: 0 };
-/** El estado de ejemplo con la tarjeta única de siempre. */
+/** The sample state with the usual single credit card. */
 const seed = (): AppState => ({ ...seedState(), cards: [CARD] });
 
 const apply = (state: AppState, action: Action | null): AppState => (action ? reduce(state, action) : state);
 const DAY = '2026-10-20';
-/** Un pago de la tarjeta de octubre con id fijo. */
+/** A payment on October's credit card with a fixed id. */
 const pay = (s: AppState, amount: number, accountId: string, id = 'p1') => cardPayment(s, OCT, 'card', amount, accountId, id, DAY);
 const bal = (s: AppState, id: string) => balances(s, OCT).accounts.find((a) => a.account.id === id)!.balance;
 
-/** Octubre con 1,000 de otros cargos: el total de la tarjeta es 1,000. */
+/** October with 1,000 in other charges: the credit card's total is 1,000. */
 const owing = (): AppState => apply(seed(), cardOtherChange(seed(), OCT, 'card', 1000));
 
-describe('otros cargos', () => {
-  it('suben el total; un mes cerrado, un mes que no existe o un monto negativo no se aceptan; 0 lo deja como estaba', () => {
+describe('other charges', () => {
+  it('raise the total; a closed month, a nonexistent month or a negative amount is not accepted; 0 leaves it as it was', () => {
     const s = seed();
     expect(cardCalc(owing(), OCT, 'card').total).toBe(1000);
     expect(cardOtherChange(s, '2026-09', 'card', 5)).toBeNull();
@@ -34,22 +34,22 @@ describe('otros cargos', () => {
     expect('cards' in cleared.months[OCT]!).toBe(false);
   });
 
-  it('aplicar dos veces la misma acción da lo mismo que una', () => {
+  it('applying the same action twice gives the same result as once', () => {
     const action = cardOtherChange(seed(), OCT, 'card', 40)!;
     const once = reduce(seed(), action);
     expect(reduce(once, action)).toBe(once);
   });
 });
 
-describe('pagar la tarjeta', () => {
-  it('guarda el importe y la cuenta; solo entonces baja el saldo; deshacer lo devuelve', () => {
+describe('paying the credit card', () => {
+  it('stores the amount and the account; only then does the balance drop; undoing gives it back', () => {
     const s = owing();
     const before = bal(s, 'dr');
     const paid = apply(s, pay(s, 400, 'dr'));
     expect(paid.months[OCT]!.cards).toEqual([{ cardId: 'card', other: 1000, payments: [{ id: 'p1', date: DAY, accountId: 'dr', amount: 400 }] }]);
     expect(bal(paid, 'dr')).toBeCloseTo(before - 400, 9);
     expect(monthCalc(paid, OCT).used).toBeCloseTo(monthCalc(s, OCT).used + 400, 9);
-    expect(reduce(paid, pay(s, 400, 'dr')!)).not.toBe(paid); // con otro id sería otro pago: el mismo id no se repite en el servidor
+    expect(reduce(paid, pay(s, 400, 'dr')!)).not.toBe(paid); // another id would be another payment: the same id is not repeated on the server
 
     const undone = apply(paid, cardUnpay(paid, OCT, 'card'));
     expect(undone.months[OCT]!.cards).toEqual([{ cardId: 'card', other: 1000, payments: [] }]);
@@ -57,7 +57,7 @@ describe('pagar la tarjeta', () => {
     expect(cardUnpay(undone, OCT, 'card')).toBeNull();
   });
 
-  it('el importe tiene que ser > 0 y no pasar del total; la cuenta, de dinero y existente; el mes, abierto', () => {
+  it('the amount must be > 0 and not exceed the total; the account, a money account that exists; the month, open', () => {
     const s = owing();
     expect(pay(s, 0, 'dr')).toBeNull();
     expect(pay(s, -5, 'dr')).toBeNull();
@@ -67,28 +67,28 @@ describe('pagar la tarjeta', () => {
     expect(cardPayment(s, '2026-09', 'card', 10, 'dr', 'p1', DAY)).toBeNull();
     const gold = { ...s, accounts: [...s.accounts, { id: 'gold', name: 'Gold', currency: 'XAU' as const, opening: 1, hidden: false, sort: 9 }] };
     expect(pay(gold, 10, 'gold')).toBeNull();
-    // Sin nada cargado no hay nada que pagar.
+    // With nothing charged there is nothing to pay.
     expect(pay(seed(), 1, 'dr')).toBeNull();
   });
 
-  it('el total mostrado con dos decimales cuenta como el total: no deja un resto de céntimos', () => {
+  it('the total shown with two decimals counts as the total: it leaves no remainder of cents', () => {
     expect(snapToTotal(100, 100.004)).toBe(100.004);
     expect(snapToTotal(99.99, 100.004)).toBe(99.99);
-    // 100.006 se ve como «100.01»: confirmar eso paga el total exacto y no lo rechaza por pasarse.
+    // 100.006 shows as "100.01": confirming that pays the exact total and does not reject it for going over.
     const s = apply(seed(), cardOtherChange(seed(), OCT, 'card', 100.006));
     expect(pay(s, 100.01, 'dr')).toMatchObject({ payment: { amount: 100.006 } });
     expect(cardCalc(apply(s, pay(s, 100.01, 'dr')), OCT, 'card').remainder).toBe(0);
     expect(pay(s, 100.02, 'dr')).toBeNull();
   });
 
-  it('las acciones de la tarjeta se agrupan por mes', () => {
+  it('credit card actions are grouped by month', () => {
     expect(targetOf({ type: 'card/pay', key: OCT, cardId: 'card', payment: { id: 'p1', date: DAY, accountId: 'dr', amount: 1 } })).toBe(`card:${OCT}`);
     expect(targetOf({ type: 'card/unpay', key: OCT, cardId: 'card' })).toBe(`card:${OCT}`);
   });
 });
 
-describe('varios pagos de la tarjeta', () => {
-  it('se acumulan, cada uno baja el saldo de su cuenta, y lo que falta limita al siguiente', () => {
+describe('several credit card payments', () => {
+  it('they add up, each one lowers the balance of its account, and what is left limits the next one', () => {
     const s = owing();
     const base = { dr: bal(s, 'dr'), us: bal(s, 'us') };
     const one = apply(s, pay(s, 300, 'dr', 'a'));
@@ -99,12 +99,12 @@ describe('varios pagos de la tarjeta', () => {
     expect(bal(two, 'us')).toBeCloseTo(base.us - 587.6 / 58.76, 9);
     expect(pay(two, 112.5, 'dr', 'c')).toBeNull();
     expect(pay(two, 112.4, 'dr', 'c')).not.toBeNull();
-    // Pagada del todo ya no se puede pagar más.
+    // Once fully paid, it cannot be paid any further.
     const full = apply(two, pay(two, 112.4, 'dr', 'c'));
     expect(pay(full, 1, 'dr', 'd')).toBeNull();
   });
 
-  it('quitar uno devuelve solo su parte; quitar todos deja el mes sin tarjeta si no hay más', () => {
+  it('removing one gives back only its part; removing all leaves the month without a credit card if there is nothing else', () => {
     const s = apply(seed(), cardOtherChange(seed(), OCT, 'card', 1000));
     const one = apply(s, pay(s, 300, 'dr', 'a'));
     const two = apply(one, pay(one, 200, 'us', 'b'));
@@ -113,7 +113,7 @@ describe('varios pagos de la tarjeta', () => {
     expect(cardUnpayOne(less, OCT, 'card', 'a')).toBeNull();
     expect(cardUnpayOne(less, '2026-09', 'card', 'b')).toBeNull();
     expect(apply(two, cardUnpay(two, OCT, 'card')).months[OCT]!.cards).toEqual([{ cardId: 'card', other: 1000, payments: [] }]);
-    // Sin otros cargos, quitar el único pago deja el mes sin `cards`, como lo manda el servidor.
+    // With no other charges, removing the only payment leaves the month without `cards`, the way the server sends it.
     const only = apply(seed(), cardOtherChange(seed(), OCT, 'card', 1000));
     const paid = apply(only, pay(only, 50, 'dr', 'z'));
     const noOther = { ...paid, months: { ...paid.months, [OCT]: { ...paid.months[OCT]!, cards: [{ cardId: 'card', other: 0, payments: paid.months[OCT]!.cards![0]!.payments }] } } };
@@ -121,14 +121,14 @@ describe('varios pagos de la tarjeta', () => {
   });
 });
 
-describe('gasto fijo en tarjeta y cuenta en uso', () => {
-  it('newFixed solo marca onCard cuando se pide', () => {
+describe('fixed expense on card and account in use', () => {
+  it('newFixed only sets onCard when asked', () => {
     const s = seed();
     expect('onCard' in newFixed(s, OCT, { name: 'Gym', amount: 5, cur: 'DOP' }, 'a')!).toBe(false);
     expect(newFixed(s, OCT, { name: 'Gym', amount: 5, cur: 'DOP', onCard: true }, 'a')).toMatchObject({ onCard: true, paid: false });
   });
 
-  it('la cuenta que pagó la tarjeta está en uso', () => {
+  it('the account that paid the credit card is in use', () => {
     const s = owing();
     expect(accountInUse(s, 'us')).toBe(accountInUse(seed(), 'us'));
     const paid = apply(s, pay(s, 10, 'us'));

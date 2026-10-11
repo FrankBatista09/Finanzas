@@ -1,13 +1,13 @@
-// Usuarios de la app. No hay registro ni tabla: la lista sale de la variable de entorno USERS, para poder
-// agregar o renombrar a alguien sin tocar el código. Quién puede ENTRAR lo decide Cloudflare Access (por correo);
-// esto solo define de quién son las finanzas que se están viendo.
+// Users of the app. There is no sign-up and no table: the list comes from the USERS environment variable, so
+// someone can be added or renamed without touching the code. Who can GET IN is decided by Cloudflare Access (by email);
+// this only defines whose finances are being viewed.
 
 import type { AppUser } from './types';
 
-/** Cabecera con la que cada petición a /api/* dice de qué usuario son los datos. */
+/** Header with which each request to /api/* says which user the data belongs to. */
 export const USER_HEADER = 'X-User';
 
-/** Si USERS no está definida, la app funciona con un solo usuario. */
+/** If USERS is not defined, the app runs with a single user. */
 export const DEFAULT_USERS: readonly AppUser[] = [{ id: 'me', name: 'Me' }];
 
 export const MAX_USERS = 12;
@@ -20,11 +20,11 @@ export function isUserId(v: unknown): v is string {
 }
 
 /**
- * Lee USERS: pares `id:Nombre` separados por comas, p. ej. "frank:Frank,eda:Eda".
- *  · id: minúsculas, dígitos, guion y guion bajo (máx. 32). No cambiarlo después: es la clave de los datos.
- *  · Nombre: lo que se ve en el selector; si falta, el id con la inicial en mayúscula.
- * Vacío o sin definir → DEFAULT_USERS. Un valor mal escrito lanza un error con el motivo (mejor que arrancar
- * con una lista distinta de la que se quiso configurar).
+ * Reads USERS: comma-separated `id:Name` pairs, e.g. "frank:Frank,eda:Eda".
+ *  · id: lowercase letters, digits, hyphen and underscore (max. 32). Do not change it later: it is the key of the data.
+ *  · Name: what shows in the select; if missing, the id with its first letter capitalized.
+ * Empty or undefined → DEFAULT_USERS. A malformed value throws an error with the reason (better than starting
+ * with a list different from the one that was meant to be configured).
  */
 export function parseUsers(raw: string | null | undefined): AppUser[] {
   const text = (raw ?? '').trim();

@@ -1,5 +1,5 @@
-// Rutas de Excel. El generador y el lector de .xlsx (shared/excel) tienen sus propias pruebas; aquí se
-// sustituyen para comprobar solo lo que hace la ruta: qué les pasa, cabeceras, errores y lo que se guarda.
+// Excel routes. The .xlsx generator and reader (shared/excel) have their own tests; here they are
+// mocked to check only what the route does: what it passes to them, headers, errors and what gets stored.
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ImportPayload, ImportResponse } from '../shared/api';
@@ -25,7 +25,7 @@ vi.mock('../shared/excel/import', async (original) => ({
 const build = vi.mocked(buildFinanzasXlsx);
 const parseXlsx = vi.mocked(parseFinanzasXlsx);
 
-// "PK\x03\x04…": lo que importa es que la ruta lo devuelva byte a byte.
+// "PK\x03\x04…": what matters is that the route returns it byte for byte.
 const WORKBOOK = new Uint8Array([0x50, 0x4b, 0x03, 0x04, 0x00, 0xff, 0x10, 0x80]);
 
 const F = FRANK.id;
@@ -35,7 +35,7 @@ afterEach(() => {
   vi.resetAllMocks();
 });
 
-/** Los dos usuarios con los datos de ejemplo. `api` es Frank; `eda`, Eda. */
+/** The two users with the sample data. `api` is Frank; `eda`, Eda. */
 async function seeded() {
   const t = makeEnv();
   await replaceAll(t.db, F, seedState());
@@ -44,7 +44,7 @@ async function seeded() {
 }
 
 describe('GET /api/export.xlsx', () => {
-  it('genera el libro con todo el histórico del usuario y lo entrega como descarga con su nombre', async () => {
+  it('generates the workbook with the whole history of the user and serves it as a download with their name', async () => {
     build.mockReturnValue(WORKBOOK);
     const { api, db } = await seeded();
     const res = await api.raw('/api/export.xlsx', { method: 'GET' });
@@ -59,13 +59,13 @@ describe('GET /api/export.xlsx', () => {
     expect(new Uint8Array(await res.arrayBuffer())).toEqual(WORKBOOK);
 
     expect(build).toHaveBeenCalledTimes(1);
-    // Sin idioma elegido, el libro sale en inglés.
+    // With no language chosen, the workbook comes out in English.
     expect(build).toHaveBeenCalledWith(buildExportData(await loadState(db, F)), { currentKey: currentMonthKey(), locale: EXCEL_EN });
-    // Lo que recibe el generador son los datos de ejemplo tal cual.
+    // What the generator receives is the sample data as is.
     expect(build.mock.calls[0]![0]).toEqual(buildExportData(seedState()));
   });
 
-  it('cada usuario descarga su libro, en su idioma', async () => {
+  it('each user downloads their workbook, in their language', async () => {
     build.mockReturnValue(WORKBOOK);
     const { api, eda, db } = await seeded();
     await updateSettings(db, F, { language: 'es' });
@@ -82,13 +82,13 @@ describe('GET /api/export.xlsx', () => {
     const [edaData, edaOpts] = build.mock.calls[1]!;
     expect(frankOpts?.locale).toBe(EXCEL_ES);
     expect(edaOpts?.locale).toBe(EXCEL_TR);
-    // Lo que se guarda no depende del idioma: el generador recibe los valores canónicos y es él quien traduce.
+    // What is stored does not depend on the language: the generator gets the canonical values and does the translating.
     expect(frankData).toEqual(buildExportData(seedState()));
     expect(edaData.months[2]!.tx).toHaveLength(8);
     expect(edaData.months[2]!.tx.at(-1)).toMatchObject({ desc: 'Simit', cat: 'Food', method: 'Debit card' });
   });
 
-  it('un nombre con tildes viaja en filename* y deja un nombre ASCII de respaldo', async () => {
+  it('a name with accents travels in filename* and leaves an ASCII fallback name', async () => {
     build.mockReturnValue(WORKBOOK);
     const { env } = makeEnv({ USERS: 'ana:Ana María' });
     const res = await client(env, 'ana').raw('/api/export.xlsx', { method: 'GET' });
@@ -97,7 +97,7 @@ describe('GET /api/export.xlsx', () => {
     );
   });
 
-  it('sin datos pide la plantilla vacía del mes actual y no crea nada en la base', async () => {
+  it('with no data it asks for the empty template of the current month and creates nothing in the database', async () => {
     build.mockReturnValue(WORKBOOK);
     const { env, db } = makeEnv();
     const res = await client(env).raw('/api/export.xlsx', { method: 'GET' });
@@ -108,7 +108,7 @@ describe('GET /api/export.xlsx', () => {
     expect([state.months, state.accounts, state.goals]).toEqual([{}, [], []]);
   });
 
-  it('si el generador falla: 500 sin detalles', async () => {
+  it('if the generator fails: 500 with no details', async () => {
     const log = vi.spyOn(console, 'error').mockImplementation(() => {});
     build.mockImplementation(() => {
       throw new Error('detalle interno');
@@ -122,7 +122,7 @@ describe('GET /api/export.xlsx', () => {
   });
 });
 
-describe('POST /api/import con el .xlsx crudo', () => {
+describe('POST /api/import with the raw .xlsx', () => {
   const payload: ImportPayload = {
     months: [
       {
@@ -143,7 +143,7 @@ describe('POST /api/import con el .xlsx crudo', () => {
   const upload = (api: ReturnType<typeof client>, type?: string) =>
     api.raw('/api/import', { method: 'POST', headers: type ? { 'Content-Type': type } : {}, body: WORKBOOK });
 
-  it('pasa los bytes al lector y aplica lo que devuelve, solo a ese usuario', async () => {
+  it('passes the bytes to the reader and applies what it returns, only to that user', async () => {
     parseXlsx.mockReturnValue(payload);
     const { api, db } = await seeded();
     const eda = await loadState(db, E);
@@ -157,18 +157,18 @@ describe('POST /api/import con el .xlsx crudo', () => {
 
     const state = await loadState(db, F);
     expect(Object.keys(state.months)).toEqual(['2026-08', '2026-09', '2026-10', '2026-11']);
-    // Reimportar no duplica: el mes se sustituye entero, y su ingreso también.
+    // Re-importing does not duplicate: the whole month is replaced, and its income too.
     expect(state.months['2026-11']!.fixed).toHaveLength(1);
     expect(state.months['2026-11']!.tx.map((t) => [t.desc, t.accountId, t.source])).toEqual([['Café', 'dr', 'import']]);
     expect(state.months['2026-11']!.budgets).toEqual({ dr: 70000 });
     expect(state.incomes.filter((i) => i.date.startsWith('2026-11'))).toHaveLength(1);
     expect(state.contribs).toHaveLength(8);
-    // Los meses que no vienen en el archivo siguen como en los datos de ejemplo, fila por fila.
+    // The months that are not in the file stay as in the sample data, row by row.
     for (const key of ['2026-08', '2026-09', '2026-10']) expect(withoutTimestamps(state).months[key]).toEqual(seedState().months[key]);
     expect(await loadState(db, E)).toEqual(eda);
   });
 
-  it('las metas y los aportes del libro van a quien lo sube', async () => {
+  it('the goals and contributions of the workbook go to whoever uploads it', async () => {
     parseXlsx.mockReturnValue({
       months: [],
       contribs: [{ date: '2026-10-05', goalName: 'Car', amount: 100, cur: 'USD' }],
@@ -189,7 +189,7 @@ describe('POST /api/import con el .xlsx crudo', () => {
     expect(await loadState(db, F)).toEqual(frank);
   });
 
-  it('con application/json no se usa el lector de Excel', async () => {
+  it('with application/json the Excel reader is not used', async () => {
     const { api } = await seeded();
     const r = await api.post<ImportResponse>('/api/import', payload);
     expect(r.status).toBe(200);
@@ -203,7 +203,7 @@ describe('POST /api/import con el .xlsx crudo', () => {
     expect(parseXlsx).not.toHaveBeenCalled();
   });
 
-  it('ImportError → 400 validation con su mensaje', async () => {
+  it('ImportError → 400 validation with its message', async () => {
     parseXlsx.mockImplementation(() => {
       throw new ImportError('The file has no month sheets.');
     });
@@ -215,7 +215,7 @@ describe('POST /api/import con el .xlsx crudo', () => {
     expect(await loadState(db, F)).toEqual(before);
   });
 
-  it('cualquier otro fallo del lector es un archivo ilegible (400), no un 500', async () => {
+  it('any other reader failure is an unreadable file (400), not a 500', async () => {
     const log = vi.spyOn(console, 'error').mockImplementation(() => {});
     parseXlsx.mockImplementation(() => {
       throw new TypeError('invalid zip data');
@@ -227,14 +227,14 @@ describe('POST /api/import con el .xlsx crudo', () => {
     log.mockRestore();
   });
 
-  it('lo que devuelve el lector también se valida', async () => {
+  it('what the reader returns is validated too', async () => {
     parseXlsx.mockReturnValue({ ...payload, months: [{ ...payload.months[0]!, key: 'November 2026' }] });
     const { api, db } = await seeded();
     const res = await upload(api, XLSX_MIME);
     expect(res.status).toBe(400);
     expect(Object.keys((await loadState(db, F)).months)).toEqual(['2026-08', '2026-09', '2026-10']);
 
-    // También el plan de las metas: medio plan rechaza el archivo en vez de guardarse a medias.
+    // The goals' plan too: half a plan rejects the file instead of being stored halfway.
     parseXlsx.mockReturnValue({ ...payload, goals: [{ name: 'Trip to Turkey', monthlyUSD: null, start: '2026-08', end: '2027-10' }] });
     const partial = await upload(api, XLSX_MIME);
     expect(partial.status).toBe(400);
@@ -242,7 +242,7 @@ describe('POST /api/import con el .xlsx crudo', () => {
     expect((await loadState(db, F)).goals).toEqual(seedState().goals);
   });
 
-  it('más de 10 MB: 413, sin llegar a leerlo', async () => {
+  it('more than 10 MB: 413, without ever reading it', async () => {
     const { api } = await seeded();
     const res = await api.raw('/api/import', {
       method: 'POST',
@@ -253,7 +253,7 @@ describe('POST /api/import con el .xlsx crudo', () => {
     expect(await res.json()).toEqual({ error: { code: 'validation', message: 'The file is too large (maximum 10 MB).' } });
     expect(parseXlsx).not.toHaveBeenCalled();
 
-    // Justo en el límite sí pasa al lector.
+    // Right at the limit it does reach the reader.
     parseXlsx.mockReturnValue(payload);
     const atLimit = await api.raw('/api/import', { method: 'POST', body: new Uint8Array(MAX_IMPORT_BYTES) });
     expect(atLimit.status).toBe(200);

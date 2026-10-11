@@ -1,16 +1,16 @@
-/* Código de la moneda de destino: "1 USD = 58.76 DOP". */
+/* Code of the destination currency: "1 USD = 58.76 DOP". */
 .code {
   font: var(--fs-meta) var(--font-mono);
 }
 
-/* De dónde sale la tasa cuando no es la escrita para el mes: un apunte atenuado detrás del código. */
+/* Where the rate comes from when it is not the one typed for the month: a muted note after the code. */
 .hint {
   margin-left: 8px;
   font-size: var(--fs-meta);
   color: var(--text-muted);
 }
 
-/* El valor fijo de respaldo: nadie ha escrito esa tasa. Va después de .hint para ganarle el color. */
+/* The fixed default value: nobody has typed that rate. It goes after .hint so its color wins. */
 .warn {
   color: var(--error);
   font-weight: 600;

@@ -1,17 +1,17 @@
-/** Bindings y variables del proyecto de Pages (wrangler.toml, .dev.vars y secrets). */
+/** Bindings and variables of the Pages project (wrangler.toml, .dev.vars and secrets). */
 export interface Env {
   DB: D1Database;
   /**
-   * Usuarios de la app: pares `id:Nombre` separados por comas, p. ej. "frank:Frank,eda:Eda" (shared/users.ts).
-   * Cada uno tiene sus finanzas aparte. Sin definir, hay un solo usuario.
+   * Users of the app: comma-separated `id:Name` pairs, e.g. "frank:Frank,eda:Eda" (shared/users.ts).
+   * Each one has their own separate finances. When undefined, there is a single user.
    */
   USERS?: string;
-  /** Secret. Bearer que autoriza /api/ingest/* y /mcp. Sin él, esas rutas responden 401 siempre. */
+  /** Secret. Bearer token that authorizes /api/ingest/* and /mcp. Without it, those routes always respond 401. */
   API_TOKEN?: string;
-  /** Opcional: 'tu-equipo.cloudflareaccess.com'. Junto con ACCESS_AUD activa la validación del JWT de Access en /api/*. */
+  /** Optional: 'your-team.cloudflareaccess.com'. Together with ACCESS_AUD it turns on Access JWT validation on /api/*. */
   ACCESS_TEAM_DOMAIN?: string;
-  /** Opcional: Application Audience (AUD) Tag de la aplicación de Access. */
+  /** Optional: Application Audience (AUD) Tag of the Access application. */
   ACCESS_AUD?: string;
-  /** '1' habilita /api/dev/* (solo desarrollo local). */
+  /** '1' enables /api/dev/* (local development only). */
   ALLOW_DEV_RESET?: string;
 }

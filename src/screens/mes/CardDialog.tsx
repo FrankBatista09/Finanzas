@@ -9,9 +9,9 @@ import styles from './CardDialog.module.css';
 import { MES } from './strings';
 
 /**
- * «New credit card» / «Edit credit card». Obligatorio solo el nombre; la moneda nace en la principal del usuario; el día de
- * pago puede quedar vacío («aún no se sabe»). Al editar se ve además si la tarjeta está activa y el botón de eliminarla, que
- * solo sirve si nada la usa. Enter guarda y Escape cancela (<Dialog>).
+ * "New credit card" / "Edit credit card". Only the name is required; the currency starts as the user's main one; the due
+ * day can stay empty ("unknown yet"). When editing, it also shows whether the credit card is active and the button to delete
+ * it, which only works if nothing uses it. Enter saves and Escape cancels (<Dialog>).
  */
 export function CardDialog({ card, onClose }: { card: CreditCard | null; onClose: () => void }) {
   const { state, main, actions } = useFinanzas();
@@ -24,7 +24,7 @@ export function CardDialog({ card, onClose }: { card: CreditCard | null; onClose
 
   const errors = cardFormErrors(form, state.cards, card?.id ?? null);
   const nameError = errors.includes('nameTaken') ? s('errorCardNameTaken') : tried && errors.includes('name') ? s('errorCardName') : null;
-  // Con una tarjeta en uso, cambiar su moneda reinterpretaría sus importes: el servidor lo rechaza, aquí ni se ofrece.
+  // With a credit card in use, changing its currency would reinterpret its amounts: the server rejects it; here it is not even offered.
   const used = card ? cardInUse(state, card.id) : false;
 
   const save = () => {
@@ -135,7 +135,7 @@ export function CardDialog({ card, onClose }: { card: CreditCard | null; onClose
   );
 }
 
-/** patchCard devuelve false también cuando no hay nada que cambiar: guardar sin tocar nada solo cierra el diálogo. */
+/** patchCard also returns false when there is nothing to change: saving without touching anything only closes the dialog. */
 function shallowSame(card: CreditCard, input: ReturnType<typeof formToInput>): boolean {
   return (
     card.name === input.name &&

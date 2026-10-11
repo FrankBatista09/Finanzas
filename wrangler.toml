@@ -2,22 +2,22 @@ name = "fe-finance"
 compatibility_date = "2026-09-01"
 pages_build_output_dir = "dist"
 
-# D1: fuente de verdad del histórico.
-# Creada con `npx wrangler d1 create finanzas`; el database_id es un identificador, no un secreto.
+# D1: source of truth for the history.
+# Created with `npx wrangler d1 create finanzas`; the database_id is an identifier, not a secret.
 [[d1_databases]]
 binding = "DB"
 database_name = "finanzas"
 database_id = "a0d77035-0673-4378-9a0e-5d488dd8480f"
 migrations_dir = "migrations"
 
-# Usuarios de la app, cada uno con sus finanzas aparte: pares id:Nombre separados por comas.
-# Para agregar o renombrar a alguien basta editar esta línea y volver a desplegar.
-# El id (antes de los dos puntos) es la clave de sus datos: no cambiarlo una vez que tenga registros.
+# Users of the app, each with their own separate finances: id:Name pairs separated by commas.
+# To add or rename someone, it is enough to edit this line and deploy again.
+# The id (before the colon) is the key of their data: do not change it once it has records.
 [vars]
 USERS = "frank:Frank,eda:Eda"
 
-# No van aquí, sino como secrets del proyecto (`npx wrangler pages secret put <NOMBRE> --project-name fe-finance`):
-#   API_TOKEN            Bearer de /api/ingest/* y /mcp (el que usa Claude).
-#   ACCESS_TEAM_DOMAIN   "<equipo>.cloudflareaccess.com"  } juntos activan la validación del login de
-#   ACCESS_AUD           AUD de la aplicación de Access    } Cloudflare Access en /api/*. Como secrets solo existen
-#                                                            en producción; en local no hay Access que validar.
+# These do not go here, but as project secrets (`npx wrangler pages secret put <NAME> --project-name fe-finance`):
+#   API_TOKEN            Bearer for /api/ingest/* and /mcp (the one Claude uses).
+#   ACCESS_TEAM_DOMAIN   "<team>.cloudflareaccess.com"     } together they turn on the validation of the Cloudflare
+#   ACCESS_AUD           AUD of the Access application     } Access login on /api/*. As secrets they only exist
+#                                                            in production; locally there is no Access to validate.

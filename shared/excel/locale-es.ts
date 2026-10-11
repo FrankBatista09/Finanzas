@@ -1,5 +1,5 @@
-// Textos del libro en español: exactamente los del exportador original (design_handoff/referencia/excel-export.js).
-// No retocar: con este idioma la salida tiene que ser idéntica byte a byte a la de ese script.
+// Workbook texts in Spanish: exactly those of the original exporter (design_handoff/referencia/excel-export.js).
+// Do not touch them: with this language the output has to be byte-for-byte identical to that script's.
 
 import { CAT_NAMES, FIXED_CATEGORY_NAMES, MONTH_NAMES } from '../i18n';
 import type { ExcelLocale } from './locale';
@@ -7,11 +7,11 @@ import type { ExcelLocale } from './locale';
 export const EXCEL_ES: ExcelLocale = {
   lang: 'es',
   months: MONTH_NAMES.es,
-  // La lista del libro son las diez categorías del diseño original; 'Other' se escribe en las filas pero no entra
-  // en la lista de la hoja Config (cambiaría el libro de referencia).
+  // The workbook's list is the ten categories of the original design; 'Other' is written in the rows but does not
+  // go into the Config sheet's list (it would change the reference workbook).
   cats: CAT_NAMES.es.slice(0, 10),
-  // La lista del libro son los tres métodos del diseño original (no cambia el libro de referencia); las filas se
-  // escriben con el método de hoy ('Tarjeta de débito'…) y al importar 'Tarjeta' vale por la tarjeta de débito.
+  // The workbook's list is the three methods of the original design (the reference workbook does not change); the
+  // rows are written with today's method ('Tarjeta de débito'…) and on import 'Tarjeta' stands for the debit card.
   methods: ['Tarjeta', 'Transferencia', 'App del banco'],
   yes: 'Sí',
   no: 'No',

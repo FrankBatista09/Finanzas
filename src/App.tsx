@@ -11,7 +11,7 @@ import { AhorrosScreen } from './screens/ahorros/AhorrosScreen';
 import { MesScreen } from './screens/mes/MesScreen';
 import { useFinanzas, useShell } from './store';
 
-/** Carcasa de la app: barra superior, panel resumen de la hoja activa, la hoja, pestañas, modales de cerrar y borrar mes, y avisos. */
+/** App shell: top bar, summary panel of the active sheet, the sheet, tabs, the close-month and delete-month dialogs, and notices. */
 export function App() {
   const { status } = useShell();
   return status === 'ready' ? <Ready /> : <Boot />;
@@ -25,7 +25,7 @@ function Ready() {
       <TopBar />
       <main className={styles.main}>
         <SummaryPanel sheet={sheet} />
-        {/* key: al cambiar de usuario o de mes la hoja se monta de nuevo, así sus filas de agregar arrancan limpias y con la fecha de ese mes. */}
+        {/* key: switching user or month mounts the sheet again, so its add rows start clean and with that month's date. */}
         {sheet === 'ahorros' ? <AhorrosScreen key={user.id} /> : <MesScreen key={`${user.id}:${monthKey}`} />}
       </main>
       <CloseMonthModal />
@@ -36,7 +36,7 @@ function Ready() {
   );
 }
 
-/** Antes de tener datos: cargando, o sin conexión con el botón para reintentar. En el último idioma usado en este dispositivo. */
+/** Before there is any data: loading, or no connection with the retry button. In the last language used on this device. */
 function Boot() {
   const { status, retry, retrying } = useShell();
   const { t } = useI18n();

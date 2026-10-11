@@ -10,13 +10,13 @@ const SHEETS: readonly { id: Sheet; name: CoreKey }[] = [
   { id: 'ahorros', name: 'savings' },
 ];
 
-/** Barra inferior fija: las dos hojas y, solo con las utilidades de desarrollo activas, los botones de datos. */
+/** Fixed bottom bar: the two sheets and, only with the development tools enabled, the data buttons. */
 export function BottomTabs() {
   const { sheet, goToSheet, devTools } = useShell();
   const { user, actions } = useFinanzas();
   const { t } = useI18n();
 
-  // Los dos actúan sobre los datos del usuario que se está viendo: la confirmación dice de quién.
+  // Both act on the data of the user being viewed: the confirmation says whose.
   const reset = () => {
     if (window.confirm(t('devResetConfirm', { name: user.name }))) void actions.devReset();
   };

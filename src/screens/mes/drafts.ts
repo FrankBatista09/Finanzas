@@ -1,9 +1,9 @@
-// Borradores de las filas de agregar de la hoja "Mes": qué llevan, cuándo se pueden agregar y cómo quedan después.
-// Es la lógica de addFixed / addTransfer / addTx del prototipo, sin React.
+// Drafts of the add rows of the "Month" sheet: what they hold, when they can be added and how they are left afterwards.
+// It is the logic of the prototype's addFixed / addTransfer / addTx, without React.
 //
-// Los montos son números y 0 significa "vacío", como esperan las celdas de src/ui. En cuenta, moneda y tasa,
-// null significa "sin tocar": el campo enseña lo que toca en ese momento (la cuenta por defecto, la moneda de la
-// cuenta, la tasa del mes) y lo sigue si eso cambia, hasta que el usuario elige otra cosa.
+// Amounts are numbers and 0 means "empty", as the cells in src/ui expect. For account, currency and rate,
+// null means "untouched": the field shows whatever applies at that moment (the default account, the account's
+// currency, the month rate) and follows it if that changes, until the user picks something else.
 
 import { isMoneyAccount } from '../../../shared/calc';
 import type { MoneyAccount } from '../../../shared/calc';
@@ -13,53 +13,53 @@ import type { Account, Currency, ISODate, MonthKey } from '../../../shared/types
 import type { FixedInput, OutsideInput, PairRate, TransferInput, TxInput } from '../../store';
 import { newRateDate } from './rows';
 
-// ── Cuenta y moneda de un gasto ──────────────────────────────────────────────
+// ── Account and currency of an expense ───────────────────────────────────────
 
-/** Lo que el borrador necesita saber del usuario. Sale tal cual de useFinanzas(). */
+/** What the draft needs to know about the user. It comes straight from useFinanzas(). */
 export interface DraftContext {
-  /** Todas las cuentas, también las ocultas. */
+  /** All the accounts, including the hidden ones. */
   accounts: readonly Account[];
   defaultAccount: MoneyAccount | null;
   main: Currency;
 }
 
 interface Paying {
-  /** null = la cuenta por defecto del usuario. */
+  /** null = the user's default account. */
   accountId: string | null;
-  /** null = la moneda de la cuenta elegida. */
+  /** null = the currency of the chosen account. */
   cur: Currency | null;
 }
 
-/** La cuenta de la que saldrá el gasto: la elegida si sigue existiendo (y es de dinero: una de oro no paga nada); si no, la de por defecto. */
+/** The account the expense will come out of: the chosen one if it still exists (and is a money account: a gold one pays for nothing); otherwise, the default one. */
 export function draftAccount(draft: Pick<Paying, 'accountId'>, ctx: DraftContext): MoneyAccount | null {
   return ctx.accounts.filter(isMoneyAccount).find((a) => a.id === draft.accountId) ?? ctx.defaultAccount;
 }
 
-/** La moneda del gasto: la elegida o, mientras no se toque, la de su cuenta (la principal si no hay cuentas). */
+/** The currency of the expense: the chosen one or, while untouched, its account's (the main currency if there are no accounts). */
 export function draftCurrency(draft: Paying, ctx: DraftContext): Currency {
   return draft.cur ?? draftAccount(draft, ctx)?.currency ?? ctx.main;
 }
 
-// ── Gasto fijo ───────────────────────────────────────────────────────────────
+// ── Fixed expense ────────────────────────────────────────────────────────────
 
 export interface FixedDraft extends Paying {
   name: string;
   day: string;
   amount: number;
-  /** "Pay with" = tarjeta de crédito: la cuenta no cuenta (el gasto no sale de ninguna hasta que se paga la tarjeta). */
+  /** "Pay with" = credit card: the account does not count (the expense does not come out of any until the credit card is paid). */
   onCard: boolean;
-  /** Con qué tarjeta si `onCard`; null = la primera activa (y la sigue si cambia). */
+  /** Which credit card if `onCard`; null = the first active one (and it follows it if that changes). */
   cardId: string | null;
 }
 
 export const EMPTY_FIXED: FixedDraft = { name: '', day: '', amount: 0, cur: null, accountId: null, onCard: false, cardId: null };
 
-/** Concepto y monto mayor que 0. Después de agregar, el borrador vuelve entero a EMPTY_FIXED. */
+/** An item and an amount greater than 0. After adding, the whole draft goes back to EMPTY_FIXED. */
 export function canAddFixed(draft: FixedDraft): boolean {
   return draft.name.trim() !== '' && draft.amount > 0;
 }
 
-/** Lo que se manda al agregar: moneda y cuenta ya resueltas. Sin cuentas no va ninguna y la capa de datos lo rechaza. */
+/** What is sent when adding: currency and account already resolved. With no accounts none is sent and the data layer rejects it. */
 export function fixedInput(draft: FixedDraft, ctx: DraftContext): FixedInput {
   const account = draftAccount(draft, ctx);
   return {
@@ -72,10 +72,10 @@ export function fixedInput(draft: FixedDraft, ctx: DraftContext): FixedInput {
   };
 }
 
-// ── Transacción ──────────────────────────────────────────────────────────────
+// ── Transaction ──────────────────────────────────────────────────────────────
 
 export interface TxDraft extends Paying {
-  /** null = el usuario no ha tocado la fecha: se usa la del shell (hoy, o el día 1 de un mes que no es el actual). */
+  /** null = the user has not touched the date: the shell's is used (today, or day 1 of a month that is not the current one). */
   date: ISODate | null;
   desc: string;
   place: string;
@@ -83,7 +83,7 @@ export interface TxDraft extends Paying {
   method: string;
   amount: number;
   notes: string;
-  /** Con qué tarjeta si el método es de crédito; null = la primera activa. */
+  /** Which credit card if the method is credit; null = the first active one. */
   cardId: string | null;
 }
 
@@ -91,12 +91,12 @@ export function newTxDraft(): TxDraft {
   return { date: null, desc: '', place: '', cat: CATS[0], method: METHODS[0], amount: 0, cur: null, accountId: null, notes: '', cardId: null };
 }
 
-/** Descripción y monto mayor que 0. */
+/** A description and an amount greater than 0. */
 export function canAddTx(draft: TxDraft): boolean {
   return draft.desc.trim() !== '' && draft.amount > 0;
 }
 
-/** Lo que se manda al agregar: el borrador con su fecha, su moneda y su cuenta ya resueltas. */
+/** What is sent when adding: the draft with its date, its currency and its account already resolved. */
 export function txInput(draft: TxDraft, draftDate: ISODate, ctx: DraftContext): TxInput {
   const account = draftAccount(draft, ctx);
   return {
@@ -113,15 +113,15 @@ export function txInput(draft: TxDraft, draftDate: ISODate, ctx: DraftContext): 
   };
 }
 
-/** Se limpia lo propio de cada gasto; fecha, categoría, método, moneda y cuenta se quedan para cargar varios seguidos. */
+/** What is specific to each expense is cleared; date, category, method, currency and account stay to enter several in a row. */
 export function afterTxAdded(draft: TxDraft): TxDraft {
   return { ...draft, desc: '', place: '', amount: 0, notes: '' };
 }
 
-// ── Gasto fuera de presupuesto ───────────────────────────────────────────────
+// ── Outside-budget expense ───────────────────────────────────────────────────
 
 export interface OutsideDraft extends Paying {
-  /** null = sin tocar: la fecha del shell, como en TxDraft. */
+  /** null = untouched: the shell's date, as in TxDraft. */
   date: ISODate | null;
   name: string;
   amount: number;
@@ -132,7 +132,7 @@ export function newOutsideDraft(): OutsideDraft {
   return { date: null, name: '', amount: 0, desc: '', cur: null, accountId: null };
 }
 
-/** Nombre y monto mayor que 0. */
+/** A name and an amount greater than 0. */
 export function canAddOutside(draft: OutsideDraft): boolean {
   return draft.name.trim() !== '' && draft.amount > 0;
 }
@@ -149,37 +149,37 @@ export function outsideInput(draft: OutsideDraft, draftDate: ISODate, ctx: Draft
   };
 }
 
-/** Como las transacciones: se limpia lo propio de cada gasto; fecha, moneda y cuenta se quedan para cargar varios seguidos. */
+/** Like transactions: what is specific to each expense is cleared; date, currency and account stay to enter several in a row. */
 export function afterOutsideAdded(draft: OutsideDraft): OutsideDraft {
   return { ...draft, name: '', amount: 0, desc: '' };
 }
 
-// ── Envío ────────────────────────────────────────────────────────────────────
+// ── Transfer ─────────────────────────────────────────────────────────────────
 
 export interface TransferDraft {
-  /** null = sin tocar: la fecha del shell, como en TxDraft. */
+  /** null = untouched: the shell's date, as in TxDraft. */
   date: ISODate | null;
-  /** Texto libre, tal como está en el campo (puede estar vacío a media edición; ver transferInput). */
+  /** Free text, exactly as it is in the field (it can be empty mid-edit; see transferInput). */
   via: string;
-  /** null = sin tocar: ver transferSides. */
+  /** null = untouched: see transferSides. */
   fromAccountId: string | null;
   toAccountId: string | null;
-  /** Lo que sale, en la moneda de la cuenta de origen. */
+  /** What goes out, in the currency of the origin account. */
   amount: number;
-  /** null = sin tocar: la tasa del mes para las monedas de las dos cuentas, y las sigue si cambian. */
+  /** null = untouched: the month rate for the currencies of the two accounts, and it follows them if they change. */
   rate: number | null;
-  /** La casilla "Moves budget": marcada de entrada, porque lo que se envía suele ser para gastarlo este mes. */
+  /** The "Moves budget" checkbox: checked to begin with, because what is transferred is usually meant to be spent this month. */
   budget: boolean;
-  /** null = sin tocar: la comisión del último envío por esa vía (TransferContext.lastFee), y la sigue si cambia la vía. */
+  /** null = untouched: the fee of the last transfer through that via (TransferContext.lastFee), and it follows it if the via changes. */
   fee: number | null;
 }
 
 export interface TransferContext extends Pick<DraftContext, 'accounts' | 'defaultAccount'> {
-  /** Las cuentas que se ofrecen, en su orden: las visibles de dinero. */
+  /** The accounts on offer, in their order: the visible money accounts. */
   visible: readonly MoneyAccount[];
-  /** La tasa del mes seleccionado para ese par, vigente en la fecha del borrador (useFinanzas().rateOf(from, to, undefined, date).rate). */
+  /** The rate of the selected month for that pair, in effect on the draft's date (useFinanzas().rateOf(from, to, undefined, date).rate). */
   rateOf(from: Currency, to: Currency): number;
-  /** La comisión del envío más reciente por esa vía; 0 si no hay ninguno (rows.ts lastFee). */
+  /** The fee of the most recent transfer through that via; 0 if there is none (rows.ts lastFee). */
   lastFee(via: string): number;
 }
 
@@ -188,10 +188,10 @@ export interface TransferSides {
   to: MoneyAccount | null;
 }
 
-/** La vía con la que arranca el borrador, y la que se usa si el campo se deja vacío (un envío sin vía no vale). */
+/** The via the draft starts with, and the one used if the field is left empty (a transfer with no via is not valid). */
 export const DEFAULT_VIA: string = VIAS[0];
 
-/** Lo escrito sin espacios sobrantes o, si no hay nada, la vía por defecto. */
+/** What was typed without the extra spaces or, if there is nothing, the default via. */
 function viaOf(draft: TransferDraft): string {
   return draft.via.trim() || DEFAULT_VIA;
 }
@@ -200,16 +200,16 @@ export function newTransferDraft(): TransferDraft {
   return { date: null, via: DEFAULT_VIA, fromAccountId: null, toAccountId: null, amount: 0, rate: null, budget: true, fee: null };
 }
 
-/** Otra cuenta visible distinta de `than`; mejor una de otra moneda, que es lo que suele ser un envío. */
+/** Another visible account, different from `than`; preferably one in another currency, which is what a transfer usually is. */
 function another(visible: readonly MoneyAccount[], than: MoneyAccount | null): MoneyAccount | null {
   const rest = visible.filter((a) => a.id !== than?.id);
   return rest.find((a) => a.currency !== than?.currency) ?? rest[0] ?? null;
 }
 
 /**
- * Las dos cuentas del borrador. Sin tocar, el dinero llega a la cuenta por defecto (de la que salen los gastos)
- * desde otra cuenta visible, mejor de otra moneda: "US account → DR account". Nunca son la misma; con una sola
- * cuenta falta uno de los lados y el envío no se puede agregar.
+ * The two accounts of the draft. Untouched, the money arrives in the default account (the one expenses come out of)
+ * from another visible account, preferably in another currency: "US account → DR account". They are never the same;
+ * with a single account one of the sides is missing and the transfer cannot be added.
  */
 export function transferSides(draft: Pick<TransferDraft, 'fromAccountId' | 'toAccountId'>, ctx: TransferContext): TransferSides {
   const chosen = (id: string | null) => ctx.accounts.filter(isMoneyAccount).find((a) => a.id === id) ?? null;
@@ -221,8 +221,8 @@ export function transferSides(draft: Pick<TransferDraft, 'fromAccountId' | 'toAc
 }
 
 /**
- * La tasa con la que se propone un envío: la del mes, con dos decimales como en el resto de la hoja; una menor
- * que 1 (DOP → USD: 0.017) con cuatro cifras significativas, que con dos decimales no diría nada.
+ * The rate a transfer is proposed with: the month's, with two decimals as in the rest of the sheet; one lower
+ * than 1 (DOP → USD: 0.017) with four significant figures, since with two decimals it would say nothing.
  */
 export function prefillRate(rate: number): number {
   if (!Number.isFinite(rate) || rate <= 0) return 0;
@@ -231,11 +231,11 @@ export function prefillRate(rate: number): number {
 
 export interface TransferRate {
   rate: number;
-  /** Entre cuentas de la misma moneda la tasa es 1 y no se escribe. */
+  /** Between accounts in the same currency the rate is 1 and is not typed. */
   locked: boolean;
 }
 
-/** La tasa que enseña el campo: 1 entre monedas iguales; la que escribió el usuario; si no, la del mes para ese par. */
+/** The rate the field shows: 1 between equal currencies; the one the user typed; otherwise, the month's for that pair. */
 export function transferRate(draft: TransferDraft, ctx: TransferContext): TransferRate {
   const { from, to } = transferSides(draft, ctx);
   if (!from || !to) return { rate: draft.rate ?? 0, locked: false };
@@ -244,8 +244,8 @@ export function transferRate(draft: TransferDraft, ctx: TransferContext): Transf
 }
 
 /**
- * Elegir la cuenta de un lado de un envío. Las dos tienen que ser distintas: elegir la que está en el otro lado
- * las intercambia (invertir el envío), que es lo que se quiere y lo único posible con dos cuentas.
+ * Picking the account on one side of a transfer. The two have to be different: picking the one on the other side
+ * swaps them (reversing the transfer), which is what is wanted and the only thing possible with two accounts.
  */
 export function swapSides(
   row: { fromAccountId: string; toAccountId: string },
@@ -259,10 +259,10 @@ export function swapSides(
 }
 
 /**
- * El borrador después de elegir una cuenta. Las dos quedan fijadas como se ven (la otra ya no se mueve sola).
- * Una tasa escrita a mano se conserva mientras el envío siga siendo entre las mismas monedas y en el mismo
- * sentido; si cambian, era de otro par y vuelve a seguir la tasa del mes (igual que hace la capa de datos al
- * editar un envío).
+ * The draft after picking an account. Both are pinned as they are shown (the other one no longer moves on its own).
+ * A rate typed by hand is kept as long as the transfer is still between the same currencies and in the same
+ * direction; if they change, it belonged to another pair and it goes back to following the month rate (as the data
+ * layer does when a transfer is edited).
  */
 export function pickTransferAccount(draft: TransferDraft, ctx: TransferContext, side: 'from' | 'to', id: string): TransferDraft {
   const before = transferSides(draft, ctx);
@@ -273,23 +273,23 @@ export function pickTransferAccount(draft: TransferDraft, ctx: TransferContext, 
   return samePair ? next : { ...next, rate: null };
 }
 
-/** La comisión que enseña el campo: la que escribió el usuario; sin tocar, la del último envío por la vía del borrador. */
+/** The fee the field shows: the one the user typed; untouched, that of the last transfer through the draft's via. */
 export function transferFee(draft: TransferDraft, ctx: Pick<TransferContext, 'lastFee'>): number {
   return draft.fee ?? ctx.lastFee(viaOf(draft));
 }
 
-/** El borrador después de escribir en la tasa. Vaciar el campo (0) lo devuelve a la tasa del mes. */
+/** The draft after typing in the rate. Emptying the field (0) returns it to the month rate. */
 export function typeTransferRate(draft: TransferDraft, rate: number): TransferDraft {
   return { ...draft, rate: rate > 0 ? rate : null };
 }
 
-/** Dos cuentas distintas, monto y tasa mayores que 0. La vía no frena: vacía, cuenta como la de por defecto. */
+/** Two different accounts, amount and rate greater than 0. The via does not block: empty, it counts as the default one. */
 export function canAddTransfer(draft: TransferDraft, ctx: TransferContext): boolean {
   const { from, to } = transferSides(draft, ctx);
   return from !== null && to !== null && from.id !== to.id && draft.amount > 0 && transferRate(draft, ctx).rate > 0;
 }
 
-/** Lo que se manda al agregar: fecha, vía, cuentas y tasa ya resueltas (la tasa, la que se ve en el campo). null si no se puede agregar. */
+/** What is sent when adding: date, via, accounts and rate already resolved (the rate, the one shown in the field). null if it cannot be added. */
 export function transferInput(draft: TransferDraft, draftDate: ISODate, ctx: TransferContext): TransferInput | null {
   const { from, to } = transferSides(draft, ctx);
   if (!from || !to || !canAddTransfer(draft, ctx)) return null;
@@ -306,53 +306,53 @@ export function transferInput(draft: TransferDraft, draftDate: ISODate, ctx: Tra
 }
 
 /**
- * Solo se limpia el monto: fecha, vía, cuentas, tasa y casilla suelen repetirse en el siguiente envío. La vía queda
- * como se guardó y la comisión vuelve a "sin tocar": propondrá la del envío que se acaba de guardar.
+ * Only the amount is cleared: date, via, accounts, rate and checkbox are usually repeated in the next transfer. The via
+ * stays as it was saved and the fee goes back to "untouched": it will propose that of the transfer just saved.
  */
 export function afterTransferAdded(draft: TransferDraft): TransferDraft {
   return { ...draft, via: viaOf(draft), amount: 0, fee: null };
 }
 
-// ── Tasa del mes ─────────────────────────────────────────────────────────────
+// ── Month rate ───────────────────────────────────────────────────────────────
 
 export type Pair = readonly [from: Currency, to: Currency];
 
 export interface RateDraft {
-  /** null = sin tocar: el primer par de la tarjeta que aún no tiene tasa escrita. */
+  /** null = untouched: the first pair of the card that still has no typed rate. */
   pair: Pair | null;
   rate: number;
-  /** null = sin tocar: la fecha que toque para el par (rows.ts newRateDate). */
+  /** null = untouched: the date that applies to the pair (rows.ts newRateDate). */
   date: ISODate | null;
 }
 
 export const EMPTY_RATE: RateDraft = { pair: null, rate: 0, date: null };
 
 /**
- * El par que propone la fila de agregar: el elegido o, sin tocar, el primero de los que se ven cuya tasa no está
- * escrita para este mes (es la que falta por poner); si todas lo están, el primero.
+ * The pair the add row proposes: the chosen one or, untouched, the first of those shown whose rate is not
+ * typed for this month (it is the one still to be entered); if they all are, the first one.
  */
 export function ratePair(draft: RateDraft, shown: readonly PairRate[], main: Currency, second: Currency | null): Pair {
   if (draft.pair) return draft.pair;
   const row = shown.find((r) => r.source !== 'month') ?? shown[0];
-  // Sin ninguna tasa que hacer falta ni segunda moneda, la primera otra moneda contra la principal.
+  // With no rate needed and no second currency, the first other currency against the main one.
   return row ? [row.from, row.to] : [second ?? CURRENCIES.find((c) => c !== main) ?? main, main];
 }
 
-/** Elegir una moneda del par. Tienen que ser distintas: elegir la del otro lado las intercambia. */
+/** Picking a currency of the pair. They have to be different: picking the one on the other side swaps them. */
 export function pickRateCurrency(pair: Pair, side: 'from' | 'to', cur: Currency): Pair {
   const [from, to] = pair;
   if (side === 'from') return [cur, cur === to ? from : to];
   return [cur === from ? to : from, cur];
 }
 
-/** Una tasa mayor que 0. */
+/** A rate greater than 0. */
 export function canAddRate(draft: RateDraft): boolean {
   return draft.rate > 0;
 }
 
 /**
- * La fecha desde la que valdrá la tasa nueva: la elegida o, sin tocar, la que toque para el par (newRateDate):
- * cambia sola con el par mientras el usuario no elija una.
+ * The date the new rate will apply from: the chosen one or, untouched, the one that applies to the pair (newRateDate):
+ * it changes on its own with the pair as long as the user does not pick one.
  */
 export function rateDate(draft: RateDraft, pair: Pair, rates: readonly PairRate[], monthKey: MonthKey, draftDate: ISODate): ISODate {
   return draft.date ?? newRateDate(pair[0], pair[1], rates, monthKey, draftDate);

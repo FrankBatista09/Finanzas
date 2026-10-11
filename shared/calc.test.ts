@@ -25,28 +25,28 @@ import { clampToMonth, firstDay, inMonth, lastDay } from './month';
 import { seedState, setBudgets } from './seed';
 import type { AppState } from './types';
 
-// Las cifras del mes son las del prototipo del diseño (mismos gastos, mismo presupuesto, misma tasa);
-// los saldos y los ingresos son del modelo de cuentas, calculados a mano en los comentarios.
+// The month's figures are those of the design prototype (same expenses, same budget, same rate);
+// the balances and the incomes come from the accounts model, worked out by hand in the comments.
 
-describe('monthCalc · October 2026 (mes en curso, moneda principal DOP)', () => {
+describe('monthCalc · October 2026 (current month, main currency DOP)', () => {
   const s = seedState();
   const c = monthCalc(s, '2026-10');
 
-  it('la tasa del mes es la escrita a mano', () => {
+  it('the month rate is the one typed by hand', () => {
     expect(c.main).toBe('DOP');
     expect(c.second).toBe('USD');
-    // La última del mes: la del día 6.
+    // The last one of the month: the one from the 6th.
     expect(c.rate).toEqual({ rate: 58.76, source: 'month', monthKey: '2026-10', date: '2026-10-06' });
   });
 
-  it('gastos fijos: 6 de 11 pagados · total 42,025.57', () => {
+  it('fixed expenses: 6 of 11 paid · total 42,025.57', () => {
     expect(c.paidCount).toBe(6);
     expect(c.fixedCount).toBe(11);
     expect(f2(c.fixedAll)).toBe('42,025.57');
   });
 
-  it('usado = fijos pagados + transacciones', () => {
-    // Pagados: 1,337.15 + 2,699 + 5,640 + 15,000 + Claude 106 USD × 58.76 + 7,400
+  it('used = paid fixed expenses + transactions', () => {
+    // Paid: 1,337.15 + 2,699 + 5,640 + 15,000 + Claude 106 USD × 58.76 + 7,400
     expect(c.fixedPaid).toBeCloseTo(38304.71, 6);
     expect(c.varSpent).toBe(10845);
     expect(f2(c.used)).toBe('49,149.71');
@@ -57,21 +57,21 @@ describe('monthCalc · October 2026 (mes en curso, moneda principal DOP)', () =>
     expect(c.free).toBeCloseTo(c.after, 10);
   });
 
-  it('presupuesto = suma de las partes por cuenta', () => {
+  it('budget = sum of the parts per account', () => {
     expect(c.budget).toBe(70000);
     expect(f2(c.budgetSecond!)).toBe('1,191.29');
     expect(c.budgetParts.map((p) => [p.account.id, p.amount, p.inMain])).toEqual([
       ['us', 0, 0],
       ['dr', 70000, 70000],
     ]);
-    // Todo viene del registro (65,000 iniciales + 5,000 de ajuste): ningún ingreso sube el presupuesto.
+    // It all comes from the log (65,000 initial + 5,000 adjustment): no income raises the budget.
     expect(c.budgetParts.map((p) => [p.fromLog, p.fromIncomes])).toEqual([
       [0, 0],
       [70000, 0],
     ]);
   });
 
-  it('una parte del presupuesto en otra moneda se convierte con la tasa del mes', () => {
+  it('a budget part in another currency is converted with the month rate', () => {
     const t = seedState();
     setBudgets(t.months['2026-10']!, { us: 200, dr: 58248 });
     const tc = monthCalc(t, '2026-10');
@@ -79,19 +79,19 @@ describe('monthCalc · October 2026 (mes en curso, moneda principal DOP)', () =>
     expect(tc.budget).toBeCloseTo(70000, 8);
   });
 
-  it('ingreso del mes = suma de los ingresos registrados', () => {
+  it('month income = sum of the recorded incomes', () => {
     expect(c.income).toBeCloseTo(5800 * 58.76, 8);
     expect(f2(c.incomeLeft)).toBe('291,658.29');
     expect(c.saved).toBeCloseTo(3500 * 58.76, 8);
   });
 
-  it('por categoría: gastos fijos primero y el resto de mayor a menor', () => {
+  it('by category: fixed expenses first and the rest from largest to smallest', () => {
     expect(c.categories.map((x) => x.name)).toEqual(['Fixed expenses', 'Groceries', 'Transport', 'Food', 'Health', 'Entertainment']);
     expect(c.categories[0]!.fixed).toBe(true);
     expect(c.catMax).toBeCloseTo(c.fixedPaid, 10);
   });
 
-  it('dona: los segmentos se encadenan y la escala es el presupuesto', () => {
+  it('donut: the segments are chained and the scale is the budget', () => {
     const dn = donut(c);
     const circ = 2 * Math.PI * 64;
     const len = (seg: { dash: string }) => +seg.dash.split(' ')[0]!;
@@ -103,7 +103,7 @@ describe('monthCalc · October 2026 (mes en curso, moneda principal DOP)', () =>
 });
 
 describe('rateFor', () => {
-  it('sin tasa escrita usa el promedio ponderado de los envíos del mes', () => {
+  it('with no typed rate it uses the weighted average of the transfers of the month', () => {
     const s = seedState();
     const aug = rateFor(s, '2026-08', 'USD', 'DOP');
     expect(aug.source).toBe('transfers');
@@ -111,7 +111,7 @@ describe('rateFor', () => {
     expect(rateFor(s, '2026-09', 'USD', 'DOP').rate).toBeCloseTo((1500 * 58.55 + 800 * 58.62) / 2300, 10);
   });
 
-  it('la escrita a mano manda sobre los envíos, y vale también al revés', () => {
+  it('the one typed by hand wins over the transfers, and also holds in reverse', () => {
     const s = seedState();
     s.months['2026-08']!.rates = [{ from: 'USD', to: 'DOP', rate: 60, date: '2026-08-01' }];
     expect(rateFor(s, '2026-08', 'USD', 'DOP')).toEqual({ rate: 60, source: 'month', monthKey: '2026-08', date: '2026-08-01' });
@@ -119,17 +119,17 @@ describe('rateFor', () => {
     expect(rateFor(s, '2026-08', 'DOP', 'DOP')).toEqual({ rate: 1, source: 'same', monthKey: null, date: null });
   });
 
-  it('un envío en sentido contrario también cuenta para el promedio', () => {
+  it('a transfer in the opposite direction also counts toward the average', () => {
     const s = seedState();
     s.months['2026-10']!.rates = [];
-    // 1,500 USD → 88,140 DOP y 58,000 DOP → 1,000 USD: salieron 2,500 USD en total frente a 146,140 DOP.
+    // 1,500 USD → 88,140 DOP and 58,000 DOP → 1,000 USD: 2,500 USD went out in total against 146,140 DOP.
     s.months['2026-10']!.transfers.push({
       id: 'back', monthKey: '2026-10', date: '2026-10-09', via: 'Bank', fromAccountId: 'dr', toAccountId: 'us', amount: 58000, rate: 1 / 58, budget: false, fee: 0,
     });
     expect(rateFor(s, '2026-10', 'USD', 'DOP').rate).toBeCloseTo(146140 / 2500, 8);
   });
 
-  it('cruza por la tercera moneda cuando el par no tiene tasa propia', () => {
+  it('crosses through the third currency when the pair has no rate of its own', () => {
     const s = seedState();
     s.months['2026-10']!.rates = [
       { from: 'USD', to: 'DOP', rate: 60, date: '2026-10-01' },
@@ -141,7 +141,7 @@ describe('rateFor', () => {
     expect(convert(s, '2026-10', 1000, 'TRY', 'DOP')).toBeCloseTo(1500, 9);
   });
 
-  it('si el mes no la tiene, usa el mes anterior más reciente; si ninguno, el valor de respaldo', () => {
+  it('if the month has none, it uses the most recent earlier month; if none does, the default value', () => {
     const s = seedState();
     s.months['2026-10']!.rates = [];
     s.months['2026-10']!.transfers = [];
@@ -155,19 +155,19 @@ describe('rateFor', () => {
     expect(rateFor(s, '2026-01', 'TRY', 'DOP').rate).toBeCloseTo(58.76 / 42, 12);
   });
 
-  it('acepta meses sin registro: sigue vigente la última escrita', () => {
+  it('accepts months with no record: the last typed one is still in effect', () => {
     const s = seedState();
     expect(rateFor(s, '2027-03', 'USD', 'DOP')).toEqual({ rate: 58.76, source: 'previous', monthKey: '2026-10', date: '2026-10-06' });
   });
 
-  it('una tasa escrita con 0 o negativa se ignora', () => {
+  it('a typed rate of 0 or a negative one is ignored', () => {
     const s = seedState();
     s.months['2026-10']!.rates = [{ from: 'USD', to: 'DOP', rate: 0, date: '2026-10-01' }];
     expect(rateFor(s, '2026-10', 'USD', 'DOP').source).toBe('transfers');
   });
 });
 
-// Octubre con dos tasas USD→DOP: 58 desde el día 1 y 60 desde el día 5. Las cifras de abajo salen de ahí.
+// October with two USD→DOP rates: 58 from the 1st and 60 from the 5th. The figures below come from that.
 function twoRates(): AppState {
   const s = seedState();
   s.months['2026-10']!.rates = [
@@ -186,23 +186,23 @@ const usdTx = (s: AppState, id: string, date: string, amount: number) => ({
   accountId: 'dr',
 });
 
-describe('tasas con fecha: cada fila se convierte con la vigente en SU fecha', () => {
-  it('rateFor con fecha da la última escrita hasta ese día; sin fecha, la última del mes', () => {
+describe('dated rates: each row is converted with the one in effect on ITS date', () => {
+  it('rateFor with a date gives the last one typed up to that day; without a date, the last one of the month', () => {
     const s = twoRates();
     expect(rateFor(s, '2026-10', 'USD', 'DOP', '2026-10-01')).toEqual({ rate: 58, source: 'month', monthKey: '2026-10', date: '2026-10-01' });
     expect(rateFor(s, '2026-10', 'USD', 'DOP', '2026-10-04')).toEqual({ rate: 58, source: 'month', monthKey: '2026-10', date: '2026-10-01' });
-    // El mismo día en que se escribe ya vale la nueva.
+    // The new one already applies on the very day it is typed.
     expect(rateFor(s, '2026-10', 'USD', 'DOP', '2026-10-05')).toEqual({ rate: 60, source: 'month', monthKey: '2026-10', date: '2026-10-05' });
     expect(rateFor(s, '2026-10', 'USD', 'DOP', '2026-10-31').rate).toBe(60);
     expect(rateFor(s, '2026-10', 'USD', 'DOP')).toEqual({ rate: 60, source: 'month', monthKey: '2026-10', date: '2026-10-05' });
   });
 
-  it('vale en los dos sentidos, esté escrita en el que esté', () => {
+  it('holds in both directions, whichever one it is typed in', () => {
     const s = twoRates();
     expect(rateFor(s, '2026-10', 'DOP', 'USD', '2026-10-04').rate).toBeCloseTo(1 / 58, 14);
     expect(rateFor(s, '2026-10', 'DOP', 'USD').rate).toBeCloseTo(1 / 60, 14);
-    // Escrita al revés: 1 DOP = 0.016 USD desde el día 8 → 1 USD = 62.5 DOP.
-    // (Un estado no se muta después de calcular con él: las tasas se memorizan por objeto.)
+    // Typed in reverse: 1 DOP = 0.016 USD from the 8th → 1 USD = 62.5 DOP.
+    // (A state is not mutated after calculating with it: rates are memoized per object.)
     const t = twoRates();
     t.months['2026-10']!.rates.push({ from: 'DOP', to: 'USD', rate: 0.016, date: '2026-10-08' });
     expect(rateFor(t, '2026-10', 'USD', 'DOP', '2026-10-07').rate).toBe(60);
@@ -210,96 +210,96 @@ describe('tasas con fecha: cada fila se convierte con la vigente en SU fecha', (
     expect(rateFor(t, '2026-10', 'DOP', 'USD', '2026-10-08').rate).toBe(0.016);
   });
 
-  it('escribir una tasa nueva no cambia lo convertido en las transacciones anteriores', () => {
+  it('typing a new rate does not change what was converted in earlier transactions', () => {
     const s = twoRates();
     s.months['2026-10']!.tx.push(usdTx(s, 'early', '2026-10-02', 10), usdTx(s, 'late', '2026-10-06', 10));
-    // 10 USD el día 2 a 58 = 580; 10 USD el día 6 a 60 = 600.
+    // 10 USD on the 2nd at 58 = 580; 10 USD on the 6th at 60 = 600.
     const before = monthCalc(s, '2026-10');
     expect(before.varSpent).toBeCloseTo(10845 + 580 + 600, 8);
     const drBefore = balances(s, '2026-10').accounts.find((a) => a.account.id === 'dr')!.balance;
     expect(drBefore).toBeCloseTo(220641.93 - 580 - 600, 6);
 
-    // Hoy (día 8) se escribe 62: las dos transacciones siguen valiendo lo mismo, en el mes y en el saldo.
+    // Today (the 8th) 62 is typed: both transactions are still worth the same, in the month and in the balance.
     const later: AppState = structuredClone(s);
     later.months['2026-10']!.rates.push({ from: 'USD', to: 'DOP', rate: 62, date: '2026-10-08' });
     const after = monthCalc(later, '2026-10');
     expect(after.varSpent).toBeCloseTo(10845 + 580 + 600, 8);
     expect(balances(later, '2026-10').accounts.find((a) => a.account.id === 'dr')!.balance).toBeCloseTo(drBefore, 8);
-    // Lo que es del mes entero sí sigue a la última tasa: Claude (106 USD, fijo pagado) pasa de 6,360 a 6,572.
+    // What belongs to the whole month does follow the last rate: Claude (106 USD, paid fixed expense) goes from 6,360 to 6,572.
     expect(before.fixedPaid).toBeCloseTo(32076.15 + 106 * 60, 6);
     expect(after.fixedPaid).toBeCloseTo(32076.15 + 106 * 62, 6);
     expect(after.rate!.rate).toBe(62);
-    // Y una transacción de ese mismo día ya va con la nueva.
+    // And a transaction from that same day already uses the new one.
     later.months['2026-10']!.tx.push(usdTx(later, 'today', '2026-10-08', 10));
     expect(monthCalc(structuredClone(later), '2026-10').varSpent).toBeCloseTo(10845 + 580 + 600 + 620, 8);
   });
 
-  it('ingresos y aportes también van con la tasa de su fecha', () => {
+  it('incomes and contributions also use the rate of their date', () => {
     const s = twoRates();
-    // Sueldo del día 1 a 58; un pago de 100 USD el día 6 a 60.
+    // Salary on the 1st at 58; a 100 USD payment on the 6th at 60.
     s.incomes.push({ id: 'late', date: '2026-10-06', desc: 'Gig', accountId: 'dr', amount: 100, cur: 'USD', budget: false });
     expect(monthCalc(s, '2026-10').income).toBeCloseTo(5800 * 58 + 100 * 60, 8);
-    // A la cuenta en DOP le entran 6,000.
+    // 6,000 go into the DOP account.
     expect(balances(s, '2026-10').accounts.find((a) => a.account.id === 'dr')!.balance).toBeCloseTo(220641.93 + 6000, 6);
-    // Aportes del día 3 (3,500 USD) a 58; uno de 5,800 DOP el día 3 son 100 USD y el día 6 serían 96.67.
+    // Contributions on the 3rd (3,500 USD) at 58; one of 5,800 DOP on the 3rd is 100 USD and on the 6th it would be 96.67.
     expect(monthCalc(s, '2026-10').saved).toBeCloseTo(3500 * 58, 8);
     s.contribs.push({ id: 'dop', goalId: 'emergency', date: '2026-10-03', amount: 5800, cur: 'DOP' });
     expect(goalsProgress(structuredClone(s)).find((g) => g.id === 'emergency')!.saved).toBeCloseTo(1200 + 100, 8);
     expect(convertOn(s, '2026-10-06', 5800, 'DOP', 'USD')).toBeCloseTo(5800 / 60, 10);
   });
 
-  it('cruza los meses: la última escrita sigue vigente hasta que se escribe otra', () => {
+  it('crosses months: the last typed one stays in effect until another is typed', () => {
     const s = seedState();
     s.months['2026-10']!.rates = [{ from: 'USD', to: 'DOP', rate: 60, date: '2026-10-05' }];
     s.months['2026-08']!.rates = [{ from: 'USD', to: 'DOP', rate: 57, date: '2026-08-10' }];
-    // Antes del 10 de agosto no hay ninguna vigente: los envíos de agosto.
+    // Before August 10 none is in effect: August's transfers.
     const early = rateFor(s, '2026-08', 'USD', 'DOP', '2026-08-05');
     expect(early).toEqual({ rate: (1500 * 58.4 + 300 * 57.1) / 1800, source: 'transfers', monthKey: '2026-08', date: null });
     expect(rateFor(s, '2026-08', 'USD', 'DOP', '2026-08-10')).toEqual({ rate: 57, source: 'month', monthKey: '2026-08', date: '2026-08-10' });
-    // Septiembre no escribió ninguna: vale la de agosto (y no sus envíos), y dice de cuándo es.
+    // September typed none: August's applies (and not its own transfers), and it says when it is from.
     expect(rateFor(s, '2026-09', 'USD', 'DOP')).toEqual({ rate: 57, source: 'previous', monthKey: '2026-08', date: '2026-08-10' });
     expect(rateFor(s, '2026-09', 'USD', 'DOP', '2026-09-15').rate).toBe(57);
-    // Octubre, hasta el día 4 inclusive, también; desde el 5, la suya.
+    // October too, up to and including the 4th; from the 5th, its own.
     expect(rateFor(s, '2026-10', 'USD', 'DOP', '2026-10-04')).toEqual({ rate: 57, source: 'previous', monthKey: '2026-08', date: '2026-08-10' });
     expect(rateFor(s, '2026-10', 'USD', 'DOP', '2026-10-05').rate).toBe(60);
-    // Una transacción del 2 de octubre en USD: 10 × 57.
+    // A transaction from October 2 in USD: 10 × 57.
     s.months['2026-10']!.tx.push(usdTx(s, 'oct-2', '2026-10-02', 10));
     expect(monthCalc(structuredClone(s), '2026-10').varSpent).toBeCloseTo(10845 + 570, 8);
-    // Un mes sin registrar (un ingreso de noviembre): la última escrita.
+    // An unrecorded month (a November income): the last typed one.
     expect(rateFor(s, '2026-11', 'USD', 'DOP', '2026-11-03')).toEqual({ rate: 60, source: 'previous', monthKey: '2026-10', date: '2026-10-05' });
-    // El saldo de agosto se sigue viendo con la última de agosto, no con la de octubre.
+    // August's balance is still shown with August's last one, not October's.
     expect(rateFor(s, '2026-08', 'USD', 'DOP').rate).toBe(57);
   });
 
-  it('sin ninguna escrita vigente en esa fecha: envíos del mes, cruce, mes anterior y valor de respaldo', () => {
+  it('with no typed rate in effect on that date: transfers of the month, crossed rate, previous month and default value', () => {
     const s = seedState();
-    // La única tasa de octubre es del día 5: el día 2 no hay ninguna vigente y valen los envíos del mes (58.76).
+    // October's only rate is from the 5th: on the 2nd none is in effect and the month's transfers apply (58.76).
     s.months['2026-10']!.rates = [{ from: 'USD', to: 'DOP', rate: 60, date: '2026-10-05' }];
     expect(rateFor(s, '2026-10', 'USD', 'DOP', '2026-10-02')).toEqual({ rate: 58.76, source: 'transfers', monthKey: '2026-10', date: null });
-    // Sin envíos en octubre: los del mes anterior.
+    // No transfers in October: those of the previous month.
     s.months['2026-10']!.transfers = [];
     const sep = (1500 * 58.55 + 800 * 58.62) / 2300;
     expect(rateFor(structuredClone(s), '2026-10', 'USD', 'DOP', '2026-10-02')).toEqual({ rate: sep, source: 'previous', monthKey: '2026-09', date: null });
-    // Sin nada antes: el valor de respaldo.
+    // Nothing before: the default value.
     expect(rateFor(s, '2026-07', 'USD', 'DOP', '2026-07-15')).toEqual({ rate: 58.76, source: 'default', monthKey: null, date: null });
 
-    // Cruce: USD→DOP 60 desde el día 5 y USD→TRY 40 desde el día 7.
+    // Crossed rate: USD→DOP 60 from the 5th and USD→TRY 40 from the 7th.
     const t = seedState();
     t.months['2026-10']!.rates = [
       { from: 'USD', to: 'DOP', rate: 60, date: '2026-10-05' },
       { from: 'USD', to: 'TRY', rate: 40, date: '2026-10-07' },
     ];
     expect(rateFor(t, '2026-10', 'TRY', 'DOP', '2026-10-07')).toEqual({ rate: 1.5, source: 'cross', monthKey: '2026-10', date: null });
-    // El día 6 la de TRY todavía no vale y nadie tiene otra: respaldo (58.76 ÷ 42).
+    // On the 6th the TRY one does not apply yet and there is no other: default (58.76 ÷ 42).
     expect(rateFor(t, '2026-10', 'TRY', 'DOP', '2026-10-06')).toEqual({ rate: 58.76 / 42, source: 'default', monthKey: null, date: null });
-    // El día 7 un tramo escrito (USD→TRY) y el otro también; el día 3 USD→DOP sale de los envíos (58.76) y TRY no tiene nada.
+    // On the 7th one leg is typed (USD→TRY) and so is the other; on the 3rd USD→DOP comes from the transfers (58.76) and TRY has nothing.
     expect(rateFor(t, '2026-10', 'USD', 'DOP', '2026-10-03').source).toBe('transfers');
-    // Un tramo escrito y el otro de los envíos del mes: TRY→USD escrita (1/40) × USD→DOP de los envíos (58.76).
+    // One leg typed and the other from the month's transfers: typed TRY→USD (1/40) × USD→DOP from the transfers (58.76).
     t.months['2026-10']!.rates = [{ from: 'USD', to: 'TRY', rate: 40, date: '2026-10-01' }];
     expect(rateFor(structuredClone(t), '2026-10', 'TRY', 'DOP', '2026-10-03')).toEqual({ rate: expect.closeTo(58.76 / 40, 10), source: 'cross', monthKey: '2026-10', date: null });
   });
 
-  it('dos tasas del mismo par y la misma fecha: vale la última de la lista', () => {
+  it('two rates for the same pair and the same date: the last one in the list applies', () => {
     const s = seedState();
     s.months['2026-10']!.rates = [
       { from: 'USD', to: 'DOP', rate: 58, date: '2026-10-01' },
@@ -309,8 +309,8 @@ describe('tasas con fecha: cada fila se convierte con la vigente en SU fecha', (
   });
 });
 
-describe('registro del presupuesto', () => {
-  it('budgetsFromLog suma por cuenta; lo que suma 0 no aparece', () => {
+describe('budget log', () => {
+  it('budgetsFromLog adds up per account; what adds up to 0 does not appear', () => {
     expect(budgetsFromLog([])).toEqual({});
     expect(
       budgetsFromLog([
@@ -324,9 +324,9 @@ describe('registro del presupuesto', () => {
     expect(seedState().months['2026-10']!.budgets).toEqual({ dr: 70000 });
   });
 
-  it('el presupuesto del mes es la suma del registro, con ajustes negativos y partes en otra moneda', () => {
+  it('the month budget is the sum of the log, with negative adjustments and parts in another currency', () => {
     const s = seedState();
-    // −100 USD en la US account el día 7: 70,000 − 100 × 58.76 = 64,124.
+    // −100 USD in the US account on the 7th: 70,000 − 100 × 58.76 = 64,124.
     s.months['2026-10']!.budgetLog.push({ id: 'cut', date: '2026-10-07', accountId: 'us', amount: -100, kind: 'adjust', note: 'Less' });
     const c = monthCalc(s, '2026-10');
     expect(c.budget).toBeCloseTo(64124, 8);
@@ -335,11 +335,11 @@ describe('registro del presupuesto', () => {
       ['dr', 70000, 70000, 0],
     ]);
     expect(c.avail).toBeCloseTo(64124 - 49149.71, 6);
-    // calc lee el registro, no Month.budgets (que aquí quedó sin recalcular).
+    // calc reads the log, not Month.budgets (which was not recalculated here).
     expect(s.months['2026-10']!.budgets).toEqual({ dr: 70000 });
   });
 
-  it('budgetHistory: el registro en orden de fecha con el total acumulado', () => {
+  it('budgetHistory: the log in date order with the running total', () => {
     const s = seedState();
     expect(budgetHistory(s, '2026-10').map((h) => [h.date, h.kind, h.account.id, h.amount, h.note, h.inMain, h.total])).toEqual([
       ['2026-10-01', 'initial', 'dr', 65000, '', 65000, 65000],
@@ -351,12 +351,12 @@ describe('registro del presupuesto', () => {
   });
 });
 
-describe('ingresos que suben el presupuesto (Income.budget)', () => {
-  it('en la moneda de la cuenta: sube el presupuesto del mes de su fecha y solo ese', () => {
+describe('incomes that raise the budget (Income.budget)', () => {
+  it('in the currency of the account: raises the budget of the month of its date and only that one', () => {
     const s = seedState();
     s.incomes.push(
       { id: 'bonus', date: '2026-10-04', desc: 'Bonus', accountId: 'dr', amount: 3000, cur: 'DOP', budget: true },
-      // Sin marcar no sube nada; marcado pero de septiembre, sube septiembre.
+      // Unchecked it raises nothing; checked but from September, it raises September.
       { id: 'plain', date: '2026-10-04', desc: 'Gift', accountId: 'dr', amount: 999, cur: 'DOP', budget: false },
       { id: 'sep', date: '2026-09-10', desc: 'Old bonus', accountId: 'dr', amount: 1000, cur: 'DOP', budget: true },
     );
@@ -367,19 +367,19 @@ describe('ingresos que suben el presupuesto (Income.budget)', () => {
     expect(f2(c.budgetSecond!)).toBe('1,242.34');
     expect(monthCalc(s, '2026-09').budget).toBe(71000);
     expect(monthCalc(s, '2026-08').budget).toBe(70000);
-    // Sigue siendo un ingreso: entra a la cuenta y cuenta en el ingreso del mes.
+    // It is still an income: it goes into the account and counts in the month's income.
     expect(c.income).toBeCloseTo(5800 * 58.76 + 3999, 8);
-    // Month.budgets es solo el registro.
+    // Month.budgets is only the log.
     expect(s.months['2026-10']!.budgets).toEqual({ dr: 70000 });
   });
 
-  it('en otra moneda: entra a la parte de su cuenta convertido con la tasa de su fecha', () => {
+  it('in another currency: goes into the part of its account converted with the rate of its date', () => {
     const s = twoRates();
     s.incomes.push(
-      // 100 USD a la cuenta en DOP el día 2 (a 58) y el día 6 (a 60): 5,800 y 6,000 DOP.
+      // 100 USD to the DOP account on the 2nd (at 58) and on the 6th (at 60): 5,800 and 6,000 DOP.
       { id: 'a', date: '2026-10-02', desc: 'Gig A', accountId: 'dr', amount: 100, cur: 'USD', budget: true },
       { id: 'b', date: '2026-10-06', desc: 'Gig B', accountId: 'dr', amount: 100, cur: 'USD', budget: true },
-      // 50 USD a la cuenta en USD: 50 USD en su parte, 3,000 DOP con la última tasa del mes.
+      // 50 USD to the USD account: 50 USD in its part, 3,000 DOP with the last rate of the month.
       { id: 'c', date: '2026-10-03', desc: 'Refund', accountId: 'us', amount: 50, cur: 'USD', budget: true },
     );
     const c = monthCalc(s, '2026-10');
@@ -399,7 +399,7 @@ describe('ingresos que suben el presupuesto (Income.budget)', () => {
     ]);
   });
 
-  it('con la misma fecha van primero los movimientos del registro; lo de una cuenta que no existe no cuenta', () => {
+  it('on the same date the log movements go first; anything from an account that does not exist does not count', () => {
     const s = seedState();
     s.incomes.push(
       { id: 'same-day', date: '2026-10-05', desc: '', accountId: 'dr', amount: 10, cur: 'DOP', budget: true },
@@ -415,11 +415,11 @@ describe('ingresos que suben el presupuesto (Income.budget)', () => {
   });
 });
 
-describe('envíos que mueven presupuesto (Transfer.budget)', () => {
-  it('lo que sale de la parte de origen entra en la de destino: con la tasa del mes, el total no cambia', () => {
+describe('transfers that move budget (Transfer.budget)', () => {
+  it('what leaves the origin part goes into the destination one: at the month rate, the total does not change', () => {
     const s = seedState();
-    // El caso de Frank: el sueldo, 2,200 USD, presupuestado en la US account; 1,500 USD de él van a la DR account
-    // a 58.76 (la tasa del mes) = 88,140 DOP.
+    // Frank's case: the salary, 2,200 USD, budgeted in the US account; 1,500 USD of it go to the DR account
+    // at 58.76 (the month rate) = 88,140 DOP.
     s.months['2026-10']!.budgetLog = [{ id: 'salary', date: '2026-10-01', accountId: 'us', amount: 2200, kind: 'initial', note: '' }];
     const before = monthCalc(s, '2026-10').budget;
     expect(before).toBeCloseTo(2200 * 58.76, 8);
@@ -430,11 +430,11 @@ describe('envíos que mueven presupuesto (Transfer.budget)', () => {
       ['dr', 88140, 0, 0, 88140],
     ]);
     expect(c.budget).toBeCloseTo(before, 8);
-    // Solo su mes: los envíos de septiembre no están marcados.
+    // Only its month: September's transfers are not checked.
     expect(monthCalc(s, '2026-09').budget).toBe(70000);
   });
 
-  it('la parte de origen puede quedar en negativo, y sale aunque la cuenta no tenga registro (u esté oculta)', () => {
+  it('the origin part can go negative, and it shows even if the account has no log (or is hidden)', () => {
     const plain = seedState();
     const s = seedState();
     s.months['2026-10']!.transfers[0]!.budget = true;
@@ -443,13 +443,13 @@ describe('envíos que mueven presupuesto (Transfer.budget)', () => {
       ['us', -1500, 0, -1500, -1500 * 58.76],
       ['dr', 158140, 70000, 88140, 158140],
     ]);
-    // Con la tasa del mes no crea presupuesto: lo de antes, y lo mismo disponible.
+    // At the month rate it creates no budget: the same as before, and the same available.
     expect(c.budget).toBeCloseTo(70000, 8);
     expect(c.avail).toBeCloseTo(monthCalc(plain, '2026-10').avail, 8);
-    // La casilla no mueve dinero: los saldos son los mismos que sin ella, y Month.budgets sigue siendo solo el registro.
+    // The checkbox moves no money: the balances are the same as without it, and Month.budgets is still only the log.
     expect(balances(s, '2026-10')).toEqual(balances(plain, '2026-10'));
     expect(s.months['2026-10']!.budgets).toEqual({ dr: 70000 });
-    // Oculta y sin registro, la cuenta de origen sigue saliendo: le quitaron presupuesto.
+    // Hidden and with no log, the origin account still shows: budget was taken from it.
     s.accounts.find((a) => a.id === 'us')!.hidden = true;
     expect(monthCalc(s, '2026-10').budgetParts.map((p) => [p.account.id, p.amount])).toEqual([
       ['us', -1500],
@@ -457,17 +457,17 @@ describe('envíos que mueven presupuesto (Transfer.budget)', () => {
     ]);
   });
 
-  it('entre otras monedas: cada lado en la moneda de su cuenta, y cuenta en el mes de su hoja', () => {
+  it('between other currencies: each side in the currency of its account, and it counts in the month of its sheet', () => {
     const s = seedState();
     s.accounts.push({ id: 'tr', name: 'TR account', currency: 'TRY', opening: 0, hidden: false, sort: 2 });
     const october = s.months['2026-10']!;
     october.rates.push({ from: 'TRY', to: 'DOP', rate: 1.5, date: '2026-10-01' });
     october.transfers.push(
-      // 100 USD → 4,000 TRY. Su fecha es de septiembre, pero es de la hoja de octubre: mueve octubre.
+      // 100 USD → 4,000 TRY. Its date is in September, but it belongs to the October sheet: it moves October.
       { id: 'to-tr', monthKey: '2026-10', date: '2026-09-30', via: 'Wise', fromAccountId: 'us', toAccountId: 'tr', amount: 100, rate: 40, budget: true, fee: 0 },
-      // 5,876 DOP → 100 USD: baja la DR account en 5,876 DOP y sube la US account en 100 USD.
+      // 5,876 DOP → 100 USD: lowers the DR account by 5,876 DOP and raises the US account by 100 USD.
       { id: 'to-us', monthKey: '2026-10', date: '2026-10-06', via: 'Bank', fromAccountId: 'dr', toAccountId: 'us', amount: 5876, rate: 1 / 58.76, budget: true, fee: 0 },
-      // Sin marcar no cuenta; hacia una cuenta que ya no existe, solo el lado que sí existe.
+      // Unchecked it does not count; to an account that no longer exists, only the side that does exist.
       { id: 'plain', monthKey: '2026-10', date: '2026-10-06', via: 'Bank', fromAccountId: 'us', toAccountId: 'tr', amount: 10, rate: 40, budget: false, fee: 0 },
       { id: 'ghost', monthKey: '2026-10', date: '2026-10-06', via: 'Bank', fromAccountId: 'us', toAccountId: 'gone', amount: 10, rate: 40, budget: true, fee: 0 },
     );
@@ -482,7 +482,7 @@ describe('envíos que mueven presupuesto (Transfer.budget)', () => {
     expect(c.budget).toBeCloseTo(-587.6 + 64124 + 6000, 6);
     expect(monthCalc(s, '2026-09').budget).toBe(70000);
 
-    // Cada envío en dos filas: lo que sale de la cuenta de origen y lo que entra a la de destino.
+    // Each transfer in two rows: what leaves the origin account and what goes into the destination one.
     const history = budgetHistory(s, '2026-10');
     expect(
       history.map((h) => [h.date, h.kind, h.id, h.side, h.account.id, Math.round(h.amount * 100) / 100, h.note, Math.round(h.total * 100) / 100]),
@@ -498,13 +498,13 @@ describe('envíos que mueven presupuesto (Transfer.budget)', () => {
     expect(history.at(-1)!.total).toBeCloseTo(c.budget, 8);
   });
 
-  it('con la misma fecha: el registro, después los ingresos y después los envíos', () => {
+  it('on the same date: the log, then the incomes and then the transfers', () => {
     const s = seedState();
     s.months['2026-10']!.transfers.push({
       id: 'same-day', monthKey: '2026-10', date: '2026-10-05', via: 'Cash', fromAccountId: 'us', toAccountId: 'dr', amount: 1, rate: 60, budget: true, fee: 0,
     });
     s.incomes.push({ id: 'gift', date: '2026-10-05', desc: 'Gift', accountId: 'dr', amount: 10, cur: 'DOP', budget: true });
-    // −1 USD (58.76 DOP) y +60 DOP: un envío a una tasa mejor que la del mes deja la diferencia.
+    // −1 USD (58.76 DOP) and +60 DOP: a transfer at a better rate than the month's leaves the difference.
     expect(budgetHistory(s, '2026-10').map((h) => [h.kind, h.id, Math.round(h.total * 100) / 100])).toEqual([
       ['initial', 'seed-bg-2026-10-1', 65000],
       ['adjust', 'seed-bg-2026-10-2', 70000],
@@ -514,13 +514,13 @@ describe('envíos que mueven presupuesto (Transfer.budget)', () => {
     ]);
   });
 
-  it('budgetRaised: lo que ingresos y envíos ponen encima del registro de una cuenta, en su moneda (el neto de los envíos)', () => {
+  it('budgetRaised: what incomes and transfers put on top of the log of an account, in its currency (the net of the transfers)', () => {
     const s = seedState();
     s.months['2026-10']!.transfers[0]!.budget = true;
     s.incomes.push({ id: 'gig', date: '2026-10-03', desc: 'Gig', accountId: 'dr', amount: 100, cur: 'USD', budget: true });
-    // 88,140 del envío + 100 USD a 58.76.
+    // 88,140 from the transfer + 100 USD at 58.76.
     expect(budgetRaised(s, '2026-10', 'dr')).toBeCloseTo(88140 + 5876, 8);
-    // De la cuenta de origen sale lo enviado.
+    // The amount transferred leaves the origin account.
     expect(budgetRaised(s, '2026-10', 'us')).toBe(-1500);
     expect(budgetRaised(s, '2026-09', 'dr')).toBe(0);
     expect(budgetRaised(s, '2026-10', 'gone')).toBe(0);
@@ -531,27 +531,27 @@ describe('envíos que mueven presupuesto (Transfer.budget)', () => {
   });
 });
 
-describe('comisión de un envío (Transfer.fee)', () => {
-  /** Los datos de ejemplo con 2.99 USD de comisión en el envío de octubre (1,500 USD a la DR account, el día 2). */
+describe('fee of a transfer (Transfer.fee)', () => {
+  /** The sample data with a 2.99 USD fee on the October transfer (1,500 USD to the DR account, on the 2nd). */
   const withFee = (fee = 2.99) => {
     const s = seedState();
     s.months['2026-10']!.transfers[0]!.fee = fee;
     return s;
   };
 
-  it('le resta a la cuenta de origen, en su moneda y sin convertir; a la de destino no le toca', () => {
+  it('subtracts from the origin account, in its currency and unconverted; the destination one is not touched', () => {
     const plain = balances(seedState(), '2026-10').accounts;
     const after = balances(withFee(), '2026-10').accounts;
     expect(after[0]!.balance).toBeCloseTo(plain[0]!.balance - 2.99, 10);
     expect(after[1]!.balance).toBe(plain[1]!.balance);
-    // Y sigue restando en los meses de después, no en los de antes.
+    // And it keeps subtracting in later months, not in earlier ones.
     expect(balances(withFee(), '2026-09').accounts[0]!.balance).toBe(balances(seedState(), '2026-09').accounts[0]!.balance);
   });
 
-  it('cuenta como una transacción del mes: en lo usado, en el número, en "Other" y en lo disponible', () => {
+  it('counts as a transaction of the month: in used, in the count, in "Other" and in available', () => {
     const plain = monthCalc(seedState(), '2026-10');
     const c = monthCalc(withFee(), '2026-10');
-    // Con la tasa vigente el día del envío (58.76).
+    // With the rate in effect on the day of the transfer (58.76).
     const fee = 2.99 * 58.76;
     expect(c.varSpent - plain.varSpent).toBeCloseTo(fee, 10);
     expect(c.used - plain.used).toBeCloseTo(fee, 10);
@@ -559,21 +559,21 @@ describe('comisión de un envío (Transfer.fee)', () => {
     expect(c.txCount).toBe(plain.txCount + 1);
     expect(c.categories.find((cat) => cat.name === FEE_CATEGORY)!.value).toBeCloseTo(fee, 10);
     expect(FEE_CATEGORY).toBe('Other');
-    // No toca el presupuesto, ni siquiera si el envío lo mueve: solo se mueve `amount`.
+    // It does not touch the budget, not even if the transfer moves it: only `amount` is moved.
     expect(c.budget).toBe(plain.budget);
     const moving = withFee();
     moving.months['2026-10']!.transfers[0]!.budget = true;
     expect(monthCalc(moving, '2026-10').budgetParts.find((p) => p.account.id === 'us')!.fromTransfers).toBe(-1500);
   });
 
-  it('transferFees: una fila por envío con comisión, en la moneda de su cuenta de origen y con su fecha', () => {
+  it('transferFees: one row per transfer with a fee, in the currency of its origin account and with its date', () => {
     const s = withFee();
     s.accounts.push({ id: 'tr', name: 'TR account', currency: 'TRY', opening: 0, hidden: false, sort: 2 });
     const october = s.months['2026-10']!;
     october.rates.push({ from: 'TRY', to: 'DOP', rate: 1.5, date: '2026-10-01' });
     october.transfers.push(
       { id: 'from-tr', monthKey: '2026-10', date: '2026-10-08', via: 'Wise', fromAccountId: 'tr', toAccountId: 'dr', amount: 1000, rate: 1.5, budget: false, fee: 20 },
-      // Sin comisión, o desde una cuenta que ya no existe (no se sabe en qué moneda era): no salen.
+      // With no fee, or from an account that no longer exists (its currency is unknown): they do not show.
       { id: 'free', monthKey: '2026-10', date: '2026-10-08', via: 'Cash', fromAccountId: 'us', toAccountId: 'dr', amount: 1, rate: 58, budget: false, fee: 0 },
       { id: 'ghost', monthKey: '2026-10', date: '2026-10-08', via: 'Cash', fromAccountId: 'gone', toAccountId: 'dr', amount: 1, rate: 58, budget: false, fee: 5 },
     );
@@ -581,18 +581,18 @@ describe('comisión de un envío (Transfer.fee)', () => {
       ['seed-tr-2026-10-1', '2026-10-02', 'Remitly', 'us', 2.99, 'USD'],
       ['from-tr', '2026-10-08', 'Wise', 'tr', 20, 'TRY'],
     ]);
-    // La de liras, a la tasa de su fecha: 20 × 1.5 DOP.
+    // The one in lira, at the rate of its date: 20 × 1.5 DOP.
     expect(monthCalc(s, '2026-10').varSpent - monthCalc(withFee(), '2026-10').varSpent).toBeCloseTo(30, 10);
     expect(transferFees(s, '2026-09')).toEqual([]);
     expect(transferFees(s, '2030-01')).toEqual([]);
   });
 });
 
-describe('sobrante del mes anterior (leftoverFor)', () => {
-  // Septiembre: presupuesto 70,000; usado = fijos en DOP 35,872.66 + Claude 106 USD × (134,721 ÷ 2,300) + transacciones 24,555.
+describe('leftover from the previous month (leftoverFor)', () => {
+  // September: budget 70,000; used = fixed expenses in DOP 35,872.66 + Claude 106 USD × (134,721 ÷ 2,300) + transactions 24,555.
   const SEP_LEFT = 70000 - (35872.66 + (106 * 134721) / 2300 + 24555);
 
-  it('es el disponible (presupuesto − usado) del mes registrado anterior, en la moneda principal', () => {
+  it('is the available amount (budget − used) of the previous recorded month, in the main currency', () => {
     const s = seedState();
     expect(monthCalc(s, '2026-09').avail).toBeCloseTo(SEP_LEFT, 6);
     expect(f2(SEP_LEFT)).toBe('3,363.46');
@@ -602,46 +602,46 @@ describe('sobrante del mes anterior (leftoverFor)', () => {
     expect(left.added).toBe(false);
   });
 
-  it('sin mes anterior no hay sobrante; el anterior es el registrado más cercano, aunque falten meses', () => {
+  it('with no previous month there is no leftover; the previous one is the closest recorded month, even if months are missing', () => {
     const s = seedState();
     expect(leftoverFor(s, '2026-08')).toEqual({ previousKey: null, leftover: null, added: false });
-    // Diciembre no existe (ni noviembre): su anterior es octubre, con 20,850.29 disponibles.
+    // December does not exist (nor November): its previous month is October, with 20,850.29 available.
     const dec = leftoverFor(s, '2026-12');
     expect(dec.previousKey).toBe('2026-10');
     expect(f2(dec.leftover!)).toBe('20,850.29');
     expect(dec.added).toBe(false);
   });
 
-  it('`added` dice si el mes ya tiene su movimiento de sobrante; uno negativo resta', () => {
+  it('`added` says whether the month already has its leftover movement; a negative one subtracts', () => {
     const s = seedState();
     s.months['2026-10']!.budgetLog.push({ id: 'left', date: '2026-10-02', accountId: 'dr', amount: SEP_LEFT, kind: 'leftover', note: '' });
     expect(leftoverFor(s, '2026-10').added).toBe(true);
     expect(monthCalc(s, '2026-10').budget).toBeCloseTo(70000 + SEP_LEFT, 6);
     expect(budgetHistory(s, '2026-10').map((h) => h.kind)).toEqual(['initial', 'leftover', 'adjust']);
 
-    // Septiembre con 60,000 de presupuesto se pasó: sobrante negativo.
+    // September with a 60,000 budget went over: negative leftover.
     const over = seedState();
     setBudgets(over.months['2026-09']!, { dr: 60000 });
     expect(leftoverFor(over, '2026-10').leftover).toBeCloseTo(SEP_LEFT - 10000, 6);
     expect(leftoverFor(over, '2026-10').leftover).toBeLessThan(0);
   });
 
-  it('el sobrante incluye lo que los ingresos le subieron al presupuesto de ese mes', () => {
+  it('the leftover includes what incomes added to the budget of that month', () => {
     const s = seedState();
     s.incomes.push({ id: 'sep', date: '2026-09-10', desc: '', accountId: 'dr', amount: 1000, cur: 'DOP', budget: true });
     expect(leftoverFor(s, '2026-10').leftover).toBeCloseTo(SEP_LEFT + 1000, 6);
   });
 });
 
-describe('moneda "≈" de una meta (Goal.approxCur)', () => {
-  it('null = la moneda principal: savedApprox es savedMain', () => {
+describe('"≈" currency of a goal (Goal.approxCur)', () => {
+  it('null = the main currency: savedApprox is savedMain', () => {
     const turkey = goalsProgress(seedState()).find((g) => g.id === 'turkey')!;
     expect(turkey.approxCur).toBe('DOP');
     expect(turkey.savedApprox).toBeCloseTo(9000 * 58.76, 8);
     expect(turkey.savedApprox).toBe(turkey.savedMain);
   });
 
-  it('otra moneda: lo ahorrado se expresa en ella con la última tasa del mes en curso; savedMain no cambia', () => {
+  it('another currency: what is saved is expressed in it with the last rate of the current month; savedMain does not change', () => {
     const s = seedState();
     s.months['2026-10']!.rates.push({ from: 'USD', to: 'TRY', rate: 40, date: '2026-10-02' });
     s.goals.find((g) => g.id === 'turkey')!.approxCur = 'TRY';
@@ -652,7 +652,7 @@ describe('moneda "≈" de una meta (Goal.approxCur)', () => {
     expect(totalSaved(s)).toBeCloseTo(10650 * 58.76, 6);
   });
 
-  it('puede ser la moneda de la propia meta: la misma cifra', () => {
+  it('it can be the currency of the goal itself: the same figure', () => {
     const s = seedState();
     s.goals.find((g) => g.id === 'turkey')!.approxCur = 'USD';
     const turkey = goalsProgress(s).find((g) => g.id === 'turkey')!;
@@ -660,8 +660,8 @@ describe('moneda "≈" de una meta (Goal.approxCur)', () => {
   });
 });
 
-describe('fechas dentro del mes', () => {
-  it('firstDay, lastDay, inMonth y clampToMonth', () => {
+describe('dates within the month', () => {
+  it('firstDay, lastDay, inMonth and clampToMonth', () => {
     expect(firstDay('2026-10')).toBe('2026-10-01');
     expect([lastDay('2026-10'), lastDay('2026-02'), lastDay('2028-02'), lastDay('2026-12')]).toEqual(['2026-10-31', '2026-02-28', '2028-02-29', '2026-12-31']);
     expect([inMonth('2026-10-31', '2026-10'), inMonth('2026-11-01', '2026-10')]).toEqual([true, false]);
@@ -671,17 +671,17 @@ describe('fechas dentro del mes', () => {
   });
 });
 
-describe('balances: todo mueve los saldos', () => {
+describe('balances: everything moves the balances', () => {
   const s = seedState();
 
-  it('saldo = inicial + ingresos − gastos pagados desde la cuenta ± envíos', () => {
+  it('balance = opening + incomes − expenses paid from the account ± transfers', () => {
     const b = balances(s, '2026-10');
     const us = b.accounts.find((a) => a.account.id === 'us')!;
     const dr = b.accounts.find((a) => a.account.id === 'dr')!;
-    // US: 2,000 + 3 × 5,800 − envíos (1,800 + 2,300 + 1,500) − Claude 106 × 3 meses pagado
+    // US: 2,000 + 3 × 5,800 − transfers (1,800 + 2,300 + 1,500) − Claude 106 × 3 months paid
     expect(us.balance).toBeCloseTo(2000 + 17400 - 5600 - 318, 8);
-    // DR: 60,000 + lo recibido (104,730 + 134,721 + 88,140) − transacciones (27,850 + 24,555 + 10,845)
-    //     − fijos pagados en DOP (35,750.26 + 35,872.66 + 32,076.15)
+    // DR: 60,000 + received (104,730 + 134,721 + 88,140) − transactions (27,850 + 24,555 + 10,845)
+    //     − fixed expenses paid in DOP (35,750.26 + 35,872.66 + 32,076.15)
     expect(dr.balance).toBeCloseTo(60000 + 327591 - 63250 - 103699.07, 6);
     expect(f2(dr.balance)).toBe('220,641.93');
     expect(us.inMain).toBeCloseTo(13482 * 58.76, 6);
@@ -689,7 +689,7 @@ describe('balances: todo mueve los saldos', () => {
     expect(b.totalSecond).toBeCloseTo(13482 + 220641.93 / 58.76, 6);
   });
 
-  it('al final de un mes anterior solo cuenta lo de hasta ese mes, con sus tasas', () => {
+  it('at the end of an earlier month only what happened up to that month counts, with its rates', () => {
     const b = balances(s, '2026-08');
     const us = b.accounts.find((a) => a.account.id === 'us')!;
     const dr = b.accounts.find((a) => a.account.id === 'dr')!;
@@ -698,21 +698,21 @@ describe('balances: todo mueve los saldos', () => {
     expect(us.inMain).toBeCloseTo(us.balance * ((1500 * 58.4 + 300 * 57.1) / 1800), 6);
   });
 
-  it('un gasto fijo solo resta mientras está pagado', () => {
+  it('a fixed expense only subtracts while it is paid', () => {
     const t = seedState();
     const before = balances(t, '2026-10').accounts.find((a) => a.account.id === 'dr')!.balance;
     t.months['2026-10']!.fixed.find((f) => f.name === 'Netflix')!.paid = true;
     expect(balances(t, '2026-10').accounts.find((a) => a.account.id === 'dr')!.balance).toBeCloseTo(before - 1137.3, 8);
   });
 
-  it('un gasto en otra moneda resta de la cuenta convertido con la tasa de su mes', () => {
+  it('an expense in another currency subtracts from the account converted with the rate of its month', () => {
     const t = seedState();
     const before = balances(t, '2026-10').accounts.find((a) => a.account.id === 'dr')!.balance;
     t.months['2026-10']!.tx.push({ ...t.months['2026-10']!.tx[0]!, id: 'usd-from-dr', amount: 10, cur: 'USD', accountId: 'dr' });
     expect(balances(t, '2026-10').accounts.find((a) => a.account.id === 'dr')!.balance).toBeCloseTo(before - 587.6, 8);
   });
 
-  it('las cuentas ocultas no suman al total; un movimiento sin cuenta se ignora', () => {
+  it('hidden accounts do not add to the total; a movement with no account is ignored', () => {
     const t = seedState();
     const all = balances(t, '2026-10').totalMain;
     t.accounts.find((a) => a.id === 'us')!.hidden = true;
@@ -723,7 +723,7 @@ describe('balances: todo mueve los saldos', () => {
     expect(balances(t, '2026-10').totalMain).toBeCloseTo(b.totalMain, 8);
   });
 
-  it('openingFor: corregir un saldo es mover el saldo inicial lo que haga falta', () => {
+  it('openingFor: correcting a balance means moving the opening balance by whatever it takes', () => {
     const t = seedState();
     const opening = openingFor(t, 'dr', '2026-10', 200000);
     expect(opening).toBeCloseTo(60000 + (200000 - 220641.93), 6);
@@ -731,7 +731,7 @@ describe('balances: todo mueve los saldos', () => {
     expect(balances(t, '2026-10').accounts.find((a) => a.account.id === 'dr')!.balance).toBeCloseTo(200000, 6);
   });
 
-  it('defaultAccount: la elegida, o la primera visible en la moneda principal', () => {
+  it('defaultAccount: the chosen one, or the first visible one in the main currency', () => {
     const t = seedState();
     expect(defaultAccount(t)!.id).toBe('dr');
     t.defaultAccountId = null;
@@ -746,7 +746,7 @@ describe('balances: todo mueve los saldos', () => {
   });
 });
 
-describe('otra moneda principal', () => {
+describe('another main currency', () => {
   const tryState = (): AppState => {
     const s = seedState();
     s.mainCurrency = 'TRY';
@@ -758,7 +758,7 @@ describe('otra moneda principal', () => {
     return s;
   };
 
-  it('todo el mes se expresa en la moneda principal', () => {
+  it('the whole month is expressed in the main currency', () => {
     const c = monthCalc(tryState(), '2026-10');
     expect(c.main).toBe('TRY');
     expect(c.rate!.rate).toBe(40);
@@ -769,32 +769,32 @@ describe('otra moneda principal', () => {
   });
 });
 
-describe('ahorros', () => {
+describe('savings', () => {
   const s = seedState();
 
-  it('mes en curso = último mes abierto', () => {
+  it('current month = last open month', () => {
     expect(currentKey(s)).toBe('2026-10');
   });
 
-  it('Trip to Turkey: 15 meses × 3,000 = 45,000 USD', () => {
+  it('Trip to Turkey: 15 months × 3,000 = 45,000 USD', () => {
     const turkey = goalsProgress(s).find((g) => g.id === 'turkey')!;
     expect(turkey.cur).toBe('USD');
     expect(turkey.saved).toBe(9000);
     expect(turkey.savedMain).toBeCloseTo(9000 * 58.76, 8);
     expect(f0(turkey.target!.targetAmount)).toBe('45,000');
     expect(turkey.target!.pct).toBeCloseTo(20, 10);
-    // Octubre ya tiene aporte: quedan nov-2026..oct-2027 = 12 aportes de 3,000.
+    // October already has a contribution: nov-2026..oct-2027 are left = 12 contributions of 3,000.
     expect(turkey.target!.left).toBe(12);
     expect(turkey.target!.needPerMonth).toBe(3000);
   });
 
-  it('un aporte en otra moneda se convierte a la de la meta con la tasa de su mes', () => {
+  it('a contribution in another currency is converted to the currency of the goal with the rate of its month', () => {
     const t = seedState();
     t.contribs.push({ id: 'dop', goalId: 'emergency', date: '2026-10-08', amount: 5876, cur: 'DOP' });
     expect(goalsProgress(t).find((g) => g.id === 'emergency')!.saved).toBeCloseTo(1200 + 100, 8);
   });
 
-  it('una meta en otra moneda lleva lo ahorrado y el objetivo en la suya', () => {
+  it('a goal in another currency keeps what is saved and the target in its own', () => {
     const t = seedState();
     t.months['2026-10']!.rates.push({ from: 'USD', to: 'TRY', rate: 40, date: '2026-10-01' });
     t.goals.push({ id: 'tr', name: 'Istanbul flat', cur: 'TRY', monthly: 10000, start: '2026-10', end: '2027-09', approxCur: null, sort: 3 });
@@ -805,7 +805,7 @@ describe('ahorros', () => {
     expect(g.savedMain).toBeCloseTo(100 * 58.76, 6);
   });
 
-  it('metas de aportes variables no tienen objetivo', () => {
+  it('goals with variable contributions have no target', () => {
     const [emergency, personal] = goalsProgress(s);
     expect(emergency!.target).toBeNull();
     expect(emergency!.saved).toBe(1200);
@@ -813,7 +813,7 @@ describe('ahorros', () => {
     expect(personal!.saved).toBe(450);
   });
 
-  it('ingresos por mes y total ahorrado, en la moneda principal', () => {
+  it('incomes per month and total saved, in the main currency', () => {
     const rows = incomeRows(s);
     expect(rows.map((r) => r.key)).toEqual(['2026-08', '2026-09', '2026-10']);
     const augRate = (1500 * 58.4 + 300 * 57.1) / 1800;
@@ -827,8 +827,8 @@ describe('ahorros', () => {
   });
 });
 
-describe('ring y formato', () => {
-  it('ring: un segmento por valor, encadenados; negativos y no finitos no ocupan', () => {
+describe('ring and format', () => {
+  it('ring: one segment per value, chained; negative and non-finite ones take no space', () => {
     const circ = 2 * Math.PI * 64;
     const [a, b, c] = ring([50, -10, 50]);
     const len = (seg: { dash: string }) => +seg.dash.split(' ')[0]!;
@@ -838,7 +838,7 @@ describe('ring y formato', () => {
     expect(len(ring([0, Number.NaN])[0]!)).toBe(0);
   });
 
-  it('es-DO sin depender del locale del runtime', () => {
+  it('es-DO without depending on the runtime locale', () => {
     expect(f2(1234567.891)).toBe('1,234,567.89');
     expect(f2(-1234.5)).toBe('-1,234.50');
     expect(f2(-0.001)).toBe('0.00');
@@ -848,10 +848,10 @@ describe('ring y formato', () => {
   });
 });
 
-describe('sin segunda moneda', () => {
+describe('without a second currency', () => {
   const none: AppState = { ...seedState(), secondCurrency: null };
 
-  it('monthCalc y balances no dan cifras en la segunda; las de la principal no cambian', () => {
+  it('monthCalc and balances give no figures in the second currency; those in the main one do not change', () => {
     const c = monthCalc(none, '2026-10');
     const full = monthCalc(seedState(), '2026-10');
     expect(c).toMatchObject({ second: null, rate: null, usedSecond: null, budgetSecond: null });
@@ -862,7 +862,7 @@ describe('sin segunda moneda', () => {
     expect(b.totalMain).toBeCloseTo(balances(seedState(), '2026-10').totalMain, 8);
   });
 
-  it('convert y rateFor siguen cruzando por la principal; incomeRows no trae tasa', () => {
+  it('convert and rateFor still cross through the main currency; incomeRows carries no rate', () => {
     expect(convert(none, '2026-10', 100, 'USD', 'DOP')).toBeCloseTo(5876, 8);
     expect(incomeRows(none).every((r) => r.rate === null)).toBe(true);
   });

@@ -1,20 +1,20 @@
-// Maquinaria OOXML del exportador de Excel: estilos, registros del libro (textos, formatos, tablas), hojas y celdas.
-// Port de design_handoff/referencia/excel-export.js. La salida tiene que ser idéntica byte a byte a la del
-// script original (ver export.test.ts), así que el orden en que se registran los estilos y los textos
-// compartidos es parte del contrato: no reordenar ni "mejorar" el XML.
-// Aquí no hay textos que dependan del idioma: todos llegan desde export.ts, que los toma de un ExcelLocale.
+// OOXML machinery of the Excel exporter: styles, workbook registries (strings, formats, tables), sheets and cells.
+// Port of design_handoff/referencia/excel-export.js. The output has to be byte-for-byte identical to that of the
+// original script (see export.test.ts), so the order in which the styles and the shared strings are
+// registered is part of the contract: do not reorder or "improve" the XML.
+// No strings here depend on the language: they all come from export.ts, which takes them from an ExcelLocale.
 
 export const XML_DECL = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
 export const NS_MAIN = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main';
 export const NS_REL = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
 export const NS_PKG_REL = 'http://schemas.openxmlformats.org/package/2006/relationships';
 
-// ── Utilidades ───────────────────────────────────────────────────────────────
+// ── Utilities ────────────────────────────────────────────────────────────────
 
-/** Escapa texto para XML. No toca las comillas: quien lo ponga en un atributo las escapa aparte. */
+/** Escapes text for XML. It leaves quotes alone: whoever puts it in an attribute escapes them separately. */
 export function esc(s: string): string {
-  // XML 1.0 no admite caracteres de control (salvo tab, salto de línea y retorno) ni U+FFFE/U+FFFF: un texto
-  // pegado desde otra app que traiga uno dejaría el libro corrupto, así que se quitan.
+  // XML 1.0 does not allow control characters (except tab, line feed and carriage return) or U+FFFE/U+FFFF: text
+  // pasted from another app that carries one would leave the workbook corrupt, so they are removed.
   return String(s)
     .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]/g, '')
     .replace(/&/g, '&amp;')
@@ -22,7 +22,7 @@ export function esc(s: string): string {
     .replace(/>/g, '&gt;');
 }
 
-/** Índice de columna (0 = A) → letras: 0 → 'A', 26 → 'AA'. */
+/** Column index (0 = A) → letters: 0 → 'A', 26 → 'AA'. */
 export function colL(n: number): string {
   let s = '';
   n++;
@@ -34,7 +34,7 @@ export function colL(n: number): string {
   return s;
 }
 
-/** 'C10' → [2, 10]: columna desde 0, fila desde 1. */
+/** 'C10' → [2, 10]: column from 0, row from 1. */
 export function parse(ref: string): [col: number, row: number] {
   const m = /^([A-Z]+)(\d+)$/.exec(ref);
   if (!m) throw new Error(`Invalid cell reference: ${ref}`);
@@ -44,7 +44,7 @@ export function parse(ref: string): [col: number, row: number] {
   return [c - 1, +digits];
 }
 
-/** 'YYYY-MM-DD' → número de serie de fecha de Excel (días desde 1899-12-30); null si no hay fecha. */
+/** 'YYYY-MM-DD' → Excel date serial number (days since 1899-12-30); null if there is no date. */
 export function serialISO(d: string | null | undefined): number | null {
   if (!d) return null;
   const [y = NaN, m = NaN, dd = NaN] = String(d).split('-').map(Number);
@@ -52,14 +52,14 @@ export function serialISO(d: string | null | undefined): number | null {
   return (Date.UTC(y, m - 1, dd || 1) - Date.UTC(1899, 11, 30)) / 86400000;
 }
 
-/** Número, o null (celda vacía) si viene vacío, null o no es numérico. */
+/** Number, or null (empty cell) if it is empty, null or not numeric. */
 export function num(v: string | number | null | undefined): number | null {
   return v === '' || v === null || v === undefined || isNaN(+v) ? null : +v;
 }
 
-// ── Estilos ──────────────────────────────────────────────────────────────────
+// ── Styles ───────────────────────────────────────────────────────────────────
 
-// Paleta del diseño (RGB sin '#') y fuente monoespaciada de las cifras.
+// Palette of the design (RGB without '#') and the monospaced font of the figures.
 export const INK = '1D1F1C';
 export const MUTED = '6B6D66';
 export const SUB = '45473F';
@@ -74,17 +74,17 @@ export const DARK = '2B3A33';
 export const MONO = 'Consolas';
 
 export interface FontSpec {
-  /** Por defecto 'Segoe UI'. */
+  /** Defaults to 'Segoe UI'. */
   readonly name?: string;
-  /** Tamaño en puntos; por defecto 10. */
+  /** Size in points; defaults to 10. */
   readonly sz?: number;
-  /** Por defecto `INK`. */
+  /** Defaults to `INK`. */
   readonly color?: string;
   readonly b?: boolean;
   readonly i?: boolean;
 }
 
-/** Color de cada lado con borde fino; sin color, ese lado no lleva borde. */
+/** Color of each side with a thin border; with no color, that side has no border. */
 export interface BorderSpec {
   readonly l?: string;
   readonly r?: string;
@@ -94,26 +94,26 @@ export interface BorderSpec {
 
 export interface AlignSpec {
   readonly h?: 'left' | 'center' | 'right';
-  /** Por defecto 'center'. */
+  /** Defaults to 'center'. */
   readonly v?: 'top' | 'center' | 'bottom';
   readonly wrap?: boolean;
   readonly indent?: number;
 }
 
-/** Descripción del formato de una celda; `Workbook.xfOf` la convierte en un índice de estilo. */
+/** Description of a cell's format; `Workbook.xfOf` turns it into a style index. */
 export interface StyleSpec {
   readonly font?: FontSpec;
-  /** Color de relleno sólido. */
+  /** Solid fill color. */
   readonly fill?: string;
   readonly border?: BorderSpec;
-  /** Código de formato numérico de Excel. */
+  /** Excel number format code. */
   readonly numFmt?: string;
   readonly align?: AlignSpec;
 }
 
 /**
- * Combina dos estilos: gana `b`, y fuente, borde y alineación se mezclan propiedad a propiedad.
- * Una propiedad presente con valor undefined también pisa a la anterior (así lo hace el original).
+ * Combines two styles: `b` wins, and font, border and alignment are merged property by property.
+ * A property present with an undefined value also overrides the previous one (that is how the original does it).
  */
 export function merge(a: StyleSpec, b: StyleSpec): StyleSpec {
   return {
@@ -125,7 +125,7 @@ export function merge(a: StyleSpec, b: StyleSpec): StyleSpec {
   };
 }
 
-/** Estilos con nombre que se repiten en todas las hojas. */
+/** Named styles that repeat across all the sheets. */
 export const st = {
   band: { fill: INK },
   label: { font: { sz: 8, b: true, color: MUTED } },
@@ -157,7 +157,7 @@ export const st = {
   input: { fill: HEADF, font: { name: MONO, sz: 10 }, numFmt: '#,##0.00', align: { h: 'right' } },
 } as const satisfies Record<string, StyleSpec>;
 
-/** Formatos numéricos que Excel trae de fábrica (no se declaran en styles.xml). */
+/** Number formats that Excel ships with (they are not declared in styles.xml). */
 const BUILTIN_NUMFMT: ReadonlyMap<string, number> = new Map([
   ['General', 0],
   ['0', 1],
@@ -167,8 +167,8 @@ const BUILTIN_NUMFMT: ReadonlyMap<string, number> = new Map([
   ['0%', 9],
 ]);
 
-// Formatos diferenciales a los que apuntan las reglas de formato condicional por su índice (dxfId):
-// 0 = negativo en rojo, 1 = "Sí" (pagado) en verde, 2 = "No" en gris.
+// Differential formats that the conditional formatting rules point to by their index (dxfId):
+// 0 = negative in red, 1 = "Yes" (paid) in green, 2 = "No" in gray.
 const DXFS =
   '<dxfs count="3">' +
   '<dxf><font><b/><color rgb="FFB23A2A"/></font></dxf>' +
@@ -176,9 +176,9 @@ const DXFS =
   '<dxf><font><color rgb="FF9A9C94"/></font></dxf>' +
   '</dxfs>';
 
-// ── Libro ────────────────────────────────────────────────────────────────────
+// ── Workbook ─────────────────────────────────────────────────────────────────
 
-/** Lista sin repetidos: `add` devuelve el índice del valor y lo agrega al final si es nuevo. */
+/** List without duplicates: `add` returns the value's index and appends it at the end if it is new. */
 class Registry {
   readonly items: string[] = [];
   private readonly index = new Map<string, number>();
@@ -198,20 +198,20 @@ class Registry {
   }
 }
 
-/** Dibujo de una hoja (la dona): su XML y el número del gráfico que enlaza. */
+/** Drawing of a sheet (the donut): its XML and the number of the chart it links to. */
 export interface Drawing {
   chart: number;
   xml: string;
 }
 
 /**
- * Estado de una exportación: todo lo que comparten las hojas del libro. Se crea uno por llamada
- * (nada de esto puede vivir a nivel de módulo: los Workers reutilizan el isolate entre peticiones).
+ * State of one export: everything the sheets of the workbook share. One is created per call
+ * (none of this can live at module level: Workers reuse the isolate across requests).
  */
 export class Workbook {
   private readonly sst = new Registry();
   private readonly fonts = new Registry();
-  // Excel reserva los dos primeros rellenos.
+  // Excel reserves the first two fills.
   private readonly fills = new Registry([
     '<fill><patternFill patternType="none"/></fill>',
     '<fill><patternFill patternType="gray125"/></fill>',
@@ -219,23 +219,23 @@ export class Workbook {
   private readonly borders = new Registry();
   private readonly numFmts = new Registry();
   private readonly xfs = new Registry();
-  /** XML de cada tabla; el número de la tabla es su posición + 1. */
+  /** XML of each table; the table's number is its position + 1. */
   readonly tables: string[] = [];
-  /** XML de cada gráfico; ídem. */
+  /** XML of each chart; ditto. */
   readonly charts: string[] = [];
   readonly drawings: Drawing[] = [];
 
   constructor() {
-    // El estilo 0 es el estilo por defecto de las celdas.
+    // Style 0 is the default style of the cells.
     this.xfOf({});
   }
 
-  /** Índice del texto (ya en XML: `<t>…</t>` o `<r>…</r>`) en la tabla de textos compartidos. */
+  /** Index of the string (already in XML: `<t>…</t>` or `<r>…</r>`) in the shared strings table. */
   si(x: string): number {
     return this.sst.add(x);
   }
 
-  /** Índice del estilo de celda (cellXfs) para `sp`; registra fuente, relleno, borde y formato si son nuevos. */
+  /** Index of the cell style (cellXfs) for `sp`; registers font, fill, border and format if they are new. */
   xfOf(sp: StyleSpec): number {
     const f = { name: 'Segoe UI', sz: 10, color: INK, ...sp.font };
     const fi = this.fonts.add(
@@ -261,7 +261,7 @@ export class Workbook {
     );
   }
 
-  /** xl/styles.xml. Hay que generarlo después del XML de todas las hojas, que es donde se registran los estilos. */
+  /** xl/styles.xml. It must be generated after the XML of all the sheets, which is where the styles are registered. */
   stylesXml(): string {
     const numFmts = this.numFmts.items;
     const fonts = this.fonts.items;
@@ -288,7 +288,7 @@ export class Workbook {
     ].join('');
   }
 
-  /** xl/sharedStrings.xml. También va después del XML de las hojas. */
+  /** xl/sharedStrings.xml. It also goes after the XML of the sheets. */
   sharedStringsXml(): string {
     const sst = this.sst.items;
     return `${XML_DECL}<sst xmlns="${NS_MAIN}" count="${sst.length}" uniqueCount="${sst.length}">${sst
@@ -297,19 +297,19 @@ export class Workbook {
   }
 }
 
-// ── Hojas ────────────────────────────────────────────────────────────────────
+// ── Sheets ───────────────────────────────────────────────────────────────────
 
 export interface Formula {
-  /** Fórmula sin el '=' inicial. */
+  /** Formula without the leading '='. */
   f: string;
 }
 
 export interface RichText {
-  /** Tramos `<r>…</r>` ya en XML (ver `rich`). */
+  /** `<r>…</r>` runs already in XML (see `rich`). */
   rich: string;
 }
 
-/** Valor de una celda. null y '' dejan la celda vacía (solo con estilo). */
+/** Value of a cell. null and '' leave the cell empty (style only). */
 export type CellValue = string | number | null | Formula | RichText;
 
 export interface Cell {
@@ -319,27 +319,27 @@ export interface Cell {
 
 export interface TableColumn {
   name: string;
-  /** Columna numérica: su encabezado va alineado a la derecha. */
+  /** Numeric column: its header is right-aligned. */
   num?: boolean;
-  /** Estilo de las celdas de datos; por defecto `st.td`. */
+  /** Style of the data cells; defaults to `st.td`. */
   st?: StyleSpec;
-  /** Fórmula de columna calculada: todas las filas llevan esta fórmula en vez de un valor. */
+  /** Calculated column formula: every row carries this formula instead of a value. */
   f?: string;
 }
 
-/** Lista desplegable sobre un rango. `f` es la fórmula de la lista: `"Sí,No"` o un rango. */
+/** Dropdown list over a range. `f` is the formula of the list: `"Yes,No"` or a range. */
 export interface DataValidation {
   sqref: string;
   f: string;
 }
 
-/** Formato condicional sobre un rango; `rules` son sus `<cfRule>` ya en XML. */
+/** Conditional format over a range; `rules` are its `<cfRule>` elements, already in XML. */
 export interface ConditionalFormat {
   sqref: string;
   rules: string;
 }
 
-/** Texto con tramos de distinto color en una misma celda. */
+/** Text with runs of different colors in a single cell. */
 export function rich(parts: readonly (readonly [text: string, color: string])[]): RichText {
   return {
     rich: parts
@@ -351,7 +351,7 @@ export function rich(parts: readonly (readonly [text: string, color: string])[])
   };
 }
 
-/** Regla "en rojo si es negativo". */
+/** "Red if negative" rule. */
 export function neg(sqref: string, priority = 1): ConditionalFormat {
   return {
     sqref,
@@ -359,7 +359,7 @@ export function neg(sqref: string, priority = 1): ConditionalFormat {
   };
 }
 
-/** Referencia estructurada a una columna de la tabla en la misma fila. */
+/** Structured reference to a column of the table in the same row. */
 export function TR(table: string, column: string): string {
   return `${table}[[#This Row],[${column}]]`;
 }
@@ -368,20 +368,20 @@ export class Sheet {
   readonly name: string;
   private readonly book: Workbook;
   private readonly cells = new Map<string, Cell>();
-  /** Ancho de las columnas, desde A. */
+  /** Width of the columns, starting at A. */
   cols: number[] = [];
-  /** Alto (en puntos) de las filas que no usan el alto por defecto, por número de fila. */
+  /** Height (in points) of the rows that do not use the default height, by row number. */
   readonly rowHt: Record<number, number> = {};
   readonly dv: DataValidation[] = [];
   readonly cf: ConditionalFormat[] = [];
-  /** Números de las tablas de la hoja (posición + 1 en `Workbook.tables`). */
+  /** Numbers of the sheet's tables (position + 1 in `Workbook.tables`). */
   readonly tables: number[] = [];
   private readonly merges: string[] = [];
-  /** Índices (desde 0) de las columnas ocultas. */
+  /** Indexes (from 0) of the hidden columns. */
   hidden: number[] = [];
-  /** Número del dibujo de la hoja (posición + 1 en `Workbook.drawings`), si tiene. */
+  /** Number of the sheet's drawing (position + 1 in `Workbook.drawings`), if it has one. */
   drawing: number | null = null;
-  /** Color de la pestaña. */
+  /** Color of the tab. */
   tab: string | null = null;
   selected = false;
   private readonly defHt = 20;
@@ -391,7 +391,7 @@ export class Sheet {
     this.name = name;
   }
 
-  /** Mezcla `sp` con el estilo que ya tenga la celda (la crea vacía si no existe). */
+  /** Merges `sp` into the style the cell already has (creates it empty if it does not exist). */
   style(ref: string, sp?: StyleSpec): Cell {
     let c = this.cells.get(ref);
     if (!c) {
@@ -407,7 +407,7 @@ export class Sheet {
     c.v = v;
   }
 
-  /** Recorre el rango por filas; L, R, T y B dicen si la celda está en ese borde del rango. */
+  /** Walks the range row by row; L, R, T and B tell whether the cell is on that edge of the range. */
   range(
     r1: string,
     r2: string,
@@ -420,7 +420,7 @@ export class Sheet {
     }
   }
 
-  /** Tarjeta: fondo blanco y borde alrededor del rango. */
+  /** Card: white background and a border around the range. */
   card(r1: string, r2: string): void {
     this.range(r1, r2, (ref, L, R, T, B) =>
       this.style(ref, {
@@ -439,8 +439,8 @@ export class Sheet {
   }
 
   /**
-   * Tabla de Excel: encabezados en `startRef` y una fila por elemento de `rows` (un valor por columna;
-   * el de las columnas calculadas se ignora).
+   * Excel table: headers at `startRef` and one row per element of `rows` (one value per column;
+   * the one for calculated columns is ignored).
    */
   table(name: string, startRef: string, cols: readonly TableColumn[], rows: readonly (readonly CellValue[])[]): void {
     const [c0, r0] = parse(startRef);
@@ -473,7 +473,7 @@ export class Sheet {
     this.tables.push(tables.length);
   }
 
-  /** XML de la hoja. Registra en el libro los estilos y textos de sus celdas, en orden de fila y columna. */
+  /** XML of the sheet. Registers the styles and strings of its cells in the workbook, in row and column order. */
   xml(): string {
     const rows = new Map<number, [col: number, cell: Cell][]>();
     for (const [ref, cell] of this.cells) {
@@ -485,7 +485,7 @@ export class Sheet {
       }
       row.push([c, cell]);
     }
-    // Filas y columnas llevan el fondo de la página para que no se vea blanco fuera de las tarjetas.
+    // Rows and columns carry the page background so that no white shows outside the cards.
     const bgS = this.book.xfOf({ fill: BG });
     const all = new Set([...rows.keys(), ...Object.keys(this.rowHt).map(Number)]);
     const rowsXml = [...all]
@@ -531,7 +531,7 @@ export class Sheet {
           )
           .join('')}</dataValidations>`
       : '';
-    // Los rId siguen el orden de `relsXml`: primero el dibujo, después las tablas.
+    // The rIds follow the order of `relsXml`: first the drawing, then the tables.
     let rid = 1;
     const dr = this.drawing ? `<drawing r:id="rId${rid++}"/>` : '';
     const tp = this.tables.length
@@ -555,7 +555,7 @@ export class Sheet {
     ].join('');
   }
 
-  /** Relaciones de la hoja (su dibujo y sus tablas); null si no tiene ninguna. */
+  /** Relationships of the sheet (its drawing and its tables); null if it has none. */
   relsXml(): string | null {
     const rels: string[] = [];
     let rid = 1;
@@ -571,7 +571,7 @@ export class Sheet {
     return `${XML_DECL}<Relationships xmlns="${NS_PKG_REL}">${rels.join('')}</Relationships>`;
   }
 
-  // Geometría en píxeles, para anclar los dibujos: así calcula Excel el ancho de una columna y el alto de una fila.
+  // Geometry in pixels, to anchor the drawings: this is how Excel computes a column's width and a row's height.
 
   px(c: number): number {
     return Math.round((this.cols[c] ?? 9) * 7 + 5);
@@ -581,21 +581,21 @@ export class Sheet {
     return ((this.rowHt[r] || this.defHt) * 4) / 3;
   }
 
-  /** Borde izquierdo de la columna `c` (desde 0). */
+  /** Left edge of column `c` (from 0). */
   xAt(c: number): number {
     let x = 0;
     for (let i = 0; i < c; i++) x += this.px(i);
     return x;
   }
 
-  /** Borde superior de la fila `r` (desde 1). */
+  /** Top edge of row `r` (from 1). */
   yAt(r: number): number {
     let y = 0;
     for (let i = 1; i < r; i++) y += this.rowPx(i);
     return y;
   }
 
-  /** Punto (x, y) en píxeles → celda y desplazamiento dentro de ella (en EMU), como lo pide un ancla de dibujo. */
+  /** Point (x, y) in pixels → cell and offset inside it (in EMU), as a drawing anchor requires. */
   anchor(x: number, y: number): string {
     let c = 0;
     let acc = 0;

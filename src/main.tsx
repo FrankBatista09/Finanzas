@@ -10,8 +10,8 @@ import { api } from './api/client';
 import { App } from './App';
 import { FinanzasProvider, FinanzasStores } from './store';
 
-// Por defecto TanStack avisa a los componentes en un setTimeout. Con un microtask la edición optimista
-// se pinta en el mismo fotograma que la pulsación y siempre antes de la siguiente tecla.
+// By default TanStack notifies components in a setTimeout. With a microtask the optimistic edit
+// is painted in the same frame as the keystroke and always before the next key.
 notifyManager.setScheduler(queueMicrotask);
 
 const queryClient = new QueryClient();

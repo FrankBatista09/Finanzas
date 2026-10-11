@@ -6,7 +6,7 @@ import { cx } from '../../ui';
 import styles from './ClosedBanner.module.css';
 import { MES } from './strings';
 
-/** Resumen de un mes cerrado, en la moneda principal, con el botón para reabrirlo. Solo se pinta en meses cerrados. */
+/** Summary of a closed month, in the main currency, with the button to reopen it. It is only rendered in closed months. */
 export function ClosedBanner() {
   const { monthKey, calc, main, actions } = useFinanzas();
   const { t, label } = useI18n();

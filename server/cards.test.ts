@@ -1,6 +1,6 @@
-// Varias tarjetas de crédito: migración 0011 (una tarjeta por usuario que ya usaba la implícita, sin cambiar ninguna cifra),
-// API de tarjetas (validación, apagar y borrar), pagos y otros cargos por tarjeta, gastos y transacciones con su tarjeta,
-// copia al cerrar el mes e importación.
+// Several credit cards: migration 0011 (one card per user who already used the implicit one, without changing any figure),
+// credit cards API (validation, turning off and deleting), payments and other charges per card, expenses and transactions
+// with their card, copy on closing the month and import.
 
 import { describe, expect, it } from 'vitest';
 import type { CloseResponse, StateResponse } from '../shared/api';
@@ -16,11 +16,11 @@ const F = FRANK.id;
 const OCT = '2026-10';
 const FILE = '0011_credit_cards.sql';
 
-describe('migración 0011', () => {
+describe('migration 0011', () => {
   const files = migrationFiles();
   const at = files.indexOf(FILE);
 
-  /** La base de producción hoy (0001–0010) con datos de tarjeta de cuatro usuarios y de uno que no la usa. */
+  /** The production database today (0001–0010) with credit card data of four users and of one who does not use it. */
   function before() {
     expect(at).toBeGreaterThan(-1);
     const db = createTestDb(files.slice(0, at));
@@ -51,11 +51,11 @@ describe('migración 0011', () => {
 
   const rows = (db: ReturnType<typeof before>, sql: string) => db.sqlite.prepare(sql).all().map((r) => ({ ...r }));
 
-  it('crea la tarjeta «Credit card» solo a quien tenía datos de tarjeta, en su moneda principal, y la apunta todo', () => {
+  it('creates the "Credit card" card only for those who had credit card data, in their main currency, and everything points to it', () => {
     const db = before();
     applyMigrations(db, [FILE]);
     expect(rows(db, 'SELECT * FROM credit_cards ORDER BY user_id')).toEqual(
-      // Bob solo tenía un gasto fijo en tarjeta sin pagar, Cy solo un pago; Ana no usaba la tarjeta.
+      // Bob only had an unpaid fixed expense on card, Cy only a payment; Ana did not use the credit card.
       ['bob', 'cy', 'eda', 'frank'].map((user_id) => ({
         user_id,
         id: 'card',
@@ -90,56 +90,56 @@ describe('migración 0011', () => {
       { user_id: 'frank', id: 'p1', month_key: '2026-09', card_id: 'card', date: '2026-09-30', account_id: 'dr', amount: 400, sort: 0 },
       { user_id: 'frank', id: 'p2', month_key: '2026-10', card_id: 'card', date: '2026-10-20', account_id: 'us', amount: 5, sort: 0 },
     ]);
-    // Las columnas viejas de months se quedan como estaban, y la base sigue coherente.
+    // The old columns of months stay as they were, and the database remains consistent.
     expect(rows(db, "SELECT card_other FROM months WHERE user_id = 'frank' ORDER BY key")).toEqual([{ card_other: 1000 }, { card_other: 300 }]);
     expect(rows(db, 'PRAGMA foreign_key_check')).toEqual([]);
   });
 
-  it('el total, lo pagado, lo que falta, lo usado, lo pendiente y los saldos salen idénticos a los de antes', async () => {
+  it('the total, paid, what is left, used, pending and the balances come out identical to the earlier ones', async () => {
     const db = before();
     applyMigrations(db, [FILE]);
     const state = await loadState(asD1(db), 'frank');
     expect(state.cards).toEqual([expect.objectContaining({ id: 'card', name: 'Credit card', cur: 'DOP', limit: null, cutoffDay: null, dueDay: null, active: true })]);
 
-    // Lo de siempre, a mano: septiembre 1,000 − 400 pagados; octubre arrastra 600, suma 300 de otros cargos y lo cargado
-    // (500 de Gym y 200 de Taxi) = 1,600, pagados 5 USD (294 DOP a 58.76… en la moneda de la tarjeta, 5 → no: el pago es de 5).
+    // The usual, by hand: September 1,000 − 400 paid; October carries over 600, adds 300 in other charges and what was charged
+    // (500 from Gym and 200 from Taxi) = 1,600, paid 5 USD (294 DOP at 58.76… in the card's currency, 5 → no: the payment is 5).
     expect(cardCalc(state, '2026-09', 'card')).toMatchObject({ previous: 0, other: 1000, charged: 0, total: 1000, paid: 400, remainder: 600 });
     expect(cardCalc(state, OCT, 'card')).toMatchObject({ previous: 600, other: 300, charged: 700, total: 1600, paid: 5, remainder: 1595 });
 
-    // Sin tarjeta (como antes de pagarla ni cargarle nada) el mes de octubre de Frank sería este:
+    // Without a credit card (as before paying it or charging anything to it) Frank's October would be this:
     const bare = { ...state, cards: [], months: { ...state.months, '2026-09': { ...state.months['2026-09']!, cards: undefined }, [OCT]: { ...state.months[OCT]!, cards: undefined } } };
     const withCard = monthCalc(state, OCT);
     const without = monthCalc(bare, OCT);
-    // Lo pagado entra a lo usado; lo que falta de la tarjeta (1,595) es un pendiente más.
+    // What was paid goes into used; what is left on the credit card (1,595) is one more pending item.
     expect(withCard.used).toBeCloseTo(without.used + 5, 9);
     expect(withCard.pending).toBeCloseTo(without.pending + 1595, 9);
     expect(withCard.cards).toHaveLength(1);
 
-    // Saldos: solo los pagos restan (400 DOP de la cuenta DR en septiembre; 5 de la moneda de la tarjeta, DOP, de la US).
+    // Balances: only the payments subtract (400 DOP from the DR account in September; 5 in the card's currency, DOP, from the US one).
     const bal = (s: typeof state, id: string) => balances(s, OCT).accounts.find((a) => a.account.id === id)!.balance;
     expect(bal(state, 'dr')).toBeCloseTo(bal(bare, 'dr') - 400, 9);
     expect(bal(state, 'us')).toBeCloseTo(bal(bare, 'us') - 5 / 58.76, 6);
   });
 
-  it('quien no usaba la tarjeta no recibe ninguna; la de Eda es en liras', async () => {
+  it('whoever did not use the credit card gets none; the one for Eda is in lira', async () => {
     const db = before();
     applyMigrations(db, [FILE]);
     expect((await loadState(asD1(db), 'ana')).cards).toEqual([]);
     expect((await loadState(asD1(db), 'eda')).cards).toEqual([expect.objectContaining({ cur: 'TRY' })]);
   });
 
-  it('la clave exige la tarjeta del mismo usuario', () => {
+  it('the key requires the credit card of the same user', () => {
     const db = before();
     applyMigrations(db, [FILE]);
     const insert = (user: string, card: string) =>
       db.sqlite.exec(`INSERT INTO card_payments (user_id, id, month_key, card_id, date, account_id, amount) VALUES ('${user}', 'z', '2026-10', '${card}', '2026-10-01', '${user === 'frank' ? 'dr' : 'c'}', 1)`);
     expect(() => insert('frank', 'nope')).toThrow();
-    expect(() => insert('ana', 'card')).toThrow(); // Ana no tiene tarjeta
+    expect(() => insert('ana', 'card')).toThrow(); // Ana has no credit card
     insert('frank', 'card');
   });
 });
 
-// ── La API ───────────────────────────────────────────────────────────────────
+// ── The API ──────────────────────────────────────────────────────────────────
 
 async function fresh() {
   const t = makeEnv();
@@ -151,8 +151,8 @@ async function fresh() {
 type Api = Awaited<ReturnType<typeof fresh>>['api'];
 const add = async (api: Api, body: Record<string, unknown>) => (await api.post<CreditCard>('/api/credit-cards', body)).body;
 
-describe('CRUD de tarjetas', () => {
-  it('crea con lo mínimo (moneda: la principal del usuario), lista y llega en el estado', async () => {
+describe('credit cards CRUD', () => {
+  it('creates with the minimum (currency: the main one of the user), lists and arrives in the state', async () => {
     const { api, eda } = await fresh();
     expect((await api.get<CreditCard[]>('/api/credit-cards')).body).toEqual([]);
     const made = await api.post<CreditCard>('/api/credit-cards', { name: 'Visa' });
@@ -162,11 +162,11 @@ describe('CRUD de tarjetas', () => {
     const full = await add(api, { id: 'mc', name: ' Master ', bank: 'Banreservas', last4: '4242', cur: 'USD', limit: 60000, cutoffDay: 13, dueDay: null });
     expect(full).toMatchObject({ id: 'mc', name: 'Master', bank: 'Banreservas', last4: '4242', cur: 'USD', limit: 60000, cutoffDay: 13, dueDay: null, sort: 1 });
     expect((await api.get<StateResponse>('/api/state')).body.state.cards.map((c) => c.name)).toEqual(['Visa', 'Master']);
-    // Cada usuario tiene las suyas.
+    // Each user has their own.
     expect((await eda.get<CreditCard[]>('/api/credit-cards')).body.map((c) => c.name)).toEqual(['Visa']);
   });
 
-  it('valida el cuerpo: nombre, límite > 0, corte y pago entre 1 y 31, 4 dígitos, moneda, claves desconocidas', async () => {
+  it('validates the body: name, limit > 0, cutoff and due day between 1 and 31, 4 digits, currency, unknown keys', async () => {
     const { api } = await fresh();
     const bad: [Record<string, unknown>, string][] = [
       [{}, 'name: is required'],
@@ -192,7 +192,7 @@ describe('CRUD de tarjetas', () => {
     for (const day of [1, 31]) expect((await api.post('/api/credit-cards', { name: `D${day}`, cutoffDay: day, dueDay: day })).status).toBe(201);
   });
 
-  it('el nombre es único sin distinguir mayúsculas; editar y 404', async () => {
+  it('the name is unique case-insensitively; editing and 404', async () => {
     const { api } = await fresh();
     const visa = await add(api, { name: 'Visa' });
     expect((await api.post('/api/credit-cards', { name: 'visa' })).status).toBe(409);
@@ -200,7 +200,7 @@ describe('CRUD de tarjetas', () => {
     expect((await api.patch(`/api/credit-cards/${other.id}`, { name: 'VISA' })).status).toBe(409);
     const edited = await api.patch<CreditCard>(`/api/credit-cards/${visa.id}`, { bank: 'Popular', limit: 60000, cutoffDay: 13, dueDay: 5 });
     expect(edited.body).toMatchObject({ name: 'Visa', bank: 'Popular', limit: 60000, cutoffDay: 13, dueDay: 5 });
-    // null borra el dato opcional.
+    // null clears the optional field.
     expect((await api.patch<CreditCard>(`/api/credit-cards/${visa.id}`, { dueDay: null, limit: null })).body).toMatchObject({ dueDay: null, limit: null });
     expect((await api.patch(`/api/credit-cards/${visa.id}`, { cutoffDay: 99 })).status).toBe(400);
     expect((await api.patch('/api/credit-cards/nope', { name: 'x' })).status).toBe(404);
@@ -208,8 +208,8 @@ describe('CRUD de tarjetas', () => {
   });
 });
 
-describe('apagar y borrar', () => {
-  it('apagar: solo si el último mes no debe nada ni tiene cargos', async () => {
+describe('turning off and deleting', () => {
+  it('turning off: only if the last month owes nothing and has no charges', async () => {
     const { api } = await fresh();
     const visa = await add(api, { name: 'Visa' });
     const off = (id = visa.id) => api.patch<CreditCard>(`/api/credit-cards/${id}`, { active: false });
@@ -219,24 +219,24 @@ describe('apagar y borrar', () => {
     await api.post(`/api/months/${OCT}/cards/${visa.id}/pay`, { amount: 100 });
     const ok = await off();
     expect(ok.body.active).toBe(false);
-    // Volver a encenderla siempre se puede.
+    // Turning it back on is always possible.
     expect((await api.patch<CreditCard>(`/api/credit-cards/${visa.id}`, { active: true })).body.active).toBe(true);
-    // Con algo cargado en el mes (aunque lo pagado lo deje en cero) tampoco.
+    // Nor with something charged in the month (even if what was paid leaves it at zero).
     await api.post('/api/transactions', { monthKey: OCT, date: '2026-10-08', desc: 'Taxi', cat: 'Transport', method: 'Credit card', amount: 50, cur: 'DOP', cardId: visa.id });
     expect((await off()).status).toBe(409);
   });
 
-  it('borrar: solo si nada la usa (pagos, otros cargos, gastos, transacciones, o lo que va a la primera activa sin nombrarla)', async () => {
+  it('deleting: only if nothing uses it (payments, other charges, expenses, transactions, or whatever goes to the first active one without naming it)', async () => {
     const { api } = await fresh();
     const a = await add(api, { name: 'A' });
     const b = await add(api, { name: 'B' });
     const c = await add(api, { name: 'C' });
-    // Nada la usa: se borra.
+    // Nothing uses it: it is deleted.
     expect((await api.del(`/api/credit-cards/${c.id}`)).status).toBe(200);
-    // Otros cargos ≠ 0, un pago, un gasto fijo, una transacción.
+    // Other charges ≠ 0, a payment, a fixed expense, a transaction.
     await api.patch(`/api/months/${OCT}/cards/${a.id}/other`, { other: 40 });
     expect((await api.del(`/api/credit-cards/${a.id}`)).status).toBe(409);
-    await api.patch(`/api/months/${OCT}/cards/${a.id}/other`, { other: 0 }); // en 0 ya no cuenta
+    await api.patch(`/api/months/${OCT}/cards/${a.id}/other`, { other: 0 }); // at 0 it no longer counts
     expect((await api.del<Record<string, never>>(`/api/credit-cards/${b.id}`)).status).toBe(200);
     const d = await add(api, { name: 'D' });
     await api.post('/api/fixed', { monthKey: OCT, name: 'Gym', amount: 5, cur: 'DOP', onCard: true, cardId: d.id });
@@ -251,7 +251,7 @@ describe('apagar y borrar', () => {
     expect((await api.del(`/api/credit-cards/${g.id}`)).status).toBe(409);
   });
 
-  it('una transacción sin tarjeta nombrada (importada) cuenta como uso de la primera activa', async () => {
+  it('a transaction with no named credit card (imported) counts as use of the first active one', async () => {
     const { api, db } = await fresh();
     const a = await add(api, { name: 'A' });
     const b = await add(api, { name: 'B' });
@@ -263,7 +263,7 @@ describe('apagar y borrar', () => {
     expect((await api.del(`/api/credit-cards/${a.id}`)).status).toBe(409);
   });
 
-  it('cambiar la moneda de una tarjeta con movimientos se rechaza', async () => {
+  it('changing the currency of a credit card with activity is rejected', async () => {
     const { api } = await fresh();
     const a = await add(api, { name: 'A' });
     expect((await api.patch(`/api/credit-cards/${a.id}`, { cur: 'USD' })).body).toMatchObject({ cur: 'USD' });
@@ -273,15 +273,15 @@ describe('apagar y borrar', () => {
   });
 });
 
-describe('con varias tarjetas', () => {
-  it('otros cargos y pagos van por tarjeta, en la moneda de cada una', async () => {
+describe('with several credit cards', () => {
+  it('other charges and payments go per card, each in its own currency', async () => {
     const { api, db } = await fresh();
     const visa = await add(api, { name: 'Visa' });
     const usd = await add(api, { name: 'Dollars', cur: 'USD' });
     await api.patch(`/api/months/${OCT}/cards/${visa.id}/other`, { other: 1000 });
     const m = await api.patch<Month>(`/api/months/${OCT}/cards/${usd.id}/other`, { other: 20 });
     expect(m.body.cards).toEqual(expect.arrayContaining([{ cardId: visa.id, other: 1000, payments: [] }, { cardId: usd.id, other: 20, payments: [] }]));
-    // 21 USD son más de lo que debe esa tarjeta (20).
+    // 21 USD is more than that card owes (20).
     const over = await api.post(`/api/months/${OCT}/cards/${usd.id}/pay`, { amount: 21 });
     expect(over.error?.message).toBe('amount: Dollars has 20.00 left to pay in 2026-10; it cannot be paid for more than that.');
     const paid = await api.post<Month>(`/api/months/${OCT}/cards/${usd.id}/pay`, { amount: 5, accountId: 'us' });
@@ -289,15 +289,15 @@ describe('con varias tarjetas', () => {
     expect(paid.body.cards!.find((c) => c.cardId === visa.id)!.payments).toEqual([]);
     const state = await loadState(db, F);
     const before = balances(await loadState(db, EDA.id), OCT).accounts.find((a) => a.account.id === 'us')!.balance;
-    // 5 USD desde la cuenta en USD: 5 de su saldo.
+    // 5 USD from the USD account: 5 off its balance.
     expect(balances(state, OCT).accounts.find((a) => a.account.id === 'us')!.balance).toBeCloseTo(before - 5, 9);
     expect(cardCalc(state, OCT, usd.id).remainder).toBe(15);
     expect(cardCalc(state, OCT, visa.id).remainder).toBe(1000);
-    // Quitar el pago de una tarjeta no toca el de la otra; un pago de otra tarjeta no se encuentra.
+    // Removing the payment of one card does not touch the other's; a payment of another card is not found.
     const pid = paid.body.cards!.find((c) => c.cardId === usd.id)!.payments[0]!.id;
     expect((await api.del(`/api/months/${OCT}/cards/${visa.id}/pay/${pid}`)).status).toBe(404);
     expect((await api.del(`/api/months/${OCT}/cards/${usd.id}/pay/${pid}`)).status).toBe(200);
-    // Tarjeta desconocida: 404, también en un mes cerrado.
+    // Unknown credit card: 404, also in a closed month.
     for (const r of [
       await api.patch(`/api/months/${OCT}/cards/nope/other`, { other: 1 }),
       await api.post(`/api/months/${OCT}/cards/nope/pay`, { amount: 1 }),
@@ -310,7 +310,7 @@ describe('con varias tarjetas', () => {
     expect((await api.post(`/api/months/${OCT}/cards/${visa.id}/pay`, { amount: 1000 })).status).toBe(200);
   });
 
-  it('un gasto fijo o una transacción llevan su tarjeta; sin decir, la primera activa; con otro método, ninguna', async () => {
+  it('a fixed expense or a transaction carries its credit card; unspecified, the first active one; with another method, none', async () => {
     const { api, db } = await fresh();
     const none = await api.post(`/api/transactions`, { monthKey: OCT, date: '2026-10-08', desc: 'x', cat: 'Food', method: 'Credit card', amount: 5, cur: 'DOP' });
     expect([none.status, none.error?.message]).toEqual([400, 'There is no active credit card: add one first.']);
@@ -322,10 +322,10 @@ describe('con varias tarjetas', () => {
     expect((await tx({ cardId: b.id })).body.cardId).toBe(b.id);
     const unknown = await tx({ cardId: 'nope' });
     expect([unknown.status, unknown.error?.message]).toEqual([400, 'Unknown credit card "nope".']);
-    // Con otro método la tarjeta no cuenta.
+    // With another method the credit card does not count.
     const debit = await tx({ method: 'Debit card', cardId: b.id });
     expect('cardId' in debit.body).toBe(false);
-    // Cambiar el método a crédito le pone la primera activa; quitarlo, la quita.
+    // Changing the method to credit gives it the first active one; removing it takes it away.
     const moved = await api.patch<Transaction>(`/api/transactions/${debit.body.id}`, { method: 'Credit card' });
     expect(moved.body.cardId).toBe(a.id);
     expect((await api.patch<Transaction>(`/api/transactions/${debit.body.id}`, { cardId: b.id })).body.cardId).toBe(b.id);
@@ -338,7 +338,7 @@ describe('con varias tarjetas', () => {
     expect('onCard' in off.body || 'cardId' in off.body).toBe(false);
     const on = await api.patch<FixedExpense>(`/api/fixed/${fx.body.id}`, { onCard: true });
     expect(on.body.cardId).toBe(a.id);
-    // Una tarjeta apagada no recibe nada nuevo.
+    // A credit card that is turned off receives nothing new.
     const c = await add(api, { name: 'C' });
     expect((await api.patch(`/api/credit-cards/${c.id}`, { active: false })).status).toBe(200);
     const toOff = await tx({ cardId: c.id });
@@ -347,7 +347,7 @@ describe('con varias tarjetas', () => {
     expect(stored.results.map((r) => r.card_id)).toEqual([a.id, b.id]);
   });
 
-  it('al cerrar el mes, el siguiente copia los gastos fijos en tarjeta con su tarjeta, sin marcar', async () => {
+  it('on closing the month, the next one copies the fixed expenses on card with their credit card, unchecked', async () => {
     const { api } = await fresh();
     const a = await add(api, { name: 'A' });
     const b = await add(api, { name: 'B' });
@@ -359,7 +359,7 @@ describe('con varias tarjetas', () => {
 });
 
 describe('Excel', () => {
-  it('importar no borra las tarjetas ni sus otros cargos y pagos', async () => {
+  it('importing does not delete the credit cards or their other charges and payments', async () => {
     const { api, db } = await fresh();
     const visa = await add(api, { name: 'Visa', limit: 60000, cutoffDay: 13 });
     const usd = await add(api, { name: 'Dollars', cur: 'USD' });

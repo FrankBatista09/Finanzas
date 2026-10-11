@@ -1,5 +1,5 @@
-// Los textos comunes de la app y los ayudantes atados a un idioma. Sin React: sirve igual en un componente
-// (a través de useI18n) que en una función pura o en una prueba (createI18n('es')).
+// The app's common strings and the helpers bound to a language. No React: it works the same in a component
+// (through useI18n) as in a pure function or a test (createI18n('es')).
 
 import type { RateInfo } from '../../shared/calc';
 import { CURRENCIES } from '../../shared/constants';
@@ -12,39 +12,39 @@ import { en } from './en';
 import { es } from './es';
 import { tr } from './tr';
 
-/** Textos de la carcasa y los que comparten las dos pantallas (en.ts lista las claves). */
+/** Strings of the shell and those shared by the two screens (en.ts lists the keys). */
 export const CORE = defineStrings({ en, es, tr });
 
 export type CoreStrings = typeof en;
-/** Clave de un texto común sin plural: se puede guardar en una tabla y traducir tal cual, t(key). */
+/** Key of a common string with no plural: it can be stored in a table and translated as is, t(key). */
 export type CoreKey = PlainKey<CoreStrings>;
 export type CoreTranslator = Translator<CoreStrings>;
 
-/** Todo lo que depende del idioma, ya atado a uno. */
+/** Everything that depends on the language, already bound to one. */
 export interface I18n {
   lang: Language;
-  /** Traductor de los textos comunes: t('add'), t('closeMonth', { month }). */
+  /** Translator of the common strings: t('add'), t('closeMonth', { month }). */
   t: CoreTranslator;
   /** '2026-10' → 'October 2026' / 'Octubre 2026' / 'Ekim 2026'. */
   label(key: MonthKey): string;
-  /** Categoría guardada ('Food') → cómo se muestra; un valor fuera de la lista sale tal cual. */
+  /** Stored category ('Food') → how it is displayed; a value outside the list comes out as is. */
   catLabel(value: string): string;
-  /** Método guardado ('Card') → cómo se muestra. */
+  /** Stored method ('Card') → how it is displayed. */
   methodLabel(value: string): string;
-  /** Nombre de la fila "Fixed expenses" de "By category". */
+  /** Name of the "Fixed expenses" row of "By category". */
   fixedCategory: string;
-  /** Los doce meses, de enero a diciembre. */
+  /** The twelve months, January to December. */
   monthNames: readonly string[];
   /**
-   * De dónde salió la tasa `from` → `to` que devolvió shared/calc.ts (RateInfo.source), en palabras: "typed for this
-   * month", "from this month's transfers", "crossed through TRY", "from September 2026" o "default value, not set
-   * yet". '' si las dos monedas son la misma. Quien enseñe una cifra convertida con una tasa que no es la escrita
-   * para ese mes lo dice con esto, y lo destaca cuando `source` es 'default'.
+   * Where the `from` → `to` rate returned by shared/calc.ts came from (RateInfo.source), in words: "typed for this
+   * month", "from this month's transfers", "crossed through TRY", "from September 2026" or "default value, not set
+   * yet". '' if the two currencies are the same. Whoever shows a figure converted with a rate that is not the one typed
+   * for that month says so with this, and highlights it when `source` is 'default'.
    */
   rateHint(info: RateInfo, from: Currency, to: Currency): string;
 }
 
-// Dentro de una frase ("de septiembre 2026") el español escribe el mes en minúscula; el inglés y el turco, no.
+// Inside a phrase ("de septiembre 2026") Spanish writes the month in lower case; English and Turkish do not.
 const LOWERCASE_MONTH: Record<Language, boolean> = { en: false, es: true, tr: false };
 
 function rateHint(t: CoreTranslator, lang: Language, info: RateInfo, from: Currency, to: Currency): string {
@@ -56,7 +56,7 @@ function rateHint(t: CoreTranslator, lang: Language, info: RateInfo, from: Curre
     case 'transfers':
       return t('rateFromTransfers');
     case 'cross':
-      // Con tres monedas, la que hace de puente es la que no está en el par.
+      // With three currencies, the one acting as the bridge is the one not in the pair.
       return t('rateCrossed', { currency: CURRENCIES.find((c) => c !== from && c !== to) ?? '' });
     case 'previous': {
       if (!info.monthKey) return t('rateDefault');
@@ -70,7 +70,7 @@ function rateHint(t: CoreTranslator, lang: Language, info: RateInfo, from: Curre
 
 const cache = new Map<Language, I18n>();
 
-/** Los ayudantes de ese idioma. Siempre el mismo objeto para el mismo idioma. */
+/** The helpers of that language. Always the same object for the same language. */
 export function createI18n(lang: Language): I18n {
   let i18n = cache.get(lang);
   if (!i18n) {

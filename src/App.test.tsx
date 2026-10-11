@@ -1,4 +1,4 @@
-// La carcasa antes de tener datos: cargando y error de conexión, en el último idioma usado en el dispositivo.
+// The shell before there is any data: loading and connection error, in the last language used on the device.
 
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
@@ -46,8 +46,8 @@ function render(lang: Language, over: Partial<Shell>): string {
 
 const text = (html: string) => html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
 
-describe('App sin datos', () => {
-  it('cargando: la marca y "Loading…"', () => {
+describe('App without data', () => {
+  it('loading: the brand and "Loading…"', () => {
     const html = render('en', { status: 'loading' });
     expect(text(html)).toBe('FE Finance Loading…');
     expect(html).toContain('role="status"');
@@ -55,7 +55,7 @@ describe('App sin datos', () => {
     expect(text(render('tr', { status: 'loading' }))).toBe('FE Finance Yükleniyor…');
   });
 
-  it('sin conexión: explicación y botón para reintentar', () => {
+  it('no connection: an explanation and a retry button', () => {
     const html = render('en', { status: 'error' });
     expect(html).toContain('role="alert"');
     expect(text(html)).toBe(
@@ -68,7 +68,7 @@ describe('App sin datos', () => {
     expect(text(render('tr', { status: 'error' }))).toContain('Sunucuya ulaşılamadı');
   });
 
-  it('mientras reintenta, el botón lo dice y queda deshabilitado', () => {
+  it('while retrying, the button says so and is disabled', () => {
     const html = render('en', { status: 'error', retrying: true });
     expect(text(html)).toContain('Retrying…');
     expect(html).toContain('disabled');
