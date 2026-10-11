@@ -237,6 +237,8 @@ export interface CellSelectProps<T extends string = string> extends CellBase {
   mono?: boolean;
   /** Padding lateral de 8px en vez de 10px. */
   dense?: boolean;
+  /** Tooltip: para cuando el texto elegido no cabe en la celda. */
+  title?: string;
 }
 
 export function CellSelect<T extends string = string>({
@@ -250,6 +252,7 @@ export function CellSelect<T extends string = string>({
   mono,
   dense,
   className,
+  title,
 }: CellSelectProps<T>) {
   const expanded = useExpanded();
   const items = options.map((o) => (typeof o === 'string' ? { value: o, label: o as string } : o));
@@ -264,6 +267,7 @@ export function CellSelect<T extends string = string>({
       onChange={(e) => onCommit?.(e.target.value as T)}
       disabled={disabled}
       aria-label={label}
+      title={title}
     >
       {items.map((o) => (
         <option key={o.value} value={o.value}>

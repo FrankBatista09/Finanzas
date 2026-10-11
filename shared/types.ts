@@ -347,6 +347,11 @@ export interface Contribution {
    * balances). null/ausente = ninguna, el aporte no mueve saldos. No cambia presupuestos ni el mes.
    */
   accountId?: string | null;
+  /**
+   * Ingreso del que sale el aporte (debe estar en `accountId`). Descuenta de lo que queda de ese ingreso
+   * (shared/calc.ts incomeBudgetUse). null/ausente = de ningún ingreso en particular.
+   */
+  incomeId?: string | null;
 }
 
 /**

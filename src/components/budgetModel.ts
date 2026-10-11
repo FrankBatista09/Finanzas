@@ -262,6 +262,8 @@ export interface ExtraIncomeOption {
   available: number;
   /** true: it has "Adds to budget", so the whole of it is already counted. */
   whole: boolean;
+  /** What already went to goals (contributions linked to it), in the account's currency. */
+  contributed: number;
 }
 
 /** The incomes of the viewed month that are in `accountId`, oldest first: the ones an extra can say it comes from. */
@@ -272,7 +274,7 @@ export function extraIncomeOptions(state: AppState, key: MonthKey, accountId: st
     .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0))
     .flatMap((i) => {
       const use = incomeBudgetUse(state, i);
-      return use ? [{ id: i.id, desc: i.desc, date: i.date, amount: f2(i.amount), currency: i.cur, available: use.available, whole: use.whole }] : [];
+      return use ? [{ id: i.id, desc: i.desc, date: i.date, amount: f2(i.amount), currency: i.cur, available: use.available, whole: use.whole, contributed: use.contributed }] : [];
     });
 }
 
@@ -329,22 +331,49 @@ export interface IncomeShortfall {
   id: string;
   desc: string;
   accountName: string;
-  /** What the account holds (never below 0), in the account's currency. */
+  /**
+   * What remains, never below 0, in the account's currency: what the account holds ('account') or what is left of the
+   * income after the contributions to goals ('goals').
+   */
   available: number;
   /** What the income adds to the budget, in the account's currency. */
   amount: number;
   currency: Currency;
+  /** Why it is short: the account holds less, or contributions to goals took the income. */
+  reason: 'account' | 'goals';
+  /** The contributions linked to the income, in the account's currency (0 for 'account'). */
+  contributed: number;
+  /** Names of the goals those contributions went to, in the order they were registered (empty for 'account'). */
+  goals: string[];
+}
+
+/** The names of the goals that contributions linked to the income went to, without repeats. */
+function goalsOf(state: AppState, incomeId: string): string[] {
+  const names = new Map(state.goals.map((g) => [g.id, g.name]));
+  const out: string[] = [];
+  for (const c of state.contribs) {
+    const name = c.incomeId === incomeId ? names.get(c.goalId) : undefined;
+    if (name && !out.includes(name)) out.push(name);
+  }
+  return out;
 }
 
 /** The incomes (of those given) that add more to the budget than their account holds, for the visible warning list. */
 export function incomeShortfalls(state: AppState, balances: Balances, incomes: readonly Income[]): IncomeShortfall[] {
   const out: IncomeShortfall[] = [];
   for (const income of incomes) {
+    if (!income.budget || !isMoneyIncome(income)) continue;
+    const use = incomeBudgetUse(state, income);
+    const hit = balances.accounts.find((b) => b.account.id === income.accountId);
+    if (!use || !hit || hit.account.currency === 'XAU') continue;
+    const base = { id: income.id, desc: income.desc, accountName: hit.account.name, amount: use.amount, currency: hit.account.currency };
+    // Goals first: it is the more specific reason, and the money they took also left the account.
+    if (use.contributed > 0 && exceeds(use.amount, use.left)) {
+      out.push({ ...base, available: use.left, reason: 'goals', contributed: use.contributed, goals: goalsOf(state, income.id) });
+      continue;
+    }
     const short = incomeBudgetShortfall(state, balances, income);
-    const use = short && incomeBudgetUse(state, income);
-    const hit = short && balances.accounts.find((b) => b.account.id === income.accountId);
-    if (!short || !use || !hit) continue;
-    out.push({ id: income.id, desc: income.desc, accountName: hit.account.name, available: short.available, amount: use.amount, currency: short.currency });
+    if (short) out.push({ ...base, available: short.available, reason: 'account', contributed: 0, goals: [] });
   }
   return out;
 }

@@ -97,8 +97,8 @@ describe('migración 0002 sobre una base con datos de 0001', () => {
     before.transactions = before.transactions!.map((row) => (row.method === 'Card' ? { ...row, method: 'Debit card' } : row));
     // Y a los envíos solo se les añaden las columnas `budget` (0004) y `fee` (0006), en 0.
     before.transfers = before.transfers!.map((row) => ({ ...row, budget: 0, fee: 0 }));
-    // Y a los aportes, las columnas `rate` y `account_id` (0007), vacías.
-    before.contributions = before.contributions!.map((row) => ({ ...row, rate: null, account_id: null }));
+    // Y a los aportes, las columnas `rate` y `account_id` (0007) y `income_id` (0013), vacías.
+    before.contributions = before.contributions!.map((row) => ({ ...row, rate: null, account_id: null, income_id: null }));
     // Y a los meses y a los gastos fijos, las columnas de la tarjeta de crédito (0009), sin tarjeta.
     before.months = before.months?.map((row) => ({ ...row, card_other: 0, card_paid: null, card_account_id: null }));
     before.fixed_expenses = before.fixed_expenses?.map((row) => ({ ...row, on_card: 0, card_id: null }));

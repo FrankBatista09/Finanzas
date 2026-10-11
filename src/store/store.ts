@@ -385,8 +385,8 @@ export class FinanzasStore {
       case 'goal/remove':
         return api.deleteGoal(action.id, opts);
       case 'contribution/add': {
-        const { id, goalId, date, amount, cur, rate, accountId } = action.row;
-        return api.createContribution({ id, goalId, date, amount, cur, rate, accountId }, opts);
+        const { id, goalId, date, amount, cur, rate, accountId, incomeId } = action.row;
+        return api.createContribution({ id, goalId, date, amount, cur, rate, accountId, incomeId }, opts);
       }
       case 'contribution/patch':
         return api.patchContribution(action.id, action.patch, opts);

@@ -13,7 +13,7 @@ describe('incomeBudgetUse', () => {
     );
     s.months['2026-09']!.budgetLog.push({ id: 'd', date: '2026-09-08', accountId: 'us', amount: 500, kind: 'adjust', note: '', incomeId: 'seed-in-3' });
     const use = incomeBudgetUse(s, s.incomes.find((i) => i.id === 'seed-in-3')!)!;
-    expect(use).toEqual({ amount: 5800, whole: false, taken: 1500, available: 4300 });
+    expect(use).toEqual({ amount: 5800, whole: false, taken: 1500, contributed: 0, available: 4300, left: 4300 });
   });
 
   it('an income that already adds to the budget has nothing available; gold has no use', () => {

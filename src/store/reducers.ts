@@ -590,6 +590,7 @@ export function contributionChange(state: AppState, patch: ContributionPatch): C
     cur: notCurrency,
     rate: notRate,
     accountId: (id) => id !== null && !hasMoneyAccount(state, id),
+    incomeId: (id) => id !== null && !state.incomes.some((i) => i.id === id),
   });
 }
 
@@ -681,6 +682,8 @@ export interface ContributionInput {
   rate?: number | null;
   /** Cuenta de dinero de la que sale (Contribution.accountId). Sin indicar o null: ninguna. */
   accountId?: string | null;
+  /** Ingreso del que sale (Contribution.incomeId); solo vale con `accountId` y estando en esa cuenta. */
+  incomeId?: string | null;
 }
 
 export interface AccountInput {
@@ -895,7 +898,9 @@ export function newContribution(state: AppState, input: ContributionInput, id: s
   if (!state.goals.some((g) => g.id === input.goalId) || !isISODate(input.date) || !positive(input.amount) || !isCurrency(input.cur)) return null;
   // Una cuenta que no existe o es de oro no se guarda: el aporte queda sin cuenta.
   const accountId = input.accountId && hasMoneyAccount(state, input.accountId) ? input.accountId : null;
-  return { id, goalId: input.goalId, date: input.date, amount: input.amount, cur: input.cur, rate: validRate(input.rate), accountId };
+  // The income only counts when it exists in that same account, as the server demands.
+  const incomeId = accountId && input.incomeId && state.incomes.some((i) => i.id === input.incomeId && i.accountId === accountId) ? input.incomeId : null;
+  return { id, goalId: input.goalId, date: input.date, amount: input.amount, cur: input.cur, rate: validRate(input.rate), accountId, ...(incomeId && { incomeId }) };
 }
 
 // ── Cuentas ──────────────────────────────────────────────────────────────────

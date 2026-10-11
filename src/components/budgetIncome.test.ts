@@ -18,7 +18,7 @@ describe('extra budget from an income', () => {
   it('offers only the incomes of the viewed month that are in the chosen account, with what is available', () => {
     const s = seedState();
     expect(extraIncomeOptions(s, '2026-10', 'us')).toEqual([
-      { id: 'seed-in-3', desc: 'Salary', date: '2026-10-01', amount: '5,800.00', currency: 'USD', available: 5800, whole: false },
+      { id: 'seed-in-3', desc: 'Salary', date: '2026-10-01', amount: '5,800.00', currency: 'USD', available: 5800, whole: false, contributed: 0 },
     ]);
     expect(extraIncomeOptions(s, '2026-10', 'dr')).toEqual([]);
     s.incomes[2]!.budget = true;
@@ -120,5 +120,34 @@ describe('incomeShortfalls', () => {
     if (!gold) return;
     const income = { ...s.incomes[2]!, accountId: gold.id, budget: true };
     expect(incomeShortfalls(s, withBalance(s, gold.id, 0), [income])).toEqual([]);
+  });
+
+  it('names the goals when contributions took the income that adds to the budget, whatever the account holds', () => {
+    const s = seedState();
+    const income = s.incomes[2]!;
+    income.budget = true;
+    s.contribs.push(
+      { id: 'a', goalId: 'turkey', date: '2026-10-05', amount: 5000, cur: 'USD', rate: null, accountId: 'us', incomeId: income.id },
+      { id: 'b', goalId: 'emergency', date: '2026-10-06', amount: 800, cur: 'USD', rate: null, accountId: 'us', incomeId: income.id },
+      { id: 'c', goalId: 'turkey', date: '2026-10-07', amount: 0.5, cur: 'USD', rate: null, accountId: 'us' },
+    );
+    const [f] = incomeShortfalls(s, withBalance(s, 'us', 9000), [income]);
+    expect(f).toMatchObject({ reason: 'goals', contributed: 5800, available: 0, amount: 5800, currency: 'USD' });
+    expect(f!.goals).toEqual(['Trip to Turkey', 'Emergency fund']);
+  });
+
+  it('keeps what remains when contributions covered only part of it, and stays quiet without the flag', () => {
+    const s = seedState();
+    const income = s.incomes[2]!;
+    s.contribs.push({ id: 'a', goalId: 'turkey', date: '2026-10-05', amount: 2250, cur: 'USD', rate: null, accountId: 'us', incomeId: income.id });
+    expect(incomeShortfalls(s, withBalance(s, 'us', 9000), [income])).toEqual([]);
+    income.budget = true;
+    expect(incomeShortfalls(s, withBalance(s, 'us', 9000), [income])[0]).toMatchObject({ reason: 'goals', available: 3550, contributed: 2250 });
+  });
+
+  it('leaves the account wording when nothing was contributed from the income', () => {
+    const s = seedState();
+    s.incomes[2]!.budget = true;
+    expect(incomeShortfalls(s, withBalance(s, 'us', 0), [s.incomes[2]!])[0]).toMatchObject({ reason: 'account', contributed: 0, goals: [] });
   });
 });

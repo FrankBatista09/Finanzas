@@ -235,7 +235,9 @@ export interface IncomeItemView {
    * currency. null when nothing was, or when the whole income already adds to the budget.
    */
   budgetTaken?: { taken: string; amount: string; currency: Currency };
-  /** true: some budget entry points to this income, so it can be neither deleted nor moved to another account. */
+  /** How much of the income went to goals (contributions linked to it), in its account's currency. null when none did. */
+  goalsTaken?: { contributed: string; amount: string; currency: Currency };
+  /** true: some budget entry or contribution points to this income, so it can be neither deleted nor moved to another account. */
   linked?: boolean;
 }
 
@@ -250,7 +252,10 @@ export function incomeItems(state: AppState, lang: Language, monthKey?: MonthKey
   const shown =
     monthKey === undefined ? all : (withGold ? all : all.filter(isMoneyIncome)).filter((i) => monthOf(i.date) === monthKey);
   const linkedIds = new Set(
-    Object.values(state.months).flatMap((m) => m.budgetLog.flatMap((e) => (e.incomeId ? [e.incomeId] : []))),
+    [
+      ...Object.values(state.months).flatMap((m) => m.budgetLog.flatMap((e) => (e.incomeId ? [e.incomeId] : []))),
+      ...state.contribs.flatMap((c) => (c.incomeId ? [c.incomeId] : [])),
+    ],
   );
   return shown.map((i) => {
     const key = monthOf(i.date);
@@ -260,8 +265,8 @@ export function incomeItems(state: AppState, lang: Language, monthKey?: MonthKey
       const base = { id: i.id, date: i.date, desc: i.desc, accountId: i.accountId, amount: i.amount, cur: i.cur, budget: false };
       return { ...base, rate: null, rateAuto: null, recurring, amountText: fGrams(i.amount), main: '—', mainNote: NO_NOTE, ...(linked && { linked }) };
     }
-    const use = linked ? incomeBudgetUse(state, i) : null;
     const account = state.accounts.find((a) => a.id === i.accountId);
+    const use = linked ? incomeBudgetUse(state, i) : null;
     return {
       id: i.id,
       date: i.date,
@@ -279,6 +284,9 @@ export function incomeItems(state: AppState, lang: Language, monthKey?: MonthKey
       mainNote: ownRate(state, i) ? NO_NOTE : rateNote(state, key, i.cur, main, lang, i.date),
       ...(use && !use.whole && use.taken > 0 && account && account.currency !== 'XAU'
         ? { budgetTaken: { taken: f2(use.taken), amount: f2(use.amount), currency: account.currency } }
+        : {}),
+      ...(use && use.contributed > 0 && account && account.currency !== 'XAU'
+        ? { goalsTaken: { contributed: f2(use.contributed), amount: f2(use.amount), currency: account.currency } }
         : {}),
       ...(linked && { linked }),
     };
@@ -397,6 +405,8 @@ export interface ContributionRowView {
   rateAuto: number | null;
   /** Cuenta de la que sale ('' = ninguna). */
   accountId: string;
+  /** Ingreso del que sale ('' = de ninguno en particular). */
+  incomeId: string;
   /** En la moneda de su meta, con el código ('3,000.00 USD'); una raya si la meta ya no existe. */
   inGoal: string;
   goalNote: RateNote;
@@ -425,6 +435,7 @@ export function contributionRows(state: AppState, lang: Language): ContributionR
         rate: ownRate(state, c),
         rateAuto: autoRate(state, c.date, c.cur),
         accountId: c.accountId ?? '',
+        incomeId: c.incomeId ?? '',
         inGoal: goal ? `${f2(contribIn(state, c, goal.cur))} ${goal.cur}` : '—',
         goalNote: goal ? rateNote(state, key, c.cur, goal.cur, lang, c.date) : NO_NOTE,
         main: f2(contribIn(state, c, main)),
@@ -448,9 +459,62 @@ export interface ContributionDraft {
   rate: number | null;
   /** null = ninguna cuenta: el aporte no mueve saldos. */
   accountId: string | null;
+  /**
+   * El ingreso del que sale. null o '' = de ninguno en particular (opcional); sin cuenta no se usa.
+   */
+  incomeId: string | null;
 }
 
-export const EMPTY_DRAFT: ContributionDraft = { date: null, goalId: null, amount: 0, cur: null, rate: null, accountId: null };
+export const EMPTY_DRAFT: ContributionDraft = { date: null, goalId: null, amount: 0, cur: null, rate: null, accountId: null, incomeId: null };
+
+/** The draft after another source account is chosen: an income belongs to one account, so the choice starts over. */
+export function withAccount(draft: ContributionDraft, accountId: string | null): ContributionDraft {
+  return { ...draft, accountId, incomeId: null };
+}
+
+/**
+ * The incomes of `accountId` a contribution can say it comes from, newest first, labelled
+ * "description · date · amount cur". `keep` is an income the row already points to, so it stays selectable even if
+ * it is no longer in that account.
+ */
+export function contributionIncomeOptions(state: AppState, accountId: string, keep = ''): { value: string; label: string }[] {
+  const label = (i: AppState['incomes'][number]) => `${i.desc || '—'} · ${i.date} · ${f2(i.amount)} ${i.cur}`;
+  const mine = state.incomes.filter((i) => i.accountId === accountId).sort((a, b) => b.date.localeCompare(a.date));
+  const options = mine.map((i) => ({ value: i.id, label: label(i) }));
+  const orphan = keep !== '' && !mine.some((i) => i.id === keep);
+  return orphan ? [{ value: keep, label: '—' }, ...options] : options;
+}
+
+export interface ContributionIncomeHint {
+  /** What is left of the income now, in its account's currency (the contribution being edited already counted). */
+  left: number;
+  currency: Currency;
+  /** What was left before this contribution; the amount is compared with it. */
+  before: number;
+  /** The contribution takes more than `before`: a soft warning, never blocking. */
+  over: boolean;
+}
+
+/**
+ * "Left of this income" for a contribution that points to `incomeId`. `own` is the registered contribution being
+ * shown (its amount is already out of what is left, so it is added back to know what there was before it).
+ * null when the income is unknown or not money.
+ */
+export function contributionIncomeHint(
+  state: AppState,
+  incomeId: string,
+  c: { amount: number; cur: Currency; date: ISODate; rate?: number | null },
+  ownId?: string,
+): ContributionIncomeHint | null {
+  const income = state.incomes.find((i) => i.id === incomeId);
+  const account = income && state.accounts.find((a) => a.id === income.accountId);
+  const use = income && isMoneyIncome(income) ? incomeBudgetUse(state, income) : null;
+  if (!use || !account || account.currency === 'XAU') return null;
+  const own = ownId === undefined ? undefined : state.contribs.find((o) => o.id === ownId && o.incomeId === incomeId);
+  const before = own ? use.left + contribIn(state, own, account.currency) : use.left;
+  const amount = contribIn(state, c, account.currency);
+  return { left: use.left, currency: account.currency, before, over: Math.round((amount - before) * 100) > 0 };
+}
 
 type GoalRef = Pick<Goal, 'id' | 'name' | 'sort'>;
 type GoalCur = GoalRef & Pick<Goal, 'cur'>;
@@ -482,10 +546,15 @@ export function resolveDraft(draft: ContributionDraft, goals: readonly GoalCur[]
     cur,
     rate: cur === fallbackCur ? null : draft.rate,
     accountId: draft.accountId,
+    // Without an account there is no income; "not from a specific income" is stored as none (key left out).
+    ...(draft.accountId && draft.incomeId ? { incomeId: draft.incomeId } : {}),
   };
 }
 
-/** El aporte listo para guardar, o null si no se puede agregar: hace falta una meta, una fecha válida y un monto > 0. */
+/**
+ * El aporte listo para guardar, o null si no se puede agregar: hace falta una meta, una fecha válida y un monto > 0,
+ * (el ingreso de origen es opcional).
+ */
 export function draftInput(draft: ContributionDraft, goals: readonly GoalCur[], today: ISODate, main: Currency = 'USD'): ContributionInput | null {
   const input = resolveDraft(draft, goals, today, main);
   const ok = input.goalId !== '' && isISODate(input.date) && Number.isFinite(input.amount) && input.amount > 0;
