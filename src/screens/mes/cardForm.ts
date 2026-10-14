@@ -13,13 +13,14 @@ export interface CardForm {
   cutoffDay: string;
   dueDay: string;
   active: boolean;
+  cashback: boolean;
 }
 
 export type CardFormError = 'name' | 'nameTaken' | 'last4' | 'limit' | 'cutoffDay' | 'dueDay';
 
 /** A new credit card starts in the user's main currency, turned on and with no other data. */
 export function newCardForm(main: Currency): CardForm {
-  return { name: '', bank: '', last4: '', cur: main, limit: '', cutoffDay: '', dueDay: '', active: true };
+  return { name: '', bank: '', last4: '', cur: main, limit: '', cutoffDay: '', dueDay: '', active: true, cashback: false };
 }
 
 export function cardToForm(card: CreditCard): CardForm {
@@ -32,6 +33,7 @@ export function cardToForm(card: CreditCard): CardForm {
     cutoffDay: card.cutoffDay === null ? '' : String(card.cutoffDay),
     dueDay: card.dueDay === null ? '' : String(card.dueDay),
     active: card.active,
+    cashback: card.cashback === true,
   };
 }
 
@@ -65,5 +67,6 @@ export function formToInput(form: CardForm): CardInput {
     cutoffDay: num(form.cutoffDay),
     dueDay: num(form.dueDay),
     active: form.active,
+    cashback: form.cashback,
   };
 }

@@ -1177,11 +1177,11 @@ const monthSummary = defineTool({
       `Monthly expenses: ${c.paidCount} of ${c.fixedCount} paid${SEP}Fixed paid: ${money(c.fixedPaid, main)}${SEP}Fixed pending: ${money(c.pending, main)}`,
     );
     // Only the active credit cards that have something this month (or that owed something).
-    const cards = c.cards.filter((k) => k.total !== 0 || k.payments.length > 0);
+    const cards = c.cards.filter((k) => k.total !== 0 || k.cashback !== 0 || k.payments.length > 0);
     for (const k of cards) {
       const cur = k.cur;
       lines.push(
-        `Credit card "${k.card.name}": total ${money(k.total, cur)} (previous ${money(k.previous, cur)}${SEP}other charges ${money(k.other, cur)}${SEP}charged this month ${money(k.charged, cur)})${SEP}` +
+        `Credit card "${k.card.name}": total ${money(k.total, cur)} (previous ${money(k.previous, cur)}${SEP}other charges ${money(k.other, cur)}${SEP}charged this month ${money(k.charged, cur)}${k.cashback ? `${SEP}cashback -${money(k.cashback, cur)}` : ''})${SEP}` +
           (k.payments.length === 0
             ? 'not paid yet'
             : `paid ${money(k.paid, cur)} in ${k.payments.length} payment${k.payments.length === 1 ? '' : 's'} (${k.payments.map((p) => `${p.date} ${money(p.amount, cur)} from ${accountsById(state).get(p.accountId)?.name ?? p.accountId}`).join('; ')})`) +
@@ -1262,7 +1262,7 @@ const monthSummary = defineTool({
         availableAfterPending: c.after,
         fixed: { count: c.fixedCount, paidCount: c.paidCount, paid: c.fixedPaid, pending: c.pending, pendingItems: pending },
         transactions: { count: c.txCount, total: c.varSpent },
-        // Deferred payment: `total` = previous + other + charged; `paid` = sum of `payments`; `remainder` = what is left to
+        // Deferred payment: `total` = previous + other + charged - cashback; `paid` = sum of `payments`; `remainder` = what is left to
         // pay (if the month closes like that, it carries to the next one). In the main currency.
         creditCards: c.cards.map((k) => ({
           id: k.card.id,
@@ -1272,6 +1272,7 @@ const monthSummary = defineTool({
           previous: k.previous,
           other: k.other,
           charged: k.charged,
+          ...(k.cashback !== 0 && { cashback: k.cashback }),
           paid: k.paid,
           payments: k.payments.map((p) => ({ id: p.id, date: p.date, accountId: p.accountId, amount: p.amount })),
           remainder: k.remainder,
@@ -1691,6 +1692,7 @@ const listCreditCards = defineTool({
           `${card.name}${card.bank ? ` (${card.bank}${card.last4 ? ` ****${card.last4}` : ''})` : card.last4 ? ` (****${card.last4})` : ''}`,
           card.cur,
           card.active ? 'on' : 'off',
+          card.cashback && 'has cashback',
           `owed ${money(owed, card.cur)}`,
           card.limit ? `limit ${money(card.limit, card.cur)}${SEP}${((util ?? 0) * 100).toFixed(1)}% used` : 'no limit set',
           card.cutoffDay ? `cutoff day ${card.cutoffDay}` : 'no cutoff day',
@@ -1708,6 +1710,7 @@ const listCreditCards = defineTool({
         today,
         month: last ?? null,
         cards: rows.map(({ card, owed, util, hint }) => ({ ...card, owed, utilization: util, hint })),
+        // `owed` already has the cashback of the latest month deducted (it is part of the card's total).
       },
     };
   },

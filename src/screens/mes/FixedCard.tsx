@@ -26,6 +26,7 @@ import {
   useAddRow,
 } from '../../ui';
 import { CardDetailsDialog } from './CardDetailsDialog';
+import { cardTableRows, cashbackShown } from './cardRows';
 import { isFullyPaid } from './cardPay';
 import { PayCardDialog } from './PayCardDialog';
 import { canAddFixed, draftAccount, draftCurrency, EMPTY_FIXED, fixedInput } from './drafts';
@@ -107,16 +108,20 @@ export function FixedCard({ className, cardClassName }: { className?: string; ca
         </thead>
         <tbody>
           {/* Derived credit card rows come first, in the credit cards' sort order, so adding a credit card pushes every regular expense down one row. */}
-          {calc.cards.map((card) => (
-            <CardRow
-              key={card.card.id}
-              card={card}
-              readOnly={readOnly}
-              accountName={[...new Set(card.payments.map((p) => accounts.find((a) => a.id === p.accountId)?.name ?? '—'))].join(', ') || undefined}
-              onPay={() => setPaying(card.card.id)}
-              onDetails={() => setViewing(card.card.id)}
-            />
-          ))}
+          {cardTableRows(calc.cards).map((row) =>
+            row.kind === 'cashback' ? (
+              <CashbackRow key={`${row.calc.card.id}-cashback`} card={row.calc} readOnly={readOnly} actions={actions} />
+            ) : (
+              <CardRow
+                key={row.calc.card.id}
+                card={row.calc}
+                readOnly={readOnly}
+                accountName={[...new Set(row.calc.payments.map((p) => accounts.find((a) => a.id === p.accountId)?.name ?? '—'))].join(', ') || undefined}
+                onPay={() => setPaying(row.calc.card.id)}
+                onDetails={() => setViewing(row.calc.card.id)}
+              />
+            ),
+          )}
           {withMoney(sortFixed(month.fixed), inBoth).map(({ row, main: inMain, second: inSecond }) => (
             <FixedRow
               key={row.id}
@@ -283,6 +288,50 @@ function CardRow({ card, readOnly, accountName, onPay, onDetails }: CardRowProps
       </Td>
       <Td tone="soft" className={styles.cardAccount} title={accountName}>
         {accountName ?? '—'}
+      </Td>
+      <Td kind="num" nowrap>
+        {f2(money.main)}
+      </Td>
+      {money.second !== null && (
+        <Td kind="num" nowrap tone="muted">
+          {f2(money.second)}
+        </Td>
+      )}
+      <Td kind="action" />
+    </Tr>
+  );
+}
+
+/**
+ * The derived row under a card with cashback: what it generated this month, typed here, in the card's currency. It is a
+ * credit, so the money columns show it negative; it has no checkbox, account or delete button because it is not an expense.
+ */
+function CashbackRow({ card, readOnly, actions }: { card: CardCalc; readOnly: boolean; actions: Actions }) {
+  const { inBoth } = useFinanzas();
+  const s = useStrings(MES);
+  const named = { name: card.card.name };
+  const money = inBoth(cashbackShown(card), card.cur);
+  const title = s('cashbackRow', named);
+  return (
+    <Tr>
+      <Td kind="center" />
+      <Td tone="muted" title={title}>
+        <div className={styles.cardName}>
+          <span className={styles.cashbackName}>{title}</span>
+        </div>
+      </Td>
+      <Td kind="center" tone="faint">
+        —
+      </Td>
+      <Td kind="edit">
+        <CellNumber value={card.cashback} onCommit={(cashback) => actions.setCardCashback(card.card.id, cashback)} readOnly={readOnly} minWidth={AMOUNT_W} label={s('cashbackOf', named)} />
+      </Td>
+      <Td kind="mono">{card.cur}</Td>
+      <Td kind="center" tone="faint">
+        —
+      </Td>
+      <Td kind="center" tone="faint">
+        —
       </Td>
       <Td kind="num" nowrap>
         {f2(money.main)}

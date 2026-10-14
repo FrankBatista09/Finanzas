@@ -108,6 +108,8 @@ export interface Actions {
 
   /** A credit card's "Other charges" in the selected month (in the credit card's currency, >= 0). false if the amount is not valid or the month is closed. */
   setCardOther(cardId: string, other: number): boolean;
+  /** The cashback a credit card generated in the selected month (its currency, >= 0). false if not valid, the card has no cashback or the month is closed. */
+  setCardCashback(cardId: string, cashback: number): boolean;
   /**
    * Adds a payment on that credit card in the selected month: `amount` in the credit card's currency (> 0 and at most what is left,
    * `CardCalc.remainder`) from that money account, dated today. There can be several payments in the month. false if it cannot be done.

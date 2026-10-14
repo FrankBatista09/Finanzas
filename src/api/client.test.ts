@@ -277,6 +277,7 @@ describe('X-User header', () => {
     deleteBudgetEntry: (api) => api.deleteBudgetEntry('2026-10', 'x'),
     addLeftover: (api) => api.addLeftover('2026-10'),
     setCardOther: (api) => api.setCardOther('2026-10', 'card', { other: 100 }),
+    setCardCashback: (api) => api.setCardCashback('2026-10', 'card', { cashback: 5 }),
     payCard: (api) => api.payCard('2026-10', 'card', { amount: 50, accountId: 'dr' }),
     unpayCard: (api) => api.unpayCard('2026-10', 'card'),
     removeCardPayment: (api) => api.removeCardPayment('2026-10', 'card', 'x'),

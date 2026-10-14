@@ -323,6 +323,12 @@ export function createApp(): Hono<AppEnv> {
     return c.json((await db.setCardOther(c.env.DB, uid(c), key, cardParam(c), input.other)) satisfies Month);
   });
 
+  app.patch('/months/:key/cards/:cardId/cashback', async (c) => {
+    const key = monthParam(c);
+    const input = await jsonBody(c, v.cardCashbackSchema);
+    return c.json((await db.setCardCashback(c.env.DB, uid(c), key, cardParam(c), input.cashback)) satisfies Month);
+  });
+
   app.post('/months/:key/cards/:cardId/pay', async (c) => {
     const key = monthParam(c);
     const input = await jsonBody(c, v.cardPaySchema);

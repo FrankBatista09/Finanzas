@@ -125,6 +125,9 @@ export function CardDialog({ card, onClose }: { card: CreditCard | null; onClose
             {errors.includes('dueDay') && <div className={styles.error}>{s('errorCardDay')}</div>}
           </Field>
         </div>
+        <CheckField checked={form.cashback} onChange={(cashback) => setForm((f) => ({ ...f, cashback }))}>
+          {s('cardHasCashback')}
+        </CheckField>
         {card && (
           <CheckField checked={form.active} onChange={(active) => setForm((f) => ({ ...f, active }))}>
             {s('cardActiveLabel')}
@@ -145,6 +148,7 @@ function shallowSame(card: CreditCard, input: ReturnType<typeof formToInput>): b
     card.limit === input.limit &&
     card.cutoffDay === input.cutoffDay &&
     card.dueDay === input.dueDay &&
-    card.active === input.active
+    card.active === input.active &&
+    (card.cashback === true) === input.cashback
   );
 }

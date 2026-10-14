@@ -54,6 +54,7 @@
 //   DELETE /api/months/:key/rates/:from/:to?date=YYYY-MM-DD → Month (quita la tasa de ese par y esa fecha, esté
 //                                                                  guardada en un sentido o en el otro)
 //   PATCH  /api/months/:key/cards/:cardId/other CardOtherUpdate → Month (los «otros cargos» de esa tarjeta en el mes)
+//   PATCH  /api/months/:key/cards/:cardId/cashback CardCashbackUpdate → Month (el cashback que generó la tarjeta en el mes; 400 si no tiene cashback)
 //   POST   /api/months/:key/cards/:cardId/pay CardPayRequest → Month (añade un pago de esa tarjeta, total o en parte; puede haber varios en el mes)
 //   DELETE /api/months/:key/cards/:cardId/pay → Month             (quita todos los pagos de esa tarjeta en el mes)
 //   DELETE /api/months/:key/cards/:cardId/pay/:paymentId → Month  (quita uno)
@@ -329,8 +330,10 @@ export interface CreditCardCreate {
   /** 1–31; null mientras no se sepa. */
   dueDay?: number | null;
   active?: boolean;
+  /** The card earns cashback. Default false. */
+  cashback?: boolean;
 }
-export type CreditCardPatch = Partial<Pick<CreditCard, 'name' | 'bank' | 'last4' | 'cur' | 'limit' | 'cutoffDay' | 'dueDay' | 'active' | 'sort'>>;
+export type CreditCardPatch = Partial<Pick<CreditCard, 'name' | 'bank' | 'last4' | 'cur' | 'limit' | 'cutoffDay' | 'dueDay' | 'active' | 'cashback' | 'sort'>>;
 
 export interface FixedCreate {
   id?: string;
@@ -351,6 +354,11 @@ export type FixedPatch = Partial<Pick<FixedExpense, 'name' | 'day' | 'amount' | 
 /** PATCH /api/months/:key/cards/:cardId/other: los «otros cargos» de esa tarjeta en el mes, en la moneda de la tarjeta (>= 0). */
 export interface CardOtherUpdate {
   other: number;
+}
+
+/** PATCH /api/months/:key/cards/:cardId/cashback: the cashback the card generated in the month, in its currency (>= 0). */
+export interface CardCashbackUpdate {
+  cashback: number;
 }
 
 /**

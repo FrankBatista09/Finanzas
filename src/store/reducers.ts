@@ -81,6 +81,7 @@ export type Action =
   | { type: 'budget/leftover'; key: MonthKey; row: BudgetEntry }
   /** Una tarjeta de crédito en el mes: otros cargos, añadir un pago (moneda de la tarjeta), quitarlos todos o quitar uno. */
   | { type: 'card/other'; key: MonthKey; cardId: string; other: number }
+  | { type: 'card/cashback'; key: MonthKey; cardId: string; cashback: number }
   | { type: 'card/pay'; key: MonthKey; cardId: string; payment: CardPayment }
   | { type: 'card/unpay'; key: MonthKey; cardId: string }
   | { type: 'card/unpayOne'; key: MonthKey; cardId: string; id: string }
@@ -229,9 +230,11 @@ function patchMonth(m: Month, patch: MonthPatch, date: ISODate): Month {
 /** El mes con esa tarjeta; sin nada que guardar queda sin ella (y sin `cards` si era la única), como lo manda el servidor. */
 function withCard(m: Month, card: MonthCard): Month {
   const before = cardOf(m, card.cardId);
-  if (card.other === before.other && card.payments === before.payments) return m;
+  if (card.other === before.other && card.payments === before.payments && (card.cashback ?? 0) === (before.cashback ?? 0)) return m;
   const others = (m.cards ?? []).filter((c) => c.cardId !== card.cardId);
-  const cards = card.other === 0 && card.payments.length === 0 ? others : [...others, card].sort((a, b) => (a.cardId < b.cardId ? -1 : a.cardId > b.cardId ? 1 : 0));
+  // `cashback` is omitted when 0, like the server does.
+  if (!card.cashback) delete card.cashback;
+  const cards = card.other === 0 && card.payments.length === 0 && !card.cashback ? others : [...others, card].sort((a, b) => (a.cardId < b.cardId ? -1 : a.cardId > b.cardId ? 1 : 0));
   if (cards.length === 0) {
     const { cards: _gone, ...rest } = m;
     return rest;
@@ -311,6 +314,8 @@ export function reduce(state: AppState, action: Action): AppState {
 
     case 'card/other':
       return withMonth(state, action.key, (m) => withCard(m, { ...cardOf(m, action.cardId), other: action.other }));
+    case 'card/cashback':
+      return withMonth(state, action.key, (m) => withCard(m, { ...cardOf(m, action.cardId), cashback: action.cashback }));
     case 'card/pay':
       return withMonth(state, action.key, (m) => withCard(m, { ...cardOf(m, action.cardId), payments: [...cardOf(m, action.cardId).payments, action.payment] }));
     case 'card/unpay':
@@ -322,8 +327,19 @@ export function reduce(state: AppState, action: Action): AppState {
 
     case 'creditCard/add':
       return { ...state, cards: upsert(state.cards, action.row) };
-    case 'creditCard/patch':
-      return patchTop(state, 'cards', action.id, action.patch);
+    case 'creditCard/patch': {
+      let next = patchTop(state, 'cards', action.id, action.patch);
+      if (action.patch.cashback !== undefined) {
+        // Absent means false, and turning it off drops the amounts typed in every month (the server does the same).
+        next = { ...next, cards: next.cards.map((c) => { if (c.id !== action.id || c.cashback) return c; const { cashback: _off, ...rest } = c; return rest; }) };
+        if (!action.patch.cashback) {
+          for (const [key, month] of Object.entries(next.months)) {
+            if (cardOf(month, action.id).cashback) next = withMonth(next, key, (m) => withCard(m, { ...cardOf(m, action.id), cashback: 0 }));
+          }
+        }
+      }
+      return next;
+    }
     case 'creditCard/remove':
       return removeTop(state, 'cards', action.id);
 
@@ -1150,6 +1166,7 @@ export interface CardInput {
   cutoffDay?: number | null;
   dueDay?: number | null;
   active?: boolean;
+  cashback?: boolean;
 }
 
 const validDay = (n: number | null | undefined) => n == null || (Number.isInteger(n) && n >= 1 && n <= 31);
@@ -1175,6 +1192,7 @@ export function newCard(state: AppState, input: CardInput, id: string): CreditCa
     cutoffDay: input.cutoffDay ?? null,
     dueDay: input.dueDay ?? null,
     active: input.active !== false,
+    ...(input.cashback ? { cashback: true } : {}),
     sort,
   };
 }
@@ -1225,7 +1243,9 @@ export function cardPatchChange(state: AppState, id: string, patch: CreditCardPa
   if (!validDay(patch.cutoffDay) || !validDay(patch.dueDay) || !validLimit(patch.limit) || !validLast4(patch.last4)) return null;
   if (patch.cur !== undefined && (!isCurrency(patch.cur) || (patch.cur !== card.cur && cardInUse(state, id)))) return null;
   if (patch.active === false && card.active && !canTurnOffCard(state, id)) return null;
-  const changed = (Object.keys(clean) as (keyof CreditCardPatch)[]).some((k) => clean[k] !== card[k as keyof CreditCard]);
+  const changed = (Object.keys(clean) as (keyof CreditCardPatch)[]).some((k) =>
+    k === 'cashback' ? !!clean.cashback !== !!card.cashback : clean[k] !== card[k as keyof CreditCard],
+  );
   return changed ? { type: 'creditCard/patch', id, patch: clean } : null;
 }
 
@@ -1236,6 +1256,12 @@ export function cardRemoval(state: AppState, id: string): Action | null {
 /** Los «otros cargos» de una tarjeta en el mes: un mes abierto, una tarjeta que exista y un número finito >= 0. */
 export function cardOtherChange(state: AppState, key: MonthKey, cardId: string, other: number): Action | null {
   return openMonth(state, key) && hasCard(state, cardId) && nonNegative(other) ? { type: 'card/other', key, cardId, other } : null;
+}
+
+/** The cashback a card generated in the month: an open month, a card that has the cashback flag and a finite number >= 0. */
+export function cardCashbackChange(state: AppState, key: MonthKey, cardId: string, cashback: number): Action | null {
+  const card = state.cards.find((c) => c.id === cardId);
+  return openMonth(state, key) && card?.cashback && nonNegative(cashback) ? { type: 'card/cashback', key, cardId, cashback } : null;
 }
 
 /**

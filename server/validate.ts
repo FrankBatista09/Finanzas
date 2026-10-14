@@ -13,6 +13,7 @@ import type {
   CloseRequest,
   ContributionCreate,
   ContributionPatch,
+  CardCashbackUpdate,
   CardOtherUpdate,
   CardPayRequest,
   CreditCardCreate,
@@ -226,6 +227,7 @@ export const creditCardCreateSchema = z.strictObject({
   cutoffDay: dayOfMonth().nullable().optional(),
   dueDay: dayOfMonth().nullable().optional(),
   active: bool().optional(),
+  cashback: bool().optional(),
 }) satisfies z.ZodType<CreditCardCreate>;
 
 export const creditCardPatchSchema = z.strictObject({
@@ -237,10 +239,12 @@ export const creditCardPatchSchema = z.strictObject({
   cutoffDay: dayOfMonth().nullable().optional(),
   dueDay: dayOfMonth().nullable().optional(),
   active: bool().optional(),
+  cashback: bool().optional(),
   sort: sortIndex().optional(),
 }) satisfies z.ZodType<CreditCardPatch>;
 
 export const cardOtherSchema = z.strictObject({ other: nonNegative() }) satisfies z.ZodType<CardOtherUpdate>;
+export const cardCashbackSchema = z.strictObject({ cashback: nonNegative() }) satisfies z.ZodType<CardCashbackUpdate>;
 
 // Que el importe no pase de lo que falta por pagar lo comprueba payCard (server/db.ts): lo que falta sale del estado.
 export const cardPaySchema = z.strictObject({ id: id().optional(), amount: positive(), accountId: id().optional(), date: isoDate().optional() }) satisfies z.ZodType<CardPayRequest>;

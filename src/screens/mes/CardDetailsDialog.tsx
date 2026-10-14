@@ -67,6 +67,19 @@ export function CardDetailsDialog({ cardId, onClose, onPay }: Props) {
           )}
         </div>
         <Line label={s('cardChargedMonth')} value={money(calc.charged)} />
+        {card.cashback && (
+          <div className={styles.line}>
+            <span>{s('cardCashback')}</span>
+            {readOnly ? (
+              <span className={styles.value}>{money(calc.cashback === 0 ? 0 : -calc.cashback)}</span>
+            ) : (
+              <span className={styles.edit}>
+                <NumberField value={calc.cashback} onCommit={(cashback) => actions.setCardCashback(cardId, cashback)} className={styles.input} aria-label={s('cashbackOf', { name: card.name })} />
+                <span className={styles.cur}>{cur}</span>
+              </span>
+            )}
+          </div>
+        )}
         {items.length === 0 ? (
           <p className={styles.empty}>{s('cardNoItems')}</p>
         ) : (

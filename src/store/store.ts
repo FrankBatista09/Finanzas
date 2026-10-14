@@ -304,6 +304,8 @@ export class FinanzasStore {
         return api.reopenMonth(action.key, opts);
       case 'card/other':
         return api.setCardOther(action.key, action.cardId, { other: action.other }, opts);
+      case 'card/cashback':
+        return api.setCardCashback(action.key, action.cardId, { cashback: action.cashback }, opts);
       case 'card/pay':
         return api.payCard(action.key, action.cardId, { id: action.payment.id, amount: action.payment.amount, accountId: action.payment.accountId, date: action.payment.date }, opts);
       case 'card/unpay':
@@ -311,8 +313,8 @@ export class FinanzasStore {
       case 'card/unpayOne':
         return api.removeCardPayment(action.key, action.cardId, action.id, opts);
       case 'creditCard/add': {
-        const { id, name, bank, last4, cur, limit, cutoffDay, dueDay, active } = action.row;
-        return api.createCreditCard({ id, name, bank, last4, cur, limit, cutoffDay, dueDay, active }, opts);
+        const { id, name, bank, last4, cur, limit, cutoffDay, dueDay, active, cashback } = action.row;
+        return api.createCreditCard({ id, name, bank, last4, cur, limit, cutoffDay, dueDay, active, ...(cashback && { cashback }) }, opts);
       }
       case 'creditCard/patch':
         return api.patchCreditCard(action.id, action.patch, opts);

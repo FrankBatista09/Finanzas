@@ -487,7 +487,7 @@ export function openingFor(state: AppState, accountId: string, asOf: MonthKey, d
 /**
  * Una tarjeta de crédito en un mes: un pago diferido. Lo que se carga a ella no toca ninguna cuenta ni el
  * presupuesto; solo el pago de la tarjeta lo hace. Todo en la moneda de la tarjeta (`cur`).
- *  total = previous + other + charged
+ *  total = previous + other + charged − cashback
  * El saldo de un mes que se arrastra al siguiente se deriva, nunca se guarda: es su `remainder`.
  */
 export interface CardCalc {
@@ -501,7 +501,9 @@ export interface CardCalc {
   other: number;
   /** Lo cargado en este mes: gastos fijos "en tarjeta" marcados + transacciones con tarjeta de crédito. */
   charged: number;
-  /** previous + other + charged: lo que se debe a la tarjeta este mes (T). */
+  /** Cashback generated this month: a credit that reduces what is owed. 0 when the card has no cashback flag, whatever is stored. */
+  cashback: number;
+  /** previous + other + charged − cashback: lo que se debe a la tarjeta este mes (T). Negative = a credit in favor. */
   total: number;
   /** Lo pagado este mes (P): la suma de los pagos; 0 si no hay. */
   paid: number;
@@ -537,10 +539,12 @@ function cardTable(state: AppState): Map<MonthKey, Map<string, CardCalc>> {
       const stored = cardOf(m, card.id);
       const prev = previous.get(card.id) ?? 0;
       const other = stored.other || 0;
-      const total = prev + other + charged;
+      // A stored amount is ignored while the card is not flagged (the server clears it when the flag goes off).
+      const cashback = card.cashback ? stored.cashback || 0 : 0;
+      const total = prev + other + charged - cashback;
       const paid = stored.payments.reduce((a, p) => a + p.amount, 0);
       const remainder = total - paid;
-      row.set(card.id, { key, card, cur, previous: prev, other, charged, total, paid, payments: stored.payments, remainder });
+      row.set(card.id, { key, card, cur, previous: prev, other, charged, cashback, total, paid, payments: stored.payments, remainder });
       previous.set(card.id, remainder);
     }
     table.set(key, row);

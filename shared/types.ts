@@ -264,6 +264,8 @@ export interface CreditCard {
   dueDay: number | null;
   /** Una tarjeta apagada no suma a nada (shared/calc.ts: se usan las tarjetas activas AHORA en todos los meses). */
   active: boolean;
+  /** The card earns cashback: each month can record what it generated (MonthCard.cashback). Absent = false. */
+  cashback?: boolean;
   sort: number;
 }
 
@@ -275,6 +277,8 @@ export interface MonthCard {
   cardId: string;
   /** "Otros cargos" escritos a mano (>= 0): lo que se pasó a la tarjeta fuera de las filas del mes. */
   other: number;
+  /** Cashback generated in the month (> 0; absent = 0). A credit: it reduces what is owed. Only counts if the card has the flag. */
+  cashback?: number;
   /** Los pagos del mes, en el orden en que se hicieron: varios, cada uno con su cuenta y su fecha. */
   payments: CardPayment[];
 }

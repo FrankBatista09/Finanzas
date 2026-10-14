@@ -84,6 +84,15 @@
   white-space: nowrap;
 }
 
+.cashbackName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
 .cardAccount {
   max-width: 130px;
   overflow: hidden;
