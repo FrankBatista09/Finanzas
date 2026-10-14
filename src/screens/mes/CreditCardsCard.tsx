@@ -134,7 +134,8 @@ function CardItem({ card, refused, onToggle, onEdit }: CardItemProps) {
   const { state, monthKey, latestMonth, today } = useFinanzas();
   const { lang } = useI18n();
   const s = useStrings(MES);
-  const remainder = cardCalc(state, monthKey, card.id).remainder;
+  const calc = cardCalc(state, monthKey, card.id);
+  const remainder = calc.remainder;
   const util = cardUtilization(card, remainder);
   // The notice only makes sense in the latest month: in an earlier one what is owed is no longer today's amount.
   const hint = latestMonth ? cardHint(card, remainder, today) : null;
@@ -156,6 +157,7 @@ function CardItem({ card, refused, onToggle, onEdit }: CardItemProps) {
           </span>
           {detail && <span className={styles.muted}>{detail}</span>}
           {!card.active && <span className={styles.tag}>{s('cardOffTag')}</span>}
+          {card.cashback && <span className={styles.tag}>{s('cardCashback')}</span>}
         </div>
         <button type="button" className={styles.link} aria-label={s('cardEditNamed', { name: card.name })} onClick={onEdit}>
           {s('cardEdit')}
@@ -166,6 +168,7 @@ function CardItem({ card, refused, onToggle, onEdit }: CardItemProps) {
           <span className={styles.fields}>
             {s('cardLimit')} <b>{card.limit === null ? '—' : money(card.limit)}</b>
           </span>
+          {calc.cashback > 0 && <span className={styles.muted}>{s('cardCashbackLine', { amount: f2(calc.cashback), currency: card.cur })}</span>}
           <span>{monoNumbers(pct === null ? s('cardOwe', { amount: f2(Math.max(0, remainder)), currency: card.cur }) : s('cardOweLimit', { amount: f2(Math.max(0, remainder)), currency: card.cur, pct }), styles.num)}</span>
         </div>
         <div className={styles.side}>

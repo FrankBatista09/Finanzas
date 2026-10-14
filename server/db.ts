@@ -209,6 +209,7 @@ interface CreditCardRow {
   cutoff_day: number | null;
   due_day: number | null;
   active: number;
+  cashback: number;
   sort: number;
 }
 
@@ -216,6 +217,7 @@ interface MonthCardRow {
   month_key: string;
   card_id: string;
   other: number;
+  cashback: number;
 }
 
 interface CardPaymentRow {
@@ -330,6 +332,7 @@ function toCreditCard(r: CreditCardRow): CreditCard {
     cutoffDay: r.cutoff_day,
     dueDay: r.due_day,
     active: r.active === 1,
+    ...(r.cashback === 1 ? { cashback: true } : {}),
     sort: r.sort,
   };
 }
@@ -415,7 +418,10 @@ function toMonths(months: MonthRow[], parts: MonthParts): Record<MonthKey, Month
   };
   for (const r of parts.monthCards) {
     const month = byKey[r.month_key];
-    if (month && r.other !== 0) entry(month, r.card_id).other = r.other;
+    if (!month || (r.other === 0 && r.cashback === 0)) continue;
+    const hit = entry(month, r.card_id);
+    hit.other = r.other;
+    if (r.cashback !== 0) hit.cashback = r.cashback;
   }
   for (const r of parts.cardPayments) {
     const month = byKey[r.month_key];
@@ -464,8 +470,8 @@ type MonthTable = 'fixed_expenses' | 'transactions' | 'transfers' | 'outside_exp
 
 const ACCOUNT_INSERT = ['user_id', 'id', 'name', 'currency', 'opening', 'hidden', 'sort'];
 const MONTH_INSERT = ['user_id', 'key', 'closed', 'closed_at'];
-const CREDIT_CARD_INSERT = ['user_id', 'id', 'name', 'bank', 'last4', 'currency', 'credit_limit', 'cutoff_day', 'due_day', 'active', 'sort'];
-const MONTH_CARD_INSERT = ['user_id', 'month_key', 'card_id', 'other'];
+const CREDIT_CARD_INSERT = ['user_id', 'id', 'name', 'bank', 'last4', 'currency', 'credit_limit', 'cutoff_day', 'due_day', 'active', 'cashback', 'sort'];
+const MONTH_CARD_INSERT = ['user_id', 'month_key', 'card_id', 'other', 'cashback'];
 const CARD_PAYMENT_INSERT = ['user_id', 'id', 'month_key', 'card_id', 'date', 'account_id', 'amount', 'sort'];
 const BUDGET_LOG_INSERT = ['user_id', 'id', 'month_key', 'date', 'account_id', 'amount', 'kind', 'note', 'income_id'];
 const RATE_INSERT = ['user_id', 'month_key', 'from_currency', 'to_currency', 'date', 'rate'];
@@ -1630,6 +1636,7 @@ const CARD_PATCH = {
   cutoffDay: 'cutoff_day',
   dueDay: 'due_day',
   active: 'active',
+  cashback: 'cashback',
   sort: 'sort',
 } as const;
 const NO_CARD = 'Credit card not found.';
@@ -1666,7 +1673,7 @@ export async function createCard(db: D1Database, userId: string, input: CreditCa
         `INSERT INTO credit_cards (${CREDIT_CARD_INSERT.join(', ')})
          SELECT ?1, ?2, ?3, ?4, ?5,
                 COALESCE(?6, (SELECT value FROM settings WHERE user_id = ?1 AND key = 'main_currency' AND value IN ('DOP','USD','TRY')), '${DEFAULT_MAIN_CURRENCY}'),
-                ?7, ?8, ?9, ?10, COALESCE((SELECT MAX(sort) FROM credit_cards WHERE user_id = ?1), -1) + 1
+                ?7, ?8, ?9, ?10, ?11, COALESCE((SELECT MAX(sort) FROM credit_cards WHERE user_id = ?1), -1) + 1
          WHERE NOT EXISTS (SELECT 1 FROM credit_cards WHERE user_id = ?1 AND lower(name) = lower(?3))
          RETURNING *`,
       )
@@ -1681,6 +1688,7 @@ export async function createCard(db: D1Database, userId: string, input: CreditCa
         input.cutoffDay ?? null,
         input.dueDay ?? null,
         input.active === false ? 0 : 1,
+        input.cashback ? 1 : 0,
       ),
   );
   if (!row) throw cardNameTaken();
@@ -1711,13 +1719,20 @@ export async function patchCard(db: D1Database, userId: string, id: string, patc
     .bind(...sets.values, userId, id)
     .first<CreditCardRow>();
   if (!row) throw notFoundError(NO_CARD);
+  // An amount stored while the flag was on must not come back if it is turned on again: turning it off clears them all.
+  if (patch.cashback === false && current.cashback) {
+    await db.batch([
+      db.prepare('UPDATE month_cards SET cashback = 0 WHERE user_id = ?1 AND card_id = ?2').bind(userId, id),
+      db.prepare('DELETE FROM month_cards WHERE user_id = ?1 AND card_id = ?2 AND other = 0 AND cashback = 0').bind(userId, id),
+    ]);
+  }
   return toCreditCard(row);
 }
 
 /** Borra la tarjeta solo si nada la usa (409 si no: se apaga). Sus «otros cargos» en 0 no cuentan como uso. */
 export async function deleteCard(db: D1Database, userId: string, id: string): Promise<void> {
   const results = await db.batch([
-    db.prepare('DELETE FROM month_cards WHERE user_id = ?1 AND card_id = ?2 AND other = 0').bind(userId, id),
+    db.prepare('DELETE FROM month_cards WHERE user_id = ?1 AND card_id = ?2 AND other = 0 AND cashback = 0').bind(userId, id),
     db.prepare(`DELETE FROM credit_cards WHERE user_id = ?1 AND id = ?2 AND NOT ${CARD_IN_USE} RETURNING id`).bind(userId, id),
   ]);
   if (rows<{ id: string }>(results[1]).length) return;
@@ -1748,23 +1763,45 @@ async function requireCard(db: D1Database, userId: string, cardId: string): Prom
   if (!row) throw notFoundError(NO_CARD);
 }
 
-/** Los «otros cargos» de una tarjeta en el mes (>= 0, en la moneda de la tarjeta; 0 borra la fila). Mes cerrado → 409. */
-export async function setCardOther(db: D1Database, userId: string, key: MonthKey, cardId: string, other: number): Promise<Month> {
-  await requireCard(db, userId, cardId);
-  const write =
-    other === 0
+/**
+ * Writes one of the two typed per-month amounts of a card (`other` or `cashback`; >= 0, in the card's currency). The row
+ * is dropped when both end up at 0. Closed month -> 409.
+ */
+async function setCardAmount(db: D1Database, userId: string, key: MonthKey, cardId: string, column: 'other' | 'cashback', amount: number): Promise<Month> {
+  const upsert =
+    amount === 0
       ? db
-          .prepare(`DELETE FROM month_cards WHERE user_id = ?1 AND month_key = ?2 AND card_id = ?3 AND month_key IN (SELECT key FROM months WHERE user_id = ?1 AND closed = 0)`)
+          .prepare(`UPDATE month_cards SET ${column} = 0 WHERE user_id = ?1 AND month_key = ?2 AND card_id = ?3 AND month_key IN (SELECT key FROM months WHERE user_id = ?1 AND closed = 0)`)
           .bind(userId, key, cardId)
       : db
           .prepare(
-            `INSERT INTO month_cards (${MONTH_CARD_INSERT.join(', ')})
+            `INSERT INTO month_cards (user_id, month_key, card_id, ${column})
              SELECT m.user_id, m.key, ?3, ?4 FROM months m WHERE m.user_id = ?1 AND m.key = ?2 AND m.closed = 0
-             ON CONFLICT (user_id, month_key, card_id) DO UPDATE SET other = excluded.other`,
+             ON CONFLICT (user_id, month_key, card_id) DO UPDATE SET ${column} = excluded.${column}`,
           )
-          .bind(userId, key, cardId, other);
-  const results = await db.batch([write, ...monthStatements(db, userId, key)]);
+          .bind(userId, key, cardId, amount);
+  const prune = db
+    .prepare(`DELETE FROM month_cards WHERE user_id = ?1 AND month_key = ?2 AND card_id = ?3 AND other = 0 AND cashback = 0`)
+    .bind(userId, key, cardId);
+  const results = await db.batch([upsert, prune, ...monthStatements(db, userId, key)]);
   return writtenMonth(results, key);
+}
+
+/** Los «otros cargos» de una tarjeta en el mes (>= 0, en la moneda de la tarjeta; 0 borra la fila). Mes cerrado → 409. */
+export async function setCardOther(db: D1Database, userId: string, key: MonthKey, cardId: string, other: number): Promise<Month> {
+  await requireCard(db, userId, cardId);
+  return setCardAmount(db, userId, key, cardId, 'other', other);
+}
+
+/**
+ * The cashback a card generated in the month (>= 0, in the card's currency; 0 clears it). It reduces what is owed.
+ * Unknown card -> 404, card without the cashback flag -> 400, closed month -> 409.
+ */
+export async function setCardCashback(db: D1Database, userId: string, key: MonthKey, cardId: string, cashback: number): Promise<Month> {
+  const row = await db.prepare('SELECT name, cashback FROM credit_cards WHERE user_id = ? AND id = ?').bind(userId, cardId).first<{ name: string; cashback: number }>();
+  if (!row) throw notFoundError(NO_CARD);
+  if (row.cashback !== 1) throw validationError(`${row.name} does not have cashback: turn it on in the card first.`);
+  return setCardAmount(db, userId, key, cardId, 'cashback', cashback);
 }
 
 /**
@@ -2600,7 +2637,7 @@ function dataStatements(db: D1Database, userId: string, state: UserData, stamp: 
           db,
           'credit_cards',
           CREDIT_CARD_INSERT,
-          state.cards.map((c) => [userId, c.id, c.name, c.bank, c.last4, c.cur, c.limit, c.cutoffDay, c.dueDay, c.active ? 1 : 0, c.sort]),
+          state.cards.map((c) => [userId, c.id, c.name, c.bank, c.last4, c.cur, c.limit, c.cutoffDay, c.dueDay, c.active ? 1 : 0, c.cashback ? 1 : 0, c.sort]),
         )),
     ...insertMany(
       db,
@@ -2612,7 +2649,9 @@ function dataStatements(db: D1Database, userId: string, state: UserData, stamp: 
       db,
       'month_cards',
       MONTH_CARD_INSERT,
-      months.flatMap((m) => (m.cards ?? []).filter((c) => c.other !== 0).map((c) => [userId, m.key, c.cardId, c.other])),
+      months.flatMap((m) =>
+        (m.cards ?? []).filter((c) => c.other !== 0 || c.cashback).map((c) => [userId, m.key, c.cardId, c.other, c.cashback ?? 0]),
+      ),
     ),
     ...insertMany(
       db,

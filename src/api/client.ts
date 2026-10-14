@@ -15,6 +15,7 @@ import type {
   CloseResponse,
   ContributionCreate,
   ContributionPatch,
+  CardCashbackUpdate,
   CardOtherUpdate,
   CardPayRequest,
   CreditCardCreate,
@@ -222,6 +223,9 @@ export function createApiClient(fetchImpl: FetchLike = (input, init) => fetch(in
       /** A credit card's "Other charges" in the month. */
       setCardOther: (key: MonthKey, cardId: string, body: CardOtherUpdate, opts?: RequestOptions) =>
         json<Month>('PATCH', `/api/months/${seg(key)}/cards/${seg(cardId)}/other`, { json: body, opts }),
+      /** The cashback a credit card generated in the month (400 if the card has no cashback). */
+      setCardCashback: (key: MonthKey, cardId: string, body: CardCashbackUpdate, opts?: RequestOptions) =>
+        json<Month>('PATCH', `/api/months/${seg(key)}/cards/${seg(cardId)}/cashback`, { json: body, opts }),
       /** Adds a credit card payment in the month (the amount cannot exceed what is left; 400 if it does). */
       payCard: (key: MonthKey, cardId: string, body: CardPayRequest, opts?: RequestOptions) =>
         json<Month>('POST', `/api/months/${seg(key)}/cards/${seg(cardId)}/pay`, { json: body, opts }),

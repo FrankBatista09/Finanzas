@@ -12,6 +12,7 @@ import {
   canHideAccount,
   canRemoveAccount,
   canRemoveGoal,
+  cardCashbackChange,
   cardOtherChange,
   cardPatchChange,
   cardPayment,
@@ -182,6 +183,12 @@ export function createActions(
 
     setCardOther(cardId, other) {
       const action = store.state && monthKey ? cardOtherChange(store.state, monthKey, cardId, other) : null;
+      if (!action) return false;
+      store.dispatch(action);
+      return true;
+    },
+    setCardCashback(cardId, cashback) {
+      const action = store.state && monthKey ? cardCashbackChange(store.state, monthKey, cardId, cashback) : null;
       if (!action) return false;
       store.dispatch(action);
       return true;

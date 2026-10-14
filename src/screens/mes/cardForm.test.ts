@@ -41,7 +41,9 @@ describe('cardForm', () => {
       cutoffDay: 13,
       dueDay: null,
       active: true,
+      cashback: false,
     });
-    expect(formToInput(cardToForm(card))).toEqual({ name: 'Visa', bank: 'Popular', last4: '4242', cur: 'USD', limit: 60000, cutoffDay: 13, dueDay: null, active: false });
+    expect(formToInput(cardToForm(card))).toEqual({ name: 'Visa', bank: 'Popular', last4: '4242', cur: 'USD', limit: 60000, cutoffDay: 13, dueDay: null, active: false, cashback: false });
+    expect(formToInput(cardToForm({ ...card, cashback: true })).cashback).toBe(true);
   });
 });

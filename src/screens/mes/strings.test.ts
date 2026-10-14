@@ -200,8 +200,10 @@ describe('the three dictionaries', () => {
   });
 
   it('Spanish and Turkish are translated: no string stayed the same as in English', () => {
+    // "Cashback" is the word in Spanish and Turkish too: these read the same on purpose.
+    const sameOnPurpose = new Set(['cardCashback', 'cashbackRow', 'cardCashbackLine']);
     for (const lang of ['es', 'tr'] as const) {
-      const same = Object.keys(dicts.en!).filter((key) => JSON.stringify(dicts[lang]![key]) === JSON.stringify(dicts.en![key]));
+      const same = Object.keys(dicts.en!).filter((key) => !sameOnPurpose.has(key) && JSON.stringify(dicts[lang]![key]) === JSON.stringify(dicts.en![key]));
       expect(same, lang).toEqual([]);
     }
   });
