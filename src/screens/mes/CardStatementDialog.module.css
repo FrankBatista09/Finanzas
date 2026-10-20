@@ -6,6 +6,20 @@
 /* Fixed layout: every column keeps its width and the name (no width) takes only what is left. */
 .grid {
   table-layout: fixed;
+  width: 1040px;
+  max-width: 100%;
+}
+
+/* The date header, a button that flips the order. */
+.sort {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  cursor: pointer;
 }
 
 /* The statement selector and the "+ Add purchase" button above the table. */

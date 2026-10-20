@@ -5,7 +5,7 @@ import type { StatementItem } from '../../../shared/calc';
 import { canPick, currentStatement, itemsIn, selection, statementCutoffs, statementTotals, stepStatement } from './cardStatement';
 
 const item = (id: string, over: Partial<StatementItem> = {}): StatementItem => ({
-  kind: 'tx', id, key: '2026-10', date: '2026-10-02', name: id, cat: 'Food', amount: 10, cur: 'DOP', converted: 10, statement: '2026-10-13', status: 'unpaid', includedIn: null, payment: null, ...over,
+  kind: 'tx', id, key: '2026-10', date: '2026-10-02', name: id, notes: null, cat: 'Food', amount: 10, cur: 'DOP', converted: 10, statement: '2026-10-13', status: 'unpaid', includedIn: null, payment: null, ...over,
 });
 
 describe('statementCutoffs', () => {
