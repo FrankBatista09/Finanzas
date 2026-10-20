@@ -46,3 +46,15 @@
 .settled {
   padding: 0 6px 2px;
 }
+
+/* The order of the history: a small select next to "Add transaction". */
+.order {
+  padding: 4px 6px;
+  border: 1px solid var(--border-row);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text-soft);
+  font: inherit;
+  font-size: var(--fs-meta);
+  cursor: pointer;
+}

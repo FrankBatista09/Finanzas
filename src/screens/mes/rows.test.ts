@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { CATS, METHODS } from '../../../shared/constants';
 import { seedState } from '../../../shared/seed';
-import type { AppState, CreditCard, Currency, ISODate, MonthKey } from '../../../shared/types';
+import type { AppState, CreditCard, Currency, ISODate, MonthKey, Transaction } from '../../../shared/types';
 import { createI18n } from '../../i18n';
 import { accountOptions, barRate, inBoth, pairRates } from '../../store';
 import { accountsInUse, currenciesInUse, hasActivity } from '../../store/view';
@@ -689,6 +689,22 @@ describe('historyRows: transactions and transfer fees, together', () => {
     ]);
     expect(new Set(rows.map((r) => r.key)).size).toBe(rows.length);
     expect(historyRows([], [])).toEqual([]);
+  });
+});
+
+describe('historyRows: order', () => {
+  const base = seedState().months['2026-10']!.tx[0]!;
+  const tx = (id: string, date: ISODate, createdAt: string | null): Transaction => ({ ...base, id, date, createdAt });
+  const list = [tx('a', '2026-10-05', '2026-10-06 10:00:00'), tx('b', '2026-10-09', '2026-10-06 09:00:00'), tx('c', '2026-10-01', null), tx('d', '2026-10-09', '2026-10-06 09:00:00')];
+
+  it('by date, oldest first is the reverse of newest first', () => {
+    expect(historyRows(list, [], 'dateNewest').map((r) => r.key)).toEqual(['b', 'd', 'a', 'c']);
+    expect(historyRows(list, [], 'dateOldest').map((r) => r.key)).toEqual(['c', 'a', 'd', 'b']);
+  });
+
+  it('by when it was recorded: the stamp, then the list place; no stamp yet counts as the newest', () => {
+    expect(historyRows(list, [], 'addedOldest').map((r) => r.key)).toEqual(['b', 'd', 'a', 'c']);
+    expect(historyRows(list, [], 'addedNewest').map((r) => r.key)).toEqual(['c', 'a', 'd', 'b']);
   });
 });
 

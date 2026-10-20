@@ -29,7 +29,8 @@ import type { OutsideAdding } from './OutsideCard';
 import { afterTxAdded, canAddTx, draftAccount, draftCurrency, newTxDraft, txInput } from './drafts';
 import { NotesCell } from './NotesCell';
 import { PurchaseTag } from './PurchaseTag';
-import { cardOptions, historyRows, labelled, MAX_LEN, methodChoices, optionsWith, rowAccountOptions, shortDate } from './rows';
+import type { HistoryOrder } from './rows';
+import { cardOptions, HISTORY_ORDERS, historyRows, labelled, MAX_LEN, methodChoices, optionsWith, rowAccountOptions, shortDate } from './rows';
 import { MES } from './strings';
 import styles from './TransactionsCard.module.css';
 
@@ -46,6 +47,7 @@ export function TransactionsCard({ outside }: { outside: OutsideAdding }) {
   const s = useStrings(MES);
   const [draft, setDraft] = useState(newTxDraft);
   const adding = useAddRow(() => setDraft(newTxDraft()));
+  const [order, setOrder] = useState<HistoryOrder>('dateNewest');
   // The same list of visible accounts as long as the accounts do not change (see FixedCard).
   const visible = useMemo(() => accountOptions(), [state.accounts]);
   const ctx = { accounts, defaultAccount, main };
@@ -85,6 +87,13 @@ export function TransactionsCard({ outside }: { outside: OutsideAdding }) {
         action={
           !readOnly && (
             <>
+              <select className={styles.order} value={order} onChange={(e) => setOrder(e.target.value as HistoryOrder)} aria-label={s('orderBy')} title={s('orderBy')}>
+                {HISTORY_ORDERS.map((o) => (
+                  <option key={o} value={o}>
+                    {s(o)}
+                  </option>
+                ))}
+              </select>
               {!outsideCardVisible(outsideOf(month).length, outside) && (
                 <AddRowButton control={{ ...outside.control, buttonRef: outsideLink }} variant="link">
                   {s('addOutside')}
@@ -213,7 +222,7 @@ export function TransactionsCard({ outside }: { outside: OutsideAdding }) {
               </Td>
             </AddRow>
           )}
-          {historyRows(month.tx.filter((t) => !held.has(t.id)), transferFees(state, monthKey)).map((r) => {
+          {historyRows(month.tx.filter((t) => !held.has(t.id)), transferFees(state, monthKey), order).map((r) => {
             if (r.kind === 'fee') {
               const money = inBoth(r.fee.amount, r.fee.cur, undefined, r.fee.date);
               return <FeeRow key={r.key} fee={r.fee} inMain={money.main} inSecond={money.second} />;

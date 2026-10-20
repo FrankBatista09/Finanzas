@@ -36,12 +36,26 @@ export type HistoryRow = { kind: 'tx'; key: string; date: ISODate; tx: Transacti
  * The month's history: the transactions and the transfer fees together, from newest to
  * oldest. On the same date the transactions go first, in their order, and then the fees.
  */
-export function historyRows(tx: readonly Transaction[], fees: readonly TransferFee[]): HistoryRow[] {
-  return sortTxDesc<HistoryRow>([
+export function historyRows(tx: readonly Transaction[], fees: readonly TransferFee[], order: HistoryOrder = 'dateNewest'): HistoryRow[] {
+  const rows: HistoryRow[] = [
     ...tx.map((t) => ({ kind: 'tx' as const, key: t.id, date: t.date, tx: t })),
     ...fees.map((fee) => ({ kind: 'fee' as const, key: `fee:${fee.transferId}`, date: fee.date, fee })),
-  ]);
+  ];
+  if (order === 'dateNewest') return sortTxDesc(rows);
+  if (order === 'dateOldest') return [...sortTxDesc(rows)].reverse();
+  // By when it was recorded: the stored timestamp, the row's place in the list breaking ties (it is read in the order it
+  // was inserted). A row without a timestamp yet (just added, not saved) is the newest. A fee is not a stored row: it
+  // goes at the end of its own date.
+  const stamp = (r: HistoryRow): string => (r.kind === 'tx' ? (r.tx.createdAt ?? '9999') : `${r.date} 24`);
+  const placed = rows.map((row, i) => ({ row, i }));
+  placed.sort((a, b) => (stamp(a.row) < stamp(b.row) ? -1 : stamp(a.row) > stamp(b.row) ? 1 : a.i - b.i));
+  const oldestFirst = placed.map((p) => p.row);
+  return order === 'addedOldest' ? oldestFirst : oldestFirst.reverse();
 }
+
+/** How the history is ordered: by the transaction's date, or by when it was recorded; newest or oldest first. */
+export type HistoryOrder = 'dateNewest' | 'dateOldest' | 'addedNewest' | 'addedOldest';
+export const HISTORY_ORDERS: readonly HistoryOrder[] = ['dateNewest', 'dateOldest', 'addedNewest', 'addedOldest'];
 
 /**
  * The fee of the most recent transfer made through that via (case-insensitive), in this month or in earlier
