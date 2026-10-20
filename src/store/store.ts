@@ -308,6 +308,8 @@ export class FinanzasStore {
         return api.setCardCashback(action.key, action.cardId, { cashback: action.cashback }, opts);
       case 'card/pay':
         return api.payCard(action.key, action.cardId, { id: action.payment.id, amount: action.payment.amount, accountId: action.payment.accountId, date: action.payment.date }, opts);
+      case 'card/payPurchases':
+        return api.payCardPurchases(action.key, action.cardId, { id: action.payment.id, transactionIds: action.transactionIds, accountId: action.payment.accountId, date: action.payment.date }, opts);
       case 'card/unpay':
         return api.unpayCard(action.key, action.cardId, opts);
       case 'card/unpayOne':

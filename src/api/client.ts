@@ -18,6 +18,7 @@ import type {
   CardCashbackUpdate,
   CardOtherUpdate,
   CardPayRequest,
+  CardPayPurchasesRequest,
   CreditCardCreate,
   CreditCardPatch,
   FixedCreate,
@@ -229,6 +230,9 @@ export function createApiClient(fetchImpl: FetchLike = (input, init) => fetch(in
       /** Adds a credit card payment in the month (the amount cannot exceed what is left; 400 if it does). */
       payCard: (key: MonthKey, cardId: string, body: CardPayRequest, opts?: RequestOptions) =>
         json<Month>('POST', `/api/months/${seg(key)}/cards/${seg(cardId)}/pay`, { json: body, opts }),
+      /** Pays the listed unsettled Credit-card purchases of a card with one payment worth their sum (400 if they do not fit what is left). */
+      payCardPurchases: (key: MonthKey, cardId: string, body: CardPayPurchasesRequest, opts?: RequestOptions) =>
+        json<Month>('POST', `/api/months/${seg(key)}/cards/${seg(cardId)}/pay-purchases`, { json: body, opts }),
       unpayCard: (key: MonthKey, cardId: string, opts?: RequestOptions) =>
         json<Month>('DELETE', `/api/months/${seg(key)}/cards/${seg(cardId)}/pay`, { opts }),
       removeCardPayment: (key: MonthKey, cardId: string, paymentId: string, opts?: RequestOptions) =>

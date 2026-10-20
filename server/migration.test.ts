@@ -102,8 +102,8 @@ describe('migración 0002 sobre una base con datos de 0001', () => {
     // Y a los meses y a los gastos fijos, las columnas de la tarjeta de crédito (0009), sin tarjeta.
     before.months = before.months?.map((row) => ({ ...row, card_other: 0, card_paid: null, card_account_id: null }));
     before.fixed_expenses = before.fixed_expenses?.map((row) => ({ ...row, on_card: 0, card_id: null }));
-    // Y a las transacciones, `card_id` (0011), vacío: sin método de crédito no hay tarjeta.
-    before.transactions = before.transactions!.map((row) => ({ ...row, card_id: null }));
+    // Y a las transacciones, `card_id` (0011) y `card_payment_id` (0015), vacíos: sin método de crédito no hay tarjeta.
+    before.transactions = before.transactions!.map((row) => ({ ...row, card_id: null, card_payment_id: null }));
     for (const table of UNTOUCHED) expect(dump(db, table), table).toEqual(before[table]);
     // Y la base queda coherente: ninguna clave foránea rota.
     expect(db.sqlite.prepare('PRAGMA foreign_key_check').all()).toEqual([]);

@@ -19,6 +19,7 @@ import {
   loadState,
   patchAccount,
   patchMonth,
+  payCardPurchases,
   replaceAll,
   setCardOther,
   setMonthRate,
@@ -1260,7 +1261,7 @@ describe('add_transaction', () => {
       notes: '',
       source: 'claude',
       createdAt: NOW.toISOString(),
-    } satisfies Record<Exclude<keyof Transaction, 'cardId'>, unknown>);
+    } satisfies Record<Exclude<keyof Transaction, 'cardId' | 'cardPaymentId'>, unknown>);
     expect(r.data).toEqual({
       user: FRANK,
       transaction: stored,
@@ -3039,6 +3040,27 @@ describe('credit card', () => {
     const paidUsd = await call(env, 'pay_credit_card', { amount: 5, card: 'Dollars', account: 'US account' });
     expect(paidUsd.data!.creditCard).toMatchObject({ name: 'Dollars', currency: 'USD', remainder: 15 });
     expect(paidUsd.text).toContain('Paid 5.00 USD of Dollars');
+  });
+
+  it('list_transactions marks Credit-card purchases as paid or unpaid and month_summary counts the unpaid ones', async () => {
+    const { env, db } = await seeded();
+    const visa = await createCard(db, F, { name: 'Visa' });
+    const taxi = await call(env, 'add_transaction', { description: 'Taxi', amount: 100, method: 'Credit card' });
+    await call(env, 'add_transaction', { description: 'Lunch', amount: 50, method: 'Credit card' });
+    await call(env, 'add_transaction', { description: 'Coffee', amount: 5 });
+    await payCardPurchases(db, F, '2026-10', visa.id, { transactionIds: [taxi.data!.transaction.id], accountId: 'dr' }, NOW);
+
+    const listed = await call(env, 'list_transactions', { limit: 50 });
+    const row = (desc: string) => listed.data!.transactions.find((t: { desc: string }) => t.desc === desc);
+    expect(row('Taxi')).toMatchObject({ settled: true, paidOn: '2026-10-07' });
+    expect(row('Lunch')).toMatchObject({ settled: false, paidOn: null });
+    expect(row('Coffee')).not.toHaveProperty('settled');
+    expect(listed.text).toMatch(/Taxi.*Credit card · paid on 2026-10-07/);
+    expect(listed.text).toMatch(/Lunch.*Credit card · unpaid/);
+
+    const summary = await call(env, 'month_summary');
+    expect(summary.data!.creditCards[0].unsettledPurchases).toEqual({ count: 1, total: 50 });
+    expect(summary.text).toContain('1 unpaid purchase (50.00 DOP) not covered by any payment yet');
   });
 
   it('mark_fixed_paid with on_card charges the expense to the credit card without touching any account', async () => {

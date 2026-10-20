@@ -38,6 +38,8 @@ import {
   budgetSummary,
   cardCalc,
   cardCalcs,
+  cardPurchases,
+  chargedTo,
   cardHint,
   convert,
   currentKey,
@@ -54,15 +56,17 @@ import {
   outsideSummary,
   rateFor,
   sortedKeys,
+  sumCardPurchases,
   transferFees,
   transferReceived,
+  unsettledCardPurchases,
 } from '../shared/calc';
 import type { AccountBalance, Balances, BudgetSummary, CardCalc, MonthCalc, RateInfo, RateSource } from '../shared/calc';
 import { APP_NAME, CATS, GOLD, GOLD_UNIT, isGold, METHODS, TIMEZONE, VIAS } from '../shared/constants';
 import { f0, f2, fGrams, fRate } from '../shared/format';
 import { canonicalCat, canonicalMethod } from '../shared/i18n';
 import { clampToMonth, currentMonthKey, isISODate, isMonthKey, label, monthOf, monthSpan, todayISO } from '../shared/month';
-import type { Account, AccountCurrency, AppState, AppUser, CreditCard, Currency, FixedExpense, Income, ISODate, Month, MonthKey } from '../shared/types';
+import type { Account, AccountCurrency, AppState, AppUser, CreditCard, Currency, FixedExpense, Income, ISODate, Month, MonthKey, Transaction } from '../shared/types';
 import { checkBearer } from './auth';
 import { readLimitedBody } from './body';
 import { addBudgetEntry, createIncome, createOutside, createTransfer, ensureMonth, getMonth, listCards, loadState, patchFixed, payCard, userAccounts, userState } from './db';
@@ -991,7 +995,16 @@ const listTransactions = defineTool({
       .map((t, i) => ({ t, i }))
       .sort((a, b) => (a.t.date < b.t.date ? 1 : a.t.date > b.t.date ? -1 : b.i - a.i))
       .map(({ t }) => ({ ...t, inMain: convert(state, m.key, t.amount, t.cur, main, t.date), account: accounts.get(t.accountId)?.name ?? null }));
-    const shown = sorted.slice(0, limit);
+    // Credit-card purchases say whether a card payment covered them (and when it was paid).
+    const byCard = new Map<string, ReturnType<typeof cardPurchases>>();
+    const settlement = (t: Transaction): { settled?: boolean; paidOn?: ISODate | null } => {
+      const cardId = isCardTx(t) ? chargedTo(state, t.cardId) : null;
+      if (!cardId) return {};
+      if (!byCard.has(cardId)) byCard.set(cardId, cardPurchases(state, m.key, cardId));
+      const payment = byCard.get(cardId)!.find((p) => p.tx.id === t.id)?.payment ?? null;
+      return payment ? { settled: true, paidOn: payment.date } : { settled: false, paidOn: null };
+    };
+    const shown = sorted.slice(0, limit).map((t) => ({ ...t, ...settlement(t) }));
     const total = sorted.reduce((a, t) => a + t.inMain, 0);
 
     const lines =
@@ -1001,7 +1014,7 @@ const listTransactions = defineTool({
             `${heading(user, m)}: ${sorted.length} ${sorted.length === 1 ? 'transaction' : 'transactions'}${SEP}${money(total, main)} in total.` +
               (shown.length === sorted.length ? '' : shown.length === 1 ? ' Showing the most recent one.' : ` Showing the ${shown.length} most recent.`),
             ...shown.map((t) =>
-              [t.date, t.desc, t.place, moneyIn(state, m.key, t.amount, t.cur, main, t.date), t.cat, t.method, t.account, t.notes && `Notes: ${t.notes}`]
+              [t.date, t.desc, t.place, moneyIn(state, m.key, t.amount, t.cur, main, t.date), t.cat, t.method, t.settled === undefined ? '' : t.settled ? `paid on ${t.paidOn}` : 'unpaid', t.account, t.notes && `Notes: ${t.notes}`]
                 .filter(Boolean)
                 .join(SEP),
             ),
@@ -1025,6 +1038,12 @@ const listTransactions = defineTool({
 
 /** How each row of the budget history is named. */
 const HISTORY_KIND = { initial: 'initial', adjust: 'adjustment', leftover: 'leftover', income: 'income', transfer: 'transfer' } as const;
+
+/** The Credit-card purchases of a card up to its month that no payment has covered: how many and their sum in the card's currency. */
+function unsettledOf(state: AppState, k: CardCalc) {
+  const open = unsettledCardPurchases(state, k.key, k.card.id);
+  return { count: open.length, total: sumCardPurchases(open) };
+}
 
 /** A credit card's hint, only in the last recorded month (in an earlier one it makes no sense) and if it has a limit and a cutoff. */
 function hintOf(state: AppState, key: MonthKey, k: CardCalc, today: ISODate) {
@@ -1180,12 +1199,14 @@ const monthSummary = defineTool({
     const cards = c.cards.filter((k) => k.total !== 0 || k.cashback !== 0 || k.payments.length > 0);
     for (const k of cards) {
       const cur = k.cur;
+      const open = unsettledOf(state, k);
       lines.push(
         `Credit card "${k.card.name}": total ${money(k.total, cur)} (previous ${money(k.previous, cur)}${SEP}other charges ${money(k.other, cur)}${SEP}charged this month ${money(k.charged, cur)}${k.cashback ? `${SEP}cashback -${money(k.cashback, cur)}` : ''})${SEP}` +
           (k.payments.length === 0
             ? 'not paid yet'
             : `paid ${money(k.paid, cur)} in ${k.payments.length} payment${k.payments.length === 1 ? '' : 's'} (${k.payments.map((p) => `${p.date} ${money(p.amount, cur)} from ${accountsById(state).get(p.accountId)?.name ?? p.accountId}`).join('; ')})`) +
-          `${SEP}left to pay ${money(k.remainder, cur)} (it carries to the next month if this one closes with it unpaid). Charges on the card are not in Used or in the account balances until it is paid.`,
+          `${SEP}left to pay ${money(k.remainder, cur)} (it carries to the next month if this one closes with it unpaid). Charges on the card are not in Used or in the account balances until it is paid.` +
+          (open.count > 0 ? `${SEP}${open.count} unpaid purchase${open.count === 1 ? '' : 's'} (${money(open.total, cur)}) not covered by any payment yet` : ''),
       );
       const h = hintOf(state, m.key, k, today);
       if (h) lines.push(`${k.card.name} limit ${money(k.card.limit!, cur)}${SEP}${(h.utilization * 100).toFixed(1)}% used${SEP}${hintText(k.card.name, cur, h)}`);
@@ -1276,6 +1297,8 @@ const monthSummary = defineTool({
           paid: k.paid,
           payments: k.payments.map((p) => ({ id: p.id, date: p.date, accountId: p.accountId, amount: p.amount })),
           remainder: k.remainder,
+          // Credit-card purchases up to this month that no payment has covered yet (in the card currency).
+          unsettledPurchases: unsettledOf(state, k),
           limit: k.card.limit,
           utilization: k.card.limit ? Math.max(0, k.remainder) / k.card.limit : null,
           hint: hintOf(state, m.key, k, today),
