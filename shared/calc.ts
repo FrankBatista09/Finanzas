@@ -695,6 +695,8 @@ export interface StatementItem {
   /** The purchase date; for a fixed expense, the day of its month when `day` is a valid one, else null. */
   date: ISODate | null;
   name: string;
+  /** Transactions only: the free-text description (notes); null for a fixed expense. */
+  notes: string | null;
   /** Transactions only: the category. */
   cat: string | null;
   amount: number;
@@ -725,6 +727,7 @@ export function cardStatementItems(state: AppState, key: MonthKey, cardId: strin
     key: p.key,
     date: p.tx.date,
     name: p.tx.desc,
+    notes: p.tx.notes,
     cat: p.tx.cat,
     amount: p.tx.amount,
     cur: p.tx.cur,
@@ -744,6 +747,7 @@ export function cardStatementItems(state: AppState, key: MonthKey, cardId: strin
         key: k,
         date: n >= 1 && n <= Number(lastDay(k).slice(8)) ? `${k}-${String(n).padStart(2, '0')}` : null,
         name: f.name,
+        notes: null,
         cat: null,
         amount: f.amount,
         cur: f.cur,

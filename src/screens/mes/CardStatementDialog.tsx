@@ -10,6 +10,7 @@ import { AddButton, AddRow, AddRowButton, CellDate, CellNumber, CellSelect, Cell
 import { canPick, currentStatement, dayLabel, itemsIn, selection, statementCutoffs, statementTotals, stepStatement } from './cardStatement';
 import styles from './CardStatementDialog.module.css';
 import { afterTxAdded, canAddTx, draftCurrency, newTxDraft, txInput } from './drafts';
+import { NotesCell } from './NotesCell';
 import { PurchaseTag } from './PurchaseTag';
 import { labelled, MAX_LEN, shortDate } from './rows';
 import { MES } from './strings';
@@ -32,7 +33,9 @@ export function CardStatementDialog({ cardId, onClose }: { cardId: string; onClo
   const [picked, setPicked] = useState<ISODate | null>(null);
   // The statement the user stepped to, or the one containing today; a picked one that no longer exists falls back to it.
   const selected = cutoffDay ? (picked && cutoffs.includes(picked) ? picked : currentStatement(today, cutoffDay)) : null;
-  const shown = itemsIn(items, selected);
+  const [newestFirst, setNewestFirst] = useState(false);
+  const inStatement = itemsIn(items, selected);
+  const shown = newestFirst ? [...inStatement].reverse() : inStatement;
   const [checked, setChecked] = useState<ReadonlySet<string>>(new Set());
   const [destination, setDestination] = useState<'fixed' | 'history'>('fixed');
   const sel = selection(shown, checked);
@@ -125,12 +128,17 @@ export function CardStatementDialog({ cardId, onClose }: { cardId: string; onClo
         )}
         {editable && card.active && <AddRowButton control={adding}>{s('stmtAddPurchase')}</AddRowButton>}
       </div>
-      <SheetTable minWidth={820} className={styles.grid} label={s('stmtTitle', { name: card.name })}>
+      <SheetTable minWidth={900} className={styles.grid} label={s('stmtTitle', { name: card.name })}>
         <thead>
           <tr>
             <Th blank width={30} />
-            <Th width={64}>{t('date')}</Th>
-            <Th>{t('description')}</Th>
+            <Th width={104}>
+              <button type="button" className={styles.sort} onClick={() => setNewestFirst((v) => !v)} title={s(newestFirst ? 'stmtSortNewest' : 'stmtSortOldest')} aria-label={s(newestFirst ? 'stmtSortNewest' : 'stmtSortOldest')}>
+                {t('date')} {newestFirst ? '▼' : '▲'}
+              </button>
+            </Th>
+            <Th width={190}>{s('description')}</Th>
+            <Th>{s('notes')}</Th>
             <Th width={110}>{s('category')}</Th>
             <Th width={100}>{s('stmtOrigin')}</Th>
             <Th align="right" width={190}>
@@ -149,6 +157,9 @@ export function CardStatementDialog({ cardId, onClose }: { cardId: string; onClo
               </Td>
               <Td kind="edit">
                 <CellText value={draft.desc} onCommit={(desc) => setDraft((d) => ({ ...d, desc }))} placeholder={s('newTx')} maxLength={MAX_LEN.desc} label={s('newTx')} />
+              </Td>
+              <Td kind="edit">
+                <CellText value={draft.notes} onCommit={(notes) => setDraft((d) => ({ ...d, notes }))} placeholder={s('notesOptional')} maxLength={MAX_LEN.notes} label={s('newTxNotes')} />
               </Td>
               <Td kind="edit">
                 <CellSelect value={draft.cat} options={labelled(CATS, catLabel)} onCommit={(cat) => setDraft((d) => ({ ...d, cat }))} label={s('newTxCategory')} />
@@ -180,6 +191,7 @@ export function CardStatementDialog({ cardId, onClose }: { cardId: string; onClo
                   <Td kind="edit">
                     <CellText value={item.name} onCommit={(desc) => actions.patchTx(item.id, { desc })} commitOn="blur" readOnly={!editable} maxLength={MAX_LEN.desc} label={s('description')} />
                   </Td>
+                  <NotesCell value={item.notes ?? ''} onCommit={(notes) => actions.patchTx(item.id, { notes })} readOnly={!editable} name={item.name} />
                   <Td kind="edit">
                     <CellSelect value={item.cat ?? CATS[0]} options={labelled(CATS, catLabel)} onCommit={(cat) => actions.patchTx(item.id, { cat })} disabled={!editable} label={s('category')} />
                   </Td>
@@ -194,6 +206,7 @@ export function CardStatementDialog({ cardId, onClose }: { cardId: string; onClo
                       {item.name}
                     </span>
                   </Td>
+                  <Td />
                   <Td tone="soft">{item.cat ? catLabel(item.cat) : ''}</Td>
                 </>
               )}
