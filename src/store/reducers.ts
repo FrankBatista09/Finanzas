@@ -41,6 +41,8 @@ import {
   openingFor,
   rateFor,
   sortedKeys,
+  sumCardPurchases,
+  unsettledCardPurchases,
 } from '../../shared/calc';
 import { CREDIT_CARD_METHOD, CURRENCIES, GOLD, GOLD_DECIMALS, isGold, MAX_LEN, MOVED_TO_BUDGET } from '../../shared/constants';
 import { clampToMonth, firstDay, inMonth, isISODate, isMonthKey } from '../../shared/month';
@@ -83,6 +85,7 @@ export type Action =
   | { type: 'card/other'; key: MonthKey; cardId: string; other: number }
   | { type: 'card/cashback'; key: MonthKey; cardId: string; cashback: number }
   | { type: 'card/pay'; key: MonthKey; cardId: string; payment: CardPayment }
+  | { type: 'card/payPurchases'; key: MonthKey; cardId: string; payment: CardPayment; transactionIds: string[] }
   | { type: 'card/unpay'; key: MonthKey; cardId: string }
   | { type: 'card/unpayOne'; key: MonthKey; cardId: string; id: string }
   /** Las tarjetas de crédito del usuario (no de un mes). */
@@ -170,6 +173,34 @@ function patchRow<L extends MonthList>(state: AppState, list: L, id: string, pat
   const key = monthWith(state, list, id);
   if (!key) return state;
   return withMonth(state, key, (m) => ({ ...m, [list]: (m[list] ?? []).map((r) => (r.id === id ? { ...r, ...patch } : r)) }));
+}
+
+/** Sets the covering payment on the purchases `paymentOf` names (any month: a payment can cover earlier months' purchases). */
+function linkPurchases(state: AppState, paymentOf: (t: Transaction) => string | undefined): AppState {
+  let next = state;
+  for (const [key, month] of Object.entries(state.months)) {
+    if (!month.tx.some((t) => paymentOf(t))) continue;
+    next = withMonth(next, key, (m) => ({ ...m, tx: m.tx.map((t) => (paymentOf(t) ? { ...t, cardPaymentId: paymentOf(t) } : t)) }));
+  }
+  return next;
+}
+
+/** Frees the purchases covered by the removed payments, like the server does in the same batch. */
+function unlinkPurchases(state: AppState, paymentIds: ReadonlySet<string>): AppState {
+  if (paymentIds.size === 0) return state;
+  let next = state;
+  for (const [key, month] of Object.entries(state.months)) {
+    if (!month.tx.some((t) => t.cardPaymentId && paymentIds.has(t.cardPaymentId))) continue;
+    next = withMonth(next, key, (m) => ({
+      ...m,
+      tx: m.tx.map((t) => {
+        if (!t.cardPaymentId || !paymentIds.has(t.cardPaymentId)) return t;
+        const { cardPaymentId: _freed, ...rest } = t;
+        return rest;
+      }),
+    }));
+  }
+  return next;
 }
 
 function removeRow(state: AppState, list: MonthList, id: string): AppState {
@@ -318,11 +349,22 @@ export function reduce(state: AppState, action: Action): AppState {
       return withMonth(state, action.key, (m) => withCard(m, { ...cardOf(m, action.cardId), cashback: action.cashback }));
     case 'card/pay':
       return withMonth(state, action.key, (m) => withCard(m, { ...cardOf(m, action.cardId), payments: [...cardOf(m, action.cardId).payments, action.payment] }));
-    case 'card/unpay':
-      return withMonth(state, action.key, (m) => withCard(m, { ...cardOf(m, action.cardId), payments: [] }));
+    case 'card/payPurchases': {
+      const ids = new Set(action.transactionIds);
+      const paid = withMonth(state, action.key, (m) => withCard(m, { ...cardOf(m, action.cardId), payments: [...cardOf(m, action.cardId).payments, action.payment] }));
+      return linkPurchases(paid, (t) => (ids.has(t.id) ? action.payment.id : undefined));
+    }
+    case 'card/unpay': {
+      const month = state.months[action.key];
+      const gone = new Set(month ? cardOf(month, action.cardId).payments.map((p) => p.id) : []);
+      return unlinkPurchases(withMonth(state, action.key, (m) => withCard(m, { ...cardOf(m, action.cardId), payments: [] })), gone);
+    }
     case 'card/unpayOne':
-      return withMonth(state, action.key, (m) =>
-        withCard(m, { ...cardOf(m, action.cardId), payments: cardOf(m, action.cardId).payments.filter((p) => p.id !== action.id) }),
+      return unlinkPurchases(
+        withMonth(state, action.key, (m) =>
+          withCard(m, { ...cardOf(m, action.cardId), payments: cardOf(m, action.cardId).payments.filter((p) => p.id !== action.id) }),
+        ),
+        new Set([action.id]),
       );
 
     case 'creditCard/add':
@@ -1282,6 +1324,31 @@ export function cardPayment(state: AppState, key: MonthKey, cardId: string, amou
   const left = cardCalc(state, key, cardId).remainder;
   const paid = snapToTotal(amount, left);
   return left > 0 && paid <= left ? { type: 'card/pay', key, cardId, payment: { id, date: clampToMonth(date, key), accountId, amount: paid } } : null;
+}
+
+/**
+ * Pay chosen unsettled purchases of a card with one payment (their sum, in the card's currency). As the server
+ * (db.payCardPurchases): an open month, a money account, purchases of that card that are unsettled and dated up to the
+ * month, and a sum > 0 that does not exceed what is left. null if it cannot be done.
+ */
+export function cardPurchasesPayment(
+  state: AppState,
+  key: MonthKey,
+  cardId: string,
+  transactionIds: readonly string[],
+  accountId: string,
+  id: string,
+  date: ISODate,
+): Action | null {
+  if (!openMonth(state, key) || !hasCard(state, cardId) || !hasMoneyAccount(state, accountId) || transactionIds.length === 0) return null;
+  if (new Set(transactionIds).size !== transactionIds.length) return null;
+  const open = new Map(unsettledCardPurchases(state, key, cardId).map((p) => [p.tx.id, p]));
+  const chosen = transactionIds.map((t) => open.get(t));
+  if (chosen.some((p) => !p)) return null;
+  const sum = sumCardPurchases(chosen as NonNullable<(typeof chosen)[number]>[]);
+  const left = cardCalc(state, key, cardId).remainder;
+  if (!(sum > 0) || !(left > 0) || sum > left + 0.005 + 1e-6) return null;
+  return { type: 'card/payPurchases', key, cardId, transactionIds: [...transactionIds], payment: { id, date: clampToMonth(date, key), accountId, amount: Math.min(sum, left) } };
 }
 
 /** Quitar todos los pagos de una tarjeta: un mes abierto con alguno. */

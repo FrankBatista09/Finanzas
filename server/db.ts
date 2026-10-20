@@ -20,6 +20,7 @@ import type {
   AccountPatch,
   BudgetEntryCreate,
   CardPayRequest,
+  CardPayPurchasesRequest,
   CloseRequest,
   CloseResponse,
   ContributionCreate,
@@ -52,14 +53,19 @@ import {
   cardAccountFor,
   cardCalc,
   cardOffBlocked,
+  cardPurchases,
+  chargedTo,
   convert,
   defaultAccount,
+  isCardTx,
   leftoverFor,
   monthCalc,
   outsideOf,
   rateFor,
   sortedKeys,
+  sumCardPurchases,
 } from '../shared/calc';
+import type { CardPurchase } from '../shared/calc';
 import {
   CREDIT_CARD_METHOD,
   CURRENCIES,
@@ -185,6 +191,7 @@ interface TxRow {
   source: TxSource;
   created_at: string | null;
   card_id?: string | null;
+  card_payment_id?: string | null;
 }
 
 interface OutsideRow {
@@ -318,6 +325,7 @@ function toTx(r: TxRow): Transaction {
     source: r.source,
     createdAt: r.created_at,
     ...(r.card_id ? { cardId: r.card_id } : {}),
+    ...(r.card_payment_id ? { cardPaymentId: r.card_payment_id } : {}),
   };
 }
 
@@ -493,6 +501,7 @@ const TX_INSERT = [
   'source',
   'created_at',
   'card_id',
+  'card_payment_id',
 ];
 const OUTSIDE_INSERT = ['user_id', 'id', 'month_key', 'date', 'name', 'description', 'account_id', 'amount', 'currency', 'sort'];
 const INCOME_INSERT = ['user_id', 'id', 'date', 'description', 'account_id', 'amount', 'currency', 'budget', 'rate', 'recurring'];
@@ -1849,10 +1858,107 @@ export async function payCard(db: D1Database, userId: string, key: MonthKey, car
   return writtenMonth(results, key);
 }
 
+/**
+ * Frees the purchases a payment covered (all of the card's payments in the month when `paymentId` is null). It goes
+ * first in the same batch as the DELETE, under the same open-month condition, so both happen or neither.
+ */
+function clearPurchaseLinks(db: D1Database, userId: string, key: MonthKey, cardId: string, paymentId: string | null): D1PreparedStatement {
+  return db
+    .prepare(
+      `UPDATE transactions SET card_payment_id = NULL
+       WHERE user_id = ?1 AND card_payment_id IN (
+         SELECT id FROM card_payments WHERE user_id = ?1 AND month_key = ?2 AND card_id = ?3 AND (?4 IS NULL OR id = ?4))
+         AND ?2 IN (SELECT key FROM months WHERE user_id = ?1 AND closed = 0)`,
+    )
+    .bind(userId, key, cardId, paymentId);
+}
+
+/**
+ * Pays chosen Credit-card purchases of a card with ONE payment worth their sum (in the card's currency, to cents) and
+ * marks each purchase as covered by it. Same month/card/account rules as payCard; every purchase has to exist, be of
+ * this card, be unsettled and live in a month <= `key`; the sum has to be > 0 and not above what is left to pay. The
+ * INSERT only happens when all purchases are still unsettled and the UPDATE only when the payment exists, so a race or a
+ * bad account writes nothing. Editing a settled purchase later does not change the payment.
+ */
+export async function payCardPurchases(
+  db: D1Database,
+  userId: string,
+  key: MonthKey,
+  cardId: string,
+  input: CardPayPurchasesRequest,
+  now: Date = new Date(),
+): Promise<Month> {
+  const state = await loadState(db, userId);
+  const month = state.months[key];
+  if (!month) throw monthNotFoundError(key);
+  const card = state.cards.find((c) => c.id === cardId);
+  if (!card) throw notFoundError(NO_CARD);
+  if (month.closed) throw monthClosedError(key);
+  const ids = input.transactionIds;
+  if (new Set(ids).size !== ids.length) throw validationError('transactionIds: a transaction is listed more than once.');
+  const purchases = new Map(cardPurchases(state, key, cardId).map((p) => [p.tx.id, p]));
+  const known = new Map(Object.values(state.months).flatMap((m) => m.tx.map((t) => [t.id, t] as const)));
+  const chosen: CardPurchase[] = [];
+  for (const id of ids) {
+    const hit = purchases.get(id);
+    if (!hit) {
+      const tx = known.get(id);
+      if (!tx) throw validationError(`transactionIds: transaction ${id} does not exist.`);
+      if (!isCardTx(tx)) throw validationError(`transactionIds: transaction ${id} is not a Credit card purchase.`);
+      if (chargedTo(state, tx.cardId) !== cardId) throw validationError(`transactionIds: transaction ${id} belongs to another card, not ${card.name}.`);
+      throw validationError(`transactionIds: transaction ${id} is dated after ${key}; pay it from its own month.`);
+    }
+    if (hit.payment) throw validationError(`transactionIds: transaction ${id} was already paid.`);
+    chosen.push(hit);
+  }
+  const sum = sumCardPurchases(chosen);
+  const { remainder } = cardCalc(state, key, cardId);
+  if (!(sum > 0)) throw validationError('transactionIds: the selected purchases add up to nothing to pay.');
+  if (!(remainder > 1e-6)) throw validationError(`There is nothing left to pay on ${card.name} in ${key}.`);
+  // Half a cent of slack: the sum is rounded to cents and the remainder is not.
+  if (!(sum <= remainder + 0.005 + 1e-6)) {
+    throw validationError(`transactionIds: the selected purchases add up to ${sum.toFixed(2)} but ${card.name} has ${remainder.toFixed(2)} left to pay in ${key}.`);
+  }
+  if (input.date !== undefined && !inMonth(input.date, key)) throw outsideMonth('date', key);
+  const accountId = input.accountId ?? cardAccountFor(state, key, cardId)?.id;
+  if (!accountId) throw noAccountsError();
+  const paymentId = input.id ?? newId();
+  const idsJson = JSON.stringify(ids);
+  let results: D1Result<unknown>[];
+  try {
+    results = await db.batch([
+      db
+        .prepare(
+          `INSERT INTO card_payments (${CARD_PAYMENT_INSERT.join(', ')})
+           SELECT m.user_id, ?3, m.key, ?7, ?4, a.id, ?5,
+                  COALESCE((SELECT MAX(sort) FROM card_payments WHERE user_id = m.user_id AND month_key = m.key), -1) + 1
+           FROM months m JOIN accounts a ON a.user_id = m.user_id AND a.id = ?6 ${moneyOnly('a')}
+           WHERE m.user_id = ?1 AND m.key = ?2 AND m.closed = 0
+             AND (SELECT COUNT(*) FROM transactions WHERE user_id = ?1 AND id IN (SELECT value FROM json_each(?8))
+                  AND method = '${CREDIT_CARD_METHOD}' AND card_payment_id IS NULL) = ?9`,
+        )
+        .bind(userId, key, paymentId, input.date ?? entryDate(key, now), Math.min(sum, remainder), accountId, cardId, idsJson, ids.length),
+      db
+        .prepare(
+          `UPDATE transactions SET card_payment_id = ?3
+           WHERE user_id = ?1 AND id IN (SELECT value FROM json_each(?4)) AND card_payment_id IS NULL
+             AND EXISTS (SELECT 1 FROM card_payments WHERE user_id = ?1 AND month_key = ?2 AND id = ?3)`,
+        )
+        .bind(userId, key, paymentId, idsJson),
+      ...monthStatements(db, userId, key),
+    ]);
+  } catch (err) {
+    throw isUniqueViolation(err) ? duplicateId() : err;
+  }
+  if (!results[0]!.meta.changes) throw await createError(db, userId, key, [accountId]);
+  return writtenMonth(results, key);
+}
+
 /** Quita todos los pagos de esa tarjeta en el mes. Mes cerrado → 409. */
 export async function unpayCard(db: D1Database, userId: string, key: MonthKey, cardId: string): Promise<Month> {
   await requireCard(db, userId, cardId);
   const results = await db.batch([
+    clearPurchaseLinks(db, userId, key, cardId, null),
     db
       .prepare(`DELETE FROM card_payments WHERE user_id = ?1 AND month_key = ?2 AND card_id = ?3 AND month_key IN (SELECT key FROM months WHERE user_id = ?1 AND closed = 0)`)
       .bind(userId, key, cardId),
@@ -1865,6 +1971,7 @@ export async function unpayCard(db: D1Database, userId: string, key: MonthKey, c
 export async function removeCardPayment(db: D1Database, userId: string, key: MonthKey, cardId: string, paymentId: string): Promise<Month> {
   await requireCard(db, userId, cardId);
   const results = await db.batch([
+    clearPurchaseLinks(db, userId, key, cardId, paymentId),
     db
       .prepare(
         `DELETE FROM card_payments WHERE user_id = ?1 AND month_key = ?2 AND card_id = ?4 AND id = ?3 AND month_key IN (SELECT key FROM months WHERE user_id = ?1 AND closed = 0)`,
@@ -1873,7 +1980,7 @@ export async function removeCardPayment(db: D1Database, userId: string, key: Mon
     ...monthStatements(db, userId, key),
   ]);
   const month = writtenMonth(results, key);
-  if (!results[0]!.meta.changes) throw notFoundError('Credit card payment not found.');
+  if (!results[1]!.meta.changes) throw notFoundError('Credit card payment not found.');
   return month;
 }
 
@@ -1897,6 +2004,8 @@ const patchedAccount = (patch: { accountId?: string }): string[] => (patch.accou
 
 /** El patch de una fila con tarjeta, ya resuelto: `cardId` null deja la fila sin tarjeta. */
 type CardResolved<P> = Omit<P, 'cardId'> & { cardId?: string | null };
+/** The transaction patch as written: also frees the purchase from its card payment when it stops being that card's. */
+type TxResolved = CardResolved<TxPatch> & { cardPaymentId?: null };
 
 /** El nuevo fijo va al final del mes: sort = max(sort) + 1. Sin `accountId` se paga de la cuenta por defecto. */
 export async function createFixed(db: D1Database, userId: string, input: FixedCreate): Promise<FixedExpense> {
@@ -1951,6 +2060,7 @@ const TX_PATCH = {
   accountId: 'account_id',
   notes: 'notes',
   cardId: 'card_id',
+  cardPaymentId: 'card_payment_id',
 } as const;
 const NO_TX = 'Transaction not found.';
 
@@ -1969,7 +2079,7 @@ export async function createTransaction(
     db
       .prepare(
         `INSERT INTO transactions (${TX_INSERT.join(', ')})
-         SELECT m.user_id, ?2, m.key, ?4, ?5, ?6, ?7, ?8, ?9, ?10, a.id, ?12, ?13, ?14, ?15
+         SELECT m.user_id, ?2, m.key, ?4, ?5, ?6, ?7, ?8, ?9, ?10, a.id, ?12, ?13, ?14, ?15, NULL
          FROM months m JOIN accounts a ON a.user_id = m.user_id AND a.id = ?11 ${moneyOnly('a')}
          WHERE m.user_id = ?1 AND m.key = ?3 AND m.closed = 0
          RETURNING *`,
@@ -1997,16 +2107,18 @@ export async function createTransaction(
 }
 
 export async function patchTransaction(db: D1Database, userId: string, id: string, patch: TxPatch): Promise<Transaction> {
-  let resolved: CardResolved<TxPatch> = patch;
+  let resolved: TxResolved = patch;
   if (patch.method !== undefined || patch.cardId !== undefined) {
     const row = await db.prepare('SELECT method, card_id FROM transactions WHERE user_id = ? AND id = ?').bind(userId, id).first<{ method: string; card_id: string | null }>();
     if (row) {
       const method = patch.method ?? row.method;
       if (method !== CREDIT_CARD_METHOD) resolved = { ...patch, cardId: row.card_id === null ? undefined : null };
       else if (patch.cardId !== undefined || row.card_id === null) resolved = { ...patch, cardId: await cardForCharge(db, userId, patch.cardId) };
+      // A purchase that stops being this card's purchase is no longer covered by that card's payment.
+      if (method !== CREDIT_CARD_METHOD || (resolved.cardId !== undefined && resolved.cardId !== row.card_id)) resolved = { ...resolved, cardPaymentId: null };
     }
   }
-  const sets = setClause<CardResolved<TxPatch>>(TX_PATCH, resolved);
+  const sets = setClause<TxResolved>(TX_PATCH, resolved);
   return toTx(await patchInMonth<TxRow>(db, userId, 'transactions', id, sets, NO_TX, patchedAccount(patch)));
 }
 
@@ -2087,7 +2199,7 @@ export async function moveOutsideToBudget(
     db,
     db.prepare(
       `INSERT INTO transactions (${TX_INSERT.join(', ')})
-       SELECT o.user_id, ?3, o.month_key, o.date, o.name, '', ?4, ?5, o.amount, o.currency, o.account_id, o.description, 'web', ?6, NULL
+       SELECT o.user_id, ?3, o.month_key, o.date, o.name, '', ?4, ?5, o.amount, o.currency, o.account_id, o.description, 'web', ?6, NULL, NULL
        FROM outside_expenses o
        WHERE o.user_id = ?1 AND o.id = ?2 AND o.month_key IN ${OPEN_MONTHS.replace('?', '?1')}
        RETURNING *`,
@@ -2616,6 +2728,7 @@ function dataStatements(db: D1Database, userId: string, state: UserData, stamp: 
     .sort()
     .map((k) => state.months[k]!);
   const incomeAccount = new Map(state.incomes.map((i) => [i.id, i.accountId]));
+  const paymentIds = new Set(months.flatMap((m) => (m.cards ?? []).flatMap((c) => c.payments.map((p) => p.id))));
   return [
     // Un Excel importado no trae tarjetas: se conservan (credit_cards no se borra) y solo se reescribe lo que cuelga de los meses.
     ...DATA_TABLES.filter((table) => !(keepCards && table === 'credit_cards')).map((table) => db.prepare(`DELETE FROM ${table} WHERE user_id = ?`).bind(userId)),
@@ -2724,6 +2837,8 @@ function dataStatements(db: D1Database, userId: string, state: UserData, stamp: 
           t.source,
           t.createdAt ?? stamp,
           t.method === CREDIT_CARD_METHOD ? (t.cardId ?? null) : null,
+          // The link survives only if the purchase is a card purchase and the payment it points to came along.
+          t.method === CREDIT_CARD_METHOD && t.cardPaymentId && paymentIds.has(t.cardPaymentId) ? t.cardPaymentId : null,
         ]),
       ),
     ),

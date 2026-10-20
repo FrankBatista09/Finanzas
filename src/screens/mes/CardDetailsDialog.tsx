@@ -8,6 +8,7 @@ import { isFullyPaid } from './cardPay';
 import { PayHint } from './CreditCardsCard';
 import styles from './CardDetailsDialog.module.css';
 import { MES } from './strings';
+import { UnpaidPurchases, useUnpaidPurchases } from './UnpaidPurchases';
 
 interface Props {
   cardId: string;
@@ -34,6 +35,7 @@ export function CardDetailsDialog({ cardId, onClose, onPay }: Props) {
   // As in "Credit cards": the hint only makes sense in the latest month.
   const hint = latestMonth ? cardHint(card, calc.remainder, today) : null;
   const money = (n: number) => `${f2(n)} ${cur}`;
+  const unpaid = useUnpaidPurchases(cardId);
 
   return (
     <Dialog
@@ -97,6 +99,12 @@ export function CardDetailsDialog({ cardId, onClose, onPay }: Props) {
           </ul>
         )}
         <Line label={s('cardTotalOwed')} value={money(calc.total)} strong />
+        {unpaid.length > 0 && (
+          <>
+            <h3 className={styles.heading}>{s('purchasesLink', { count: unpaid.length })}</h3>
+            <UnpaidPurchases cardId={cardId} maxHeight={170} />
+          </>
+        )}
         <h3 className={styles.heading}>{s('payCardPayments')}</h3>
         {calc.payments.length === 0 ? (
           <p className={styles.empty}>{s('cardNoPayments')}</p>

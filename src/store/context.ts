@@ -115,6 +115,11 @@ export interface Actions {
    * `CardCalc.remainder`) from that money account, dated today. There can be several payments in the month. false if it cannot be done.
    */
   payCard(cardId: string, amount: number, accountId: string): boolean;
+  /**
+   * Pays the chosen unsettled Credit-card purchases of that card (dated up to the selected month) with one payment worth their
+   * sum, from that money account. false if it cannot be done (e.g. the sum is above what is left).
+   */
+  payCardPurchases(cardId: string, transactionIds: readonly string[], accountId: string): boolean;
   /** Removes all the payments on that credit card in the selected month. */
   unpayCard(cardId: string): void;
   /** Removes one payment on that credit card in the selected month. */

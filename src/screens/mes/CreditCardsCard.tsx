@@ -11,6 +11,7 @@ import { CardDialog } from './CardDialog';
 import { carouselIndex } from './cardCarousel';
 import styles from './CreditCardsCard.module.css';
 import { MES } from './strings';
+import { UnpaidPurchases, useUnpaidPurchases } from './UnpaidPurchases';
 
 /** '2026-10-13' → 'Oct 13' / '13 oct' / '13 Eki', in the user's language. */
 function dayLabel(date: string, lang: string): string {
@@ -144,9 +145,12 @@ function CardItem({ card, refused, onToggle, onEdit }: CardItemProps) {
   const detail = [card.bank, card.last4 && `•••• ${card.last4}`].filter(Boolean).join(' · ');
   const money = (n: number) => `${f2(n)} ${card.cur}`;
   const day = (d: number | null) => (d === null ? '—' : s('cardDay', { day: d }));
+  // Collapsed by default; the list opens inside the container, which grows to hold it.
+  const unpaid = useUnpaidPurchases(card.id);
+  const [open, setOpen] = useState(false);
 
   return (
-    <div className={cx(styles.item, !card.active && styles.off)} data-testid="credit-card">
+    <div className={cx(styles.item, !card.active && styles.off, open && unpaid.length > 0 && styles.itemOpen)} data-testid="credit-card">
       <div className={styles.top}>
         <button type="button" role="switch" aria-checked={card.active} aria-label={s('cardActiveNamed', { name: card.name })} className={cx(styles.switch, card.active && styles.on)} onClick={onToggle}>
           <span className={styles.knob} />
@@ -170,6 +174,11 @@ function CardItem({ card, refused, onToggle, onEdit }: CardItemProps) {
           </span>
           {calc.cashback > 0 && <span className={styles.muted}>{s('cardCashbackLine', { amount: f2(calc.cashback), currency: card.cur })}</span>}
           <span>{monoNumbers(pct === null ? s('cardOwe', { amount: f2(Math.max(0, remainder)), currency: card.cur }) : s('cardOweLimit', { amount: f2(Math.max(0, remainder)), currency: card.cur, pct }), styles.num)}</span>
+          {unpaid.length > 0 && (
+            <button type="button" className={cx(styles.link, styles.unpaidLink)} aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+              {s('purchasesLink', { count: unpaid.length })}
+            </button>
+          )}
         </div>
         <div className={styles.side}>
           <span>
@@ -181,6 +190,7 @@ function CardItem({ card, refused, onToggle, onEdit }: CardItemProps) {
           {hint && <span>{hint.daysToCutoff === 0 ? s('cardCutoffToday') : s('cardToCutoff', { count: hint.daysToCutoff })}</span>}
         </div>
       </div>
+      {open && unpaid.length > 0 && <UnpaidPurchases cardId={card.id} />}
       {util !== null && (
         <div className={styles.track} role="img" aria-label={s('cardBar', { pct: pct! })}>
           <div className={cx(styles.fill, over && styles.fillOver)} style={{ width: `${Math.min(util, 1) * 100}%` }} />

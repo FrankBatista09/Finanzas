@@ -1,0 +1,116 @@
+/* The list of unpaid credit card purchases and the footer that pays the checked ones. */
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 0;
+  font-size: var(--fs-meta);
+}
+
+.list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 120px;
+  overflow-y: auto;
+  border-top: 1px solid var(--border-row);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-8);
+  padding: 3px 0;
+  border-bottom: 1px solid var(--border-row);
+  line-height: 1.3;
+}
+
+.check {
+  flex: none;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.date {
+  flex: none;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.amount {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.converted {
+  color: var(--text-muted);
+  font-family: var(--font-ui);
+  font-size: var(--fs-label);
+}
+
+.footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px var(--gap-8);
+}
+
+.selected {
+  font-weight: 600;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.from {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-muted);
+}
+
+.from select {
+  max-width: 130px;
+}
+
+.pay {
+  margin-left: auto;
+  padding: 3px 9px;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  background: var(--accent);
+  color: var(--surface);
+  font: 600 var(--fs-meta) var(--font-ui);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.pay:disabled {
+  border-color: var(--border-dashed);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: default;
+}
+
+.pay:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.note {
+  flex-basis: 100%;
+  color: var(--text-muted);
+  font-size: var(--fs-label);
+}

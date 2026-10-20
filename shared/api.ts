@@ -56,6 +56,8 @@
 //   PATCH  /api/months/:key/cards/:cardId/other CardOtherUpdate → Month (los «otros cargos» de esa tarjeta en el mes)
 //   PATCH  /api/months/:key/cards/:cardId/cashback CardCashbackUpdate → Month (el cashback que generó la tarjeta en el mes; 400 si no tiene cashback)
 //   POST   /api/months/:key/cards/:cardId/pay CardPayRequest → Month (añade un pago de esa tarjeta, total o en parte; puede haber varios en el mes)
+//   POST   /api/months/:key/cards/:cardId/pay-purchases CardPayPurchasesRequest → Month (un pago por la suma de esas compras con tarjeta,
+//                                                                  que quedan marcadas como pagadas por él)
 //   DELETE /api/months/:key/cards/:cardId/pay → Month             (quita todos los pagos de esa tarjeta en el mes)
 //   DELETE /api/months/:key/cards/:cardId/pay/:paymentId → Month  (quita uno)
 //   POST   /api/months/:key/close CloseRequest? → CloseResponse   (cierra y crea el siguiente, en un batch de D1;
@@ -369,6 +371,18 @@ export interface CardCashbackUpdate {
 export interface CardPayRequest {
   id?: string;
   amount: number;
+  accountId?: string;
+  date?: ISODate;
+}
+
+/**
+ * POST /api/months/:key/cards/:cardId/pay-purchases: pays the listed unsettled Credit-card purchases of that card (dated
+ * in a month <= :key) with ONE payment whose amount is their sum in the card's currency (it cannot exceed what is left
+ * to pay). `accountId` and `date` as in CardPayRequest.
+ */
+export interface CardPayPurchasesRequest {
+  id?: string;
+  transactionIds: string[];
   accountId?: string;
   date?: ISODate;
 }

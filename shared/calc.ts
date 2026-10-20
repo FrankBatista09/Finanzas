@@ -553,6 +553,49 @@ function cardTable(state: AppState): Map<MonthKey, Map<string, CardCalc>> {
   return table;
 }
 
+/** A Credit-card purchase seen from its card: the amount in the card's currency and, if a payment covered it, which. */
+export interface CardPurchase {
+  tx: Transaction;
+  /** The sheet (month) the purchase lives in. */
+  key: MonthKey;
+  /** Counted in the card's currency exactly as the card total counts it (rate of the purchase date). */
+  amount: number;
+  /** The covering payment when it still exists; null = unsettled. A link to a payment that is gone counts as unsettled. */
+  payment: { id: string; date: ISODate; accountId: string; key: MonthKey } | null;
+}
+
+/**
+ * The Credit-card purchases of a card in the months up to `key` (oldest first), settled or not. A purchase belongs to
+ * its own card, or to the first active one when it names none (chargedTo), like the card total.
+ */
+export function cardPurchases(state: AppState, key: MonthKey, cardId: string): CardPurchase[] {
+  const card = state.cards.find((c) => c.id === cardId);
+  if (!card) return [];
+  const keys = sortedKeys(state).filter((k) => k <= key);
+  const payments = new Map<string, NonNullable<CardPurchase['payment']>>();
+  for (const k of keys) {
+    for (const mc of state.months[k]!.cards ?? []) for (const p of mc.payments) payments.set(p.id, { id: p.id, date: p.date, accountId: p.accountId, key: k });
+  }
+  const out: CardPurchase[] = [];
+  for (const k of keys) {
+    for (const t of state.months[k]!.tx) {
+      if (!isCardTx(t) || chargedTo(state, t.cardId) !== cardId) continue;
+      out.push({ tx: t, key: k, amount: convert(state, k, t.amount, t.cur, card.cur, t.date), payment: (t.cardPaymentId && payments.get(t.cardPaymentId)) || null });
+    }
+  }
+  return out;
+}
+
+/** The purchases of a card up to `key` that no payment has covered yet. */
+export function unsettledCardPurchases(state: AppState, key: MonthKey, cardId: string): CardPurchase[] {
+  return cardPurchases(state, key, cardId).filter((p) => !p.payment);
+}
+
+/** Sum of purchase amounts (card currency) rounded to cents: what paying them costs. */
+export function sumCardPurchases(purchases: readonly Pick<CardPurchase, 'amount'>[]): number {
+  return Math.round(purchases.reduce((a, p) => a + p.amount, 0) * 100) / 100;
+}
+
 /**
  * Cuenta que se ofrece para pagar la tarjeta `cardId` en el mes `key`: la del último pago de esa tarjeta (de este mes o
  * del anterior más cercano que tenga uno) si sigue siendo una cuenta de dinero visible; si no, la cuenta por defecto.

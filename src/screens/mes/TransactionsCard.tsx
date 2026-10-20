@@ -1,5 +1,5 @@
 import { memo, useMemo, useRef, useState } from 'react';
-import { defaultCardId, FEE_CATEGORY, isCardTx, outsideOf, transferFees } from '../../../shared/calc';
+import { cardPurchases, defaultCardId, FEE_CATEGORY, isCardTx, outsideOf, transferFees } from '../../../shared/calc';
 import type { TransferFee } from '../../../shared/calc';
 import { CATS, CREDIT_CARD_METHOD, CURRENCIES } from '../../../shared/constants';
 import { f2 } from '../../../shared/format';
@@ -17,6 +17,7 @@ import {
   CellNumber,
   CellSelect,
   CellText,
+  cx,
   DeleteButton,
   Num,
   SheetTable,
@@ -54,6 +55,12 @@ export function TransactionsCard({ outside }: { outside: OutsideAdding }) {
   const outsideLink = useRef<HTMLButtonElement>(null);
   // The credit card a credit transaction goes to when it does not say which: the first active one.
   const firstCard = defaultCardId(state);
+  // For each Credit-card purchase of the month: the date of the payment that covered it, or null while unpaid.
+  const paidOn = useMemo(() => {
+    const map = new Map<string, string | null>();
+    for (const card of state.cards) for (const p of cardPurchases(state, monthKey, card.id)) if (p.key === monthKey) map.set(p.tx.id, p.payment?.date ?? null);
+    return map;
+  }, [state, monthKey]);
 
   const add = () => {
     if (!canAddTx(draft) || !actions.addTx(txInput(draft, draftDate, ctx))) return false;
@@ -218,6 +225,7 @@ export function TransactionsCard({ outside }: { outside: OutsideAdding }) {
                 accounts={rowAccountOptions(visible, accounts, r.tx.accountId)}
                 cards={state.cards}
                 firstCard={firstCard}
+                paidOn={paidOn.get(r.tx.id)}
                 readOnly={readOnly}
                 actions={actions}
               />
@@ -284,12 +292,14 @@ interface TxRowProps {
   /** The credit cards and the first active one (the one a credit transaction goes to when it does not say which). */
   cards: readonly CreditCard[];
   firstCard: string | null;
+  /** Credit-card purchases only: the date of the payment that covered it, null while unpaid; undefined = not a purchase of a card. */
+  paidOn: string | null | undefined;
   readOnly: boolean;
   actions: Actions;
 }
 
 /** memo: editing a cell re-renders only its row; the others keep their identity in the cache. */
-const TxRow = memo(function TxRow({ row: tx, inMain, inSecond, accounts, cards, firstCard, readOnly, actions }: TxRowProps) {
+const TxRow = memo(function TxRow({ row: tx, inMain, inSecond, accounts, cards, firstCard, paidOn, readOnly, actions }: TxRowProps) {
   const { t, catLabel, methodLabel } = useI18n();
   const s = useStrings(MES);
   // The transaction's description, for the labels of its cells ("Amount of Coffee").
@@ -348,6 +358,9 @@ const TxRow = memo(function TxRow({ row: tx, inMain, inSecond, accounts, cards, 
               tone="soft"
               label={s('cardOfNamed', named)}
             />
+          )}
+          {isCardTx(tx) && paidOn !== undefined && (
+            <span className={cx(styles.settled, paidOn !== null && styles.settledPaid)}>{paidOn === null ? s('txPurchaseUnpaid') : s('txPurchasePaid', { date: shortDate(paidOn) })}</span>
           )}
         </div>
       </Td>

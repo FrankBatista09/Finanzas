@@ -162,6 +162,12 @@ export interface Transaction {
   createdAt: string | null;
   /** Solo cuenta si `method` es 'Credit card': con qué tarjeta. Ausente/null = la primera tarjeta activa. */
   cardId?: string | null;
+  /**
+   * Only for 'Credit card' purchases: the id of the card payment (MonthCard.payments) that covered this purchase.
+   * Absent/null = unsettled. Informational: the card total still comes from the charged amounts, so editing the
+   * amount of a settled purchase does not change the payment.
+   */
+  cardPaymentId?: string | null;
 }
 
 /**

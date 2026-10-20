@@ -302,3 +302,14 @@ p.muted,
   outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
+
+/* With the unpaid purchases list open, the card grows past its usual height instead of cutting the list. */
+.itemOpen {
+  height: auto;
+  min-height: var(--card-item-h);
+  overflow: visible;
+}
+
+.unpaidLink {
+  align-self: flex-start;
+}
