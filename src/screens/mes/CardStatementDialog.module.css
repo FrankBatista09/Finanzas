@@ -1,3 +1,13 @@
+/* The large dialog's body has no side padding of its own: this gives the content the title's margins. */
+.content {
+  padding: 4px 22px 16px;
+}
+
+/* Fixed layout: every column keeps its width and the name (no width) takes only what is left. */
+.grid {
+  table-layout: fixed;
+}
+
 /* The statement selector and the "+ Add purchase" button above the table. */
 .bar {
   display: flex;
@@ -58,7 +68,6 @@
 
 .name {
   display: block;
-  max-width: 420px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
