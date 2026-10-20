@@ -62,6 +62,10 @@ export function TransactionsCard({ outside }: { outside: OutsideAdding }) {
     return map;
   }, [state, monthKey]);
 
+  // A card purchase that no month has taken yet is not in the history: it waits in the card's statement panel until it
+  // is added to a month (as a fixed expense or just to the history).
+  const held = useMemo(() => new Set([...purchases].filter(([, p]) => p.status === 'unpaid').map(([id]) => id)), [purchases]);
+
   const add = () => {
     if (!canAddTx(draft) || !actions.addTx(txInput(draft, draftDate, ctx))) return false;
     setDraft(afterTxAdded);
@@ -75,7 +79,7 @@ export function TransactionsCard({ outside }: { outside: OutsideAdding }) {
         title={s('txTitle')}
         meta={
           <>
-            {s('txMeta', { count: calc.txCount })} <Num tone="ink">{f2(calc.varSpent)} {main}</Num>
+            {s('txMeta', { count: calc.txCount - held.size })} <Num tone="ink">{f2(calc.varSpent)} {main}</Num>
           </>
         }
         action={
@@ -209,7 +213,7 @@ export function TransactionsCard({ outside }: { outside: OutsideAdding }) {
               </Td>
             </AddRow>
           )}
-          {historyRows(month.tx, transferFees(state, monthKey)).map((r) => {
+          {historyRows(month.tx.filter((t) => !held.has(t.id)), transferFees(state, monthKey)).map((r) => {
             if (r.kind === 'fee') {
               const money = inBoth(r.fee.amount, r.fee.cur, undefined, r.fee.date);
               return <FeeRow key={r.key} fee={r.fee} inMain={money.main} inSecond={money.second} />;
