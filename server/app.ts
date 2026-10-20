@@ -335,10 +335,10 @@ export function createApp(): Hono<AppEnv> {
     return c.json((await db.payCard(c.env.DB, uid(c), key, cardParam(c), input)) satisfies Month);
   });
 
-  app.post('/months/:key/cards/:cardId/pay-purchases', async (c) => {
+  app.post('/months/:key/cards/:cardId/include-purchases', async (c) => {
     const key = monthParam(c);
-    const input = await jsonBody(c, v.cardPayPurchasesSchema);
-    return c.json((await db.payCardPurchases(c.env.DB, uid(c), key, cardParam(c), input)) satisfies Month);
+    const input = await jsonBody(c, v.cardIncludeSchema);
+    return c.json((await db.includeCardPurchases(c.env.DB, uid(c), key, cardParam(c), input)) satisfies Month);
   });
 
   app.delete('/months/:key/cards/:cardId/pay', async (c) =>

@@ -42,6 +42,8 @@ const tx = (over: Partial<Transaction>): Transaction => ({
   notes: '',
   source: 'web',
   createdAt: null,
+  // Added to its own month, as every purchase was before purchases had to be added to a month.
+  cardMonth: over.monthKey ?? OCT,
   ...over,
 });
 

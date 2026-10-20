@@ -16,7 +16,7 @@ import type {
   CardCashbackUpdate,
   CardOtherUpdate,
   CardPayRequest,
-  CardPayPurchasesRequest,
+  CardIncludeRequest,
   CreditCardCreate,
   CreditCardPatch,
   FixedCreate,
@@ -250,12 +250,11 @@ export const cardCashbackSchema = z.strictObject({ cashback: nonNegative() }) sa
 // Que el importe no pase de lo que falta por pagar lo comprueba payCard (server/db.ts): lo que falta sale del estado.
 export const cardPaySchema = z.strictObject({ id: id().optional(), amount: positive(), accountId: id().optional(), date: isoDate().optional() }) satisfies z.ZodType<CardPayRequest>;
 
-export const cardPayPurchasesSchema = z.strictObject({
-  id: id().optional(),
-  transactionIds: z.array(id(), { error: typed('must be a list of transaction ids') }).min(1, { error: 'must have at least one transaction' }).max(200, { error: 'can have at most 200 transactions' }),
-  accountId: id().optional(),
-  date: isoDate().optional(),
-}) satisfies z.ZodType<CardPayPurchasesRequest>;
+export const cardIncludeSchema = z.strictObject({
+  transactionIds: z.array(id(), { error: typed('must be a list of transaction ids') }).min(1, { error: 'must have at least one transaction' }).max(100, { error: 'can have at most 100 transactions' }),
+  destination: z.enum(['fixed', 'history'], { error: "must be 'fixed' or 'history'" }),
+  fixedIds: z.array(id(), { error: typed('must be a list of ids') }).max(100).optional(),
+}) satisfies z.ZodType<CardIncludeRequest>;
 
 // ── Transacciones ────────────────────────────────────────────────────────────
 

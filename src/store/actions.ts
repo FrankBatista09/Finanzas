@@ -18,7 +18,7 @@ import {
   cardPayment,
   cardRemoval,
   cardUnpay,
-  cardPurchasesPayment,
+  cardInclusion,
   cardUnpayOne,
   contributionChange,
   currencyChange,
@@ -200,8 +200,8 @@ export function createActions(
       store.dispatch(action);
       return true;
     },
-    payCardPurchases(cardId, transactionIds, accountId) {
-      const action = store.state && monthKey ? cardPurchasesPayment(store.state, monthKey, cardId, transactionIds, accountId, makeId(), today()) : null;
+    includeCardPurchases(cardId, transactionIds, destination) {
+      const action = store.state && monthKey ? cardInclusion(store.state, monthKey, cardId, transactionIds, destination, makeId) : null;
       if (!action) return false;
       store.dispatch(action);
       return true;

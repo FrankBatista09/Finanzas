@@ -56,8 +56,8 @@
 //   PATCH  /api/months/:key/cards/:cardId/other CardOtherUpdate → Month (los «otros cargos» de esa tarjeta en el mes)
 //   PATCH  /api/months/:key/cards/:cardId/cashback CardCashbackUpdate → Month (el cashback que generó la tarjeta en el mes; 400 si no tiene cashback)
 //   POST   /api/months/:key/cards/:cardId/pay CardPayRequest → Month (añade un pago de esa tarjeta, total o en parte; puede haber varios en el mes)
-//   POST   /api/months/:key/cards/:cardId/pay-purchases CardPayPurchasesRequest → Month (un pago por la suma de esas compras con tarjeta,
-//                                                                  que quedan marcadas como pagadas por él)
+//   POST   /api/months/:key/cards/:cardId/include-purchases CardIncludeRequest → Month (suma esas compras con tarjeta sin pagar al total
+//                                                                  de la tarjeta de ese mes, como fijo o solo marcadas)
 //   DELETE /api/months/:key/cards/:cardId/pay → Month             (quita todos los pagos de esa tarjeta en el mes)
 //   DELETE /api/months/:key/cards/:cardId/pay/:paymentId → Month  (quita uno)
 //   POST   /api/months/:key/close CloseRequest? → CloseResponse   (cierra y crea el siguiente, en un batch de D1;
@@ -376,15 +376,14 @@ export interface CardPayRequest {
 }
 
 /**
- * POST /api/months/:key/cards/:cardId/pay-purchases: pays the listed unsettled Credit-card purchases of that card (dated
- * in a month <= :key) with ONE payment whose amount is their sum in the card's currency (it cannot exceed what is left
- * to pay). `accountId` and `date` as in CardPayRequest.
+ * POST /api/months/:key/cards/:cardId/include-purchases: adds the listed unpaid Credit-card purchases of that card (dated in
+ * a month <= :key) to month :key, so they count in its card total. `destination` 'history' only marks them; 'fixed' also
+ * creates a ticked fixed expense on the card for each (its id from `fixedIds`, one per transaction, or generated).
  */
-export interface CardPayPurchasesRequest {
-  id?: string;
+export interface CardIncludeRequest {
   transactionIds: string[];
-  accountId?: string;
-  date?: ISODate;
+  destination: 'fixed' | 'history';
+  fixedIds?: string[];
 }
 
 export interface TxCreate {

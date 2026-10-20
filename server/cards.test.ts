@@ -97,7 +97,8 @@ describe('migration 0011', () => {
 
   it('the total, paid, what is left, used, pending and the balances come out identical to the earlier ones', async () => {
     const db = before();
-    applyMigrations(db, [FILE]);
+    // 0016 backfills card_month, so a purchase keeps counting in the total of its own month.
+    applyMigrations(db, [FILE, '0016_card_statement_inclusion.sql']);
     const state = await loadState(asD1(db), 'frank');
     expect(state.cards).toEqual([expect.objectContaining({ id: 'card', name: 'Credit card', cur: 'DOP', limit: null, cutoffDay: null, dueDay: null, active: true })]);
 
@@ -222,7 +223,8 @@ describe('turning off and deleting', () => {
     // Turning it back on is always possible.
     expect((await api.patch<CreditCard>(`/api/credit-cards/${visa.id}`, { active: true })).body.active).toBe(true);
     // Nor with something charged in the month (even if what was paid leaves it at zero).
-    await api.post('/api/transactions', { monthKey: OCT, date: '2026-10-08', desc: 'Taxi', cat: 'Transport', method: 'Credit card', amount: 50, cur: 'DOP', cardId: visa.id });
+    const taxi = await api.post<Transaction>('/api/transactions', { monthKey: OCT, date: '2026-10-08', desc: 'Taxi', cat: 'Transport', method: 'Credit card', amount: 50, cur: 'DOP', cardId: visa.id });
+    await api.post(`/api/months/${OCT}/cards/${visa.id}/include-purchases`, { transactionIds: [taxi.body.id], destination: 'history' });
     expect((await off()).status).toBe(409);
   });
 

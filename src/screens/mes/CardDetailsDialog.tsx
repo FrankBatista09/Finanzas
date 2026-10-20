@@ -1,4 +1,4 @@
-import { cardCalc, cardHint, cardUtilization } from '../../../shared/calc';
+import { cardCalc, cardHint, cardOwed, cardUtilization } from '../../../shared/calc';
 import { f2 } from '../../../shared/format';
 import { useI18n, useStrings } from '../../i18n';
 import { useFinanzas } from '../../store';
@@ -8,7 +8,6 @@ import { isFullyPaid } from './cardPay';
 import { PayHint } from './CreditCardsCard';
 import styles from './CardDetailsDialog.module.css';
 import { MES } from './strings';
-import { UnpaidPurchases, useUnpaidPurchases } from './UnpaidPurchases';
 
 interface Props {
   cardId: string;
@@ -31,11 +30,12 @@ export function CardDetailsDialog({ cardId, onClose, onPay }: Props) {
   const items = cardItems(state, monthKey, cardId);
   const left = Math.max(0, calc.remainder);
   const fullyPaid = isFullyPaid(calc.remainder);
-  const util = cardUtilization(card, calc.remainder);
+  // Utilization counts what is owed, including purchases not added to a month yet.
+  const owed = cardOwed(state, monthKey, cardId);
+  const util = cardUtilization(card, owed);
   // As in "Credit cards": the hint only makes sense in the latest month.
-  const hint = latestMonth ? cardHint(card, calc.remainder, today) : null;
+  const hint = latestMonth ? cardHint(card, owed, today) : null;
   const money = (n: number) => `${f2(n)} ${cur}`;
-  const unpaid = useUnpaidPurchases(cardId);
 
   return (
     <Dialog
@@ -99,12 +99,6 @@ export function CardDetailsDialog({ cardId, onClose, onPay }: Props) {
           </ul>
         )}
         <Line label={s('cardTotalOwed')} value={money(calc.total)} strong />
-        {unpaid.length > 0 && (
-          <>
-            <h3 className={styles.heading}>{s('purchasesLink', { count: unpaid.length })}</h3>
-            <UnpaidPurchases cardId={cardId} maxHeight={170} />
-          </>
-        )}
         <h3 className={styles.heading}>{s('payCardPayments')}</h3>
         {calc.payments.length === 0 ? (
           <p className={styles.empty}>{s('cardNoPayments')}</p>

@@ -1,0 +1,204 @@
+import { useState } from 'react';
+import { cardStatementItems } from '../../../shared/calc';
+import type { StatementItem } from '../../../shared/calc';
+import { CATS, CREDIT_CARD_METHOD, CURRENCIES } from '../../../shared/constants';
+import { f2 } from '../../../shared/format';
+import { statementPeriod } from '../../../shared/statements';
+import type { ISODate } from '../../../shared/types';
+import { useI18n, useStrings } from '../../i18n';
+import { useFinanzas } from '../../store';
+import { AddButton, AddRow, AddRowButton, CellDate, CellNumber, CellSelect, CellText, cx, Dialog, DialogButton, SheetTable, Td, Th, useAddRow } from '../../ui';
+import { canPick, currentStatement, dayLabel, itemsIn, selection, statementCutoffs, statementTotals, stepStatement } from './cardStatement';
+import styles from './CardStatementDialog.module.css';
+import { afterTxAdded, canAddTx, draftCurrency, newTxDraft, txInput } from './drafts';
+import { PurchaseTag } from './PurchaseTag';
+import { labelled, MAX_LEN, shortDate } from './rows';
+import { MES } from './strings';
+
+/**
+ * "Transactions · <card>": the card's purchases, grouped into statements by its cutoff day. Each statement lists the
+ * card's Credit-card transactions and its on-card fixed expenses with where they stand (unpaid, this month, paid). Unpaid
+ * transactions are checked and added to the viewed month, as fixed monthly expenses or just marked in the transaction
+ * history; that is what puts them in the card total. Paying stays where it was: the card's row in Fixed monthly expenses.
+ * Read-only in a closed month.
+ */
+export function CardStatementDialog({ cardId, onClose }: { cardId: string; onClose: () => void }) {
+  const { state, monthKey, today, readOnly, draftDate, accounts, defaultAccount, main, actions } = useFinanzas();
+  const { t, lang, catLabel } = useI18n();
+  const s = useStrings(MES);
+  const card = state.cards.find((c) => c.id === cardId);
+  const items = cardStatementItems(state, monthKey, cardId);
+  const cutoffDay = card?.cutoffDay ?? null;
+  const cutoffs = statementCutoffs(items, today, cutoffDay);
+  const [picked, setPicked] = useState<ISODate | null>(null);
+  // The statement the user stepped to, or the one containing today; a picked one that no longer exists falls back to it.
+  const selected = cutoffDay ? (picked && cutoffs.includes(picked) ? picked : currentStatement(today, cutoffDay)) : null;
+  const shown = itemsIn(items, selected);
+  const [checked, setChecked] = useState<ReadonlySet<string>>(new Set());
+  const [destination, setDestination] = useState<'fixed' | 'history'>('fixed');
+  const sel = selection(shown, checked);
+  const totals = statementTotals(shown);
+
+  const fresh = () => ({ ...newTxDraft(), method: CREDIT_CARD_METHOD, cur: card?.cur ?? null });
+  const [draft, setDraft] = useState(fresh);
+  const adding = useAddRow(() => setDraft(fresh));
+  const ctx = { accounts, defaultAccount, main };
+
+  if (!card) return null;
+  const cur = card.cur;
+  const editable = !readOnly;
+
+  const toggle = (id: string) =>
+    setChecked((prev) => {
+      const next = new Set(prev);
+      if (!next.delete(id)) next.add(id);
+      return next;
+    });
+  const include = () => {
+    if (sel.ids.length > 0 && actions.includeCardPurchases(cardId, sel.ids, destination)) setChecked(new Set());
+  };
+  const add = () => {
+    if (!canAddTx(draft) || !actions.addTx({ ...txInput(draft, draftDate, ctx), method: CREDIT_CARD_METHOD, cardId })) return false;
+    setDraft(afterTxAdded);
+    return true;
+  };
+  const step = (delta: number) => {
+    setPicked(stepStatement(cutoffs, selected!, delta));
+    setChecked(new Set());
+  };
+  const period = selected && cutoffDay ? statementPeriod(selected, cutoffDay) : null;
+  const at = selected ? cutoffs.indexOf(selected) : -1;
+
+  return (
+    <Dialog
+      size="large"
+      title={s('stmtTitle', { name: card.name })}
+      onCancel={onClose}
+      footer={
+        <>
+          {editable && (
+            <div className={styles.include}>
+              <span className={styles.selected}>{s('purchaseSelected', { amount: f2(sel.sum), currency: cur })}</span>
+              <fieldset className={styles.destination}>
+                <legend>{s('stmtAddTo')}</legend>
+                <label>
+                  <input type="radio" name="destination" checked={destination === 'fixed'} onChange={() => setDestination('fixed')} />
+                  {s('stmtToFixed')}
+                </label>
+                <label>
+                  <input type="radio" name="destination" checked={destination === 'history'} onChange={() => setDestination('history')} />
+                  {s('stmtToHistory')}
+                </label>
+              </fieldset>
+              <DialogButton variant="primary" disabled={sel.ids.length === 0} onClick={include}>
+                {s('stmtAddToMonth')}
+              </DialogButton>
+            </div>
+          )}
+          <DialogButton variant="secondary" onClick={onClose}>
+            {t('close')}
+          </DialogButton>
+        </>
+      }
+    >
+      <div className={styles.bar}>
+        {selected && period ? (
+          <div className={styles.picker}>
+            <button type="button" className={styles.arrow} aria-label={s('stmtPrev')} title={s('stmtPrev')} disabled={at <= 0} onClick={() => step(-1)}>
+              ‹
+            </button>
+            <span className={styles.statement}>
+              <b>{s('stmtCutoff', { date: dayLabel(selected, lang) })}</b>
+              <span className={styles.period}>
+                {dayLabel(period.from, lang)} – {dayLabel(period.to, lang)}
+              </span>
+            </span>
+            <button type="button" className={styles.arrow} aria-label={s('stmtNext')} title={s('stmtNext')} disabled={at >= cutoffs.length - 1} onClick={() => step(1)}>
+              ›
+            </button>
+          </div>
+        ) : (
+          <div className={styles.picker}>
+            <b>{s('stmtAll')}</b>
+            <span className={styles.period}>{s('stmtNoCutoff')}</span>
+          </div>
+        )}
+        {editable && card.active && <AddRowButton control={adding}>{s('stmtAddPurchase')}</AddRowButton>}
+      </div>
+      <SheetTable minWidth={680} label={s('stmtTitle', { name: card.name })}>
+        <thead>
+          <tr>
+            <Th blank width={30} />
+            <Th width={64}>{t('date')}</Th>
+            <Th elastic>{s('stmtName')}</Th>
+            <Th width={130}>{s('stmtOrigin')}</Th>
+            <Th align="right" width={170}>
+              {t('amount')}
+            </Th>
+            <Th width={150} last>
+              {s('stmtStatus')}
+            </Th>
+          </tr>
+        </thead>
+        <tbody>
+          {editable && card.active && (
+            <AddRow control={adding} onAdd={add}>
+              <Td kind="center" />
+              <Td kind="edit">
+                <CellDate value={draft.date ?? draftDate} onCommit={(date) => setDraft((d) => ({ ...d, date }))} label={s('newTxDate')} />
+              </Td>
+              <Td kind="edit">
+                <CellText value={draft.desc} onCommit={(desc) => setDraft((d) => ({ ...d, desc }))} placeholder={s('newTx')} maxLength={MAX_LEN.desc} label={s('newTx')} />
+              </Td>
+              <Td kind="edit">
+                <CellSelect value={draft.cat} options={labelled(CATS, catLabel)} onCommit={(cat) => setDraft((d) => ({ ...d, cat }))} label={s('newTxCategory')} />
+              </Td>
+              <Td kind="edit">
+                <div className={styles.amountCell}>
+                  <CellNumber value={draft.amount} onCommit={(amount) => setDraft((d) => ({ ...d, amount }))} blankZero placeholder="0.00" label={s('newTxAmount')} />
+                  <CellSelect value={draftCurrency(draft, ctx)} options={CURRENCIES} onCommit={(c) => setDraft((d) => ({ ...d, cur: c }))} mono dense label={s('newTxCurrency')} />
+                </div>
+              </Td>
+              <Td kind="add">
+                <AddButton />
+              </Td>
+            </AddRow>
+          )}
+          {shown.map((item) => (
+            <tr key={`${item.kind}-${item.id}`}>
+              <Td kind="center">
+                {editable && canPick(item) && (
+                  <input type="checkbox" className={styles.check} checked={checked.has(item.id)} onChange={() => toggle(item.id)} aria-label={s('purchaseSelect', { name: item.name })} />
+                )}
+              </Td>
+              <Td kind="mono" nowrap>
+                {item.date ? shortDate(item.date) : s('stmtMonthly')}
+              </Td>
+              <Td>
+                <span className={styles.name} title={nameOf(item, catLabel)}>
+                  {nameOf(item, catLabel)}
+                </span>
+              </Td>
+              <Td tone="soft">{item.kind === 'tx' ? s('stmtOriginTx') : s('stmtOriginFixed')}</Td>
+              <Td kind="num" nowrap>
+                {f2(item.amount)} {item.cur}
+                {item.cur !== cur && <span className={styles.converted}>{s('cardItemConverted', { amount: f2(item.converted), currency: cur })}</span>}
+              </Td>
+              <Td last>
+                <PurchaseTag purchase={item} viewKey={monthKey} />
+              </Td>
+            </tr>
+          ))}
+        </tbody>
+      </SheetTable>
+      {shown.length === 0 && <p className={styles.empty}>{s('stmtEmpty')}</p>}
+      <div className={styles.totals}>
+        <span>{s('stmtTotal', { amount: f2(totals.total), currency: cur })}</span>
+        <span className={cx(totals.unpaid > 0 && styles.unpaidTotal)}>{s('stmtUnpaidTotal', { amount: f2(totals.unpaid), currency: cur })}</span>
+      </div>
+      {shown.some((i) => i.kind === 'fixed') && <p className={styles.note}>{s('stmtFixedNote')}</p>}
+    </Dialog>
+  );
+}
+
+const nameOf = (item: StatementItem, catLabel: (cat: string) => string) => (item.cat ? `${item.name} · ${catLabel(item.cat)}` : item.name);

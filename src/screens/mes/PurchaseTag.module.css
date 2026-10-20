@@ -1,0 +1,15 @@
+/* The status of a credit card purchase: plain text next to its row, never a field. */
+.tag {
+  color: var(--text-muted);
+  font-size: var(--fs-label);
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.month {
+  color: var(--text-soft);
+}
+
+.paid {
+  color: var(--accent-text);
+}

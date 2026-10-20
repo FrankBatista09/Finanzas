@@ -168,6 +168,16 @@ export interface Transaction {
    * amount of a settled purchase does not change the payment.
    */
   cardPaymentId?: string | null;
+  /**
+   * Only for 'Credit card' purchases: the month whose card total includes this purchase. Absent/null = unpaid: not part
+   * of any month's total yet (it still counts in what is owed). Set when the purchase is added to a month.
+   */
+  cardMonth?: MonthKey | null;
+  /**
+   * The fixed expense (FixedExpense.id) that stands for this purchase in `cardMonth` when it was added as a fixed
+   * expense. The fixed row carries the amount in the card total and the purchase is not counted a second time.
+   */
+  cardFixedId?: string | null;
 }
 
 /**

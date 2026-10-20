@@ -8,7 +8,7 @@ import { balances, cardCalc, monthCalc } from '../shared/calc';
 import { buildExportData } from '../shared/excel/data';
 import { seedState } from '../shared/seed';
 import type { CloseResponse } from '../shared/api';
-import type { CreditCard, FixedExpense, Month } from '../shared/types';
+import type { CreditCard, FixedExpense, Month, Transaction } from '../shared/types';
 import { applyMigrations, createTestDb, migrationFiles } from './d1-node';
 import { applyImport, loadState, replaceAll } from './db';
 import { client, EDA, FRANK, makeEnv } from './test-util';
@@ -146,7 +146,8 @@ describe('fixed expense on card', () => {
   it('on closing the month, the next one keeps "on card", unchecked, and the unpaid balance carries over on its own', async () => {
     const { api, db } = await seeded();
     await api.post('/api/fixed', { ...fixedBody, paid: true });
-    await api.post('/api/transactions', { monthKey: OCT, date: '2026-10-08', desc: 'Taxi', cat: 'Transport', method: 'Credit card', amount: 200, cur: 'DOP' });
+    const taxi = await api.post<Transaction>('/api/transactions', { monthKey: OCT, date: '2026-10-08', desc: 'Taxi', cat: 'Transport', method: 'Credit card', amount: 200, cur: 'DOP' });
+    await api.post(`${C}/include-purchases`, { transactionIds: [taxi.body.id], destination: 'history' });
     await api.patch(`${C}/other`, { other: 300 });
     await api.post(`${C}/pay`, { amount: 500, accountId: 'dr' });
     const closed = (await api.post<CloseResponse>(`/api/months/${OCT}/close`)).body;
@@ -172,7 +173,8 @@ describe('other charges and credit card payment', () => {
     const { api, db } = await seeded();
     const base = await loadState(db, F);
     await api.patch(`${C}/other`, { other: 1000 });
-    await api.post('/api/transactions', { monthKey: OCT, date: '2026-10-08', desc: 'Taxi', cat: 'Transport', method: 'Credit card', amount: 500, cur: 'DOP' });
+    const taxi = await api.post<Transaction>('/api/transactions', { monthKey: OCT, date: '2026-10-08', desc: 'Taxi', cat: 'Transport', method: 'Credit card', amount: 500, cur: 'DOP' });
+    await api.post(`${C}/include-purchases`, { transactionIds: [taxi.body.id], destination: 'history' });
     let state = await loadState(db, F);
     expect(balanceOf(state, 'dr')).toBe(balanceOf(base, 'dr'));
     expect(monthCalc(state, OCT).used).toBeCloseTo(monthCalc(base, OCT).used, 9);
