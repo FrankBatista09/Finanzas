@@ -41,8 +41,7 @@ import {
   openingFor,
   rateFor,
   sortedKeys,
-  sumCardPurchases,
-  unsettledCardPurchases,
+  unpaidCardPurchases,
 } from '../../shared/calc';
 import { CREDIT_CARD_METHOD, CURRENCIES, GOLD, GOLD_DECIMALS, isGold, MAX_LEN, MOVED_TO_BUDGET } from '../../shared/constants';
 import { clampToMonth, firstDay, inMonth, isISODate, isMonthKey } from '../../shared/month';
@@ -85,7 +84,8 @@ export type Action =
   | { type: 'card/other'; key: MonthKey; cardId: string; other: number }
   | { type: 'card/cashback'; key: MonthKey; cardId: string; cashback: number }
   | { type: 'card/pay'; key: MonthKey; cardId: string; payment: CardPayment }
-  | { type: 'card/payPurchases'; key: MonthKey; cardId: string; payment: CardPayment; transactionIds: string[] }
+  /** Unpaid Credit-card purchases added to the month's card total; `fixedIds` (one per purchase) only with destination 'fixed'. */
+  | { type: 'card/include'; key: MonthKey; cardId: string; transactionIds: string[]; destination: 'fixed' | 'history'; fixedIds: string[] }
   | { type: 'card/unpay'; key: MonthKey; cardId: string }
   | { type: 'card/unpayOne'; key: MonthKey; cardId: string; id: string }
   /** Las tarjetas de crédito del usuario (no de un mes). */
@@ -175,16 +175,6 @@ function patchRow<L extends MonthList>(state: AppState, list: L, id: string, pat
   return withMonth(state, key, (m) => ({ ...m, [list]: (m[list] ?? []).map((r) => (r.id === id ? { ...r, ...patch } : r)) }));
 }
 
-/** Sets the covering payment on the purchases `paymentOf` names (any month: a payment can cover earlier months' purchases). */
-function linkPurchases(state: AppState, paymentOf: (t: Transaction) => string | undefined): AppState {
-  let next = state;
-  for (const [key, month] of Object.entries(state.months)) {
-    if (!month.tx.some((t) => paymentOf(t))) continue;
-    next = withMonth(next, key, (m) => ({ ...m, tx: m.tx.map((t) => (paymentOf(t) ? { ...t, cardPaymentId: paymentOf(t) } : t)) }));
-  }
-  return next;
-}
-
 /** Frees the purchases covered by the removed payments, like the server does in the same batch. */
 function unlinkPurchases(state: AppState, paymentIds: ReadonlySet<string>): AppState {
   if (paymentIds.size === 0) return state;
@@ -201,6 +191,68 @@ function unlinkPurchases(state: AppState, paymentIds: ReadonlySet<string>): AppS
     }));
   }
   return next;
+}
+
+/** Applies `fn` to every transaction of every month. */
+function mapTx(state: AppState, fn: (t: Transaction) => Transaction): AppState {
+  let next = state;
+  for (const [key, month] of Object.entries(state.months)) {
+    const tx = month.tx.map(fn);
+    if (tx.some((t, i) => t !== month.tx[i])) next = withMonth(next, key, (m) => ({ ...m, tx }));
+  }
+  return next;
+}
+
+/** The purchase without the month it was added to (and the fixed row standing for it): unpaid again. */
+function withoutCardMonth(t: Transaction): Transaction {
+  const { cardMonth: _month, cardFixedId: _fixed, ...rest } = t;
+  return rest;
+}
+
+/** Deletes the fixed expense standing for purchase `txId`, if any. */
+function removeStandIn(state: AppState, txId: string): AppState {
+  const fixedId = findTx(state, txId)?.cardFixedId;
+  return fixedId ? removeRow(state, 'fixed', fixedId) : state;
+}
+
+function findTx(state: AppState, id: string): Transaction | undefined {
+  for (const m of Object.values(state.months)) {
+    const hit = m.tx.find((t) => t.id === id);
+    if (hit) return hit;
+  }
+  return undefined;
+}
+
+/**
+ * After an edit of a purchase, as the server does (db.syncPurchase): the fixed expense standing for it follows its name,
+ * amount, currency and card; one that stopped being a Credit-card purchase loses that row and its month.
+ */
+function syncPurchase(state: AppState, txId: string): AppState {
+  const tx = findTx(state, txId);
+  if (!tx || (!tx.cardFixedId && !tx.cardMonth)) return state;
+  if (!isCardTx(tx)) return mapTx(removeStandIn(state, txId), (t) => (t.id === txId ? withoutCardMonth(t) : t));
+  const fixedId = tx.cardFixedId;
+  if (!fixedId) return state;
+  return patchRow(state, 'fixed', fixedId, { name: tx.desc, amount: tx.amount, cur: tx.cur, ...(tx.cardId ? { cardId: tx.cardId } : {}) });
+}
+
+/** Adds the purchases to the month's card total: marks them and, for 'fixed', creates the ticked fixed row standing for each. */
+function includePurchases(state: AppState, action: Extract<Action, { type: 'card/include' }>): AppState {
+  const ids = new Set(action.transactionIds);
+  let next = state;
+  if (action.destination === 'fixed') {
+    next = withMonth(next, action.key, (m) => {
+      let fixed = m.fixed;
+      let sort = fixed.reduce((max, f) => Math.max(max, f.sort), -1);
+      action.transactionIds.forEach((txId, i) => {
+        const tx = findTx(state, txId);
+        if (tx) fixed = upsert(fixed, { id: action.fixedIds[i]!, monthKey: action.key, name: tx.desc, day: '', amount: tx.amount, cur: tx.cur, paid: true, accountId: tx.accountId, sort: ++sort, onCard: true, cardId: action.cardId });
+      });
+      return fixed === m.fixed ? m : { ...m, fixed };
+    });
+  }
+  const fixedOf = new Map(action.transactionIds.map((id, i) => [id, action.fixedIds[i]!] as const));
+  return mapTx(next, (t) => (ids.has(t.id) ? { ...t, cardMonth: action.key, ...(action.destination === 'fixed' ? { cardFixedId: fixedOf.get(t.id)! } : {}) } : t));
 }
 
 function removeRow(state: AppState, list: MonthList, id: string): AppState {
@@ -349,11 +401,8 @@ export function reduce(state: AppState, action: Action): AppState {
       return withMonth(state, action.key, (m) => withCard(m, { ...cardOf(m, action.cardId), cashback: action.cashback }));
     case 'card/pay':
       return withMonth(state, action.key, (m) => withCard(m, { ...cardOf(m, action.cardId), payments: [...cardOf(m, action.cardId).payments, action.payment] }));
-    case 'card/payPurchases': {
-      const ids = new Set(action.transactionIds);
-      const paid = withMonth(state, action.key, (m) => withCard(m, { ...cardOf(m, action.cardId), payments: [...cardOf(m, action.cardId).payments, action.payment] }));
-      return linkPurchases(paid, (t) => (ids.has(t.id) ? action.payment.id : undefined));
-    }
+    case 'card/include':
+      return includePurchases(state, action);
     case 'card/unpay': {
       const month = state.months[action.key];
       const gone = new Set(month ? cardOf(month, action.cardId).payments.map((p) => p.id) : []);
@@ -399,14 +448,15 @@ export function reduce(state: AppState, action: Action): AppState {
     case 'fixed/patch':
       return patchRow(state, 'fixed', action.id, action.patch);
     case 'fixed/remove':
-      return removeRow(state, 'fixed', action.id);
+      // A purchase this row stood for goes back to unpaid (the server does the same in the same batch).
+      return mapTx(removeRow(state, 'fixed', action.id), (t) => (t.cardFixedId === action.id ? withoutCardMonth(t) : t));
 
     case 'tx/add':
       return withMonth(state, action.row.monthKey, (m) => ({ ...m, tx: upsert(m.tx, action.row) }));
     case 'tx/patch':
-      return patchRow(state, 'tx', action.id, action.patch);
+      return syncPurchase(patchRow(state, 'tx', action.id, action.patch), action.id);
     case 'tx/remove':
-      return removeRow(state, 'tx', action.id);
+      return removeRow(removeStandIn(state, action.id), 'tx', action.id);
 
     case 'outside/add':
       return withMonth(state, action.row.monthKey, (m) => ({ ...m, outside: upsert(m.outside ?? [], action.row) }));
@@ -419,7 +469,7 @@ export function reduce(state: AppState, action: Action): AppState {
     case 'tx/moveOutside': {
       const key = monthWith(state, 'tx', action.id);
       if (!key) return state;
-      return withMonth(removeRow(state, 'tx', action.id), action.row.monthKey, (m) => ({ ...m, outside: upsert(m.outside ?? [], action.row) }));
+      return withMonth(removeRow(removeStandIn(state, action.id), 'tx', action.id), action.row.monthKey, (m) => ({ ...m, outside: upsert(m.outside ?? [], action.row) }));
     }
     case 'outside/moveToBudget': {
       const key = monthWith(state, 'outside', action.id);
@@ -1327,28 +1377,24 @@ export function cardPayment(state: AppState, key: MonthKey, cardId: string, amou
 }
 
 /**
- * Pay chosen unsettled purchases of a card with one payment (their sum, in the card's currency). As the server
- * (db.payCardPurchases): an open month, a money account, purchases of that card that are unsettled and dated up to the
- * month, and a sum > 0 that does not exceed what is left. null if it cannot be done.
+ * Add unpaid Credit-card purchases of a card to the month's card total. As the server (db.includeCardPurchases): an
+ * open month, purchases of that card that are unpaid and dated up to the month; the 'fixed' destination needs the card
+ * to be on. `newId` makes the id of each fixed row. null if it cannot be done.
  */
-export function cardPurchasesPayment(
+export function cardInclusion(
   state: AppState,
   key: MonthKey,
   cardId: string,
   transactionIds: readonly string[],
-  accountId: string,
-  id: string,
-  date: ISODate,
+  destination: 'fixed' | 'history',
+  newId: () => string,
 ): Action | null {
-  if (!openMonth(state, key) || !hasCard(state, cardId) || !hasMoneyAccount(state, accountId) || transactionIds.length === 0) return null;
+  const card = state.cards.find((c) => c.id === cardId);
+  if (!openMonth(state, key) || !card || (destination === 'fixed' && !card.active) || transactionIds.length === 0) return null;
   if (new Set(transactionIds).size !== transactionIds.length) return null;
-  const open = new Map(unsettledCardPurchases(state, key, cardId).map((p) => [p.tx.id, p]));
-  const chosen = transactionIds.map((t) => open.get(t));
-  if (chosen.some((p) => !p)) return null;
-  const sum = sumCardPurchases(chosen as NonNullable<(typeof chosen)[number]>[]);
-  const left = cardCalc(state, key, cardId).remainder;
-  if (!(sum > 0) || !(left > 0) || sum > left + 0.005 + 1e-6) return null;
-  return { type: 'card/payPurchases', key, cardId, transactionIds: [...transactionIds], payment: { id, date: clampToMonth(date, key), accountId, amount: Math.min(sum, left) } };
+  const unpaid = new Set(unpaidCardPurchases(state, key, cardId).map((p) => p.tx.id));
+  if (transactionIds.some((id) => !unpaid.has(id))) return null;
+  return { type: 'card/include', key, cardId, transactionIds: [...transactionIds], destination, fixedIds: destination === 'fixed' ? transactionIds.map(newId) : [] };
 }
 
 /** Quitar todos los pagos de una tarjeta: un mes abierto con alguno. */

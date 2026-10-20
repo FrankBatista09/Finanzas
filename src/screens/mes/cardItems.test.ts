@@ -14,7 +14,7 @@ function stateWith(): AppState {
   const s = { ...seedState(), cards: [CARD, OTHER] };
   const base = s.months[OCT]!;
   const fixed = { id: 'f', monthKey: OCT, name: 'Netflix', day: '5', amount: 10, cur: 'USD' as const, paid: true, accountId: 'dr', sort: 0, onCard: true, cardId: 'card' };
-  const tx = { id: 't', monthKey: OCT, date: '2026-10-03', desc: 'Dinner', place: '', cat: 'Food', method: 'Credit card', amount: 500, cur: 'DOP' as const, accountId: 'dr', notes: '', source: 'web' as const, createdAt: null, cardId: 'card' };
+  const tx = { id: 't', monthKey: OCT, date: '2026-10-03', desc: 'Dinner', place: '', cat: 'Food', method: 'Credit card', amount: 500, cur: 'DOP' as const, accountId: 'dr', notes: '', source: 'web' as const, createdAt: null, cardId: 'card', cardMonth: OCT };
   s.months[OCT] = {
     ...base,
     fixed: [

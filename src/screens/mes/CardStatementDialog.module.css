@@ -1,0 +1,144 @@
+/* The statement selector and the "+ Add purchase" button above the table. */
+.bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--gap-8);
+  margin-bottom: 8px;
+}
+
+.picker {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-8);
+  font-size: var(--fs-body);
+}
+
+.statement {
+  display: flex;
+  flex-direction: column;
+  min-width: 150px;
+  text-align: center;
+  line-height: 1.3;
+}
+
+.period {
+  color: var(--text-muted);
+  font-size: var(--fs-meta);
+}
+
+.arrow {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--border-row);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text-soft);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.arrow:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.arrow:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.check {
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.name {
+  display: block;
+  max-width: 420px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.converted {
+  display: block;
+  color: var(--text-muted);
+  font-family: var(--font-ui);
+  font-size: var(--fs-label);
+}
+
+/* Amount and currency of the new purchase, side by side in one cell. */
+.amountCell {
+  display: flex;
+  align-items: center;
+}
+
+.empty {
+  margin: 10px 0;
+  color: var(--text-muted);
+  font-size: var(--fs-meta);
+}
+
+.totals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px var(--gap-16, 16px);
+  margin-top: 8px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-meta);
+  font-variant-numeric: tabular-nums;
+}
+
+.unpaidTotal {
+  font-weight: 600;
+}
+
+.note {
+  margin: 6px 0 0;
+  color: var(--text-muted);
+  font-size: var(--fs-label);
+}
+
+/* The footer: what is checked, where it goes and the button, to the left of "Close". */
+.include {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px var(--gap-8);
+  margin-right: auto;
+}
+
+.selected {
+  font-weight: 600;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.destination {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px var(--gap-8);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  font-size: var(--fs-meta);
+}
+
+.destination legend {
+  float: left;
+  padding: 0;
+  margin-right: 6px;
+  color: var(--text-muted);
+}
+
+.destination label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+}

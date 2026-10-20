@@ -36,8 +36,8 @@ import {
   balances,
   budgetHistory,
   budgetSummary,
-  cardCalc,
   cardCalcs,
+  cardOwed,
   cardPurchases,
   chargedTo,
   cardHint,
@@ -59,9 +59,9 @@ import {
   sumCardPurchases,
   transferFees,
   transferReceived,
-  unsettledCardPurchases,
+  unpaidCardPurchases,
 } from '../shared/calc';
-import type { AccountBalance, Balances, BudgetSummary, CardCalc, MonthCalc, RateInfo, RateSource } from '../shared/calc';
+import type { AccountBalance, Balances, BudgetSummary, CardCalc, MonthCalc, PurchaseStatus, RateInfo, RateSource } from '../shared/calc';
 import { APP_NAME, CATS, GOLD, GOLD_UNIT, isGold, METHODS, TIMEZONE, VIAS } from '../shared/constants';
 import { f0, f2, fGrams, fRate } from '../shared/format';
 import { canonicalCat, canonicalMethod } from '../shared/i18n';
@@ -279,7 +279,7 @@ function instructions(users: readonly AppUser[]): string {
     'Rates: each month has its own rates between currencies. When a tool says that a rate is a default value, nobody has set it yet: tell the person, because the converted amounts are only approximate until they type the rate of the month in the web app.',
     'Outside-budget expenses: an expense the person says is outside their budget is recorded with add_outside_expense. It lowers the account balance like any expense but does not count in used, available or the categories.',
     'Fixed expenses (the "Fixed monthly expenses" list of the app): the same items every month (electricity, internet, subscriptions…). They are not recorded as transactions: mark them as paid with mark_fixed_paid.',
-    'Credit card: it is a deferred payment. A purchase with method "Credit card" (or a fixed expense on the card) does not touch any account or the budget when it is made; the month has a credit card total, and only when the person pays the bill (all of it or part, with pay_credit_card, as many payments as they make) is the budget charged and the paying account debited. What is left unpaid stays pending in the month and, if the month closes with it unpaid, carries to the next one. The person may have several credit cards, or none (list_credit_cards): pass `card` to add_transaction or pay_credit_card when they name one.',
+    'Credit card: it is a deferred payment. A purchase with method "Credit card" (or a fixed expense on the card) does not touch any account or the budget when it is made; the month has a credit card total, and only when the person pays the bill (all of it or part, with pay_credit_card, as many payments as they make) is the budget charged and the paying account debited. What is left unpaid stays pending in the month and, if the month closes with it unpaid, carries to the next one. A new credit card purchase starts unpaid: it counts in what is owed on the card, but only enters the card total of a month when the person adds it to that month in the web app (you cannot do that). The person may have several credit cards, or none (list_credit_cards): pass `card` to add_transaction or pay_credit_card when they name one.',
     'A closed month is read-only: it can be consulted, but it accepts no expenses, transfers or changes until the person reopens it in the web app. If a tool answers that the month is closed, tell the person; do not record it under another date.',
     'After recording something, confirm to the person what was recorded and for whom, with the amount, the account and its new balance, based on the text the tool returns.',
   ].join('\n');
@@ -995,14 +995,15 @@ const listTransactions = defineTool({
       .map((t, i) => ({ t, i }))
       .sort((a, b) => (a.t.date < b.t.date ? 1 : a.t.date > b.t.date ? -1 : b.i - a.i))
       .map(({ t }) => ({ ...t, inMain: convert(state, m.key, t.amount, t.cur, main, t.date), account: accounts.get(t.accountId)?.name ?? null }));
-    // Credit-card purchases say whether a card payment covered them (and when it was paid).
+    // Credit-card purchases say where they stand: unpaid (in no month yet), in a month's card total, or covered by a payment (and when).
     const byCard = new Map<string, ReturnType<typeof cardPurchases>>();
-    const settlement = (t: Transaction): { settled?: boolean; paidOn?: ISODate | null } => {
+    const settlement = (t: Transaction): { cardStatus?: PurchaseStatus; cardMonth?: MonthKey | null; settled?: boolean; paidOn?: ISODate | null } => {
       const cardId = isCardTx(t) ? chargedTo(state, t.cardId) : null;
       if (!cardId) return {};
       if (!byCard.has(cardId)) byCard.set(cardId, cardPurchases(state, m.key, cardId));
-      const payment = byCard.get(cardId)!.find((p) => p.tx.id === t.id)?.payment ?? null;
-      return payment ? { settled: true, paidOn: payment.date } : { settled: false, paidOn: null };
+      const purchase = byCard.get(cardId)!.find((p) => p.tx.id === t.id);
+      const payment = purchase?.payment ?? null;
+      return { cardStatus: purchase?.status ?? 'unpaid', cardMonth: purchase?.includedIn ?? null, settled: payment !== null, paidOn: payment?.date ?? null };
     };
     const shown = sorted.slice(0, limit).map((t) => ({ ...t, ...settlement(t) }));
     const total = sorted.reduce((a, t) => a + t.inMain, 0);
@@ -1014,7 +1015,7 @@ const listTransactions = defineTool({
             `${heading(user, m)}: ${sorted.length} ${sorted.length === 1 ? 'transaction' : 'transactions'}${SEP}${money(total, main)} in total.` +
               (shown.length === sorted.length ? '' : shown.length === 1 ? ' Showing the most recent one.' : ` Showing the ${shown.length} most recent.`),
             ...shown.map((t) =>
-              [t.date, t.desc, t.place, moneyIn(state, m.key, t.amount, t.cur, main, t.date), t.cat, t.method, t.settled === undefined ? '' : t.settled ? `paid on ${t.paidOn}` : 'unpaid', t.account, t.notes && `Notes: ${t.notes}`]
+              [t.date, t.desc, t.place, moneyIn(state, m.key, t.amount, t.cur, main, t.date), t.cat, t.method, t.cardStatus === undefined ? '' : t.cardStatus === 'paid' ? `paid on ${t.paidOn}` : t.cardStatus === 'month' ? `in the card total of ${label(t.cardMonth!)}` : 'unpaid (not in any card total yet)', t.account, t.notes && `Notes: ${t.notes}`]
                 .filter(Boolean)
                 .join(SEP),
             ),
@@ -1039,10 +1040,16 @@ const listTransactions = defineTool({
 /** How each row of the budget history is named. */
 const HISTORY_KIND = { initial: 'initial', adjust: 'adjustment', leftover: 'leftover', income: 'income', transfer: 'transfer' } as const;
 
-/** The Credit-card purchases of a card up to its month that no payment has covered: how many and their sum in the card's currency. */
-function unsettledOf(state: AppState, k: CardCalc) {
-  const open = unsettledCardPurchases(state, k.key, k.card.id);
+/** The Credit-card purchases of a card up to its month that were not added to any month: how many and their sum in the card's currency. */
+function unpaidOf(state: AppState, k: CardCalc) {
+  const open = unpaidCardPurchases(state, k.key, k.card.id);
   return { count: open.length, total: sumCardPurchases(open) };
+}
+
+/** The Credit-card purchases added to this month's card total (as fixed expenses or just marked): how many and their sum in the card's currency. */
+function includedOf(state: AppState, k: CardCalc) {
+  const added = cardPurchases(state, k.key, k.card.id).filter((p) => p.includedIn === k.key);
+  return { count: added.length, total: sumCardPurchases(added) };
 }
 
 /** A credit card's hint, only in the last recorded month (in an earlier one it makes no sense) and if it has a limit and a cutoff. */
@@ -1199,14 +1206,16 @@ const monthSummary = defineTool({
     const cards = c.cards.filter((k) => k.total !== 0 || k.cashback !== 0 || k.payments.length > 0);
     for (const k of cards) {
       const cur = k.cur;
-      const open = unsettledOf(state, k);
+      const open = unpaidOf(state, k);
+      const owed = cardOwed(state, m.key, k.card.id);
       lines.push(
         `Credit card "${k.card.name}": total ${money(k.total, cur)} (previous ${money(k.previous, cur)}${SEP}other charges ${money(k.other, cur)}${SEP}charged this month ${money(k.charged, cur)}${k.cashback ? `${SEP}cashback -${money(k.cashback, cur)}` : ''})${SEP}` +
           (k.payments.length === 0
             ? 'not paid yet'
             : `paid ${money(k.paid, cur)} in ${k.payments.length} payment${k.payments.length === 1 ? '' : 's'} (${k.payments.map((p) => `${p.date} ${money(p.amount, cur)} from ${accountsById(state).get(p.accountId)?.name ?? p.accountId}`).join('; ')})`) +
           `${SEP}left to pay ${money(k.remainder, cur)} (it carries to the next month if this one closes with it unpaid). Charges on the card are not in Used or in the account balances until it is paid.` +
-          (open.count > 0 ? `${SEP}${open.count} unpaid purchase${open.count === 1 ? '' : 's'} (${money(open.total, cur)}) not covered by any payment yet` : ''),
+          `${SEP}owed in all ${money(owed, cur)}` +
+          (open.count > 0 ? ` (including ${open.count} unpaid purchase${open.count === 1 ? '' : 's'}, ${money(open.total, cur)}, not added to any month's card total yet)` : ''),
       );
       const h = hintOf(state, m.key, k, today);
       if (h) lines.push(`${k.card.name} limit ${money(k.card.limit!, cur)}${SEP}${(h.utilization * 100).toFixed(1)}% used${SEP}${hintText(k.card.name, cur, h)}`);
@@ -1297,8 +1306,11 @@ const monthSummary = defineTool({
           paid: k.paid,
           payments: k.payments.map((p) => ({ id: p.id, date: p.date, accountId: p.accountId, amount: p.amount })),
           remainder: k.remainder,
-          // Credit-card purchases up to this month that no payment has covered yet (in the card currency).
-          unsettledPurchases: unsettledOf(state, k),
+          // What is owed: `remainder` plus every purchase not added to a month yet (`unpaidPurchases`, which are not in `total`).
+          owed: cardOwed(state, m.key, k.card.id),
+          unpaidPurchases: unpaidOf(state, k),
+          // The purchases added to this month's card total (they are in `charged`).
+          includedPurchases: includedOf(state, k),
           limit: k.card.limit,
           utilization: k.card.limit ? Math.max(0, k.remainder) / k.card.limit : null,
           hint: hintOf(state, m.key, k, today),
@@ -1704,8 +1716,8 @@ const listCreditCards = defineTool({
     const today = todayISO(now);
     const last = sortedKeys(state).at(-1);
     const rows = [...state.cards].sort((a, b) => a.sort - b.sort).map((card) => {
-      const calc = last ? cardCalc(state, last, card.id) : undefined;
-      const owed = calc?.remainder ?? 0;
+      // Owed counts the purchases not added to a month yet as well as what is left of the month's total.
+      const owed = last ? cardOwed(state, last, card.id) : 0;
       return { card, owed, util: card.limit ? Math.max(0, owed) / card.limit : null, hint: cardHint(card, owed, today) };
     });
     const lines = [
@@ -1733,7 +1745,7 @@ const listCreditCards = defineTool({
         today,
         month: last ?? null,
         cards: rows.map(({ card, owed, util, hint }) => ({ ...card, owed, utilization: util, hint })),
-        // `owed` already has the cashback of the latest month deducted (it is part of the card's total).
+        // `owed` already has the cashback of the latest month deducted (it is part of the card's total) and includes the unpaid purchases.
       },
     };
   },

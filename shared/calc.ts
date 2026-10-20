@@ -8,7 +8,8 @@
 //  · un saldo se expresa en otra moneda con la última tasa del mes que se está mirando.
 
 import { CREDIT_CARD_METHOD, DEFAULT_USD_RATES, isGold } from './constants';
-import { firstDay, monthOf, monthSpan } from './month';
+import { firstDay, lastDay, monthOf, monthSpan } from './month';
+import { fixedStatement, statementOf } from './statements';
 import type {
   Account,
   AccountCurrency,
@@ -522,11 +523,53 @@ export function chargedTo(state: AppState, cardId: string | null | undefined): s
   return cardId ?? defaultCardId(state);
 }
 
+/** Every fixed expense id of the state: a purchase stood for by a fixed row that is gone counts as unpaid again. */
+const fixedIdsMemo = new WeakMap<AppState, Set<string>>();
+function allFixedIds(state: AppState): Set<string> {
+  let ids = fixedIdsMemo.get(state);
+  if (!ids) {
+    ids = new Set();
+    for (const m of Object.values(state.months)) for (const f of m.fixed) ids.add(f.id);
+    fixedIdsMemo.set(state, ids);
+  }
+  return ids;
+}
+
+/**
+ * The month whose card total includes a Credit-card purchase, or null while it is unpaid (not added to any month). A
+ * purchase added as a fixed expense whose row was deleted is unpaid again.
+ */
+export function purchaseMonth(state: AppState, t: Pick<Transaction, 'cardMonth' | 'cardFixedId'>): MonthKey | null {
+  if (!t.cardMonth || !state.months[t.cardMonth]) return null;
+  return t.cardFixedId && !allFixedIds(state).has(t.cardFixedId) ? null : t.cardMonth;
+}
+
+const standInMemo = new WeakMap<AppState, Set<string>>();
+/** The fixed rows that stand for a purchase: they are charged to the card, but the purchase is already counted by its own category. */
+export function purchaseFixedIds(state: AppState): Set<string> {
+  let ids = standInMemo.get(state);
+  if (!ids) {
+    ids = new Set();
+    for (const m of Object.values(state.months)) for (const t of m.tx) if (isCardTx(t) && t.cardFixedId && purchaseMonth(state, t)) ids.add(t.cardFixedId);
+    standInMemo.set(state, ids);
+  }
+  return ids;
+}
+
 function cardTable(state: AppState): Map<MonthKey, Map<string, CardCalc>> {
   const hit = cardMemo.get(state);
   if (hit) return hit;
   const table = new Map<MonthKey, Map<string, CardCalc>>();
   const previous = new Map<string, number>();
+  // The purchases a month's card total includes, each with the sheet it lives in (its rate is that sheet's). One that a
+  // fixed row stands for is not here: the row is what counts.
+  const added = new Map<MonthKey, { tx: Transaction; sheet: MonthKey }[]>();
+  for (const [sheet, m] of Object.entries(state.months)) {
+    for (const t of m.tx) {
+      const into = isCardTx(t) && !t.cardFixedId ? purchaseMonth(state, t) : null;
+      if (into) added.set(into, [...(added.get(into) ?? []), { tx: t, sheet }]);
+    }
+  }
   for (const key of sortedKeys(state)) {
     const m = state.months[key]!;
     const row = new Map<string, CardCalc>();
@@ -535,7 +578,7 @@ function cardTable(state: AppState): Map<MonthKey, Map<string, CardCalc>> {
       // Un gasto fijo, con la última tasa del mes; una transacción, con la de su fecha (igual que en monthCalc).
       let charged = 0;
       for (const f of m.fixed) if (isCharged(f) && chargedTo(state, f.cardId) === card.id) charged += convert(state, key, f.amount, f.cur, cur);
-      for (const t of m.tx) if (isCardTx(t) && chargedTo(state, t.cardId) === card.id) charged += convert(state, key, t.amount, t.cur, cur, t.date);
+      for (const { tx: t, sheet } of added.get(key) ?? []) if (chargedTo(state, t.cardId) === card.id) charged += convert(state, sheet, t.amount, t.cur, cur, t.date);
       const stored = cardOf(m, card.id);
       const prev = previous.get(card.id) ?? 0;
       const other = stored.other || 0;
@@ -553,47 +596,167 @@ function cardTable(state: AppState): Map<MonthKey, Map<string, CardCalc>> {
   return table;
 }
 
-/** A Credit-card purchase seen from its card: the amount in the card's currency and, if a payment covered it, which. */
+/** Where a Credit-card purchase stands: not in any month yet, in a month's card total, or covered by a payment. */
+export type PurchaseStatus = 'unpaid' | 'month' | 'paid';
+
+type PaymentRef = { id: string; date: ISODate; accountId: string; key: MonthKey };
+
+/** A Credit-card purchase seen from its card: the amount in the card's currency, the month it was added to and its status. */
 export interface CardPurchase {
   tx: Transaction;
   /** The sheet (month) the purchase lives in. */
   key: MonthKey;
   /** Counted in the card's currency exactly as the card total counts it (rate of the purchase date). */
   amount: number;
-  /** The covering payment when it still exists; null = unsettled. A link to a payment that is gone counts as unsettled. */
-  payment: { id: string; date: ISODate; accountId: string; key: MonthKey } | null;
+  /** The month whose card total includes it; null = unpaid. */
+  includedIn: MonthKey | null;
+  status: PurchaseStatus;
+  /** Only when `status` is 'paid': the payment that covered it. */
+  payment: PaymentRef | null;
 }
 
 /**
- * The Credit-card purchases of a card in the months up to `key` (oldest first), settled or not. A purchase belongs to
- * its own card, or to the first active one when it names none (chargedTo), like the card total.
+ * The payment that finished paying a card's month: the first one at which the payments reach the whole total (half a
+ * cent of slack), or null while something is left or nothing was paid.
+ */
+export function completingPayment(state: AppState, key: MonthKey, cardId: string): PaymentRef | null {
+  const calc = cardCalc(state, key, cardId);
+  if (calc.payments.length === 0 || calc.remainder > 0.005) return null;
+  let sum = 0;
+  for (const p of calc.payments) {
+    sum += p.amount;
+    if (sum >= calc.total - 0.005) return { id: p.id, date: p.date, accountId: p.accountId, key };
+  }
+  return null;
+}
+
+/**
+ * The Credit-card purchases of a card on the months up to `key` (oldest first). A purchase belongs to its own card, or to
+ * the first active one when it names none (chargedTo), like the card total. It is paid when a payment it was linked to by
+ * the old per-purchase payment still exists, or when the payments cover the whole total of the month it was added to.
  */
 export function cardPurchases(state: AppState, key: MonthKey, cardId: string): CardPurchase[] {
   const card = state.cards.find((c) => c.id === cardId);
   if (!card) return [];
   const keys = sortedKeys(state).filter((k) => k <= key);
-  const payments = new Map<string, NonNullable<CardPurchase['payment']>>();
-  for (const k of keys) {
+  const payments = new Map<string, PaymentRef>();
+  for (const k of sortedKeys(state)) {
     for (const mc of state.months[k]!.cards ?? []) for (const p of mc.payments) payments.set(p.id, { id: p.id, date: p.date, accountId: p.accountId, key: k });
   }
+  const completed = new Map<MonthKey, PaymentRef | null>();
+  const completion = (k: MonthKey) => {
+    if (!completed.has(k)) completed.set(k, completingPayment(state, k, cardId));
+    return completed.get(k)!;
+  };
   const out: CardPurchase[] = [];
   for (const k of keys) {
     for (const t of state.months[k]!.tx) {
       if (!isCardTx(t) || chargedTo(state, t.cardId) !== cardId) continue;
-      out.push({ tx: t, key: k, amount: convert(state, k, t.amount, t.cur, card.cur, t.date), payment: (t.cardPaymentId && payments.get(t.cardPaymentId)) || null });
+      const includedIn = purchaseMonth(state, t);
+      const payment = (t.cardPaymentId && payments.get(t.cardPaymentId)) || (includedIn && completion(includedIn)) || null;
+      out.push({
+        tx: t,
+        key: k,
+        amount: convert(state, k, t.amount, t.cur, card.cur, t.date),
+        includedIn,
+        status: payment ? 'paid' : includedIn ? 'month' : 'unpaid',
+        payment,
+      });
     }
   }
   return out;
 }
 
-/** The purchases of a card up to `key` that no payment has covered yet. */
-export function unsettledCardPurchases(state: AppState, key: MonthKey, cardId: string): CardPurchase[] {
-  return cardPurchases(state, key, cardId).filter((p) => !p.payment);
+/** The purchases of a card up to `key` that no month has taken yet: they are owed but not part of any card total. */
+export function unpaidCardPurchases(state: AppState, key: MonthKey, cardId: string): CardPurchase[] {
+  return cardPurchases(state, key, cardId).filter((p) => p.status === 'unpaid');
 }
 
-/** Sum of purchase amounts (card currency) rounded to cents: what paying them costs. */
+/** Sum of purchase amounts (card currency) rounded to cents. */
 export function sumCardPurchases(purchases: readonly Pick<CardPurchase, 'amount'>[]): number {
   return Math.round(purchases.reduce((a, p) => a + p.amount, 0) * 100) / 100;
+}
+
+/**
+ * What is owed on a card in month `key`: what is left of the month's total plus every purchase not added to a month yet,
+ * all in the card's currency. A credit in favor is not an amount owed (0).
+ */
+export function cardOwed(state: AppState, key: MonthKey, cardId: string): number {
+  const unpaid = unpaidCardPurchases(state, key, cardId).reduce((a, p) => a + p.amount, 0);
+  return Math.max(0, cardCalc(state, key, cardId).remainder + unpaid);
+}
+
+/** One line of a card's statement panel: a Credit-card transaction or an on-card fixed expense. */
+export interface StatementItem {
+  kind: 'tx' | 'fixed';
+  id: string;
+  /** The sheet (month) the item lives in. */
+  key: MonthKey;
+  /** The purchase date; for a fixed expense, the day of its month when `day` is a valid one, else null. */
+  date: ISODate | null;
+  name: string;
+  /** Transactions only: the category. */
+  cat: string | null;
+  amount: number;
+  cur: Currency;
+  /** In the card's currency. */
+  converted: number;
+  /** The cutoff date of its statement; null when the card has no cutoff day. */
+  statement: ISODate | null;
+  status: PurchaseStatus;
+  includedIn: MonthKey | null;
+  payment: PaymentRef | null;
+}
+
+/**
+ * What the statement panel lists for a card on the months up to `key`: its Credit-card transactions and its on-card fixed
+ * expenses (ticked or not), oldest first. A fixed row that stands for a purchase is left out (the purchase is listed). A
+ * ticked fixed expense is in its month's total ('month'); an unticked one is 'unpaid'. It cannot be selected: its box is
+ * the Fixed table's.
+ */
+export function cardStatementItems(state: AppState, key: MonthKey, cardId: string): StatementItem[] {
+  const card = state.cards.find((c) => c.id === cardId);
+  if (!card) return [];
+  const cut = card.cutoffDay;
+  const standIns = purchaseFixedIds(state);
+  const items: StatementItem[] = cardPurchases(state, key, cardId).map((p) => ({
+    kind: 'tx',
+    id: p.tx.id,
+    key: p.key,
+    date: p.tx.date,
+    name: p.tx.desc,
+    cat: p.tx.cat,
+    amount: p.tx.amount,
+    cur: p.tx.cur,
+    converted: p.amount,
+    statement: cut ? statementOf(p.tx.date, cut) : null,
+    status: p.status,
+    includedIn: p.includedIn,
+    payment: p.payment,
+  }));
+  for (const k of sortedKeys(state).filter((k) => k <= key)) {
+    for (const f of state.months[k]!.fixed) {
+      if (!isOnCard(f) || chargedTo(state, f.cardId) !== cardId || standIns.has(f.id)) continue;
+      const n = /^\d{1,2}$/.test(f.day.trim()) ? Number(f.day) : 0;
+      items.push({
+        kind: 'fixed',
+        id: f.id,
+        key: k,
+        date: n >= 1 && n <= Number(lastDay(k).slice(8)) ? `${k}-${String(n).padStart(2, '0')}` : null,
+        name: f.name,
+        cat: null,
+        amount: f.amount,
+        cur: f.cur,
+        converted: convert(state, k, f.amount, f.cur, card.cur),
+        statement: cut ? fixedStatement(k, f.day, cut) : null,
+        status: f.paid ? 'month' : 'unpaid',
+        includedIn: f.paid ? k : null,
+        payment: null,
+      });
+    }
+  }
+  const at = (i: StatementItem) => i.date ?? `${i.key}-00`;
+  return items.sort((a, b) => (at(a) < at(b) ? -1 : at(a) > at(b) ? 1 : 0));
 }
 
 /**
@@ -1039,11 +1202,13 @@ export function monthCalc(state: AppState, key: MonthKey): MonthCalc {
   // Lo comprado en fijos cargados a la tarjeta: sale de "usado" (lo paga la tarjeta) pero sigue siendo gasto fijo
   // en el desglose por categoría, que describe en qué se gastó y no cuándo salió el dinero.
   let fixedCharged = 0;
+  const standIns = purchaseFixedIds(state);
   for (const f of m.fixed) {
     const v = toMain(f.amount, f.cur);
     if (f.paid) paidCount++;
     if (isCharged(f)) {
-      fixedCharged += v;
+      // A fixed row that stands for a purchase is left out: the purchase counts in its own category.
+      if (!standIns.has(f.id)) fixedCharged += v;
       continue;
     }
     fixedAll += v;

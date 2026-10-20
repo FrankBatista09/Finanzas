@@ -42,14 +42,7 @@
   flex-direction: column;
 }
 
-/* "paid dd/mm" / "unpaid" under the method of a credit card purchase (read-only). */
+/* The status of a credit card purchase under the method (read-only). */
 .settled {
   padding: 0 6px 2px;
-  color: var(--text-muted);
-  font-size: var(--fs-label);
-  line-height: 1.2;
-}
-
-.settledPaid {
-  color: var(--accent-text);
 }

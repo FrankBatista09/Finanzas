@@ -1,7 +1,7 @@
-// Per-purchase settlement: which Credit-card purchases belong to a card, in which currency, and which are settled.
+// Credit-card purchases of a card: which belong to it, in which currency, and where each stands (unpaid, in a month, paid).
 
 import { describe, expect, it } from 'vitest';
-import { cardCalc, cardPurchases, sumCardPurchases, unsettledCardPurchases } from './calc';
+import { cardCalc, cardPurchases, sumCardPurchases, unpaidCardPurchases } from './calc';
 import { seedState } from './seed';
 import type { AppState, CreditCard, Transaction } from './types';
 
@@ -10,7 +10,7 @@ const card = (id: string, sort: number, extra: Partial<CreditCard> = {}): Credit
 });
 
 const tx = (id: string, monthKey: string, date: string, amount: number, extra: Partial<Transaction> = {}): Transaction => ({
-  id, monthKey, date, desc: id, place: '', cat: 'Food', method: 'Credit card', amount, cur: 'DOP', accountId: 'dr', notes: '', source: 'web', createdAt: null, ...extra,
+  id, monthKey, date, desc: id, place: '', cat: 'Food', method: 'Credit card', amount, cur: 'DOP', accountId: 'dr', notes: '', source: 'web', createdAt: null, cardMonth: monthKey, ...extra,
 });
 
 /** Aug and Sep closed, Oct open (seed), with only the transactions given. */
@@ -61,16 +61,25 @@ describe('cardPurchases', () => {
     expect(sumCardPurchases(purchases)).toBeCloseTo(cardCalc(state, '2026-10', 'visa').charged, 2);
   });
 
-  it('leaves out the settled ones, and a link to a payment that no longer exists counts as unsettled', () => {
+  it('tells unpaid, in a month and paid apart; a link to a payment that no longer exists does not make it paid', () => {
     const pay = { id: 'p1', date: '2026-10-09', accountId: 'dr', amount: 100 };
     const state = stateWith(
-      [tx('paid', '2026-10', '2026-10-02', 100, { cardPaymentId: 'p1' }), tx('open', '2026-10', '2026-10-03', 30), tx('dangling', '2026-10', '2026-10-04', 5, { cardPaymentId: 'gone' })],
+      [
+        tx('linked', '2026-10', '2026-10-02', 100, { cardPaymentId: 'p1' }),
+        tx('month', '2026-10', '2026-10-03', 30),
+        tx('dangling', '2026-10', '2026-10-04', 5, { cardPaymentId: 'gone' }),
+        tx('new', '2026-10', '2026-10-05', 7, { cardMonth: null }),
+      ],
       [visa],
       { '2026-10': [pay] },
     );
     const all = cardPurchases(state, '2026-10', 'visa');
-    expect(all.find((p) => p.tx.id === 'paid')!.payment).toEqual({ id: 'p1', date: '2026-10-09', accountId: 'dr', key: '2026-10' });
-    expect(unsettledCardPurchases(state, '2026-10', 'visa').map((p) => p.tx.id)).toEqual(['open', 'dangling']);
+    const by = (id: string) => all.find((p) => p.tx.id === id)!;
+    expect(by('linked')).toMatchObject({ status: 'paid', payment: { id: 'p1', date: '2026-10-09', accountId: 'dr', key: '2026-10' } });
+    expect(by('month')).toMatchObject({ status: 'month', includedIn: '2026-10', payment: null });
+    expect(by('dangling').status).toBe('month');
+    expect(by('new')).toMatchObject({ status: 'unpaid', includedIn: null });
+    expect(unpaidCardPurchases(state, '2026-10', 'visa').map((p) => p.tx.id)).toEqual(['new']);
   });
 
   it('rounds the sum to cents', () => {

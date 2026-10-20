@@ -116,10 +116,10 @@ export interface Actions {
    */
   payCard(cardId: string, amount: number, accountId: string): boolean;
   /**
-   * Pays the chosen unsettled Credit-card purchases of that card (dated up to the selected month) with one payment worth their
-   * sum, from that money account. false if it cannot be done (e.g. the sum is above what is left).
+   * Adds the chosen unpaid Credit-card purchases of that card (dated up to the selected month) to the selected month's card
+   * total: 'fixed' also creates a ticked fixed expense on the card for each, 'history' only marks them. false if it cannot be done.
    */
-  payCardPurchases(cardId: string, transactionIds: readonly string[], accountId: string): boolean;
+  includeCardPurchases(cardId: string, transactionIds: readonly string[], destination: 'fixed' | 'history'): boolean;
   /** Removes all the payments on that credit card in the selected month. */
   unpayCard(cardId: string): void;
   /** Removes one payment on that credit card in the selected month. */

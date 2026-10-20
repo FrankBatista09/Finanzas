@@ -35,7 +35,7 @@
 
 .list {
   /* Room for the tallest credit card: header line, limit/amount block, bar and a tip that wraps to a few lines. */
-  --card-item-h: 210px;
+  --card-item-h: 238px;
 }
 
 .list:focus-visible {
@@ -303,13 +303,29 @@ p.muted,
   outline-offset: 1px;
 }
 
-/* With the unpaid purchases list open, the card grows past its usual height instead of cutting the list. */
-.itemOpen {
-  height: auto;
-  min-height: var(--card-item-h);
-  overflow: visible;
+/* "View transactions": the bottom right corner of the credit card. */
+.foot {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: auto;
 }
 
-.unpaidLink {
-  align-self: flex-start;
+.viewTx {
+  padding: 3px 9px;
+  border: 1px solid var(--border-dashed);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--accent-text);
+  font: 600 var(--fs-meta) var(--font-ui);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.viewTx:hover {
+  border-color: var(--accent);
+}
+
+.viewTx:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }

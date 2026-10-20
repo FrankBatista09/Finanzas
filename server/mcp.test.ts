@@ -19,7 +19,7 @@ import {
   loadState,
   patchAccount,
   patchMonth,
-  payCardPurchases,
+  includeCardPurchases,
   replaceAll,
   setCardOther,
   setMonthRate,
@@ -1261,7 +1261,7 @@ describe('add_transaction', () => {
       notes: '',
       source: 'claude',
       createdAt: NOW.toISOString(),
-    } satisfies Record<Exclude<keyof Transaction, 'cardId' | 'cardPaymentId'>, unknown>);
+    } satisfies Record<Exclude<keyof Transaction, 'cardId' | 'cardPaymentId' | 'cardMonth' | 'cardFixedId'>, unknown>);
     expect(r.data).toEqual({
       user: FRANK,
       transaction: stored,
@@ -2986,6 +2986,10 @@ describe('credit card', () => {
     expect(bought.text).toContain('charged to the credit card');
     expect(bought.data!.account).toBeNull();
     expect(await balanceOf(db, 'dr')).toBe(before);
+    // It starts unpaid: owed, but not in the month's card total until it is added to the month.
+    const unpaid = await call(env, 'month_summary');
+    expect(unpaid.data!.creditCards[0]).toMatchObject({ total: 0, owed: 800, unpaidPurchases: { count: 1, total: 800 } });
+    await includeCardPurchases(db, F, '2026-10', 'card', { transactionIds: [bought.data!.transaction.id], destination: 'history' });
 
     const summary = await call(env, 'month_summary');
     expect(summary.data!.creditCards[0]).toMatchObject({ total: 800, previous: 0, other: 0, charged: 800, paid: 0, payments: [], remainder: 800 });
@@ -3020,6 +3024,8 @@ describe('credit card', () => {
     expect(bought.data!.transaction.cardId).toBe(usd.id);
     const plain = await call(env, 'add_transaction', { description: 'Taxi', amount: 100, method: 'Credit card' });
     expect(plain.data!.transaction.cardId).toBe(visa.id);
+    await includeCardPurchases(db, F, '2026-10', usd.id, { transactionIds: [bought.data!.transaction.id], destination: 'history' });
+    await includeCardPurchases(db, F, '2026-10', visa.id, { transactionIds: [plain.data!.transaction.id], destination: 'history' });
     expect(await fails(env, 'add_transaction', { description: 'x', amount: 1, method: 'Credit card', card: 'amex' })).toContain('unknown credit card "amex"');
 
     const listed = await call(env, 'list_credit_cards');
@@ -3042,25 +3048,39 @@ describe('credit card', () => {
     expect(paidUsd.text).toContain('Paid 5.00 USD of Dollars');
   });
 
-  it('list_transactions marks Credit-card purchases as paid or unpaid and month_summary counts the unpaid ones', async () => {
+  it('list_transactions says where Credit-card purchases stand and month_summary reports what is owed, included and unpaid', async () => {
     const { env, db } = await seeded();
     const visa = await createCard(db, F, { name: 'Visa' });
     const taxi = await call(env, 'add_transaction', { description: 'Taxi', amount: 100, method: 'Credit card' });
+    const bus = await call(env, 'add_transaction', { description: 'Bus', amount: 20, method: 'Credit card' });
     await call(env, 'add_transaction', { description: 'Lunch', amount: 50, method: 'Credit card' });
     await call(env, 'add_transaction', { description: 'Coffee', amount: 5 });
-    await payCardPurchases(db, F, '2026-10', visa.id, { transactionIds: [taxi.data!.transaction.id], accountId: 'dr' }, NOW);
+    await includeCardPurchases(db, F, '2026-10', visa.id, { transactionIds: [taxi.data!.transaction.id, bus.data!.transaction.id], destination: 'history' });
 
-    const listed = await call(env, 'list_transactions', { limit: 50 });
-    const row = (desc: string) => listed.data!.transactions.find((t: { desc: string }) => t.desc === desc);
-    expect(row('Taxi')).toMatchObject({ settled: true, paidOn: '2026-10-07' });
-    expect(row('Lunch')).toMatchObject({ settled: false, paidOn: null });
-    expect(row('Coffee')).not.toHaveProperty('settled');
-    expect(listed.text).toMatch(/Taxi.*Credit card · paid on 2026-10-07/);
-    expect(listed.text).toMatch(/Lunch.*Credit card · unpaid/);
+    const before = await call(env, 'list_transactions', { limit: 50 });
+    const find = (res: typeof before, desc: string) => res.data!.transactions.find((t: { desc: string }) => t.desc === desc);
+    expect(find(before, 'Taxi')).toMatchObject({ cardStatus: 'month', cardMonth: '2026-10', settled: false, paidOn: null });
+    expect(find(before, 'Lunch')).toMatchObject({ cardStatus: 'unpaid', cardMonth: null, settled: false });
+    expect(find(before, 'Coffee')).not.toHaveProperty('cardStatus');
+    expect(before.text).toMatch(/Taxi.*Credit card · in the card total of October 2026/);
+    expect(before.text).toMatch(/Lunch.*Credit card · unpaid/);
 
     const summary = await call(env, 'month_summary');
-    expect(summary.data!.creditCards[0].unsettledPurchases).toEqual({ count: 1, total: 50 });
-    expect(summary.text).toContain('1 unpaid purchase (50.00 DOP) not covered by any payment yet');
+    expect(summary.data!.creditCards[0]).toMatchObject({
+      total: 120,
+      remainder: 120,
+      owed: 170,
+      unpaidPurchases: { count: 1, total: 50 },
+      includedPurchases: { count: 2, total: 120 },
+    });
+    expect(summary.text).toContain('owed in all 170.00 DOP (including 1 unpaid purchase, 50.00 DOP, not added to any month');
+
+    // Paying the whole month's total makes its purchases paid; the unpaid one stays unpaid.
+    await call(env, 'pay_credit_card', { amount: 120 });
+    const paid = await call(env, 'list_transactions', { limit: 50 });
+    expect(find(paid, 'Taxi')).toMatchObject({ cardStatus: 'paid', settled: true, paidOn: '2026-10-07' });
+    expect(find(paid, 'Lunch')).toMatchObject({ cardStatus: 'unpaid' });
+    expect(paid.text).toMatch(/Taxi.*Credit card · paid on 2026-10-07/);
   });
 
   it('mark_fixed_paid with on_card charges the expense to the credit card without touching any account', async () => {

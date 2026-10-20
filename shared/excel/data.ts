@@ -22,6 +22,7 @@ import {
   transferReceived,
   visibleAccounts,
 } from '../calc';
+import { CREDIT_CARD_METHOD } from '../constants';
 import { f2 } from '../format';
 import { firstDay, monthOf } from '../month';
 import type { Account, AppState, Contribution, Currency, Goal, Income, Month, MonthKey, Transfer } from '../types';
@@ -225,6 +226,8 @@ function importedMonth(m: ImportMonth, before: Month | undefined, known: readonl
       notes: t.notes,
       source: 'import',
       createdAt: null,
+      // A card purchase from the file counts in the card total of its month, as every one did before purchases had to be added.
+      ...(t.method === CREDIT_CARD_METHOD ? { cardMonth: m.key } : {}),
     })),
     // El libro no conoce los gastos fuera de presupuesto: los del mes que se sustituye se conservan, para que no
     // se pierdan y para que el saldo que se calcula al importar (openingFor) los siga restando, como al exportar.

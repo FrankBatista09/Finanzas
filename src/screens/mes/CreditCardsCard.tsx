@@ -1,6 +1,6 @@
 import { Fragment, useState } from 'react';
 import type { KeyboardEvent } from 'react';
-import { cardCalc, cardHint, cardUtilization } from '../../../shared/calc';
+import { cardCalc, cardHint, cardOwed, cardUtilization } from '../../../shared/calc';
 import type { CardHint } from '../../../shared/calc';
 import { f2 } from '../../../shared/format';
 import type { CreditCard } from '../../../shared/types';
@@ -8,15 +8,11 @@ import { useI18n, useStrings } from '../../i18n';
 import { useFinanzas } from '../../store';
 import { Card, CardHeader, cx } from '../../ui';
 import { CardDialog } from './CardDialog';
+import { CardStatementDialog } from './CardStatementDialog';
 import { carouselIndex } from './cardCarousel';
+import { dayLabel } from './cardStatement';
 import styles from './CreditCardsCard.module.css';
 import { MES } from './strings';
-import { UnpaidPurchases, useUnpaidPurchases } from './UnpaidPurchases';
-
-/** '2026-10-13' → 'Oct 13' / '13 oct' / '13 Eki', in the user's language. */
-function dayLabel(date: string, lang: string): string {
-  return new Intl.DateTimeFormat(lang, { day: 'numeric', month: 'short', timeZone: 'UTC' }).format(new Date(`${date}T00:00:00Z`));
-}
 
 /** Numbers in the app's mono face, the rest of the sentence untouched (the text content stays the translated string). */
 function monoNumbers(text: string, className: string) {
@@ -136,21 +132,20 @@ function CardItem({ card, refused, onToggle, onEdit }: CardItemProps) {
   const { lang } = useI18n();
   const s = useStrings(MES);
   const calc = cardCalc(state, monthKey, card.id);
-  const remainder = calc.remainder;
-  const util = cardUtilization(card, remainder);
+  // What is owed counts the purchases not added to a month yet; the card total (and the Fixed table) does not.
+  const owed = cardOwed(state, monthKey, card.id);
+  const util = cardUtilization(card, owed);
   // The notice only makes sense in the latest month: in an earlier one what is owed is no longer today's amount.
-  const hint = latestMonth ? cardHint(card, remainder, today) : null;
+  const hint = latestMonth ? cardHint(card, owed, today) : null;
   const pct = util === null ? null : (util * 100).toFixed(1);
   const over = util !== null && util >= 0.1;
   const detail = [card.bank, card.last4 && `•••• ${card.last4}`].filter(Boolean).join(' · ');
   const money = (n: number) => `${f2(n)} ${card.cur}`;
   const day = (d: number | null) => (d === null ? '—' : s('cardDay', { day: d }));
-  // Collapsed by default; the list opens inside the container, which grows to hold it.
-  const unpaid = useUnpaidPurchases(card.id);
-  const [open, setOpen] = useState(false);
+  const [statement, setStatement] = useState(false);
 
   return (
-    <div className={cx(styles.item, !card.active && styles.off, open && unpaid.length > 0 && styles.itemOpen)} data-testid="credit-card">
+    <div className={cx(styles.item, !card.active && styles.off)} data-testid="credit-card">
       <div className={styles.top}>
         <button type="button" role="switch" aria-checked={card.active} aria-label={s('cardActiveNamed', { name: card.name })} className={cx(styles.switch, card.active && styles.on)} onClick={onToggle}>
           <span className={styles.knob} />
@@ -173,12 +168,7 @@ function CardItem({ card, refused, onToggle, onEdit }: CardItemProps) {
             {s('cardLimit')} <b>{card.limit === null ? '—' : money(card.limit)}</b>
           </span>
           {calc.cashback > 0 && <span className={styles.muted}>{s('cardCashbackLine', { amount: f2(calc.cashback), currency: card.cur })}</span>}
-          <span>{monoNumbers(pct === null ? s('cardOwe', { amount: f2(Math.max(0, remainder)), currency: card.cur }) : s('cardOweLimit', { amount: f2(Math.max(0, remainder)), currency: card.cur, pct }), styles.num)}</span>
-          {unpaid.length > 0 && (
-            <button type="button" className={cx(styles.link, styles.unpaidLink)} aria-expanded={open} onClick={() => setOpen((o) => !o)}>
-              {s('purchasesLink', { count: unpaid.length })}
-            </button>
-          )}
+          <span>{monoNumbers(pct === null ? s('cardOwe', { amount: f2(owed), currency: card.cur }) : s('cardOweLimit', { amount: f2(owed), currency: card.cur, pct }), styles.num)}</span>
         </div>
         <div className={styles.side}>
           <span>
@@ -190,7 +180,6 @@ function CardItem({ card, refused, onToggle, onEdit }: CardItemProps) {
           {hint && <span>{hint.daysToCutoff === 0 ? s('cardCutoffToday') : s('cardToCutoff', { count: hint.daysToCutoff })}</span>}
         </div>
       </div>
-      {open && unpaid.length > 0 && <UnpaidPurchases cardId={card.id} />}
       {util !== null && (
         <div className={styles.track} role="img" aria-label={s('cardBar', { pct: pct! })}>
           <div className={cx(styles.fill, over && styles.fillOver)} style={{ width: `${Math.min(util, 1) * 100}%` }} />
@@ -208,6 +197,12 @@ function CardItem({ card, refused, onToggle, onEdit }: CardItemProps) {
           <p className={styles.muted}>{s('cardTipSetup')}</p>
         ) : null}
       </div>
+      <div className={styles.foot}>
+        <button type="button" className={styles.viewTx} onClick={() => setStatement(true)}>
+          {s('cardViewTx')}
+        </button>
+      </div>
+      {statement && <CardStatementDialog cardId={card.id} onClose={() => setStatement(false)} />}
     </div>
   );
 }

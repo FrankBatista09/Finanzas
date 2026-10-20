@@ -515,7 +515,7 @@ describe('closed month · September 2026', () => {
   it('no add rows, no × and no close box; deleting the month is still there', () => {
     // The descriptions can still be opened to read them: one "⋯" per transaction (10 in September).
     // And the credit card, which can be created and edited even if the month is closed (it does not belong to a month).
-    expect(buttons(html)).toEqual(['Reopen month', 'Credit card', '+ Add card', 'Edit', ...Array<string>(10).fill('⋯'), 'Delete month']);
+    expect(buttons(html)).toEqual(['Reopen month', 'Credit card', '+ Add card', 'Edit', 'View transactions', ...Array<string>(10).fill('⋯'), 'Delete month']);
     expect(buttons(html)).not.toContain('×');
     expect(els(html, 'button').filter((b) => b['aria-label']?.startsWith('Open the description of '))).toHaveLength(10);
     expect(t).not.toContain('Closing the month');
@@ -1401,7 +1401,7 @@ describe('in Spanish', () => {
         'Abrir la descripción de Coffee',
       ]),
     );
-    expect(new Set(buttons(html))).toEqual(new Set(['Cancelar', '×', '↘', '⋯', 'Agregar', '+ Agregar tarjeta', 'Editar', 'Cerrar Octubre 2026', 'Eliminar mes', 'Credit card']));
+    expect(new Set(buttons(html))).toEqual(new Set(['Cancelar', '×', '↘', '⋯', 'Agregar', '+ Agregar tarjeta', 'Editar', 'Ver transacciones', 'Cerrar Octubre 2026', 'Eliminar mes', 'Credit card']));
     expect(els(html, 'button')).toContainEqual(expect.objectContaining({ title: 'Eliminar' }));
   });
 
@@ -1417,7 +1417,7 @@ describe('in Spanish', () => {
     expect(text(closed)).toContain(
       'Resumen de Septiembre 2026 Mes cerrado. Los registros quedan de solo lectura. Importes en DOP Ingreso 339,731 Gastado 66,636.54 Ahorrado 205,010 Vs. presupuesto 3,363.46 Reabrir mes',
     );
-    expect(buttons(closed)).toEqual(['Reabrir mes', 'Credit card', '+ Agregar tarjeta', 'Editar', ...Array<string>(10).fill('⋯'), 'Eliminar mes']);
+    expect(buttons(closed)).toEqual(['Reabrir mes', 'Credit card', '+ Agregar tarjeta', 'Editar', 'Ver transacciones', ...Array<string>(10).fill('⋯'), 'Eliminar mes']);
   });
 });
 
@@ -1521,7 +1521,7 @@ describe('in Turkish', () => {
         'Coffee açıklamasını aç',
       ]),
     );
-    expect(new Set(buttons(html))).toEqual(new Set(['İptal', '×', '↘', '⋯', 'Ekle', '+ Kart ekle', 'Düzenle', 'Ekim 2026 ayını kapat', 'Ayı sil', 'Credit card']));
+    expect(new Set(buttons(html))).toEqual(new Set(['İptal', '×', '↘', '⋯', 'Ekle', '+ Kart ekle', 'Düzenle', 'İşlemleri gör', 'Ekim 2026 ayını kapat', 'Ayı sil', 'Credit card']));
     expect(t).toContain('88,140.00 DOP');
     expect(t).toContain('6,228.56 106.00');
   });
@@ -1537,7 +1537,7 @@ describe('in Turkish', () => {
     expect(text(closed)).toContain(
       'Eylül 2026 özeti Ay kapalı. Kayıtlar salt okunur. Tutarlar DOP cinsinden Gelir 339,731 Harcanan 66,636.54 Biriken 205,010 Bütçeye göre 3,363.46 Ayı yeniden aç',
     );
-    expect(buttons(closed)).toEqual(['Ayı yeniden aç', 'Credit card', '+ Kart ekle', 'Düzenle', ...Array<string>(10).fill('⋯'), 'Ayı sil']);
+    expect(buttons(closed)).toEqual(['Ayı yeniden aç', 'Credit card', '+ Kart ekle', 'Düzenle', 'İşlemleri gör', ...Array<string>(10).fill('⋯'), 'Ayı sil']);
   });
 });
 
