@@ -416,10 +416,11 @@ export interface ContributionRowView {
 }
 
 /** Del más reciente al más antiguo; los de un mismo día quedan en el orden en que se registraron. */
-export function contributionRows(state: AppState, lang: Language): ContributionRowView[] {
+export function contributionRows(state: AppState, lang: Language, month?: MonthKey): ContributionRowView[] {
   const goals = new Map(state.goals.map((g) => [g.id, g]));
   const main = state.mainCurrency;
-  return [...state.contribs]
+  return state.contribs
+    .filter((c) => !month || monthOf(c.date) === month)
     .sort((a, b) => b.date.localeCompare(a.date))
     .map((c) => {
       const goal = goals.get(c.goalId);
@@ -442,6 +443,11 @@ export function contributionRows(state: AppState, lang: Language): ContributionR
         mainNote: ownRate(state, c) ? NO_NOTE : rateNote(state, key, c.cur, main, lang, c.date),
       };
     });
+}
+
+/** Lo aportado en ese mes, en la moneda principal (lo que dice la cabecera de la tabla). */
+export function contributionsTotalOf(state: AppState, key: MonthKey): number {
+  return state.contribs.filter((c) => monthOf(c.date) === key).reduce((a, c) => a + contribIn(state, c, state.mainCurrency), 0);
 }
 
 // ── Fila de agregar un aporte ────────────────────────────────────────────────

@@ -1,5 +1,4 @@
 import { Fragment, useState } from 'react';
-import { totalSaved } from '../../../shared/calc';
 import { CURRENCIES } from '../../../shared/constants';
 import { f2 } from '../../../shared/format';
 import { useI18n, useStrings } from '../../i18n';
@@ -15,6 +14,8 @@ import {
   contributionIncomeHint,
   contributionIncomeOptions,
   contributionRows,
+  contributionsTotalOf,
+  monthDraftDate,
   draftInput,
   EMPTY_DRAFT,
   goalOptions,
@@ -81,14 +82,14 @@ function IncomeLine({
 
 /**
  * "Contributions": la fila de agregar arriba (la abre el botón de la cabecera) y debajo el historial, del más reciente al más antiguo.
- * Los aportes no pertenecen a un mes: se agregan, editan y eliminan aunque el mes seleccionado esté cerrado.
+ * Se muestran los aportes del mes seleccionado (por la fecha de cada uno); se agregan, editan y eliminan aunque ese mes esté cerrado.
  * Cada uno se ve además en la moneda de su meta y en la principal, con la tasa del mes de su fecha.
  */
 export function ContributionsCard() {
-  const { state, main, accountOptions, actions } = useFinanzas();
+  const { state, main, monthKey, accountOptions, actions } = useFinanzas();
   const { t, lang } = useI18n();
   const s = useStrings(AHORROS);
-  const rows = contributionRows(state, lang);
+  const rows = contributionRows(state, lang, monthKey);
   const fromOptions = (current: string) => [{ value: '', label: s('noAccount') }, ...accountOptions(current || undefined)];
   const adding = useAddRow();
 
@@ -101,7 +102,7 @@ export function ContributionsCard() {
           <>
             {t('total')}{' '}
             <Num tone="ink">
-              {f2(totalSaved(state))} {main}
+              {f2(contributionsTotalOf(state, monthKey))} {main}
             </Num>
           </>
         }
@@ -186,7 +187,8 @@ export function ContributionsCard() {
 
 /** Fila de agregar. El borrador vive aquí para que escribir en ella no repinte el historial. */
 function ContributionAddRow({ adding }: { adding: AddRowControl }) {
-  const { state, today, main, accountOptions, actions } = useFinanzas();
+  const { state, today: now, monthKey, main, accountOptions, actions } = useFinanzas();
+  const today = monthDraftDate(monthKey, now);
   const { t } = useI18n();
   const s = useStrings(AHORROS);
   const [draft, setDraft] = useState(EMPTY_DRAFT);
