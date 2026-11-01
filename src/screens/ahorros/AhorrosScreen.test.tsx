@@ -142,10 +142,11 @@ describe('AhorrosScreen (English, the default language)', () => {
   });
 
   it('Contributions: total in the main currency, add row on top and editable history', () => {
-    expect(t).toContain('Contributions Total 625,794.00 DOP'); // 10,650 USD × 58.76
+    expect(t).toContain('Contributions Total 205,660.00 DOP'); // October's 3,500 USD × 58.76
     const tbody = body(html, 'Contributions');
     const rows = rowsOf(tbody);
-    expect(rows).toHaveLength(9);
+    // Only October's contributions (the month shown): the add row and two contributions.
+    expect(rows).toHaveLength(3);
 
     // The add row is the first one in the table body.
     const add = rows[0]!;
@@ -172,16 +173,14 @@ describe('AhorrosScreen (English, the default language)', () => {
     expect(first).toContain('<option value="USD" selected="">USD</option>');
     // The two computed columns: in the goal's currency and in the main one.
     expect(text(first)).toContain('3,000.00 USD 176,280.00');
-    const last = rows[8]!;
-    expect(els(last, 'input').map((i) => i.value)).toEqual(['2026-08-03', '400']);
+    const last = rows[2]!;
+    expect(els(last, 'input').map((i) => i.value)).toEqual(['2026-10-03', '500']);
     expect(last).toContain('<option value="emergency" selected="">Emergency fund</option>');
-    expect(text(last)).toContain('400.00 USD 23,273.33');
-    // August's rate comes from its transfers: this is said when hovering over the converted figure.
-    expect(els(last, 'td').map((td) => td.title)).toContain("from this month's transfers");
+    expect(text(last)).toContain('500.00 USD 29,380.00');
     expect(els(first, 'td').some((td) => 'title' in td)).toBe(false);
 
     const deletes = els(tbody, 'button').filter((b) => b.title === 'Delete');
-    expect(deletes).toHaveLength(8);
+    expect(deletes).toHaveLength(2);
     expect(deletes[0]!['aria-label']).toBe('Delete contribution of 2026-10-03 to Trip to Turkey: 3,000.00 USD');
   });
 
@@ -279,13 +278,14 @@ describe('AhorrosScreen (English, the default language)', () => {
     expect(text(marked)).toContain('› 343,308.00 DOP');
   });
 
-  it('with a closed month selected only the month income in the header changes: nothing here depends on the month', () => {
+  it('with a closed month selected the contributions and the income tables show that month, just as editable', () => {
     const closed = screen({ monthKey: '2026-08' });
     expect(text(closed)).toContain('› 337,463.33 DOP Cancel Date');
-    // Everything before that header and the other two tables are the same; the income table shows that month's, just as editable.
-    const before = (h: string) => h.slice(0, h.lastIndexOf('<h2'));
-    expect(before(closed)).toBe(before(html));
-    for (const label of ['Income by month', 'Contributions']) expect(body(closed, label)).toBe(body(html, label));
+    // The goal cards and the income by month do not depend on the month.
+    expect(body(closed, 'Income by month')).toBe(body(html, 'Income by month'));
+    // August's contributions: the add row (dated the first of that month) and then the three of that month.
+    expect(text(closed)).toContain('Contributions Total 212,369.17 DOP');
+    expect(els(body(closed, 'Contributions'), 'input').map((i) => i.value).slice(0, 4)).toEqual(['2026-08-01', '', '2026-08-20', '250']);
     expect(els(body(closed, 'Income'), 'input')[0]).toMatchObject({ value: '2026-08-01' });
     expect(withoutPicker(closed)).not.toMatch(/\b(readonly|disabled)\b/i);
   });
@@ -365,7 +365,7 @@ describe('AhorrosScreen with other currencies', () => {
     expect(inner(html, 'th')).toEqual(EN_HEADERS.map((h) => (h === 'DOP' ? 'USD' : h)));
     expect(t).toContain("Income by month In USD, at each month's rate");
     expect(t).toContain('October 2026 5,800.00 3,500.00 60.3%');
-    expect(t).toContain('Contributions Total 10,650.00 USD');
+    expect(t).toContain('Contributions Total 3,500.00 USD');
     expect(t).toContain('› 5,800.00 USD');
     expect(text(rowsOf(body(html, 'Contributions'))[1]!)).toContain('3,000.00 USD 3,000.00');
     // The default account is still the one chosen in Settings, and the new income's currency, that account's.
@@ -409,7 +409,7 @@ describe('AhorrosScreen with other currencies', () => {
     expect(t).toContain('Trip to Turkey 3,000 USD / month Edit 9,000.00 USD ≈ 528,840 DOP 20% of 45,000 USD');
     expect(t.split('≈')).toHaveLength(3);
     // The rest of the sheet stays in the main currency.
-    expect(t).toContain('Contributions Total 625,794.00 DOP');
+    expect(t).toContain('Contributions Total 205,660.00 DOP');
     expect(html).not.toContain(styles.fallbackNote!);
 
     // With no TRY rate typed, that card's figure is flagged as made with the default value (1 USD = 42 TRY).
@@ -472,9 +472,9 @@ describe('AhorrosScreen with other currencies', () => {
     expect(t).toContain('October 2026 340,808.00 205,660.00 60.3%');
     // Contributions: the goal column of the contributions to the TRY goal.
     const contribs = rowsOf(body(html, 'Contributions'));
-    expect(text(contribs[3]!)).toContain('8,400.00 TRY* 11,714.87');
-    expect(els(contribs[3]!, 'td').filter((td) => td.title === 'default value, not set yet')).toHaveLength(1);
-    expect(text(contribs[1]!)).not.toContain('*');
+    expect(text(contribs[1]!)).toContain('8,400.00 TRY* 11,714.87');
+    expect(els(contribs[1]!, 'td').filter((td) => td.title === 'default value, not set yet')).toHaveLength(1);
+    expect(text(contribs[2]!)).not.toContain('*');
     // Income: the TRY one.
     const incomes = rowsOf(body(html, 'Income'));
     expect(text(incomes[1]!)).toContain('5,876.00*');
@@ -505,16 +505,15 @@ describe('AhorrosScreen in Spanish', () => {
     expect(t).toContain('Septiembre 2026 339,731.22 205,010.22 60.3%');
     expect(t).toContain('Octubre 2026 340,808.00 205,660.00 60.3%');
 
-    expect(t).toContain('Aportes Total 625,794.00 DOP');
+    expect(t).toContain('Aportes Total 205,660.00 DOP');
     const contribs = body(html, 'Aportes');
     const add = rowsOf(contribs)[0]!;
     expect(els(add, 'input').map((i) => i['aria-label'])).toEqual(['Fecha del aporte', 'Monto']);
     expect(els(add, 'select').map((s) => s['aria-label'])).toEqual(['Meta', 'Moneda', 'Tasa (USD→DOP)', 'Desde cuenta']);
     expect(add).toContain('>Agregar</button>');
     expect(text(rowsOf(contribs)[1]!)).toContain('3,000.00 USD 176,280.00');
-    expect(els(rowsOf(contribs)[8]!, 'td').map((td) => td.title)).toContain('de los envíos de este mes');
     const deletes = els(contribs, 'button').filter((b) => b.title === 'Eliminar');
-    expect(deletes).toHaveLength(8);
+    expect(deletes).toHaveLength(2);
     expect(deletes[0]!['aria-label']).toBe('Eliminar aporte del 2026-10-03 a Trip to Turkey: 3,000.00 USD');
   });
 
@@ -596,7 +595,7 @@ describe('AhorrosScreen in Turkish', () => {
     expect(t).toContain('Ağustos 2026 337,463.33 212,369.17 62.9%');
     expect(t).toContain('Ekim 2026 340,808.00 205,660.00 60.3%');
 
-    expect(t).toContain('Katkılar Toplam 625,794.00 DOP');
+    expect(t).toContain('Katkılar Toplam 205,660.00 DOP');
     // The icon-only expand buttons have no text: they are left out of the list.
     expect(inner(html, 'button').filter(Boolean).slice(0, 5)).toEqual(['Düzenle', 'Düzenle', 'Düzenle', '+ Hedef ekle', 'İptal']);
     expect(els(html, 'button')[2]!['aria-label']).toBe('Düzenle: Trip to Turkey');
@@ -605,7 +604,7 @@ describe('AhorrosScreen in Turkish', () => {
     expect(els(add, 'input').map((i) => i['aria-label'])).toEqual(['Katkı tarihi', 'Tutar']);
     expect(els(add, 'select').map((s) => s['aria-label'])).toEqual(['Hedef', 'Para birimi', 'Kur (USD→DOP)', 'Hesaptan']);
     const deletes = els(contribs, 'button').filter((b) => b.title === 'Sil');
-    expect(deletes).toHaveLength(8);
+    expect(deletes).toHaveLength(2);
     expect(deletes[0]!['aria-label']).toBe('2026-10-03 tarihli Trip to Turkey katkısını sil: 3,000.00 USD');
   });
 
