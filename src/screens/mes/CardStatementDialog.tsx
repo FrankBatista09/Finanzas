@@ -10,6 +10,7 @@ import { AddButton, AddRow, AddRowButton, CellDate, CellNumber, CellSelect, Cell
 import { canPick, currentStatement, dayLabel, itemsIn, selection, statementCutoffs, statementTotals, stepStatement } from './cardStatement';
 import styles from './CardStatementDialog.module.css';
 import { afterTxAdded, canAddTx, draftCurrency, newTxDraft, txInput } from './drafts';
+import { PayCardDialog } from './PayCardDialog';
 import { NotesCell } from './NotesCell';
 import { PurchaseTag } from './PurchaseTag';
 import { labelled, MAX_LEN, shortDate } from './rows';
@@ -36,9 +37,10 @@ export function CardStatementDialog({ cardId, onClose }: { cardId: string; onClo
   const [newestFirst, setNewestFirst] = useState(false);
   const inStatement = itemsIn(items, selected);
   const shown = newestFirst ? [...inStatement].reverse() : inStatement;
+  const [paying, setPaying] = useState(false);
   const [checked, setChecked] = useState<ReadonlySet<string>>(new Set());
   const [destination, setDestination] = useState<'fixed' | 'history'>('fixed');
-  const sel = selection(shown, checked);
+  const sel = selection(shown, checked, monthKey);
   const totals = statementTotals(shown);
 
   const fresh = () => ({ ...newTxDraft(), method: CREDIT_CARD_METHOD, cur: card?.cur ?? null });
@@ -57,7 +59,14 @@ export function CardStatementDialog({ cardId, onClose }: { cardId: string; onClo
       return next;
     });
   const include = () => {
-    if (sel.ids.length > 0 && actions.includeCardPurchases(cardId, sel.ids, destination)) setChecked(new Set());
+    if (sel.ids.length === 0) return;
+    if (sel.txIds.length > 0 && !actions.includeCardPurchases(cardId, sel.txIds, destination)) return;
+    for (const id of sel.fixedIds) actions.patchFixed(id, { paid: true });
+    setChecked(new Set());
+  };
+  const takeOut = (item: { kind: 'tx' | 'fixed'; id: string }) => {
+    if (item.kind === 'tx') actions.excludeCardPurchases(cardId, [item.id]);
+    else actions.patchFixed(item.id, { paid: false });
   };
   const add = () => {
     if (!canAddTx(draft) || !actions.addTx({ ...txInput(draft, draftDate, ctx), method: CREDIT_CARD_METHOD, cardId })) return false;
@@ -72,6 +81,7 @@ export function CardStatementDialog({ cardId, onClose }: { cardId: string; onClo
   const at = selected ? cutoffs.indexOf(selected) : -1;
 
   return (
+    <>
     <Dialog
       size="large"
       title={s('stmtTitle', { name: card.name })}
@@ -96,6 +106,11 @@ export function CardStatementDialog({ cardId, onClose }: { cardId: string; onClo
                 {s('stmtAddToMonth')}
               </DialogButton>
             </div>
+          )}
+          {editable && (
+            <DialogButton variant="secondary" onClick={() => setPaying(true)}>
+              {s('stmtPay')}
+            </DialogButton>
           )}
           <DialogButton variant="secondary" onClick={onClose}>
             {t('close')}
@@ -145,7 +160,7 @@ export function CardStatementDialog({ cardId, onClose }: { cardId: string; onClo
               {t('amount')}
             </Th>
             <Th width={150}>{s('stmtStatus')}</Th>
-            <Th blank width={40} />
+            <Th blank width={72} />
           </tr>
         </thead>
         <tbody>
@@ -179,7 +194,7 @@ export function CardStatementDialog({ cardId, onClose }: { cardId: string; onClo
           {shown.map((item) => (
             <tr key={`${item.kind}-${item.id}`}>
               <Td kind="center">
-                {editable && canPick(item) && (
+                {editable && canPick(item, monthKey) && (
                   <input type="checkbox" className={styles.check} checked={checked.has(item.id)} onChange={() => toggle(item.id)} aria-label={s('purchaseSelect', { name: item.name })} />
                 )}
               </Td>
@@ -219,6 +234,11 @@ export function CardStatementDialog({ cardId, onClose }: { cardId: string; onClo
                 <PurchaseTag purchase={item} viewKey={monthKey} />
               </Td>
               <Td kind="action">
+                {editable && item.status === 'month' && item.includedIn === monthKey && (
+                  <button type="button" className={styles.takeOut} onClick={() => takeOut(item)} title={s('stmtTakeOut')} aria-label={s('stmtTakeOutNamed', { name: item.name })}>
+                    ↩
+                  </button>
+                )}
                 {editable && item.kind === 'tx' && (
                   <DeleteButton kind="kindTransaction" item={`${item.name} · ${f2(item.amount)} ${item.cur}`} onConfirm={() => actions.removeTx(item.id)} label={t('deleteNamed', { name: item.name })} />
                 )}
@@ -232,8 +252,9 @@ export function CardStatementDialog({ cardId, onClose }: { cardId: string; onClo
         <span>{s('stmtTotal', { amount: f2(totals.total), currency: cur })}</span>
         <span className={cx(totals.unpaid > 0 && styles.unpaidTotal)}>{s('stmtUnpaidTotal', { amount: f2(totals.unpaid), currency: cur })}</span>
       </div>
-      {shown.some((i) => i.kind === 'fixed') && <p className={styles.note}>{s('stmtFixedNote')}</p>}
-      </div>
+            </div>
     </Dialog>
+      {paying && <PayCardDialog cardId={cardId} onClose={() => setPaying(false)} />}
+    </>
   );
 }

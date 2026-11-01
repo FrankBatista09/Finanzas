@@ -380,6 +380,14 @@ export interface CardPayRequest {
  * a month <= :key) to month :key, so they count in its card total. `destination` 'history' only marks them; 'fixed' also
  * creates a ticked fixed expense on the card for each (its id from `fixedIds`, one per transaction, or generated).
  */
+/**
+ * POST /api/months/:key/cards/:cardId/exclude-purchases: takes the listed purchases back out of month :key's card total
+ * (they were added to it and are not paid yet); they go back to unpaid, and the fixed expense that stood for each is deleted.
+ */
+export interface CardExcludeRequest {
+  transactionIds: string[];
+}
+
 export interface CardIncludeRequest {
   transactionIds: string[];
   destination: 'fixed' | 'history';

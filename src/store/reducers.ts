@@ -41,6 +41,7 @@ import {
   openingFor,
   rateFor,
   sortedKeys,
+  cardPurchases,
   unpaidCardPurchases,
 } from '../../shared/calc';
 import { CREDIT_CARD_METHOD, CURRENCIES, GOLD, GOLD_DECIMALS, isGold, MAX_LEN, MOVED_TO_BUDGET } from '../../shared/constants';
@@ -85,6 +86,7 @@ export type Action =
   | { type: 'card/cashback'; key: MonthKey; cardId: string; cashback: number }
   | { type: 'card/pay'; key: MonthKey; cardId: string; payment: CardPayment }
   /** Unpaid Credit-card purchases added to the month's card total; `fixedIds` (one per purchase) only with destination 'fixed'. */
+  | { type: 'card/exclude'; key: MonthKey; cardId: string; transactionIds: string[] }
   | { type: 'card/include'; key: MonthKey; cardId: string; transactionIds: string[]; destination: 'fixed' | 'history'; fixedIds: string[] }
   | { type: 'card/unpay'; key: MonthKey; cardId: string }
   | { type: 'card/unpayOne'; key: MonthKey; cardId: string; id: string }
@@ -403,6 +405,11 @@ export function reduce(state: AppState, action: Action): AppState {
       return withMonth(state, action.key, (m) => withCard(m, { ...cardOf(m, action.cardId), payments: [...cardOf(m, action.cardId).payments, action.payment] }));
     case 'card/include':
       return includePurchases(state, action);
+    case 'card/exclude': {
+      const ids = new Set(action.transactionIds);
+      const without = action.transactionIds.reduce((s, id) => removeStandIn(s, id), state);
+      return mapTx(without, (t) => (ids.has(t.id) ? withoutCardMonth(t) : t));
+    }
     case 'card/unpay': {
       const month = state.months[action.key];
       const gone = new Set(month ? cardOf(month, action.cardId).payments.map((p) => p.id) : []);
@@ -1395,6 +1402,14 @@ export function cardInclusion(
   const unpaid = new Set(unpaidCardPurchases(state, key, cardId).map((p) => p.tx.id));
   if (transactionIds.some((id) => !unpaid.has(id))) return null;
   return { type: 'card/include', key, cardId, transactionIds: [...transactionIds], destination, fixedIds: destination === 'fixed' ? transactionIds.map(newId) : [] };
+}
+
+/** Take purchases back out of the month's card total: an open month and purchases of that card added to it and not paid. */
+export function cardExclusion(state: AppState, key: MonthKey, cardId: string, transactionIds: readonly string[]): Action | null {
+  if (!openMonth(state, key) || !hasCard(state, cardId) || transactionIds.length === 0 || new Set(transactionIds).size !== transactionIds.length) return null;
+  const mine = new Map(cardPurchases(state, key, cardId).map((p) => [p.tx.id, p]));
+  if (transactionIds.some((id) => mine.get(id)?.status !== 'month' || mine.get(id)?.includedIn !== key)) return null;
+  return { type: 'card/exclude', key, cardId, transactionIds: [...transactionIds] };
 }
 
 /** Quitar todos los pagos de una tarjeta: un mes abierto con alguno. */

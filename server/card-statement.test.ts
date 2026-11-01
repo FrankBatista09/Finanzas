@@ -262,3 +262,31 @@ describe('a purchase created after the deploy', () => {
     expect(cardOwed(s, OCT, 'visa')).toBeGreaterThan(70);
   });
 });
+
+describe('POST exclude-purchases', () => {
+  it('history: takes the purchase back to unpaid', async () => {
+    const { api, db } = await seeded();
+    await api.post(`${C}/include-purchases`, { transactionIds: ['a'], destination: 'history' });
+    const r = await api.post<Month>(`${C}/exclude-purchases`, { transactionIds: ['a'] });
+    expect(r.status).toBe(200);
+    expect((await find(db, 'a')).cardMonth).toBeUndefined();
+    expect(cardCalc(await state(db), OCT, 'visa').charged).toBe(0);
+  });
+
+  it('fixed: also deletes the fixed expense that stood for it', async () => {
+    const { api, db } = await seeded();
+    await api.post(`${C}/include-purchases`, { transactionIds: ['a', 'b'], destination: 'fixed', fixedIds: ['fa', 'fb'] });
+    expect((await api.post(`${C}/exclude-purchases`, { transactionIds: ['a'] })).status).toBe(200);
+    const s = await state(db);
+    expect(s.months[OCT]!.fixed.map((f) => f.id)).toEqual(['fb']);
+    expect(await find(db, 'a')).not.toHaveProperty('cardFixedId');
+    expect(await find(db, 'b')).toMatchObject({ cardMonth: OCT, cardFixedId: 'fb' });
+  });
+
+  it('refuses a purchase that was not added, writing nothing', async () => {
+    const { api, db } = await seeded();
+    const r = await api.post(`${C}/exclude-purchases`, { transactionIds: ['a'] });
+    expect(r.status).toBe(400);
+    expect((await find(db, 'a')).cardMonth).toBeUndefined();
+  });
+});

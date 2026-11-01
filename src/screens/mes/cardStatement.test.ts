@@ -48,14 +48,15 @@ describe('selection and totals', () => {
     item('fixed', { kind: 'fixed', converted: 7 }),
   ];
 
-  it('only unpaid transactions can be picked', () => {
-    expect(items.map(canPick)).toEqual([true, true, false, false]);
+  it('unpaid transactions and unticked fixed expenses of the viewed month can be picked', () => {
+    expect(items.map((i) => canPick(i, '2026-10'))).toEqual([true, true, false, true]);
+    expect(canPick(item('old', { kind: 'fixed', key: '2026-09' }), '2026-10')).toBe(false);
   });
 
   it('adds up the checked ones that can be picked, to cents, ignoring the rest', () => {
-    expect(selection(items, new Set(['a', 'b', 'month', 'fixed']))).toEqual({ ids: ['a', 'b'], sum: 0.3 });
-    expect(selection(items, new Set())).toEqual({ ids: [], sum: 0 });
-    expect(selection(items, new Set(['gone']))).toEqual({ ids: [], sum: 0 });
+    expect(selection(items, new Set(['a', 'b', 'month', 'fixed']), '2026-10')).toEqual({ ids: ['a', 'b', 'fixed'], txIds: ['a', 'b'], fixedIds: ['fixed'], sum: 7.3 });
+    expect(selection(items, new Set(), '2026-10')).toEqual({ ids: [], txIds: [], fixedIds: [], sum: 0 });
+    expect(selection(items, new Set(['gone']), '2026-10')).toEqual({ ids: [], txIds: [], fixedIds: [], sum: 0 });
   });
 
   it('totals the statement and what is unpaid in it', () => {

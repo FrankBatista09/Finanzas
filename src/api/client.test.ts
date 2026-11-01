@@ -280,6 +280,7 @@ describe('X-User header', () => {
     setCardCashback: (api) => api.setCardCashback('2026-10', 'card', { cashback: 5 }),
     payCard: (api) => api.payCard('2026-10', 'card', { amount: 50, accountId: 'dr' }),
     includeCardPurchases: (api) => api.includeCardPurchases('2026-10', 'card', { transactionIds: ['x'], destination: 'history' }),
+    excludeCardPurchases: (api) => api.excludeCardPurchases('2026-10', 'card', { transactionIds: ['x'] }),
     unpayCard: (api) => api.unpayCard('2026-10', 'card'),
     removeCardPayment: (api) => api.removeCardPayment('2026-10', 'card', 'x'),
     listCreditCards: (api) => api.listCreditCards(),
