@@ -20,6 +20,7 @@ import type {
   AccountPatch,
   BudgetEntryCreate,
   CardPayRequest,
+  CardExcludeRequest,
   CardIncludeRequest,
   CloseRequest,
   CloseResponse,
@@ -1960,6 +1961,45 @@ export async function includeCardPurchases(db: D1Database, userId: string, key: 
   } catch (err) {
     throw isUniqueViolation(err) ? duplicateId() : err;
   }
+  return writtenMonth(results, key);
+}
+
+/**
+ * Takes purchases back out of a month's card total: each has to be a purchase of this card that was added to `key` and is
+ * not paid. It goes back to unpaid and the fixed expense that stood for it is deleted, in one batch under the open-month condition.
+ */
+export async function excludeCardPurchases(db: D1Database, userId: string, key: MonthKey, cardId: string, input: CardExcludeRequest): Promise<Month> {
+  const state = await loadState(db, userId);
+  const month = state.months[key];
+  if (!month) throw monthNotFoundError(key);
+  if (!state.cards.some((c) => c.id === cardId)) throw notFoundError(NO_CARD);
+  if (month.closed) throw monthClosedError(key);
+  const ids = input.transactionIds;
+  if (new Set(ids).size !== ids.length) throw validationError('transactionIds: a transaction is listed more than once.');
+  const purchases = new Map(cardPurchases(state, key, cardId).map((p) => [p.tx.id, p]));
+  for (const id of ids) {
+    const hit = purchases.get(id);
+    if (!hit) throw validationError(`transactionIds: transaction ${id} is not a purchase of this card.`);
+    if (hit.status === 'paid') throw validationError(`transactionIds: transaction ${id} is already paid; remove its payment first.`);
+    if (hit.includedIn !== key) throw validationError(`transactionIds: transaction ${id} was not added to ${key}.`);
+  }
+  const idsJson = JSON.stringify(ids);
+  const open = `(SELECT key FROM months WHERE user_id = ?1 AND closed = 0)`;
+  const results = await db.batch([
+    db
+      .prepare(
+        `DELETE FROM fixed_expenses WHERE user_id = ?1 AND month_key = ?2 AND month_key IN ${open}
+           AND id IN (SELECT card_fixed_id FROM transactions WHERE user_id = ?1 AND id IN (SELECT value FROM json_each(?3)) AND card_month = ?2)`,
+      )
+      .bind(userId, key, idsJson),
+    db
+      .prepare(
+        `UPDATE transactions SET card_month = NULL, card_fixed_id = NULL
+         WHERE user_id = ?1 AND id IN (SELECT value FROM json_each(?3)) AND card_month = ?2 AND ?2 IN ${open}`,
+      )
+      .bind(userId, key, idsJson),
+    ...monthStatements(db, userId, key),
+  ]);
   return writtenMonth(results, key);
 }
 

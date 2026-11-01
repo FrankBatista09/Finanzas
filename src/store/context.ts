@@ -119,6 +119,8 @@ export interface Actions {
    * Adds the chosen unpaid Credit-card purchases of that card (dated up to the selected month) to the selected month's card
    * total: 'fixed' also creates a ticked fixed expense on the card for each, 'history' only marks them. false if it cannot be done.
    */
+  /** Takes purchases back out of the selected month's card total (not paid yet): they return to unpaid. */
+  excludeCardPurchases(cardId: string, transactionIds: readonly string[]): boolean;
   includeCardPurchases(cardId: string, transactionIds: readonly string[], destination: 'fixed' | 'history'): boolean;
   /** Removes all the payments on that credit card in the selected month. */
   unpayCard(cardId: string): void;

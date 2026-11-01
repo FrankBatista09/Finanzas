@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { cardCalc, cardPurchases, unpaidCardPurchases } from '../../shared/calc';
 import { seedState } from '../../shared/seed';
 import type { AppState, CreditCard, Transaction } from '../../shared/types';
-import { cardInclusion, cardUnpay, reduce } from './reducers';
+import { cardExclusion, cardInclusion, cardUnpay, reduce } from './reducers';
 import type { Action } from './reducers';
 
 const SEP = '2026-09';
@@ -110,5 +110,38 @@ describe('cardInclusion', () => {
     expect(cardPurchases(paid, OCT, 'card').find((p) => p.tx.id === 'a')!.status).toBe('paid');
     const back = apply(paid, cardUnpay(paid, OCT, 'card'));
     expect(cardPurchases(back, OCT, 'card').find((p) => p.tx.id === 'a')!.status).toBe('month');
+  });
+});
+
+describe('cardExclusion', () => {
+  const exclude = (s: AppState, ids: string[], key = OCT) => cardExclusion(s, key, 'card', ids);
+
+  it('takes a history purchase back to unpaid', () => {
+    const s = state();
+    const added = apply(s, include(s, ['a'], 'history'));
+    const next = apply(added, exclude(added, ['a']));
+    expect(find(next, 'a').cardMonth).toBeUndefined();
+    expect(unpaidCardPurchases(next, OCT, 'card').map((p) => p.tx.id)).toContain('a');
+    expect(cardCalc(next, OCT, 'card').charged).toBe(0);
+  });
+
+  it('a fixed purchase also loses the fixed row that stood for it', () => {
+    const s = state();
+    const added = apply(s, include(s, ['a'], 'fixed'));
+    expect(added.months[OCT]!.fixed).toHaveLength(1);
+    const next = apply(added, exclude(added, ['a']));
+    expect(next.months[OCT]!.fixed).toEqual([]);
+    expect(find(next, 'a')).not.toHaveProperty('cardFixedId');
+    expect(cardCalc(next, OCT, 'card').charged).toBe(0);
+  });
+
+  it('refuses what is not added to that month, is repeated, or is in a closed month', () => {
+    const s = state();
+    expect(exclude(s, ['a'])).toBeNull(); // still unpaid
+    expect(exclude(s, [])).toBeNull();
+    const added = apply(s, include(s, ['a'], 'history'));
+    expect(exclude(added, ['a', 'a'])).toBeNull();
+    expect(exclude(added, ['a'], SEP)).toBeNull();
+    expect(exclude(added, ['a'])).not.toBeNull();
   });
 });

@@ -341,6 +341,12 @@ export function createApp(): Hono<AppEnv> {
     return c.json((await db.includeCardPurchases(c.env.DB, uid(c), key, cardParam(c), input)) satisfies Month);
   });
 
+  app.post('/months/:key/cards/:cardId/exclude-purchases', async (c) => {
+    const key = monthParam(c);
+    const input = await jsonBody(c, v.cardExcludeSchema);
+    return c.json((await db.excludeCardPurchases(c.env.DB, uid(c), key, cardParam(c), input)) satisfies Month);
+  });
+
   app.delete('/months/:key/cards/:cardId/pay', async (c) =>
     c.json((await db.unpayCard(c.env.DB, uid(c), monthParam(c), cardParam(c))) satisfies Month),
   );

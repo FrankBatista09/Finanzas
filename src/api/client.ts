@@ -18,6 +18,7 @@ import type {
   CardCashbackUpdate,
   CardOtherUpdate,
   CardPayRequest,
+  CardExcludeRequest,
   CardIncludeRequest,
   CreditCardCreate,
   CreditCardPatch,
@@ -233,6 +234,9 @@ export function createApiClient(fetchImpl: FetchLike = (input, init) => fetch(in
       /** Adds the listed unpaid Credit-card purchases of a card to the month's card total, as fixed expenses or just marked. */
       includeCardPurchases: (key: MonthKey, cardId: string, body: CardIncludeRequest, opts?: RequestOptions) =>
         json<Month>('POST', `/api/months/${seg(key)}/cards/${seg(cardId)}/include-purchases`, { json: body, opts }),
+      /** Takes unpaid purchases back out of the month's card total (they return to unpaid). */
+      excludeCardPurchases: (key: MonthKey, cardId: string, body: CardExcludeRequest, opts?: RequestOptions) =>
+        json<Month>('POST', `/api/months/${seg(key)}/cards/${seg(cardId)}/exclude-purchases`, { json: body, opts }),
       unpayCard: (key: MonthKey, cardId: string, opts?: RequestOptions) =>
         json<Month>('DELETE', `/api/months/${seg(key)}/cards/${seg(cardId)}/pay`, { opts }),
       removeCardPayment: (key: MonthKey, cardId: string, paymentId: string, opts?: RequestOptions) =>

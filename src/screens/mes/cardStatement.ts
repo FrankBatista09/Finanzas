@@ -33,20 +33,32 @@ export function itemsIn<T extends Pick<StatementItem, 'statement'>>(items: reado
   return statement === null ? [...items] : items.filter((i) => i.statement === statement);
 }
 
-/** Only a transaction that is not in any month yet can be picked; a fixed expense is ticked in its own table. */
-export const canPick = (item: Pick<StatementItem, 'kind' | 'status'>): boolean => item.kind === 'tx' && item.status === 'unpaid';
+/**
+ * What can be picked to add to the month: a transaction that is not in any month yet, or an unticked fixed expense of the
+ * month being viewed (picking it ticks it, as its checkbox in the Fixed table does).
+ */
+export const canPick = (item: Pick<StatementItem, 'kind' | 'status' | 'key'>, viewKey: string): boolean =>
+  item.status === 'unpaid' && (item.kind === 'tx' || item.key === viewKey);
 
 export interface Selection {
   /** Checked items that can still be picked, in list order. */
   ids: string[];
+  /** The transactions among them. */
+  txIds: string[];
+  /** The fixed expenses among them. */
+  fixedIds: string[];
   /** What they add up to in the card's currency, to cents. */
   sum: number;
 }
 
 /** The checked items that are still pickable (one added or deleted meanwhile drops out) and their sum. */
-export function selection(items: readonly StatementItem[], checked: ReadonlySet<string>): Selection {
-  const chosen = items.filter((i) => canPick(i) && checked.has(i.id));
-  return { ids: chosen.map((i) => i.id), sum: sumCardPurchases(chosen.map((i) => ({ amount: i.converted }))) };
+export function selection(items: readonly StatementItem[], checked: ReadonlySet<string>, viewKey: string): Selection {
+  const chosen = items.filter((i) => canPick(i, viewKey) && checked.has(i.id));
+  return {
+    ids: chosen.map((i) => i.id),
+    txIds: chosen.filter((i) => i.kind === 'tx').map((i) => i.id),
+    fixedIds: chosen.filter((i) => i.kind === 'fixed').map((i) => i.id), sum: sumCardPurchases(chosen.map((i) => ({ amount: i.converted }))),
+  };
 }
 
 /** The statement's total and what is unpaid in it, in the card's currency, to cents. */

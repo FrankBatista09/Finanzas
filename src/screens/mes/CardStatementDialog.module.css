@@ -165,3 +165,17 @@
   gap: 4px;
   cursor: pointer;
 }
+
+.takeOut {
+  margin-right: 4px;
+  padding: 0 4px;
+  border: 0;
+  background: transparent;
+  color: var(--ink-soft, inherit);
+  font: inherit;
+  cursor: pointer;
+}
+
+.takeOut:hover {
+  color: var(--accent);
+}

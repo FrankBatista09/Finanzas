@@ -310,6 +310,8 @@ export class FinanzasStore {
         return api.payCard(action.key, action.cardId, { id: action.payment.id, amount: action.payment.amount, accountId: action.payment.accountId, date: action.payment.date }, opts);
       case 'card/include':
         return api.includeCardPurchases(action.key, action.cardId, { transactionIds: action.transactionIds, destination: action.destination, ...(action.destination === 'fixed' && { fixedIds: action.fixedIds }) }, opts);
+      case 'card/exclude':
+        return api.excludeCardPurchases(action.key, action.cardId, { transactionIds: action.transactionIds }, opts);
       case 'card/unpay':
         return api.unpayCard(action.key, action.cardId, opts);
       case 'card/unpayOne':
