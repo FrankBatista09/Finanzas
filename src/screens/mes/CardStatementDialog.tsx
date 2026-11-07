@@ -34,10 +34,10 @@ export function CardStatementDialog({ cardId, onClose }: { cardId: string; onClo
   const [picked, setPicked] = useState<ISODate | null>(null);
   // The statement the user stepped to, or the one containing today; a picked one that no longer exists falls back to it.
   const selected = cutoffDay ? (picked && cutoffs.includes(picked) ? picked : currentStatement(today, cutoffDay)) : null;
-  const [newestFirst, setNewestFirst] = useState(false);
+  const [newestFirst, setNewestFirst] = useState(true);
   const inStatement = itemsIn(items, selected);
   const shown = newestFirst ? [...inStatement].reverse() : inStatement;
-  const [paying, setPaying] = useState(false);
+  const [paying, setPaying] = useState(true);
   const [checked, setChecked] = useState<ReadonlySet<string>>(new Set());
   const [destination, setDestination] = useState<'fixed' | 'history'>('fixed');
   const sel = selection(shown, checked, monthKey);
